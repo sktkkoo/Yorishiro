@@ -13,7 +13,7 @@ Yorishiro の設定画面。`activeUi` を `"yorishiro-settings"` に一時 swap
 
 ## 設定項目
 
-- **キャラクター**: VRM body / Persona / Scene
+- **キャラクター**: VRM body / Persona / Scene。VRM は独立した chooser で検索・サムネイル・作者・正確な仕様 version・利用条件を確認し、固定 footer の明示的な「切り替える」でだけ変更する。license/reference の HTTPS URL は詳細から host 検証済みの外部 browser で開く。catalog は bounded JSON metadata だけを列挙し、一覧は20件ずつ段階表示、画像は可視候補だけ遅延取得する。import は候補追加までで即時適用しない。選択中でない imported VRM は確認後に一覧から外して AppData の管理用コピーを削除できるが、読み込み元の VRM file には触れない。存在しない active path は通知後に自動整理する
 - **ターミナル**: Coding agent（Claude Code / Codex）。OpenCode adapter は内部に残すが、dropdown には表示しない
 - **ショートカット**: terminal に選択中 agent 用の固定 shortcut prompt（Claude Code は `/yori:shortcut ...`、Codex は `$yori-shortcut ...`、OpenCode は `/yori-shortcut ...`）を pre-fill する button
 - フッタ: `⌘R / Ctrl+R` の hint
@@ -33,7 +33,7 @@ Yorishiro の設定画面。`activeUi` を `"yorishiro-settings"` に一時 swap
 
 一方、以下は監査済み bundled exception のまま残す：
 
-- VRM file picker (`@tauri-apps/plugin-dialog` + `import_vrm`)
+- VRM catalog / bounded thumbnail / file picker / confirmed removal (`list_vrm_avatars` + `read_vrm_thumbnail` + `@tauri-apps/plugin-dialog` + `import_vrm` + `remove_vrm_avatar`)
 - `localStorage["yorishiro:vrm"]` の magic string を直接読んでいる
 - updater / process relaunch、app 固有 i18n、snapshot 表示 helper、language/config policy helper、bundled default scene manifest
 

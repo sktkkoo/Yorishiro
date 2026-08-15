@@ -153,9 +153,19 @@ describe("changeStrings", () => {
     expect(getStrings("en").noForwardConversation).toBe("No next session");
   });
 
-  it("labels the bundled Yori VRM reset action in both languages", () => {
-    expect(getStrings("en").resetVrmToYori).toBe("Return to Yori");
-    expect(getStrings("ja").resetVrmToYori).toBe("Yori に戻す");
+  it("localizes the VRM review and explicit apply flow", () => {
+    expect(getStrings("en").vrmImportNew).toBe("Add from file…");
+    expect(getStrings("ja").vrmImportNew).toBe("ファイルを追加…");
+    expect(getStrings("en").vrmNotSpecified).toBe("Not stated");
+    expect(getStrings("ja").vrmNotSpecified).toBe("記載なし");
+    expect(getStrings("en").vrmApply).toBe("Switch to this avatar");
+    expect(getStrings("ja").vrmApply).toBe("このアバターに切り替える");
+    expect(getStrings("en").vrmDialogTitle).toBe("Change avatar");
+    expect(getStrings("ja").vrmDialogTitle).toBe("アバターを変更");
+    expect(getStrings("en").vrmCreator).toBe("Creator");
+    expect(getStrings("ja").vrmCreator).toBe("作者");
+    expect(getStrings("en").vrmRemove).toBe("Remove from list…");
+    expect(getStrings("ja").vrmRemove).toBe("一覧から削除…");
   });
 });
 

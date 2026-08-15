@@ -2,11 +2,16 @@ import { describe, expect, it, vi } from "vitest";
 import { getStrings, resolvePackRepairPrompt } from "../../../src/i18n/strings";
 import { KNOWN_AGENT_IDS } from "../../../src/runtime/user-pack-loader/config";
 import {
+  activeVrmCandidateId,
   applyConfigUpdate,
+  applyVrmCandidate,
   configActiveSceneForSelection,
   configPrimaryPersonaForSelection,
   creditsSections,
+  DEFAULT_VRM_THUMBNAIL_URL,
   filterPersonaOptionsForLanguage,
+  filterVrmCandidates,
+  formatVrmMetaValue,
   type NewSessionChangeKind,
   packWorkbenchKey,
   resolveCloseTarget,
@@ -14,12 +19,188 @@ import {
   resolvePersonaSelectValue,
   resolveSceneSelectValue,
   resolveVoiceMuteToggle,
+  resolveVrmCandidates,
   SETTINGS_PACK_ID,
+  safeVrmExternalUrl,
   selectWorkbenchPack,
+  sortVrmCandidates,
   summarizePackDiagnosis,
   TERMINAL_AGENT_OPTIONS,
   terminalAgentLabel,
+  yoriVrmDetails,
 } from "./ui";
+
+const validVrmEntry = {
+  id: "avatar.vrm",
+  fileName: "avatar.vrm",
+  path: "/app/avatars/avatar.vrm",
+  size: 100,
+  modifiedMs: 1,
+  valid: true,
+  invalidReason: null,
+  meta: {
+    specVersion: "1.0",
+    name: "Avatar",
+    version: null,
+    authors: ["Creator"],
+    contactInformation: null,
+    references: [],
+    license: { name: null, urls: [], thirdPartyLicenses: null },
+    allowedUser: { normalized: "notSpecified", raw: null },
+    avatarPermission: { normalized: "everyone", raw: "everyone" },
+    violentUsage: { normalized: "disallowed", raw: "false" },
+    sexualUsage: { normalized: "disallowed", raw: "false" },
+    commercialUsage: { normalized: "personalNonProfit", raw: "personalNonProfit" },
+    politicalOrReligiousUsage: { normalized: "disallowed", raw: "false" },
+    antisocialOrHateUsage: { normalized: "disallowed", raw: "false" },
+    redistribution: { normalized: "disallowed", raw: "false" },
+    modification: { normalized: "prohibited", raw: "prohibited" },
+    creditNotation: { normalized: "required", raw: "required" },
+  },
+} as const;
+
+describe("VRM catalog selection boundary", () => {
+  it("treats Yori as the first bundled avatar with its build-extracted thumbnail", () => {
+    expect(resolveVrmCandidates([], null)[0]).toMatchObject({
+      kind: "yori",
+      catalogGroup: "bundled",
+      active: true,
+      sourceId: null,
+      thumbnail: null,
+    });
+    expect(DEFAULT_VRM_THUMBNAIL_URL).toBe("/models/Yori-thumbnail.png");
+  });
+
+  it("puts Yori first and marks the persisted file as active", () => {
+    const candidates = resolveVrmCandidates([validVrmEntry], validVrmEntry.path);
+    expect(candidates.map((candidate) => candidate.label)).toEqual(["Yori", "avatar.vrm"]);
+    expect(candidates[1]?.active).toBe(true);
+    expect(activeVrmCandidateId(candidates)).toBe("file:avatar.vrm");
+  });
+
+  it("keeps a missing localStorage absolute path as an invalid active row", () => {
+    const candidates = resolveVrmCandidates([], "/old/avatars/gone.vrm");
+    expect(candidates).toHaveLength(2);
+    expect(candidates[1]).toMatchObject({
+      kind: "missing",
+      label: "gone.vrm",
+      active: true,
+      valid: false,
+      path: "/old/avatars/gone.vrm",
+    });
+  });
+
+  it("does not call setVrm while discovering/selecting and only applies explicitly", () => {
+    const setVrm = vi.fn();
+    const candidates = resolveVrmCandidates([validVrmEntry], null);
+    const selected = candidates[1];
+    expect(setVrm).not.toHaveBeenCalled();
+    expect(selected && applyVrmCandidate(selected, setVrm)).toBe(true);
+    expect(setVrm).toHaveBeenCalledOnce();
+    expect(setVrm).toHaveBeenCalledWith(validVrmEntry.path);
+  });
+
+  it("applies Yori as null and refuses invalid files", () => {
+    const setVrm = vi.fn();
+    const candidates = resolveVrmCandidates(
+      [{ ...validVrmEntry, id: "bad.vrm", fileName: "bad.vrm", valid: false, meta: null }],
+      null,
+    );
+    const yori = candidates[0];
+    const invalid = candidates[1];
+    expect(yori).toBeDefined();
+    expect(invalid).toBeDefined();
+    if (!yori || !invalid) throw new Error("expected Yori and invalid candidates");
+    expect(applyVrmCandidate(invalid, setVrm)).toBe(false);
+    expect(setVrm).not.toHaveBeenCalled();
+    expect(applyVrmCandidate(yori, setVrm)).toBe(true);
+    expect(setVrm).toHaveBeenCalledWith(null);
+  });
+});
+
+describe("VRM chooser discovery", () => {
+  it("uses metadata names and authors to find opaque filenames", () => {
+    const entries = [
+      {
+        ...validVrmEntry,
+        id: "1201808779995565093.vrm",
+        fileName: "1201808779995565093.vrm",
+        path: "/app/avatars/1201808779995565093.vrm",
+      },
+    ];
+    const candidates = resolveVrmCandidates(entries, null);
+    expect(filterVrmCandidates(candidates, "creator").map((candidate) => candidate.label)).toEqual([
+      "1201808779995565093.vrm",
+    ]);
+    expect(filterVrmCandidates(candidates, "avatar")).toHaveLength(1);
+  });
+
+  it("keeps bundled avatars ahead of the active imported avatar and filters a 100-item catalog deterministically", () => {
+    const entries = Array.from({ length: 100 }, (_, index) => ({
+      ...validVrmEntry,
+      id: `${index}.vrm`,
+      fileName: `${index}.vrm`,
+      path: `/app/avatars/${index}.vrm`,
+      meta: { ...validVrmEntry.meta, name: `Avatar ${index}` },
+    }));
+    const candidates = resolveVrmCandidates(entries, entries[73]?.path ?? null);
+    const sorted = sortVrmCandidates(candidates);
+    expect(sorted[0]?.kind).toBe("yori");
+    expect(sorted[1]?.path).toBe(entries[73]?.path);
+    expect(filterVrmCandidates(sorted, "Avatar 99")).toHaveLength(1);
+  });
+});
+
+describe("VRM permission presentation", () => {
+  it("only turns credential-free HTTPS metadata into external links", () => {
+    expect(safeVrmExternalUrl("https://example.test/license")).toBe("https://example.test/license");
+    expect(safeVrmExternalUrl("http://example.test/license")).toBeNull();
+    expect(safeVrmExternalUrl("javascript:alert(1)")).toBeNull();
+    expect(safeVrmExternalUrl("https://user:secret@example.test/license")).toBeNull();
+    expect(safeVrmExternalUrl("not a url")).toBeNull();
+  });
+
+  it("localizes known statuses without redundant boolean or enum raw values", () => {
+    expect(formatVrmMetaValue({ normalized: "allowed", raw: "true" }, getStrings("en"))).toBe(
+      "Allowed",
+    );
+    expect(formatVrmMetaValue({ normalized: "allowed", raw: "true" }, getStrings("ja"))).toBe(
+      "許可",
+    );
+    expect(
+      formatVrmMetaValue({ normalized: "personalProfit", raw: "personalProfit" }, getStrings("en")),
+    ).toBe("Personal commercial use");
+    expect(
+      formatVrmMetaValue({ normalized: "personalProfit", raw: "personalProfit" }, getStrings("ja")),
+    ).toBe("個人の営利利用");
+  });
+
+  it("keeps a future raw enum visible when its meaning is unknown", () => {
+    expect(
+      formatVrmMetaValue({ normalized: "unknown", raw: "futureValue" }, getStrings("en")),
+    ).toContain("futureValue");
+    expect(
+      formatVrmMetaValue({ normalized: "unknown", raw: "futureValue" }, getStrings("ja")),
+    ).toContain("futureValue");
+  });
+
+  it("states Yori's fixed author and narrow bundled-use terms in both languages", () => {
+    const en = yoriVrmDetails(getStrings("en"));
+    expect(en.author).toBe("LUCAS");
+    expect(en.terms).toContain("Use within Yorishiro is permitted for everyone.");
+    expect(en.terms).toContain("Standalone redistribution or reuse of the model is prohibited.");
+    expect(en.terms).toContain("Violent expression is permitted.");
+    expect(en.terms).toContain("Sexual expression is prohibited.");
+    expect(en.terms.some((term) => term.includes("explicitly licensed persons"))).toBe(true);
+
+    const ja = yoriVrmDetails(getStrings("ja"));
+    expect(ja.author).toBe("LUCAS");
+    expect(ja.terms.some((term) => term.includes("Yorishiro 内"))).toBe(true);
+    expect(ja.terms.some((term) => term.includes("単体の再配布・再利用は禁止"))).toBe(true);
+    expect(ja.terms.some((term) => term.includes("暴力表現での使用は許可"))).toBe(true);
+    expect(ja.terms.some((term) => term.includes("性的表現での使用は禁止"))).toBe(true);
+  });
+});
 
 describe("resolveVoiceMuteToggle", () => {
   it("mutes to zero and restores the previous non-zero volume", () => {

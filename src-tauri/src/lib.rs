@@ -14,6 +14,7 @@ use std::collections::{BTreeSet, HashMap};
 use std::ffi::OsStr;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, UNIX_EPOCH};
 use tauri::ipc::Channel;
@@ -2258,6 +2259,621 @@ fn validate_vrm_glb_header(file: &mut std::fs::File, file_size: u64) -> Result<(
     Ok(())
 }
 
+const MAX_VRM_JSON_CHUNK_BYTES: u32 = 4 * 1024 * 1024;
+const MAX_VRM_THUMBNAIL_BYTES: u32 = 8 * 1024 * 1024;
+const MAX_VRM_THUMBNAIL_SIDE_PX: u32 = 2_048;
+const MAX_VRM_META_TEXT_CHARS: usize = 2_048;
+const MAX_VRM_META_LIST_ITEMS: usize = 64;
+const GLB_JSON_CHUNK_TYPE: u32 = 0x4E4F_534A;
+const GLB_BIN_CHUNK_TYPE: u32 = 0x004E_4942;
+static VRM_IMPORT_NONCE: AtomicU64 = AtomicU64::new(0);
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct VrmMetaValue {
+    normalized: VrmMetaNormalized,
+    raw: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+enum VrmMetaNormalized {
+    NotSpecified,
+    Unknown,
+    Allowed,
+    Disallowed,
+    OnlyAuthor,
+    ExplicitlyLicensedPerson,
+    Everyone,
+    PersonalNonProfit,
+    PersonalProfit,
+    Corporation,
+    Prohibited,
+    Required,
+    Unnecessary,
+    AllowModification,
+    AllowModificationRedistribution,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct VrmAvatarMeta {
+    spec_version: String,
+    name: Option<String>,
+    version: Option<String>,
+    authors: Vec<String>,
+    contact_information: Option<String>,
+    references: Vec<String>,
+    license: VrmLicenseInfo,
+    allowed_user: VrmMetaValue,
+    avatar_permission: VrmMetaValue,
+    violent_usage: VrmMetaValue,
+    sexual_usage: VrmMetaValue,
+    commercial_usage: VrmMetaValue,
+    political_or_religious_usage: VrmMetaValue,
+    antisocial_or_hate_usage: VrmMetaValue,
+    redistribution: VrmMetaValue,
+    modification: VrmMetaValue,
+    credit_notation: VrmMetaValue,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct VrmLicenseInfo {
+    name: Option<String>,
+    urls: Vec<String>,
+    third_party_licenses: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct VrmThumbnailRef {
+    image_index: u32,
+    mime_type: String,
+    byte_length: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ResolvedVrmThumbnail {
+    public: VrmThumbnailRef,
+    byte_offset: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ParsedVrmDocument {
+    meta: VrmAvatarMeta,
+    thumbnail: Option<ResolvedVrmThumbnail>,
+    json_chunk_len: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct VrmAvatarEntry {
+    id: String,
+    file_name: String,
+    path: String,
+    size: u64,
+    modified_ms: Option<u64>,
+    valid: bool,
+    invalid_reason: Option<String>,
+    meta: Option<VrmAvatarMeta>,
+    thumbnail: Option<VrmThumbnailRef>,
+}
+
+fn limited_meta_text(value: Option<&serde_json::Value>) -> Option<String> {
+    value
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.chars().take(MAX_VRM_META_TEXT_CHARS).collect())
+}
+
+fn limited_meta_list(value: Option<&serde_json::Value>) -> Vec<String> {
+    match value {
+        Some(serde_json::Value::Array(values)) => values
+            .iter()
+            .take(MAX_VRM_META_LIST_ITEMS)
+            .filter_map(|value| limited_meta_text(Some(value)))
+            .collect(),
+        Some(value) => limited_meta_text(Some(value)).into_iter().collect(),
+        None => Vec::new(),
+    }
+}
+
+fn meta_value(raw: Option<String>, known: &[(&str, VrmMetaNormalized)]) -> VrmMetaValue {
+    let normalized = match raw.as_deref() {
+        None => VrmMetaNormalized::NotSpecified,
+        Some(value) => known
+            .iter()
+            .find_map(|(candidate, normalized)| {
+                value.eq_ignore_ascii_case(candidate).then_some(*normalized)
+            })
+            .unwrap_or(VrmMetaNormalized::Unknown),
+    };
+    VrmMetaValue { normalized, raw }
+}
+
+fn bool_meta_value(value: Option<&serde_json::Value>) -> VrmMetaValue {
+    match value.and_then(serde_json::Value::as_bool) {
+        Some(true) => VrmMetaValue {
+            normalized: VrmMetaNormalized::Allowed,
+            raw: Some("true".into()),
+        },
+        Some(false) => VrmMetaValue {
+            normalized: VrmMetaNormalized::Disallowed,
+            raw: Some("false".into()),
+        },
+        None if value.is_some() => VrmMetaValue {
+            normalized: VrmMetaNormalized::Unknown,
+            raw: Some("invalid-type".into()),
+        },
+        None => VrmMetaValue {
+            normalized: VrmMetaNormalized::NotSpecified,
+            raw: None,
+        },
+    }
+}
+
+fn missing_meta_value() -> VrmMetaValue {
+    VrmMetaValue {
+        normalized: VrmMetaNormalized::NotSpecified,
+        raw: None,
+    }
+}
+
+fn declared_vrm_spec_version(extension: &serde_json::Value, fallback: &str) -> String {
+    limited_meta_text(extension.get("specVersion")).unwrap_or_else(|| fallback.to_string())
+}
+
+fn parse_vrm0_meta(extension: &serde_json::Value, meta: &serde_json::Value) -> VrmAvatarMeta {
+    let allowed_user = meta_value(
+        limited_meta_text(meta.get("allowedUserName")),
+        &[
+            ("OnlyAuthor", VrmMetaNormalized::OnlyAuthor),
+            (
+                "ExplicitlyLicensedPerson",
+                VrmMetaNormalized::ExplicitlyLicensedPerson,
+            ),
+            ("Everyone", VrmMetaNormalized::Everyone),
+        ],
+    );
+    let usage = |key: &str| {
+        meta_value(
+            limited_meta_text(meta.get(key)),
+            &[
+                ("Allow", VrmMetaNormalized::Allowed),
+                ("Disallow", VrmMetaNormalized::Disallowed),
+            ],
+        )
+    };
+    let mut license_urls = Vec::new();
+    for key in ["otherPermissionUrl", "otherLicenseUrl"] {
+        if let Some(value) = limited_meta_text(meta.get(key)) {
+            license_urls.push(value);
+        }
+    }
+
+    VrmAvatarMeta {
+        spec_version: declared_vrm_spec_version(extension, "0.x"),
+        name: limited_meta_text(meta.get("title")),
+        version: limited_meta_text(meta.get("version")),
+        authors: limited_meta_text(meta.get("author")).into_iter().collect(),
+        contact_information: limited_meta_text(meta.get("contactInformation")),
+        references: limited_meta_list(meta.get("reference")),
+        license: VrmLicenseInfo {
+            name: limited_meta_text(meta.get("licenseName")),
+            urls: license_urls,
+            third_party_licenses: None,
+        },
+        allowed_user,
+        avatar_permission: missing_meta_value(),
+        violent_usage: usage("violentUssageName"),
+        sexual_usage: usage("sexualUssageName"),
+        commercial_usage: usage("commercialUssageName"),
+        political_or_religious_usage: missing_meta_value(),
+        antisocial_or_hate_usage: missing_meta_value(),
+        redistribution: missing_meta_value(),
+        modification: missing_meta_value(),
+        credit_notation: missing_meta_value(),
+    }
+}
+
+fn parse_vrm1_meta(extension: &serde_json::Value, meta: &serde_json::Value) -> VrmAvatarMeta {
+    let enum_value = |key: &str, known: &[(&str, VrmMetaNormalized)]| {
+        meta_value(limited_meta_text(meta.get(key)), known)
+    };
+    let mut license_urls = Vec::new();
+    for key in ["licenseUrl", "otherLicenseUrl"] {
+        if let Some(value) = limited_meta_text(meta.get(key)) {
+            license_urls.push(value);
+        }
+    }
+
+    VrmAvatarMeta {
+        spec_version: declared_vrm_spec_version(extension, "1.x"),
+        name: limited_meta_text(meta.get("name")),
+        version: limited_meta_text(meta.get("version")),
+        authors: limited_meta_list(meta.get("authors")),
+        contact_information: limited_meta_text(meta.get("contactInformation")),
+        references: limited_meta_list(meta.get("references")),
+        license: VrmLicenseInfo {
+            name: None,
+            urls: license_urls,
+            third_party_licenses: limited_meta_text(meta.get("thirdPartyLicenses")),
+        },
+        allowed_user: missing_meta_value(),
+        avatar_permission: enum_value(
+            "avatarPermission",
+            &[
+                ("onlyAuthor", VrmMetaNormalized::OnlyAuthor),
+                (
+                    "onlySeparatelyLicensedPerson",
+                    VrmMetaNormalized::ExplicitlyLicensedPerson,
+                ),
+                ("everyone", VrmMetaNormalized::Everyone),
+            ],
+        ),
+        violent_usage: bool_meta_value(meta.get("allowExcessivelyViolentUsage")),
+        sexual_usage: bool_meta_value(meta.get("allowExcessivelySexualUsage")),
+        commercial_usage: enum_value(
+            "commercialUsage",
+            &[
+                ("personalNonProfit", VrmMetaNormalized::PersonalNonProfit),
+                ("personalProfit", VrmMetaNormalized::PersonalProfit),
+                ("corporation", VrmMetaNormalized::Corporation),
+            ],
+        ),
+        political_or_religious_usage: bool_meta_value(meta.get("allowPoliticalOrReligiousUsage")),
+        antisocial_or_hate_usage: bool_meta_value(meta.get("allowAntisocialOrHateUsage")),
+        redistribution: bool_meta_value(meta.get("allowRedistribution")),
+        modification: enum_value(
+            "modification",
+            &[
+                ("prohibited", VrmMetaNormalized::Prohibited),
+                ("allowModification", VrmMetaNormalized::AllowModification),
+                (
+                    "allowModificationRedistribution",
+                    VrmMetaNormalized::AllowModificationRedistribution,
+                ),
+            ],
+        ),
+        credit_notation: enum_value(
+            "creditNotation",
+            &[
+                ("required", VrmMetaNormalized::Required),
+                ("unnecessary", VrmMetaNormalized::Unnecessary),
+            ],
+        ),
+    }
+}
+
+fn resolve_vrm_thumbnail(
+    root: &serde_json::Value,
+    vrm1_meta: Option<&serde_json::Value>,
+    vrm0_meta: Option<&serde_json::Value>,
+) -> Option<ResolvedVrmThumbnail> {
+    let image_index = if let Some(meta) = vrm1_meta {
+        u32::try_from(meta.get("thumbnailImage")?.as_u64()?).ok()?
+    } else {
+        let texture_index = usize::try_from(vrm0_meta?.get("texture")?.as_u64()?).ok()?;
+        let texture = root.get("textures")?.as_array()?.get(texture_index)?;
+        u32::try_from(texture.get("source")?.as_u64()?).ok()?
+    };
+    let image = root
+        .get("images")?
+        .as_array()?
+        .get(usize::try_from(image_index).ok()?)?;
+    if image.get("uri").is_some() {
+        return None;
+    }
+    let mime_type = image.get("mimeType")?.as_str()?;
+    if !matches!(mime_type, "image/png" | "image/jpeg") {
+        return None;
+    }
+    let buffer_view_index = usize::try_from(image.get("bufferView")?.as_u64()?).ok()?;
+    let buffer_view = root
+        .get("bufferViews")?
+        .as_array()?
+        .get(buffer_view_index)?;
+    let buffer_index = buffer_view
+        .get("buffer")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
+    if buffer_index != 0 {
+        return None;
+    }
+    if root
+        .get("buffers")?
+        .as_array()?
+        .first()?
+        .get("uri")
+        .is_some()
+    {
+        return None;
+    }
+    let byte_offset = u32::try_from(
+        buffer_view
+            .get("byteOffset")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0),
+    )
+    .ok()?;
+    let byte_length = u32::try_from(buffer_view.get("byteLength")?.as_u64()?).ok()?;
+    if byte_length == 0 || byte_length > MAX_VRM_THUMBNAIL_BYTES {
+        return None;
+    }
+    byte_offset.checked_add(byte_length)?;
+    Some(ResolvedVrmThumbnail {
+        public: VrmThumbnailRef {
+            image_index,
+            mime_type: mime_type.to_string(),
+            byte_length,
+        },
+        byte_offset,
+    })
+}
+
+fn read_vrm_document(
+    file: &mut std::fs::File,
+    file_size: u64,
+) -> Result<ParsedVrmDocument, String> {
+    file.seek(SeekFrom::Start(0))
+        .map_err(|_| "VRM file could not be rewound".to_string())?;
+    validate_vrm_glb_header(file, file_size)?;
+    let mut chunk_header = [0_u8; 8];
+    file.read_exact(&mut chunk_header)
+        .map_err(|_| "VRM JSON chunk header is missing".to_string())?;
+    let chunk_len = u32::from_le_bytes(
+        chunk_header[0..4]
+            .try_into()
+            .expect("chunk header slice length"),
+    );
+    let chunk_type = u32::from_le_bytes(
+        chunk_header[4..8]
+            .try_into()
+            .expect("chunk header slice length"),
+    );
+    if chunk_type != GLB_JSON_CHUNK_TYPE {
+        return Err("First GLB chunk is not JSON".into());
+    }
+    if chunk_len > MAX_VRM_JSON_CHUNK_BYTES {
+        return Err(format!(
+            "VRM JSON chunk exceeds {} MiB limit",
+            MAX_VRM_JSON_CHUNK_BYTES / 1024 / 1024
+        ));
+    }
+    if chunk_len % 4 != 0 {
+        return Err("VRM JSON chunk length is not 4-byte aligned".into());
+    }
+    if u64::from(chunk_len) + 20 > file_size {
+        return Err("VRM JSON chunk length is invalid".into());
+    }
+    let mut json = vec![0_u8; chunk_len as usize];
+    file.read_exact(&mut json)
+        .map_err(|_| "VRM JSON chunk could not be read".to_string())?;
+    while matches!(json.last(), Some(b' ' | b'\0')) {
+        json.pop();
+    }
+    let root: serde_json::Value =
+        serde_json::from_slice(&json).map_err(|_| "VRM JSON chunk is invalid JSON".to_string())?;
+    let extensions = root
+        .get("extensions")
+        .and_then(serde_json::Value::as_object)
+        .ok_or_else(|| "VRM extension metadata is missing".to_string())?;
+    let vrm1_extension = extensions.get("VRMC_vrm");
+    let vrm0_extension = extensions.get("VRM");
+    let vrm1_meta = vrm1_extension.and_then(|value| value.get("meta"));
+    let vrm0_meta = vrm0_extension.and_then(|value| value.get("meta"));
+    let meta = if let Some(meta) = vrm1_meta {
+        if !meta.is_object() {
+            return Err("VRM 1.0 metadata must be an object".into());
+        }
+        parse_vrm1_meta(vrm1_extension.expect("VRM 1 extension exists"), meta)
+    } else if let Some(meta) = vrm0_meta {
+        if !meta.is_object() {
+            return Err("VRM 0.x metadata must be an object".into());
+        }
+        parse_vrm0_meta(vrm0_extension.expect("VRM 0 extension exists"), meta)
+    } else {
+        return Err("VRM 0.x/1.0 metadata is missing".into());
+    };
+    Ok(ParsedVrmDocument {
+        meta,
+        thumbnail: resolve_vrm_thumbnail(&root, vrm1_meta, vrm0_meta),
+        json_chunk_len: chunk_len,
+    })
+}
+
+fn read_vrm_meta(file: &mut std::fs::File, file_size: u64) -> Result<VrmAvatarMeta, String> {
+    read_vrm_document(file, file_size).map(|document| document.meta)
+}
+
+fn png_dimensions(bytes: &[u8]) -> Option<(u32, u32)> {
+    if bytes.len() < 24 || &bytes[..8] != b"\x89PNG\r\n\x1a\n" || &bytes[12..16] != b"IHDR" {
+        return None;
+    }
+    Some((
+        u32::from_be_bytes(bytes[16..20].try_into().ok()?),
+        u32::from_be_bytes(bytes[20..24].try_into().ok()?),
+    ))
+}
+
+fn jpeg_dimensions(bytes: &[u8]) -> Option<(u32, u32)> {
+    if bytes.len() < 4 || bytes[..3] != [0xff, 0xd8, 0xff] {
+        return None;
+    }
+    let mut cursor = 2_usize;
+    while cursor + 4 <= bytes.len() {
+        if bytes[cursor] != 0xff {
+            cursor += 1;
+            continue;
+        }
+        while cursor < bytes.len() && bytes[cursor] == 0xff {
+            cursor += 1;
+        }
+        let marker = *bytes.get(cursor)?;
+        cursor += 1;
+        if marker == 0xd9 || marker == 0xda {
+            break;
+        }
+        if marker == 0x01 || (0xd0..=0xd7).contains(&marker) {
+            continue;
+        }
+        let segment_len = u16::from_be_bytes([*bytes.get(cursor)?, *bytes.get(cursor + 1)?]);
+        let segment_len = usize::from(segment_len);
+        if segment_len < 2 || cursor.checked_add(segment_len)? > bytes.len() {
+            return None;
+        }
+        if matches!(marker, 0xc0..=0xc2) {
+            if segment_len < 7 {
+                return None;
+            }
+            let height = u16::from_be_bytes([*bytes.get(cursor + 3)?, *bytes.get(cursor + 4)?]);
+            let width = u16::from_be_bytes([*bytes.get(cursor + 5)?, *bytes.get(cursor + 6)?]);
+            return Some((u32::from(width), u32::from(height)));
+        }
+        cursor += segment_len;
+    }
+    None
+}
+
+fn validate_vrm_thumbnail_image(mime_type: &str, bytes: &[u8]) -> Result<(), String> {
+    let dimensions = match mime_type {
+        "image/png" => png_dimensions(bytes),
+        "image/jpeg" => jpeg_dimensions(bytes),
+        _ => None,
+    }
+    .ok_or_else(|| "VRM thumbnail image header is invalid".to_string())?;
+    if dimensions.0 == 0
+        || dimensions.1 == 0
+        || dimensions.0 > MAX_VRM_THUMBNAIL_SIDE_PX
+        || dimensions.1 > MAX_VRM_THUMBNAIL_SIDE_PX
+    {
+        return Err(format!(
+            "VRM thumbnail dimensions exceed {}px limit",
+            MAX_VRM_THUMBNAIL_SIDE_PX
+        ));
+    }
+    Ok(())
+}
+
+fn extract_vrm_thumbnail(file: &mut std::fs::File, file_size: u64) -> Result<Vec<u8>, String> {
+    let document = read_vrm_document(file, file_size)?;
+    let thumbnail = document
+        .thumbnail
+        .ok_or_else(|| "VRM has no supported embedded thumbnail".to_string())?;
+    let bin_header_offset = 20_u64
+        .checked_add(u64::from(document.json_chunk_len))
+        .ok_or_else(|| "VRM BIN chunk offset overflowed".to_string())?;
+    if bin_header_offset
+        .checked_add(8)
+        .is_none_or(|end| end > file_size)
+    {
+        return Err("VRM BIN chunk header is missing".into());
+    }
+    file.seek(SeekFrom::Start(bin_header_offset))
+        .map_err(|_| "VRM BIN chunk could not be located".to_string())?;
+    let mut header = [0_u8; 8];
+    file.read_exact(&mut header)
+        .map_err(|_| "VRM BIN chunk header could not be read".to_string())?;
+    let bin_len = u32::from_le_bytes(header[0..4].try_into().expect("BIN header slice length"));
+    let bin_type = u32::from_le_bytes(header[4..8].try_into().expect("BIN header slice length"));
+    if bin_type != GLB_BIN_CHUNK_TYPE {
+        return Err("Second GLB chunk is not BIN".into());
+    }
+    if bin_header_offset
+        .checked_add(8)
+        .and_then(|offset| offset.checked_add(u64::from(bin_len)))
+        .is_none_or(|end| end > file_size)
+    {
+        return Err("VRM BIN chunk length is invalid".into());
+    }
+    let end = thumbnail
+        .byte_offset
+        .checked_add(thumbnail.public.byte_length)
+        .ok_or_else(|| "VRM thumbnail byte range overflowed".to_string())?;
+    if end > bin_len {
+        return Err("VRM thumbnail byte range exceeds BIN chunk".into());
+    }
+    let thumbnail_offset = bin_header_offset
+        .checked_add(8)
+        .and_then(|offset| offset.checked_add(u64::from(thumbnail.byte_offset)))
+        .ok_or_else(|| "VRM thumbnail file offset overflowed".to_string())?;
+    file.seek(SeekFrom::Start(thumbnail_offset))
+        .map_err(|_| "VRM thumbnail could not be located".to_string())?;
+    let mut bytes = vec![0_u8; thumbnail.public.byte_length as usize];
+    file.read_exact(&mut bytes)
+        .map_err(|_| "VRM thumbnail bytes could not be read".to_string())?;
+    validate_vrm_thumbnail_image(&thumbnail.public.mime_type, &bytes)?;
+    Ok(bytes)
+}
+
+fn validate_vrm_avatar_id(id: &str) -> Result<(), String> {
+    let id_path = Path::new(id);
+    let is_single_normal_component = id_path.components().count() == 1
+        && matches!(
+            id_path.components().next(),
+            Some(std::path::Component::Normal(_))
+        );
+    if !is_single_normal_component
+        || id.starts_with('.')
+        || id.contains('\0')
+        || !has_vrm_extension(id_path)
+    {
+        return Err("Invalid VRM avatar id".into());
+    }
+    Ok(())
+}
+
+fn open_vrm_thumbnail_source(avatars_dir: &Path, id: &str) -> Result<(std::fs::File, u64), String> {
+    validate_vrm_avatar_id(id)?;
+    let avatars_dir = avatars_dir
+        .canonicalize()
+        .map_err(|_| "Avatar directory is unavailable".to_string())?;
+    let source = avatars_dir.join(id);
+    let metadata =
+        std::fs::symlink_metadata(&source).map_err(|_| "VRM avatar does not exist".to_string())?;
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        return Err("VRM thumbnail source must be a regular file".into());
+    }
+    let canonical_source = source
+        .canonicalize()
+        .map_err(|_| "VRM thumbnail source could not be resolved".to_string())?;
+    if canonical_source.parent() != Some(avatars_dir.as_path()) {
+        return Err("VRM thumbnail source escaped the avatar directory".into());
+    }
+    let file = std::fs::File::open(&canonical_source)
+        .map_err(|_| "VRM thumbnail source could not be opened".to_string())?;
+    let file_size = file
+        .metadata()
+        .map_err(|_| "VRM thumbnail source could not be inspected".to_string())?
+        .len();
+    Ok((file, file_size))
+}
+
+/// AppData/avatars 直下の catalog ID だけを削除する。symlink は追跡せず link 自体を削除し、
+/// directory は削除しない。並行操作で先に消えていた場合は idempotent な Ok(false) とする。
+fn remove_vrm_avatar_in_dir(avatars_dir: &Path, id: &str) -> Result<bool, String> {
+    validate_vrm_avatar_id(id)?;
+    let avatars_dir = match avatars_dir.canonicalize() {
+        Ok(path) => path,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(_) => return Err("Avatar directory is unavailable".into()),
+    };
+    let target = avatars_dir.join(id);
+    let metadata = match std::fs::symlink_metadata(&target) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(_) => return Err("VRM avatar could not be inspected".into()),
+    };
+    if metadata.is_dir() {
+        return Err("VRM avatar id refers to a directory".into());
+    }
+    std::fs::remove_file(&target)
+        .map_err(|error| format!("Failed to remove VRM avatar: {error}"))?;
+    Ok(true)
+}
+
 fn open_vrm_import_source(src_path: &Path) -> Result<(std::fs::File, String), String> {
     let meta = std::fs::symlink_metadata(src_path).map_err(|e| {
         if e.kind() == std::io::ErrorKind::NotFound {
@@ -2286,30 +2902,252 @@ fn open_vrm_import_source(src_path: &Path) -> Result<(std::fs::File, String), St
 
     let mut file =
         std::fs::File::open(src_path).map_err(|e| format!("Failed to open VRM: {}", e))?;
-    validate_vrm_glb_header(&mut file, meta.len())?;
+    read_vrm_meta(&mut file, meta.len())?;
     file.seek(SeekFrom::Start(0))
         .map_err(|e| format!("Failed to rewind VRM: {}", e))?;
 
     Ok((file, file_name))
 }
 
+fn collision_safe_vrm_name(file_name: &str, index: u32) -> Result<String, String> {
+    let source_name = Path::new(file_name);
+    let stem = source_name
+        .file_stem()
+        .and_then(OsStr::to_str)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| "Invalid VRM file name".to_string())?;
+    let extension = source_name
+        .extension()
+        .and_then(OsStr::to_str)
+        .unwrap_or("vrm");
+    Ok(if index == 1 {
+        format!("{}.{}", stem, extension)
+    } else {
+        format!("{} ({}).{}", stem, index, extension)
+    })
+}
+
+/// 検証済み temporary copy と既存候補を、固定長 buffer で最後まで比較する。
+/// 既存候補は avatars/ 内であっても user-controlled とみなし、symlink / non-regular は開かない。
+fn existing_vrm_matches_temp(existing: &Path, temporary: &Path) -> Result<bool, String> {
+    let existing_meta = match std::fs::symlink_metadata(existing) {
+        Ok(metadata) if metadata.file_type().is_file() => metadata,
+        Ok(_) => return Ok(false),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(_) => return Ok(false),
+    };
+    let temporary_meta = std::fs::metadata(temporary)
+        .map_err(|error| format!("Failed to inspect import temporary file: {}", error))?;
+    if existing_meta.len() != temporary_meta.len() {
+        return Ok(false);
+    }
+
+    let mut existing_file = match std::fs::File::open(existing) {
+        Ok(file) => file,
+        Err(_) => return Ok(false),
+    };
+    let mut temporary_file = std::fs::File::open(temporary)
+        .map_err(|error| format!("Failed to open import temporary file: {}", error))?;
+    let mut existing_buffer = [0_u8; 64 * 1024];
+    let mut temporary_buffer = [0_u8; 64 * 1024];
+    let mut remaining = existing_meta.len();
+    while remaining > 0 {
+        let chunk_len = usize::try_from(remaining.min(existing_buffer.len() as u64))
+            .expect("bounded comparison chunk length");
+        existing_file
+            .read_exact(&mut existing_buffer[..chunk_len])
+            .map_err(|error| format!("Failed to compare existing VRM: {}", error))?;
+        temporary_file
+            .read_exact(&mut temporary_buffer[..chunk_len])
+            .map_err(|error| format!("Failed to compare imported VRM: {}", error))?;
+        if existing_buffer[..chunk_len] != temporary_buffer[..chunk_len] {
+            return Ok(false);
+        }
+        remaining -= chunk_len as u64;
+    }
+    Ok(true)
+}
+
+fn import_vrm_into_dir_with_limit(
+    avatars_dir: &Path,
+    mut src_file: std::fs::File,
+    file_name: &str,
+    max_candidates: u32,
+) -> Result<PathBuf, String> {
+    std::fs::create_dir_all(avatars_dir)
+        .map_err(|e| format!("Failed to create directory: {}", e))?;
+    let nonce = VRM_IMPORT_NONCE.fetch_add(1, Ordering::Relaxed);
+    let tmp = avatars_dir.join(format!(".tmp-{}-{}.vrm", std::process::id(), nonce));
+    let tmp_file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&tmp)
+        .map_err(|e| format!("Failed to create import temporary file: {}", e))?;
+    let tmp_path = tempfile::TempPath::try_from_path(&tmp)
+        .map_err(|e| format!("Failed to track import temporary file: {}", e))?;
+    let mut tmp_file = tempfile::NamedTempFile::from_parts(tmp_file, tmp_path);
+    std::io::copy(&mut src_file, tmp_file.as_file_mut())
+        .map_err(|e| format!("Copy failed: {}", e))?;
+    tmp_file
+        .as_file()
+        .sync_all()
+        .map_err(|e| format!("Failed to sync imported VRM: {}", e))?;
+    let mut tmp_path = tmp_file.into_temp_path();
+    for index in 1..=max_candidates {
+        let dest = avatars_dir.join(collision_safe_vrm_name(file_name, index)?);
+        match tmp_path.persist_noclobber(&dest) {
+            Ok(()) => return Ok(dest),
+            Err(error) if error.error.kind() == std::io::ErrorKind::AlreadyExists => {
+                tmp_path = error.path;
+                if existing_vrm_matches_temp(&dest, tmp_path.as_ref())? {
+                    drop(tmp_path);
+                    return Ok(dest);
+                }
+            }
+            Err(error) => return Err(format!("Failed to finalize import: {}", error.error)),
+        }
+    }
+    Err("Too many VRM files with the same name".into())
+}
+
+fn import_vrm_into_dir(
+    avatars_dir: &Path,
+    src_file: std::fs::File,
+    file_name: &str,
+) -> Result<PathBuf, String> {
+    import_vrm_into_dir_with_limit(avatars_dir, src_file, file_name, 10_000)
+}
+
+fn inspect_vrm_avatar(path: &Path, file_name: String) -> VrmAvatarEntry {
+    let metadata = match std::fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) => {
+            return VrmAvatarEntry {
+                id: file_name.clone(),
+                file_name,
+                path: path.to_string_lossy().into_owned(),
+                size: 0,
+                modified_ms: None,
+                valid: false,
+                invalid_reason: Some(format!("Failed to inspect file: {}", error)),
+                meta: None,
+                thumbnail: None,
+            };
+        }
+    };
+    let modified_ms = metadata
+        .modified()
+        .ok()
+        .and_then(|modified| modified.duration_since(UNIX_EPOCH).ok())
+        .and_then(|duration| u64::try_from(duration.as_millis()).ok());
+    let invalid = |reason: String| VrmAvatarEntry {
+        id: file_name.clone(),
+        file_name: file_name.clone(),
+        path: path.to_string_lossy().into_owned(),
+        size: metadata.len(),
+        modified_ms,
+        valid: false,
+        invalid_reason: Some(reason),
+        meta: None,
+        thumbnail: None,
+    };
+    if metadata.file_type().is_symlink() {
+        return invalid("Symbolic links are not allowed".into());
+    }
+    if !metadata.is_file() {
+        return invalid("Avatar is not a regular file".into());
+    }
+    let mut file = match std::fs::File::open(path) {
+        Ok(file) => file,
+        Err(error) => return invalid(format!("Failed to open VRM: {}", error)),
+    };
+    match read_vrm_document(&mut file, metadata.len()) {
+        Ok(document) => VrmAvatarEntry {
+            id: file_name.clone(),
+            file_name,
+            path: path.to_string_lossy().into_owned(),
+            size: metadata.len(),
+            modified_ms,
+            valid: true,
+            invalid_reason: None,
+            meta: Some(document.meta),
+            thumbnail: document.thumbnail.map(|thumbnail| thumbnail.public),
+        },
+        Err(reason) => invalid(reason),
+    }
+}
+
+fn list_vrm_avatars_in_dir(avatars_dir: &Path) -> Result<Vec<VrmAvatarEntry>, String> {
+    if !avatars_dir.exists() {
+        return Ok(Vec::new());
+    }
+    let entries = std::fs::read_dir(avatars_dir)
+        .map_err(|error| format!("Failed to list avatars: {}", error))?;
+    let mut candidates = entries
+        .filter_map(Result::ok)
+        .filter_map(|entry| {
+            let file_name = entry.file_name().to_string_lossy().into_owned();
+            (!file_name.starts_with(".tmp-") && has_vrm_extension(Path::new(&file_name)))
+                .then_some((entry.path(), file_name))
+        })
+        .collect::<Vec<_>>();
+    candidates.sort_by(|left, right| {
+        left.1
+            .to_lowercase()
+            .cmp(&right.1.to_lowercase())
+            .then_with(|| left.1.cmp(&right.1))
+    });
+    Ok(candidates
+        .into_iter()
+        .map(|(path, file_name)| inspect_vrm_avatar(&path, file_name))
+        .collect())
+}
+
+#[tauri::command]
+async fn list_vrm_avatars(app: AppHandle) -> Result<Vec<VrmAvatarEntry>, String> {
+    let app_data = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get AppData: {}", e))?;
+    list_vrm_avatars_in_dir(&app_data.join("avatars"))
+}
+
+/// AppData/avatars 内のカタログ ID だけを受け、検証済みの埋め込み PNG/JPEG を遅延返却する。
+/// 任意 path・外部 URI・data URI は受け取らず、catalog response に画像 bytes も混ぜない。
+#[tauri::command]
+async fn read_vrm_thumbnail(app: AppHandle, id: String) -> Result<tauri::ipc::Response, String> {
+    let app_data = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get AppData: {}", e))?;
+    let (mut file, file_size) = open_vrm_thumbnail_source(&app_data.join("avatars"), &id)?;
+    let bytes = extract_vrm_thumbnail(&mut file, file_size)?;
+    Ok(tauri::ipc::Response::new(bytes))
+}
+
+/// Settings が表示した imported avatar を catalog から明示的に削除する。
+/// raw path は受け取らず、AppData/avatars 直下の検証済み basename だけを対象にする。
+#[tauri::command]
+async fn remove_vrm_avatar(app: AppHandle, id: String) -> Result<bool, String> {
+    let app_data = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get AppData: {e}"))?;
+    remove_vrm_avatar_in_dir(&app_data.join("avatars"), &id)
+}
+
 /// VRM file import: copy to $APPDATA/avatars/ and return the destination path.
 #[tauri::command]
 async fn import_vrm(app: AppHandle, src: String) -> Result<String, String> {
     let src_path = std::path::Path::new(&src);
-    let (mut src_file, file_name) = open_vrm_import_source(src_path)?;
+    let (src_file, file_name) = open_vrm_import_source(src_path)?;
 
     let app_data = app
         .path()
         .app_data_dir()
         .map_err(|e| format!("Failed to get AppData: {}", e))?;
     let avatars_dir = app_data.join("avatars");
-    std::fs::create_dir_all(&avatars_dir)
-        .map_err(|e| format!("Failed to create directory: {}", e))?;
-
-    let dest = avatars_dir.join(&file_name);
-    let mut dest_file = std::fs::File::create(&dest).map_err(|e| format!("Copy failed: {}", e))?;
-    std::io::copy(&mut src_file, &mut dest_file).map_err(|e| format!("Copy failed: {}", e))?;
+    let dest = import_vrm_into_dir(&avatars_dir, src_file, &file_name)?;
 
     Ok(dest.to_string_lossy().to_string())
 }
@@ -2333,7 +3171,14 @@ async fn probe_vrm(src: String) -> Result<bool, String> {
 
 #[cfg(test)]
 mod import_vrm_tests {
-    use super::{has_vrm_extension, open_vrm_import_source, probe_vrm_source};
+    use super::{
+        extract_vrm_thumbnail, has_vrm_extension, import_vrm_into_dir,
+        import_vrm_into_dir_with_limit, list_vrm_avatars_in_dir, open_vrm_import_source,
+        open_vrm_thumbnail_source, probe_vrm_source, read_vrm_document, read_vrm_meta,
+        remove_vrm_avatar_in_dir, VrmMetaNormalized, GLB_BIN_CHUNK_TYPE, GLB_JSON_CHUNK_TYPE,
+        MAX_VRM_JSON_CHUNK_BYTES,
+    };
+    use std::ffi::OsStr;
     use std::fs;
     use std::path::{Path, PathBuf};
 
@@ -2352,11 +3197,88 @@ mod import_vrm_tests {
         tmp
     }
 
-    fn minimal_glb_bytes() -> Vec<u8> {
+    fn glb_bytes(json: &str) -> Vec<u8> {
+        let mut json = json.as_bytes().to_vec();
+        while !json.len().is_multiple_of(4) {
+            json.push(b' ');
+        }
+        let total_len = 20 + json.len();
         let mut bytes = Vec::new();
         bytes.extend_from_slice(b"glTF");
         bytes.extend_from_slice(&2_u32.to_le_bytes());
-        bytes.extend_from_slice(&12_u32.to_le_bytes());
+        bytes.extend_from_slice(&(total_len as u32).to_le_bytes());
+        bytes.extend_from_slice(&(json.len() as u32).to_le_bytes());
+        bytes.extend_from_slice(&GLB_JSON_CHUNK_TYPE.to_le_bytes());
+        bytes.extend_from_slice(&json);
+        bytes
+    }
+
+    fn vrm1_glb(name: &str) -> Vec<u8> {
+        glb_bytes(
+            &serde_json::json!({
+                "extensions": { "VRMC_vrm": { "specVersion": "1.1", "meta": {
+                    "name": name,
+                    "version": "1.2",
+                    "authors": ["Alice", "Bob"],
+                    "contactInformation": "alice@example.test",
+                    "references": ["https://example.test/reference"],
+                    "licenseUrl": "https://vrm.dev/licenses/1.0/",
+                    "thirdPartyLicenses": "Third-party notices",
+                    "avatarPermission": "everyone",
+                    "allowExcessivelyViolentUsage": false,
+                    "allowExcessivelySexualUsage": true,
+                    "commercialUsage": "personalProfit",
+                    "allowPoliticalOrReligiousUsage": false,
+                    "allowAntisocialOrHateUsage": false,
+                    "creditNotation": "required",
+                    "allowRedistribution": true,
+                    "modification": "allowModification"
+                }}}
+            })
+            .to_string(),
+        )
+    }
+
+    fn png_header(width: u32, height: u32) -> Vec<u8> {
+        let mut bytes = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR".to_vec();
+        bytes.extend_from_slice(&width.to_be_bytes());
+        bytes.extend_from_slice(&height.to_be_bytes());
+        bytes
+    }
+
+    fn vrm_thumbnail_glb(vrm1: bool, image: &[u8], mime_type: &str) -> Vec<u8> {
+        let mut bin = image.to_vec();
+        while !bin.len().is_multiple_of(4) {
+            bin.push(0);
+        }
+        let extension = if vrm1 {
+            serde_json::json!({"VRMC_vrm":{"meta":{"name":"Thumb","thumbnailImage":0}}})
+        } else {
+            serde_json::json!({"VRM":{"meta":{"title":"Thumb","texture":0}}})
+        };
+        let mut json = serde_json::json!({
+            "extensions": extension,
+            "textures": [{"source": 0}],
+            "images": [{"bufferView": 0, "mimeType": mime_type}],
+            "bufferViews": [{"buffer": 0, "byteOffset": 0, "byteLength": image.len()}],
+            "buffers": [{"byteLength": bin.len()}]
+        })
+        .to_string()
+        .into_bytes();
+        while !json.len().is_multiple_of(4) {
+            json.push(b' ');
+        }
+        let total_len = 12 + 8 + json.len() + 8 + bin.len();
+        let mut bytes = Vec::with_capacity(total_len);
+        bytes.extend_from_slice(b"glTF");
+        bytes.extend_from_slice(&2_u32.to_le_bytes());
+        bytes.extend_from_slice(&(total_len as u32).to_le_bytes());
+        bytes.extend_from_slice(&(json.len() as u32).to_le_bytes());
+        bytes.extend_from_slice(&GLB_JSON_CHUNK_TYPE.to_le_bytes());
+        bytes.extend_from_slice(&json);
+        bytes.extend_from_slice(&(bin.len() as u32).to_le_bytes());
+        bytes.extend_from_slice(&GLB_BIN_CHUNK_TYPE.to_le_bytes());
+        bytes.extend_from_slice(&bin);
         bytes
     }
 
@@ -2392,7 +3314,7 @@ mod import_vrm_tests {
     fn probe_reports_valid_vrm_as_true() {
         let dir = tmp_dir("probe-valid");
         let path = dir.join("avatar.vrm");
-        fs::write(&path, minimal_glb_bytes()).expect("write");
+        fs::write(&path, vrm1_glb("Avatar")).expect("write");
         assert_eq!(probe_vrm_source(&path), Ok(true));
         let _ = fs::remove_dir_all(&dir);
     }
@@ -2410,7 +3332,7 @@ mod import_vrm_tests {
     fn validates_regular_vrm_glb_source() {
         let dir = tmp_dir("regular");
         let path = dir.join("avatar.vrm");
-        fs::write(&path, minimal_glb_bytes()).expect("write");
+        fs::write(&path, vrm1_glb("Avatar")).expect("write");
 
         let (_file, file_name) = open_vrm_import_source(&path).expect("valid source");
         assert_eq!(file_name, "avatar.vrm");
@@ -2450,13 +3372,375 @@ mod import_vrm_tests {
         let dir = tmp_dir("symlink");
         let target = dir.join("secret");
         let link = dir.join("avatar.vrm");
-        fs::write(&target, minimal_glb_bytes()).expect("write");
+        fs::write(&target, vrm1_glb("Avatar")).expect("write");
         symlink(&target, &link).expect("symlink");
 
         let result = open_vrm_import_source(&link);
         assert!(result.is_err(), "symlink は import できてはならない");
 
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn parses_vrm0_metadata_and_preserves_raw_permissions() {
+        let bytes = glb_bytes(
+            &serde_json::json!({"extensions":{"VRM":{"specVersion":"0.7","meta":{
+                "title":"Old Avatar","version":"0.9","author":"Creator",
+                "contactInformation":"contact","reference":"https://example.test",
+                "allowedUserName":"ExplicitlyLicensedPerson","violentUssageName":"Disallow",
+                "sexualUssageName":"Allow","commercialUssageName":"Disallow",
+                "licenseName":"CC_BY_NC","otherLicenseUrl":"https://license.test"
+            }}}})
+            .to_string(),
+        );
+        let dir = tmp_dir("meta-vrm0");
+        let path = dir.join("avatar.vrm");
+        fs::write(&path, &bytes).expect("write");
+        let mut file = fs::File::open(&path).expect("open");
+        let meta = read_vrm_meta(&mut file, bytes.len() as u64).expect("parse");
+        assert_eq!(meta.spec_version, "0.7");
+        assert_eq!(meta.name.as_deref(), Some("Old Avatar"));
+        assert_eq!(meta.authors, ["Creator"]);
+        assert_eq!(meta.commercial_usage.raw.as_deref(), Some("Disallow"));
+        assert_eq!(meta.license.name.as_deref(), Some("CC_BY_NC"));
+        assert_eq!(meta.license.urls, ["https://license.test"]);
+        assert_eq!(
+            meta.redistribution.normalized,
+            VrmMetaNormalized::NotSpecified
+        );
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn parses_vrm1_metadata_and_normalizes_permissions() {
+        let bytes = vrm1_glb("New Avatar");
+        let dir = tmp_dir("meta-vrm1");
+        let path = dir.join("avatar.vrm");
+        fs::write(&path, &bytes).expect("write");
+        let mut file = fs::File::open(&path).expect("open");
+        let meta = read_vrm_meta(&mut file, bytes.len() as u64).expect("parse");
+        assert_eq!(meta.spec_version, "1.1");
+        assert_eq!(meta.authors, ["Alice", "Bob"]);
+        assert_eq!(meta.commercial_usage.raw.as_deref(), Some("personalProfit"));
+        assert_eq!(
+            meta.commercial_usage.normalized,
+            VrmMetaNormalized::PersonalProfit
+        );
+        assert_eq!(meta.license.urls, ["https://vrm.dev/licenses/1.0/"]);
+        assert_eq!(
+            meta.license.third_party_licenses.as_deref(),
+            Some("Third-party notices")
+        );
+        assert_eq!(meta.redistribution.normalized, VrmMetaNormalized::Allowed);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn resolves_and_extracts_bounded_vrm1_png_thumbnail() {
+        let image = png_header(256, 256);
+        let bytes = vrm_thumbnail_glb(true, &image, "image/png");
+        let dir = tmp_dir("thumb-vrm1");
+        let path = dir.join("avatar.vrm");
+        fs::write(&path, &bytes).expect("write");
+        let mut file = fs::File::open(&path).expect("open");
+        let document = read_vrm_document(&mut file, bytes.len() as u64).expect("parse");
+        let thumbnail = document.thumbnail.expect("thumbnail ref");
+        assert_eq!(thumbnail.public.image_index, 0);
+        assert_eq!(thumbnail.public.mime_type, "image/png");
+        assert_eq!(thumbnail.public.byte_length, image.len() as u32);
+        assert_eq!(
+            extract_vrm_thumbnail(&mut file, bytes.len() as u64).expect("extract"),
+            image
+        );
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn accepts_embedded_thumbnail_larger_than_two_mib_within_the_eight_mib_limit() {
+        let mut image = png_header(2_048, 2_048);
+        image.resize(2 * 1024 * 1024 + 1, 0);
+        let bytes = vrm_thumbnail_glb(true, &image, "image/png");
+        let dir = tmp_dir("thumb-over-two-mib");
+        let path = dir.join("avatar.vrm");
+        fs::write(&path, &bytes).expect("write");
+        let mut file = fs::File::open(&path).expect("open");
+
+        assert_eq!(
+            extract_vrm_thumbnail(&mut file, bytes.len() as u64)
+                .expect("extract thumbnail")
+                .len(),
+            image.len()
+        );
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn resolves_vrm0_texture_source_thumbnail() {
+        let image = png_header(128, 96);
+        let bytes = vrm_thumbnail_glb(false, &image, "image/png");
+        let dir = tmp_dir("thumb-vrm0");
+        let path = dir.join("avatar.vrm");
+        fs::write(&path, &bytes).expect("write");
+        let mut file = fs::File::open(&path).expect("open");
+        let document = read_vrm_document(&mut file, bytes.len() as u64).expect("parse");
+        assert_eq!(document.meta.spec_version, "0.x");
+        assert_eq!(document.thumbnail.expect("thumbnail").public.image_index, 0);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn rejects_thumbnail_with_oversized_dimensions_or_wrong_magic() {
+        let oversized = png_header(4096, 128);
+        let oversized_glb = vrm_thumbnail_glb(true, &oversized, "image/png");
+        let dir = tmp_dir("thumb-invalid");
+        let oversized_path = dir.join("oversized.vrm");
+        fs::write(&oversized_path, &oversized_glb).expect("write oversized");
+        let mut file = fs::File::open(&oversized_path).expect("open oversized");
+        assert!(extract_vrm_thumbnail(&mut file, oversized_glb.len() as u64).is_err());
+
+        let fake_png = b"not-a-png";
+        let fake_glb = vrm_thumbnail_glb(true, fake_png, "image/png");
+        let fake_path = dir.join("fake.vrm");
+        fs::write(&fake_path, &fake_glb).expect("write fake");
+        let mut file = fs::File::open(&fake_path).expect("open fake");
+        assert!(extract_vrm_thumbnail(&mut file, fake_glb.len() as u64).is_err());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn thumbnail_source_accepts_only_confined_catalog_ids() {
+        let dir = tmp_dir("thumb-path");
+        let avatars = dir.join("avatars");
+        fs::create_dir_all(&avatars).expect("mkdir avatars");
+        fs::write(avatars.join("avatar.vrm"), vrm1_glb("Avatar")).expect("write avatar");
+        assert!(open_vrm_thumbnail_source(&avatars, "avatar.vrm").is_ok());
+        for invalid in [
+            "../avatar.vrm",
+            "nested/avatar.vrm",
+            ".hidden.vrm",
+            "avatar.glb",
+        ] {
+            assert!(
+                open_vrm_thumbnail_source(&avatars, invalid).is_err(),
+                "invalid id should be rejected: {invalid}"
+            );
+        }
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn removes_only_a_direct_catalog_file_and_is_idempotent() {
+        let dir = tmp_dir("remove-avatar");
+        let avatars = dir.join("avatars");
+        fs::create_dir_all(&avatars).expect("mkdir avatars");
+        fs::write(avatars.join("avatar.vrm"), vrm1_glb("Avatar")).expect("write avatar");
+
+        assert!(remove_vrm_avatar_in_dir(&avatars, "avatar.vrm").expect("remove"));
+        assert!(!avatars.join("avatar.vrm").exists());
+        assert!(!remove_vrm_avatar_in_dir(&avatars, "avatar.vrm").expect("remove again"));
+        for invalid in [
+            "../avatar.vrm",
+            "nested/avatar.vrm",
+            ".hidden.vrm",
+            "avatar.glb",
+        ] {
+            assert!(
+                remove_vrm_avatar_in_dir(&avatars, invalid).is_err(),
+                "invalid id should be rejected: {invalid}"
+            );
+        }
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn removing_a_catalog_symlink_never_removes_its_target() {
+        use std::os::unix::fs::symlink;
+
+        let dir = tmp_dir("remove-avatar-symlink");
+        let avatars = dir.join("avatars");
+        fs::create_dir_all(&avatars).expect("mkdir avatars");
+        let outside = dir.join("outside.vrm");
+        fs::write(&outside, vrm1_glb("Outside")).expect("write outside");
+        symlink(&outside, avatars.join("linked.vrm")).expect("create symlink");
+
+        assert!(remove_vrm_avatar_in_dir(&avatars, "linked.vrm").expect("remove link"));
+        assert!(
+            outside.exists(),
+            "the symlink target must survive catalog removal"
+        );
+        assert!(!avatars.join("linked.vrm").exists());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn missing_and_unknown_metadata_are_not_treated_as_allowed() {
+        let bytes = glb_bytes(
+            r#"{"extensions":{"VRMC_vrm":{"meta":{"name":"Avatar","commercialUsage":"futureValue"}}}}"#,
+        );
+        let dir = tmp_dir("meta-missing-unknown");
+        let path = dir.join("avatar.vrm");
+        fs::write(&path, &bytes).expect("write");
+        let mut file = fs::File::open(&path).expect("open");
+        let meta = read_vrm_meta(&mut file, bytes.len() as u64).expect("parse");
+        assert_eq!(meta.commercial_usage.normalized, VrmMetaNormalized::Unknown);
+        assert_eq!(meta.commercial_usage.raw.as_deref(), Some("futureValue"));
+        assert_eq!(
+            meta.violent_usage.normalized,
+            VrmMetaNormalized::NotSpecified
+        );
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn rejects_bad_json_wrong_chunk_type_and_oversized_chunk() {
+        let dir = tmp_dir("bad-chunks");
+        let bad_json = glb_bytes("not-json");
+        let bad_path = dir.join("bad.vrm");
+        fs::write(&bad_path, &bad_json).expect("write");
+        let mut file = fs::File::open(&bad_path).expect("open");
+        assert!(read_vrm_meta(&mut file, bad_json.len() as u64).is_err());
+
+        let mut wrong_type = vrm1_glb("Avatar");
+        wrong_type[16..20].copy_from_slice(&0_u32.to_le_bytes());
+        let wrong_path = dir.join("wrong.vrm");
+        fs::write(&wrong_path, &wrong_type).expect("write");
+        let mut file = fs::File::open(&wrong_path).expect("open");
+        assert!(read_vrm_meta(&mut file, wrong_type.len() as u64).is_err());
+
+        let oversized_len = MAX_VRM_JSON_CHUNK_BYTES + 4;
+        let total_len = 20_u32 + oversized_len;
+        let mut oversized = Vec::new();
+        oversized.extend_from_slice(b"glTF");
+        oversized.extend_from_slice(&2_u32.to_le_bytes());
+        oversized.extend_from_slice(&total_len.to_le_bytes());
+        oversized.extend_from_slice(&oversized_len.to_le_bytes());
+        oversized.extend_from_slice(&GLB_JSON_CHUNK_TYPE.to_le_bytes());
+        oversized.resize(total_len as usize, b' ');
+        let oversized_path = dir.join("oversized.vrm");
+        fs::write(&oversized_path, &oversized).expect("write");
+        let mut file = fs::File::open(&oversized_path).expect("open");
+        assert!(read_vrm_meta(&mut file, oversized.len() as u64)
+            .expect_err("oversized rejected")
+            .contains("exceeds"));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn collision_import_never_overwrites_and_leaves_no_tmp_file() {
+        let dir = tmp_dir("collision");
+        let source_path = dir.join("source.vrm");
+        fs::write(&source_path, vrm1_glb("First")).expect("write");
+        let avatars = dir.join("avatars");
+        fs::create_dir_all(&avatars).expect("mkdir");
+        fs::write(avatars.join("avatar.vrm"), vrm1_glb("Existing")).expect("write existing");
+        let source = fs::File::open(&source_path).expect("open source");
+        let imported = import_vrm_into_dir(&avatars, source, "avatar.vrm").expect("import");
+        assert_eq!(
+            imported.file_name().and_then(OsStr::to_str),
+            Some("avatar (2).vrm")
+        );
+        let existing = fs::read(avatars.join("avatar.vrm")).expect("read existing");
+        assert_eq!(existing, vrm1_glb("Existing"));
+        assert!(fs::read_dir(&avatars).expect("list").all(|entry| !entry
+            .expect("entry")
+            .file_name()
+            .to_string_lossy()
+            .starts_with(".tmp-")));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn repeated_identical_import_is_idempotent() {
+        let dir = tmp_dir("identical-import");
+        let source_path = dir.join("source.vrm");
+        fs::write(&source_path, vrm1_glb("Same")).expect("write");
+        let avatars = dir.join("avatars");
+        let first = import_vrm_into_dir(
+            &avatars,
+            fs::File::open(&source_path).expect("open first"),
+            "avatar.vrm",
+        )
+        .expect("first import");
+        let second = import_vrm_into_dir(
+            &avatars,
+            fs::File::open(&source_path).expect("open second"),
+            "avatar.vrm",
+        )
+        .expect("second import");
+        assert_eq!(first, second);
+        assert_eq!(fs::read_dir(&avatars).expect("list").count(), 1);
+        assert_eq!(
+            first.file_name().and_then(OsStr::to_str),
+            Some("avatar.vrm")
+        );
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn failed_finalize_cleans_up_temporary_file_and_preserves_existing_file() {
+        let dir = tmp_dir("finalize-cleanup");
+        let source_path = dir.join("source.vrm");
+        fs::write(&source_path, vrm1_glb("New")).expect("write");
+        let avatars = dir.join("avatars");
+        fs::create_dir_all(&avatars).expect("mkdir");
+        let existing_bytes = vrm1_glb("Existing");
+        fs::write(avatars.join("avatar.vrm"), &existing_bytes).expect("write existing");
+        let source = fs::File::open(&source_path).expect("open source");
+        let result = import_vrm_into_dir_with_limit(&avatars, source, "avatar.vrm", 1);
+        assert!(result.is_err());
+        assert_eq!(
+            fs::read(avatars.join("avatar.vrm")).expect("read existing"),
+            existing_bytes
+        );
+        assert!(fs::read_dir(&avatars).expect("list").all(|entry| {
+            !entry
+                .expect("entry")
+                .file_name()
+                .to_string_lossy()
+                .starts_with(".tmp-")
+        }));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn lists_vrm_files_deterministically_and_keeps_invalid_rows() {
+        let dir = tmp_dir("list");
+        fs::write(dir.join("b.vrm"), vrm1_glb("B")).expect("write");
+        fs::write(dir.join("A.vrm"), b"broken").expect("write invalid");
+        fs::write(dir.join("ignored.txt"), b"ignored").expect("write ignored");
+        fs::write(dir.join(".tmp-1-1.vrm"), b"ignored").expect("write tmp");
+        let entries = list_vrm_avatars_in_dir(&dir).expect("list");
+        assert_eq!(
+            entries
+                .iter()
+                .map(|entry| entry.file_name.as_str())
+                .collect::<Vec<_>>(),
+            ["A.vrm", "b.vrm"]
+        );
+        assert!(!entries[0].valid);
+        assert!(entries[0].invalid_reason.is_some());
+        assert!(entries[1].valid);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn catalog_marks_symlink_as_invalid_without_following_it() {
+        use std::os::unix::fs::symlink;
+        let dir = tmp_dir("list-symlink");
+        let target = dir.join("target");
+        fs::write(&target, vrm1_glb("Secret")).expect("write");
+        symlink(&target, dir.join("linked.vrm")).expect("symlink");
+        let entries = list_vrm_avatars_in_dir(&dir).expect("list");
+        assert_eq!(entries.len(), 1);
+        assert!(!entries[0].valid);
+        assert!(entries[0]
+            .invalid_reason
+            .as_deref()
+            .unwrap_or_default()
+            .contains("Symbolic"));
+        let _ = fs::remove_dir_all(dir);
     }
 }
 
@@ -2518,6 +3802,9 @@ pub fn run() {
             pty_attach,
             pty_detach,
             import_vrm,
+            list_vrm_avatars,
+            read_vrm_thumbnail,
+            remove_vrm_avatar,
             probe_vrm,
             poll_hook_signals,
             user_home_dir,
