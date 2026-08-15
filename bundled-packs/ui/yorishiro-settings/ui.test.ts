@@ -9,6 +9,7 @@ import {
   configPrimaryPersonaForSelection,
   creditsSections,
   filterPersonaOptionsForLanguage,
+  filterVrmCandidates,
   formatVrmMetaValue,
   type NewSessionChangeKind,
   packWorkbenchKey,
@@ -19,6 +20,7 @@ import {
   resolveVrmCandidates,
   SETTINGS_PACK_ID,
   selectWorkbenchPack,
+  sortVrmCandidates,
   summarizePackDiagnosis,
   TERMINAL_AGENT_OPTIONS,
   terminalAgentLabel,
@@ -99,6 +101,38 @@ describe("VRM catalog selection boundary", () => {
     expect(setVrm).not.toHaveBeenCalled();
     expect(applyVrmCandidate(yori, setVrm)).toBe(true);
     expect(setVrm).toHaveBeenCalledWith(null);
+  });
+});
+
+describe("VRM chooser discovery", () => {
+  it("uses metadata names and authors to find opaque filenames", () => {
+    const entries = [
+      {
+        ...validVrmEntry,
+        id: "1201808779995565093.vrm",
+        fileName: "1201808779995565093.vrm",
+        path: "/app/avatars/1201808779995565093.vrm",
+      },
+    ];
+    const candidates = resolveVrmCandidates(entries, null);
+    expect(filterVrmCandidates(candidates, "creator").map((candidate) => candidate.label)).toEqual([
+      "1201808779995565093.vrm",
+    ]);
+    expect(filterVrmCandidates(candidates, "avatar")).toHaveLength(1);
+  });
+
+  it("keeps the active avatar first and filters a 100-item catalog deterministically", () => {
+    const entries = Array.from({ length: 100 }, (_, index) => ({
+      ...validVrmEntry,
+      id: `${index}.vrm`,
+      fileName: `${index}.vrm`,
+      path: `/app/avatars/${index}.vrm`,
+      meta: { ...validVrmEntry.meta, name: `Avatar ${index}` },
+    }));
+    const candidates = resolveVrmCandidates(entries, entries[73]?.path ?? null);
+    const sorted = sortVrmCandidates(candidates);
+    expect(sorted[0]?.path).toBe(entries[73]?.path);
+    expect(filterVrmCandidates(sorted, "Avatar 99")).toHaveLength(1);
   });
 });
 

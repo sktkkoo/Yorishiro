@@ -2266,9 +2266,12 @@ fn validate_vrm_glb_header(file: &mut std::fs::File, file_size: u64) -> Result<(
 }
 
 const MAX_VRM_JSON_CHUNK_BYTES: u32 = 4 * 1024 * 1024;
+const MAX_VRM_THUMBNAIL_BYTES: u32 = 2 * 1024 * 1024;
+const MAX_VRM_THUMBNAIL_SIDE_PX: u32 = 2_048;
 const MAX_VRM_META_TEXT_CHARS: usize = 2_048;
 const MAX_VRM_META_LIST_ITEMS: usize = 64;
 const GLB_JSON_CHUNK_TYPE: u32 = 0x4E4F_534A;
+const GLB_BIN_CHUNK_TYPE: u32 = 0x004E_4942;
 static VRM_IMPORT_NONCE: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
@@ -2330,6 +2333,27 @@ struct VrmLicenseInfo {
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
+struct VrmThumbnailRef {
+    image_index: u32,
+    mime_type: String,
+    byte_length: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ResolvedVrmThumbnail {
+    public: VrmThumbnailRef,
+    byte_offset: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ParsedVrmDocument {
+    meta: VrmAvatarMeta,
+    thumbnail: Option<ResolvedVrmThumbnail>,
+    json_chunk_len: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 struct VrmAvatarEntry {
     id: String,
     file_name: String,
@@ -2339,6 +2363,7 @@ struct VrmAvatarEntry {
     valid: bool,
     invalid_reason: Option<String>,
     meta: Option<VrmAvatarMeta>,
+    thumbnail: Option<VrmThumbnailRef>,
 }
 
 fn limited_meta_text(value: Option<&serde_json::Value>) -> Option<String> {
@@ -2524,7 +2549,78 @@ fn parse_vrm1_meta(meta: &serde_json::Value) -> VrmAvatarMeta {
     }
 }
 
-fn read_vrm_meta(file: &mut std::fs::File, file_size: u64) -> Result<VrmAvatarMeta, String> {
+fn resolve_vrm_thumbnail(
+    root: &serde_json::Value,
+    vrm1_meta: Option<&serde_json::Value>,
+    vrm0_meta: Option<&serde_json::Value>,
+) -> Option<ResolvedVrmThumbnail> {
+    let image_index = if let Some(meta) = vrm1_meta {
+        u32::try_from(meta.get("thumbnailImage")?.as_u64()?).ok()?
+    } else {
+        let texture_index = usize::try_from(vrm0_meta?.get("texture")?.as_u64()?).ok()?;
+        let texture = root.get("textures")?.as_array()?.get(texture_index)?;
+        u32::try_from(texture.get("source")?.as_u64()?).ok()?
+    };
+    let image = root
+        .get("images")?
+        .as_array()?
+        .get(usize::try_from(image_index).ok()?)?;
+    if image.get("uri").is_some() {
+        return None;
+    }
+    let mime_type = image.get("mimeType")?.as_str()?;
+    if !matches!(mime_type, "image/png" | "image/jpeg") {
+        return None;
+    }
+    let buffer_view_index = usize::try_from(image.get("bufferView")?.as_u64()?).ok()?;
+    let buffer_view = root
+        .get("bufferViews")?
+        .as_array()?
+        .get(buffer_view_index)?;
+    let buffer_index = buffer_view
+        .get("buffer")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
+    if buffer_index != 0 {
+        return None;
+    }
+    if root
+        .get("buffers")?
+        .as_array()?
+        .first()?
+        .get("uri")
+        .is_some()
+    {
+        return None;
+    }
+    let byte_offset = u32::try_from(
+        buffer_view
+            .get("byteOffset")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0),
+    )
+    .ok()?;
+    let byte_length = u32::try_from(buffer_view.get("byteLength")?.as_u64()?).ok()?;
+    if byte_length == 0 || byte_length > MAX_VRM_THUMBNAIL_BYTES {
+        return None;
+    }
+    byte_offset.checked_add(byte_length)?;
+    Some(ResolvedVrmThumbnail {
+        public: VrmThumbnailRef {
+            image_index,
+            mime_type: mime_type.to_string(),
+            byte_length,
+        },
+        byte_offset,
+    })
+}
+
+fn read_vrm_document(
+    file: &mut std::fs::File,
+    file_size: u64,
+) -> Result<ParsedVrmDocument, String> {
+    file.seek(SeekFrom::Start(0))
+        .map_err(|_| "VRM file could not be rewound".to_string())?;
     validate_vrm_glb_header(file, file_size)?;
     let mut chunk_header = [0_u8; 8];
     file.read_exact(&mut chunk_header)
@@ -2548,6 +2644,9 @@ fn read_vrm_meta(file: &mut std::fs::File, file_size: u64) -> Result<VrmAvatarMe
             MAX_VRM_JSON_CHUNK_BYTES / 1024 / 1024
         ));
     }
+    if chunk_len % 4 != 0 {
+        return Err("VRM JSON chunk length is not 4-byte aligned".into());
+    }
     if u64::from(chunk_len) + 20 > file_size {
         return Err("VRM JSON chunk length is invalid".into());
     }
@@ -2563,22 +2662,190 @@ fn read_vrm_meta(file: &mut std::fs::File, file_size: u64) -> Result<VrmAvatarMe
         .get("extensions")
         .and_then(serde_json::Value::as_object)
         .ok_or_else(|| "VRM extension metadata is missing".to_string())?;
-    if let Some(meta) = extensions
+    let vrm1_meta = extensions
         .get("VRMC_vrm")
-        .and_then(|value| value.get("meta"))
-    {
+        .and_then(|value| value.get("meta"));
+    let vrm0_meta = extensions.get("VRM").and_then(|value| value.get("meta"));
+    let meta = if let Some(meta) = vrm1_meta {
         if !meta.is_object() {
             return Err("VRM 1.0 metadata must be an object".into());
         }
-        return Ok(parse_vrm1_meta(meta));
-    }
-    if let Some(meta) = extensions.get("VRM").and_then(|value| value.get("meta")) {
+        parse_vrm1_meta(meta)
+    } else if let Some(meta) = vrm0_meta {
         if !meta.is_object() {
             return Err("VRM 0.x metadata must be an object".into());
         }
-        return Ok(parse_vrm0_meta(meta));
+        parse_vrm0_meta(meta)
+    } else {
+        return Err("VRM 0.x/1.0 metadata is missing".into());
+    };
+    Ok(ParsedVrmDocument {
+        meta,
+        thumbnail: resolve_vrm_thumbnail(&root, vrm1_meta, vrm0_meta),
+        json_chunk_len: chunk_len,
+    })
+}
+
+fn read_vrm_meta(file: &mut std::fs::File, file_size: u64) -> Result<VrmAvatarMeta, String> {
+    read_vrm_document(file, file_size).map(|document| document.meta)
+}
+
+fn png_dimensions(bytes: &[u8]) -> Option<(u32, u32)> {
+    if bytes.len() < 24 || &bytes[..8] != b"\x89PNG\r\n\x1a\n" || &bytes[12..16] != b"IHDR" {
+        return None;
     }
-    Err("VRM 0.x/1.0 metadata is missing".into())
+    Some((
+        u32::from_be_bytes(bytes[16..20].try_into().ok()?),
+        u32::from_be_bytes(bytes[20..24].try_into().ok()?),
+    ))
+}
+
+fn jpeg_dimensions(bytes: &[u8]) -> Option<(u32, u32)> {
+    if bytes.len() < 4 || bytes[..3] != [0xff, 0xd8, 0xff] {
+        return None;
+    }
+    let mut cursor = 2_usize;
+    while cursor + 4 <= bytes.len() {
+        if bytes[cursor] != 0xff {
+            cursor += 1;
+            continue;
+        }
+        while cursor < bytes.len() && bytes[cursor] == 0xff {
+            cursor += 1;
+        }
+        let marker = *bytes.get(cursor)?;
+        cursor += 1;
+        if marker == 0xd9 || marker == 0xda {
+            break;
+        }
+        if marker == 0x01 || (0xd0..=0xd7).contains(&marker) {
+            continue;
+        }
+        let segment_len = u16::from_be_bytes([*bytes.get(cursor)?, *bytes.get(cursor + 1)?]);
+        let segment_len = usize::from(segment_len);
+        if segment_len < 2 || cursor.checked_add(segment_len)? > bytes.len() {
+            return None;
+        }
+        if matches!(marker, 0xc0..=0xc2) {
+            if segment_len < 7 {
+                return None;
+            }
+            let height = u16::from_be_bytes([*bytes.get(cursor + 3)?, *bytes.get(cursor + 4)?]);
+            let width = u16::from_be_bytes([*bytes.get(cursor + 5)?, *bytes.get(cursor + 6)?]);
+            return Some((u32::from(width), u32::from(height)));
+        }
+        cursor += segment_len;
+    }
+    None
+}
+
+fn validate_vrm_thumbnail_image(mime_type: &str, bytes: &[u8]) -> Result<(), String> {
+    let dimensions = match mime_type {
+        "image/png" => png_dimensions(bytes),
+        "image/jpeg" => jpeg_dimensions(bytes),
+        _ => None,
+    }
+    .ok_or_else(|| "VRM thumbnail image header is invalid".to_string())?;
+    if dimensions.0 == 0
+        || dimensions.1 == 0
+        || dimensions.0 > MAX_VRM_THUMBNAIL_SIDE_PX
+        || dimensions.1 > MAX_VRM_THUMBNAIL_SIDE_PX
+    {
+        return Err(format!(
+            "VRM thumbnail dimensions exceed {}px limit",
+            MAX_VRM_THUMBNAIL_SIDE_PX
+        ));
+    }
+    Ok(())
+}
+
+fn extract_vrm_thumbnail(file: &mut std::fs::File, file_size: u64) -> Result<Vec<u8>, String> {
+    let document = read_vrm_document(file, file_size)?;
+    let thumbnail = document
+        .thumbnail
+        .ok_or_else(|| "VRM has no supported embedded thumbnail".to_string())?;
+    let bin_header_offset = 20_u64
+        .checked_add(u64::from(document.json_chunk_len))
+        .ok_or_else(|| "VRM BIN chunk offset overflowed".to_string())?;
+    if bin_header_offset
+        .checked_add(8)
+        .is_none_or(|end| end > file_size)
+    {
+        return Err("VRM BIN chunk header is missing".into());
+    }
+    file.seek(SeekFrom::Start(bin_header_offset))
+        .map_err(|_| "VRM BIN chunk could not be located".to_string())?;
+    let mut header = [0_u8; 8];
+    file.read_exact(&mut header)
+        .map_err(|_| "VRM BIN chunk header could not be read".to_string())?;
+    let bin_len = u32::from_le_bytes(header[0..4].try_into().expect("BIN header slice length"));
+    let bin_type = u32::from_le_bytes(header[4..8].try_into().expect("BIN header slice length"));
+    if bin_type != GLB_BIN_CHUNK_TYPE {
+        return Err("Second GLB chunk is not BIN".into());
+    }
+    if bin_header_offset
+        .checked_add(8)
+        .and_then(|offset| offset.checked_add(u64::from(bin_len)))
+        .is_none_or(|end| end > file_size)
+    {
+        return Err("VRM BIN chunk length is invalid".into());
+    }
+    let end = thumbnail
+        .byte_offset
+        .checked_add(thumbnail.public.byte_length)
+        .ok_or_else(|| "VRM thumbnail byte range overflowed".to_string())?;
+    if end > bin_len {
+        return Err("VRM thumbnail byte range exceeds BIN chunk".into());
+    }
+    let thumbnail_offset = bin_header_offset
+        .checked_add(8)
+        .and_then(|offset| offset.checked_add(u64::from(thumbnail.byte_offset)))
+        .ok_or_else(|| "VRM thumbnail file offset overflowed".to_string())?;
+    file.seek(SeekFrom::Start(thumbnail_offset))
+        .map_err(|_| "VRM thumbnail could not be located".to_string())?;
+    let mut bytes = vec![0_u8; thumbnail.public.byte_length as usize];
+    file.read_exact(&mut bytes)
+        .map_err(|_| "VRM thumbnail bytes could not be read".to_string())?;
+    validate_vrm_thumbnail_image(&thumbnail.public.mime_type, &bytes)?;
+    Ok(bytes)
+}
+
+fn open_vrm_thumbnail_source(avatars_dir: &Path, id: &str) -> Result<(std::fs::File, u64), String> {
+    let id_path = Path::new(id);
+    let is_single_normal_component = id_path.components().count() == 1
+        && matches!(
+            id_path.components().next(),
+            Some(std::path::Component::Normal(_))
+        );
+    if !is_single_normal_component
+        || id.starts_with('.')
+        || id.contains('\0')
+        || !has_vrm_extension(id_path)
+    {
+        return Err("Invalid VRM avatar id".into());
+    }
+    let avatars_dir = avatars_dir
+        .canonicalize()
+        .map_err(|_| "Avatar directory is unavailable".to_string())?;
+    let source = avatars_dir.join(id);
+    let metadata =
+        std::fs::symlink_metadata(&source).map_err(|_| "VRM avatar does not exist".to_string())?;
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        return Err("VRM thumbnail source must be a regular file".into());
+    }
+    let canonical_source = source
+        .canonicalize()
+        .map_err(|_| "VRM thumbnail source could not be resolved".to_string())?;
+    if canonical_source.parent() != Some(avatars_dir.as_path()) {
+        return Err("VRM thumbnail source escaped the avatar directory".into());
+    }
+    let file = std::fs::File::open(&canonical_source)
+        .map_err(|_| "VRM thumbnail source could not be opened".to_string())?;
+    let file_size = file
+        .metadata()
+        .map_err(|_| "VRM thumbnail source could not be inspected".to_string())?
+        .len();
+    Ok((file, file_size))
 }
 
 fn open_vrm_import_source(src_path: &Path) -> Result<(std::fs::File, String), String> {
@@ -2738,6 +3005,7 @@ fn inspect_vrm_avatar(path: &Path, file_name: String) -> VrmAvatarEntry {
                 valid: false,
                 invalid_reason: Some(format!("Failed to inspect file: {}", error)),
                 meta: None,
+                thumbnail: None,
             };
         }
     };
@@ -2755,6 +3023,7 @@ fn inspect_vrm_avatar(path: &Path, file_name: String) -> VrmAvatarEntry {
         valid: false,
         invalid_reason: Some(reason),
         meta: None,
+        thumbnail: None,
     };
     if metadata.file_type().is_symlink() {
         return invalid("Symbolic links are not allowed".into());
@@ -2766,8 +3035,8 @@ fn inspect_vrm_avatar(path: &Path, file_name: String) -> VrmAvatarEntry {
         Ok(file) => file,
         Err(error) => return invalid(format!("Failed to open VRM: {}", error)),
     };
-    match read_vrm_meta(&mut file, metadata.len()) {
-        Ok(meta) => VrmAvatarEntry {
+    match read_vrm_document(&mut file, metadata.len()) {
+        Ok(document) => VrmAvatarEntry {
             id: file_name.clone(),
             file_name,
             path: path.to_string_lossy().into_owned(),
@@ -2775,7 +3044,8 @@ fn inspect_vrm_avatar(path: &Path, file_name: String) -> VrmAvatarEntry {
             modified_ms,
             valid: true,
             invalid_reason: None,
-            meta: Some(meta),
+            meta: Some(document.meta),
+            thumbnail: document.thumbnail.map(|thumbnail| thumbnail.public),
         },
         Err(reason) => invalid(reason),
     }
@@ -2816,6 +3086,19 @@ async fn list_vrm_avatars(app: AppHandle) -> Result<Vec<VrmAvatarEntry>, String>
     list_vrm_avatars_in_dir(&app_data.join("avatars"))
 }
 
+/// AppData/avatars 内のカタログ ID だけを受け、検証済みの埋め込み PNG/JPEG を遅延返却する。
+/// 任意 path・外部 URI・data URI は受け取らず、catalog response に画像 bytes も混ぜない。
+#[tauri::command]
+async fn read_vrm_thumbnail(app: AppHandle, id: String) -> Result<tauri::ipc::Response, String> {
+    let app_data = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get AppData: {}", e))?;
+    let (mut file, file_size) = open_vrm_thumbnail_source(&app_data.join("avatars"), &id)?;
+    let bytes = extract_vrm_thumbnail(&mut file, file_size)?;
+    Ok(tauri::ipc::Response::new(bytes))
+}
+
 /// VRM file import: copy to $APPDATA/avatars/ and return the destination path.
 #[tauri::command]
 async fn import_vrm(app: AppHandle, src: String) -> Result<String, String> {
@@ -2852,9 +3135,10 @@ async fn probe_vrm(src: String) -> Result<bool, String> {
 #[cfg(test)]
 mod import_vrm_tests {
     use super::{
-        has_vrm_extension, import_vrm_into_dir, import_vrm_into_dir_with_limit,
-        list_vrm_avatars_in_dir, open_vrm_import_source, probe_vrm_source, read_vrm_meta,
-        VrmMetaNormalized, GLB_JSON_CHUNK_TYPE, MAX_VRM_JSON_CHUNK_BYTES,
+        extract_vrm_thumbnail, has_vrm_extension, import_vrm_into_dir,
+        import_vrm_into_dir_with_limit, list_vrm_avatars_in_dir, open_vrm_import_source,
+        open_vrm_thumbnail_source, probe_vrm_source, read_vrm_document, read_vrm_meta,
+        VrmMetaNormalized, GLB_BIN_CHUNK_TYPE, GLB_JSON_CHUNK_TYPE, MAX_VRM_JSON_CHUNK_BYTES,
     };
     use std::ffi::OsStr;
     use std::fs;
@@ -2915,6 +3199,49 @@ mod import_vrm_tests {
             })
             .to_string(),
         )
+    }
+
+    fn png_header(width: u32, height: u32) -> Vec<u8> {
+        let mut bytes = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR".to_vec();
+        bytes.extend_from_slice(&width.to_be_bytes());
+        bytes.extend_from_slice(&height.to_be_bytes());
+        bytes
+    }
+
+    fn vrm_thumbnail_glb(vrm1: bool, image: &[u8], mime_type: &str) -> Vec<u8> {
+        let mut bin = image.to_vec();
+        while !bin.len().is_multiple_of(4) {
+            bin.push(0);
+        }
+        let extension = if vrm1 {
+            serde_json::json!({"VRMC_vrm":{"meta":{"name":"Thumb","thumbnailImage":0}}})
+        } else {
+            serde_json::json!({"VRM":{"meta":{"title":"Thumb","texture":0}}})
+        };
+        let mut json = serde_json::json!({
+            "extensions": extension,
+            "textures": [{"source": 0}],
+            "images": [{"bufferView": 0, "mimeType": mime_type}],
+            "bufferViews": [{"buffer": 0, "byteOffset": 0, "byteLength": image.len()}],
+            "buffers": [{"byteLength": bin.len()}]
+        })
+        .to_string()
+        .into_bytes();
+        while !json.len().is_multiple_of(4) {
+            json.push(b' ');
+        }
+        let total_len = 12 + 8 + json.len() + 8 + bin.len();
+        let mut bytes = Vec::with_capacity(total_len);
+        bytes.extend_from_slice(b"glTF");
+        bytes.extend_from_slice(&2_u32.to_le_bytes());
+        bytes.extend_from_slice(&(total_len as u32).to_le_bytes());
+        bytes.extend_from_slice(&(json.len() as u32).to_le_bytes());
+        bytes.extend_from_slice(&GLB_JSON_CHUNK_TYPE.to_le_bytes());
+        bytes.extend_from_slice(&json);
+        bytes.extend_from_slice(&(bin.len() as u32).to_le_bytes());
+        bytes.extend_from_slice(&GLB_BIN_CHUNK_TYPE.to_le_bytes());
+        bytes.extend_from_slice(&bin);
+        bytes
     }
 
     #[test]
@@ -3067,6 +3394,80 @@ mod import_vrm_tests {
             Some("Third-party notices")
         );
         assert_eq!(meta.redistribution.normalized, VrmMetaNormalized::Allowed);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn resolves_and_extracts_bounded_vrm1_png_thumbnail() {
+        let image = png_header(256, 256);
+        let bytes = vrm_thumbnail_glb(true, &image, "image/png");
+        let dir = tmp_dir("thumb-vrm1");
+        let path = dir.join("avatar.vrm");
+        fs::write(&path, &bytes).expect("write");
+        let mut file = fs::File::open(&path).expect("open");
+        let document = read_vrm_document(&mut file, bytes.len() as u64).expect("parse");
+        let thumbnail = document.thumbnail.expect("thumbnail ref");
+        assert_eq!(thumbnail.public.image_index, 0);
+        assert_eq!(thumbnail.public.mime_type, "image/png");
+        assert_eq!(thumbnail.public.byte_length, image.len() as u32);
+        assert_eq!(
+            extract_vrm_thumbnail(&mut file, bytes.len() as u64).expect("extract"),
+            image
+        );
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn resolves_vrm0_texture_source_thumbnail() {
+        let image = png_header(128, 96);
+        let bytes = vrm_thumbnail_glb(false, &image, "image/png");
+        let dir = tmp_dir("thumb-vrm0");
+        let path = dir.join("avatar.vrm");
+        fs::write(&path, &bytes).expect("write");
+        let mut file = fs::File::open(&path).expect("open");
+        let document = read_vrm_document(&mut file, bytes.len() as u64).expect("parse");
+        assert_eq!(document.meta.spec_version, "0.x");
+        assert_eq!(document.thumbnail.expect("thumbnail").public.image_index, 0);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn rejects_thumbnail_with_oversized_dimensions_or_wrong_magic() {
+        let oversized = png_header(4096, 128);
+        let oversized_glb = vrm_thumbnail_glb(true, &oversized, "image/png");
+        let dir = tmp_dir("thumb-invalid");
+        let oversized_path = dir.join("oversized.vrm");
+        fs::write(&oversized_path, &oversized_glb).expect("write oversized");
+        let mut file = fs::File::open(&oversized_path).expect("open oversized");
+        assert!(extract_vrm_thumbnail(&mut file, oversized_glb.len() as u64).is_err());
+
+        let fake_png = b"not-a-png";
+        let fake_glb = vrm_thumbnail_glb(true, fake_png, "image/png");
+        let fake_path = dir.join("fake.vrm");
+        fs::write(&fake_path, &fake_glb).expect("write fake");
+        let mut file = fs::File::open(&fake_path).expect("open fake");
+        assert!(extract_vrm_thumbnail(&mut file, fake_glb.len() as u64).is_err());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn thumbnail_source_accepts_only_confined_catalog_ids() {
+        let dir = tmp_dir("thumb-path");
+        let avatars = dir.join("avatars");
+        fs::create_dir_all(&avatars).expect("mkdir avatars");
+        fs::write(avatars.join("avatar.vrm"), vrm1_glb("Avatar")).expect("write avatar");
+        assert!(open_vrm_thumbnail_source(&avatars, "avatar.vrm").is_ok());
+        for invalid in [
+            "../avatar.vrm",
+            "nested/avatar.vrm",
+            ".hidden.vrm",
+            "avatar.glb",
+        ] {
+            assert!(
+                open_vrm_thumbnail_source(&avatars, invalid).is_err(),
+                "invalid id should be rejected: {invalid}"
+            );
+        }
         let _ = fs::remove_dir_all(dir);
     }
 
@@ -3288,6 +3689,7 @@ pub fn run() {
             pty_detach,
             import_vrm,
             list_vrm_avatars,
+            read_vrm_thumbnail,
             probe_vrm,
             poll_hook_signals,
             user_home_dir,

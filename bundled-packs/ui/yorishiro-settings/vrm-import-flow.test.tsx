@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { UiContext } from "@yorishiro/sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -122,44 +122,48 @@ describe("VRM import settings handler", () => {
 
     render(<Panel ctx={settingsContext(setVrm)} />);
     await waitFor(() => expect(invokeMock).toHaveBeenCalledWith("list_vrm_avatars"));
-    fireEvent.click(screen.getByRole("button", { name: "active.vrm" }));
+    fireEvent.click(screen.getByRole("button", { name: "Change…" }));
+    await screen.findByRole("dialog", { name: "Change avatar" });
     await screen.findByRole("option", { name: /active\.vrm/ });
     fireEvent.click(screen.getByRole("option", { name: "Yori" }));
-    expect(screen.getByText("LUCAS")).toBeTruthy();
+    expect(screen.getAllByText("LUCAS").length).toBeGreaterThan(0);
     expect(
-      screen.getByText("Standalone redistribution or reuse of the model is prohibited."),
-    ).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Cancel selection" }));
+      screen.getAllByText("Standalone redistribution or reuse of the model is prohibited.").length,
+    ).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog", { name: "Change avatar" })).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "Import new…" }));
+    fireEvent.click(screen.getByRole("button", { name: "Change…" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add from file…" }));
     const importedOption = await screen.findByRole("option", { name: /imported\.vrm/ });
     expect(importedOption.getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByText("Added. Not switched yet.")).toBeTruthy();
     expect(setVrm).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole("button", { name: "Cancel selection" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    fireEvent.click(screen.getByRole("button", { name: "Change…" }));
     expect(screen.getByRole("option", { name: /active\.vrm/ }).getAttribute("aria-selected")).toBe(
       "true",
     );
 
     const activeOption = screen.getByRole("option", { name: /active\.vrm/ });
+    const importedAfterReopen = screen.getByRole("option", { name: /imported\.vrm/ });
     activeOption.focus();
     fireEvent.keyDown(activeOption, { key: "ArrowDown" });
-    expect(document.activeElement).toBe(importedOption);
-    expect(importedOption.getAttribute("aria-selected")).toBe("true");
-    fireEvent.click(screen.getByRole("button", { name: "Apply avatar" }));
+    await waitFor(() => expect(document.activeElement).toBe(importedAfterReopen));
+    expect(importedAfterReopen.getAttribute("aria-selected")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "Switch to this avatar" }));
     expect(setVrm).toHaveBeenCalledTimes(1);
     expect(setVrm).toHaveBeenCalledWith(importedEntry.path);
+    expect(screen.queryByRole("dialog", { name: "Change avatar" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Change…" }));
     expect(
-      (screen.getByRole("button", { name: "Apply avatar" }) as HTMLButtonElement).disabled,
+      (screen.getByRole("button", { name: "Switch to this avatar" }) as HTMLButtonElement).disabled,
     ).toBe(true);
 
     fireEvent.click(screen.getByRole("option", { name: /active\.vrm/ }));
-    fireEvent.click(screen.getByRole("button", { name: "Cancel selection" }));
-    const listbox = screen.getByRole("listbox", { name: "Choose avatar" });
-    expect(
-      within(listbox)
-        .getByRole("option", { name: /imported\.vrm/ })
-        .getAttribute("aria-selected"),
-    ).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("listbox", { name: "Choose avatar" })).toBeNull();
   });
 });

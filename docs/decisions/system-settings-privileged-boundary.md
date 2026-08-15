@@ -33,7 +33,7 @@ permission / isolation 設計が必要であり、この decision だけでは�
 
 | 使用箇所 | 分類 | 結論 |
 |---|---|---|
-| `@tauri-apps/api/core` の `list_vrm_avatars` / `import_vrm` | scoped metadata read + file import / host write | privileged のまま。AppData/avatars 直下に限定した system settings 用 command で、通常 Pack capability には昇格しない |
+| `@tauri-apps/api/core` の `list_vrm_avatars` / `read_vrm_thumbnail` / `import_vrm` | scoped metadata read + bounded embedded thumbnail read + file import / host write | privileged のまま。AppData/avatars 直下に限定した system settings 用 command で、通常 Pack capability には昇格しない |
 | `@tauri-apps/plugin-dialog` | native file picker | privileged のまま。任意 file picker を UI Pack capability として開けない |
 | updater / process relaunch | network update、署名検証、app replace、再起動 | system-only。Pack API にしない |
 | `src/components/RestoreConfirmDialog` | app-level modal / reload UX | settings からの直接 import を除去。`ctx.history.restore()` の host-owned confirmation として維持し、Pack 向け component ABI にしない |

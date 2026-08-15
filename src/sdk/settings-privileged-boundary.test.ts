@@ -41,13 +41,13 @@ describe("system settings privileged boundary", () => {
     ]);
   });
 
-  it("uses raw invoke only for the reviewed system-owned VRM catalog/import commands", async () => {
+  it("uses raw invoke only for the reviewed system-owned VRM catalog/thumbnail/import commands", async () => {
     const source = await readSettingsSource();
     const invokedCommands = Array.from(
       source.matchAll(/\binvoke(?:<[^>]+>)?\(\s*["']([^"']+)["']/g),
       (match) => match[1],
     );
-    expect(invokedCommands).toEqual(["list_vrm_avatars", "import_vrm"]);
+    expect(invokedCommands).toEqual(["read_vrm_thumbnail", "list_vrm_avatars", "import_vrm"]);
   });
 
   it("uses public capabilities for generic app metadata, links, and history", async () => {

@@ -23,10 +23,23 @@ export interface UiStrings {
   readonly motionLevelOver: string;
   readonly selectVrmFile: string;
   readonly vrmChooseAvatar: string;
+  readonly vrmDialogTitle: string;
+  readonly vrmCloseDialog: string;
+  readonly vrmChange: string;
+  readonly vrmCurrent: string;
   readonly vrmImportNew: string;
+  readonly vrmSearchPlaceholder: string;
+  readonly vrmNoMatches: string;
+  readonly vrmImportedNotApplied: string;
+  readonly vrmImportFailed: string;
+  readonly vrmThumbnailAlt: string;
+  readonly vrmThumbnailUnavailable: string;
   readonly vrmCatalogIntro: string;
   readonly vrmActive: string;
+  readonly vrmPending: string;
+  readonly vrmPendingSwitch: string;
   readonly vrmInvalid: string;
+  readonly vrmMissingBadge: string;
   readonly vrmMissingActive: string;
   readonly vrmApply: string;
   readonly vrmCancel: string;
@@ -46,6 +59,17 @@ export interface UiStrings {
   readonly vrmLicenseUrls: string;
   readonly vrmThirdPartyLicenses: string;
   readonly vrmUsageConditions: string;
+  readonly vrmSummaryHeading: string;
+  readonly vrmWhoMayUse: string;
+  readonly vrmContentRestrictions: string;
+  readonly vrmMoreDetails: string;
+  readonly vrmRestrictionsBlocked: string;
+  readonly vrmRestrictionsAllowed: string;
+  readonly vrmRestrictionsUnstated: string;
+  readonly vrmRestrictionViolence: string;
+  readonly vrmRestrictionSexual: string;
+  readonly vrmRestrictionPolitical: string;
+  readonly vrmRestrictionAntisocial: string;
   readonly vrmAllowedUser: string;
   readonly vrmAvatarPermission: string;
   readonly vrmViolentUsage: string;
@@ -72,6 +96,7 @@ export interface UiStrings {
   readonly vrmPermissionAllowModification: string;
   readonly vrmPermissionAllowModificationRedistribution: string;
   readonly vrmBundledDescription: string;
+  readonly vrmBundledSource: string;
   readonly vrmYoriAuthor: string;
   readonly vrmYoriUseWithinApp: string;
   readonly vrmYoriAvatarPerformance: string;
@@ -215,14 +240,26 @@ const EN: UiStrings = {
   motionLevelOver: "Over-the-top",
   selectVrmFile: "Select VRM file",
   vrmChooseAvatar: "Choose avatar",
-  vrmImportNew: "Import new…",
-  vrmCatalogIntro:
-    "Review the creator and usage conditions before applying an avatar. Yorishiro provides the recorded terms but does not decide whether a use is legally permitted.",
+  vrmDialogTitle: "Change avatar",
+  vrmCloseDialog: "Close avatar chooser",
+  vrmChange: "Change…",
+  vrmCurrent: "Current",
+  vrmImportNew: "Add from file…",
+  vrmSearchPlaceholder: "Search by name or author",
+  vrmNoMatches: "No matching avatars",
+  vrmImportedNotApplied: "Added. Not switched yet.",
+  vrmImportFailed: "Could not add the VRM file.",
+  vrmThumbnailAlt: "Thumbnail of {name}",
+  vrmThumbnailUnavailable: "No thumbnail available",
+  vrmCatalogIntro: '"Not stated" is not permission. The decision is yours.',
   vrmActive: "Active",
+  vrmPending: "Not switched yet",
+  vrmPendingSwitch: "Switch {from} → {to}",
   vrmInvalid: "Invalid",
+  vrmMissingBadge: "Missing",
   vrmMissingActive: "The active VRM is missing from the avatar folder.",
-  vrmApply: "Apply avatar",
-  vrmCancel: "Cancel selection",
+  vrmApply: "Switch to this avatar",
+  vrmCancel: "Cancel",
   vrmApplyDisabledInvalid: "This file cannot be applied because it is invalid.",
   vrmApplyDisabledMissing: "A missing avatar cannot be applied.",
   vrmApplyDisabledActive: "This avatar is already active.",
@@ -239,6 +276,17 @@ const EN: UiStrings = {
   vrmLicenseUrls: "License / permission URLs",
   vrmThirdPartyLicenses: "Third-party licenses",
   vrmUsageConditions: "Usage conditions",
+  vrmSummaryHeading: "Key usage terms",
+  vrmWhoMayUse: "Who may use it",
+  vrmContentRestrictions: "Content restrictions",
+  vrmMoreDetails: "More details",
+  vrmRestrictionsBlocked: "Not allowed",
+  vrmRestrictionsAllowed: "Allowed",
+  vrmRestrictionsUnstated: "Not stated",
+  vrmRestrictionViolence: "violence",
+  vrmRestrictionSexual: "sexual content",
+  vrmRestrictionPolitical: "political / religious use",
+  vrmRestrictionAntisocial: "antisocial / hate use",
   vrmAllowedUser: "Allowed user (VRM 0.x)",
   vrmAvatarPermission: "Avatar permission (VRM 1.0)",
   vrmViolentUsage: "Violent usage",
@@ -249,7 +297,7 @@ const EN: UiStrings = {
   vrmRedistribution: "Redistribution",
   vrmModification: "Modification",
   vrmCredit: "Credit notation",
-  vrmNotSpecified: "Not specified",
+  vrmNotSpecified: "Not stated",
   vrmUnknown: "Unknown (not treated as permission)",
   vrmPermissionAllowed: "Allowed",
   vrmPermissionDisallowed: "Not allowed",
@@ -265,6 +313,7 @@ const EN: UiStrings = {
   vrmPermissionAllowModification: "Modification allowed",
   vrmPermissionAllowModificationRedistribution: "Modification and redistribution allowed",
   vrmBundledDescription: "The avatar bundled with Yorishiro.",
+  vrmBundledSource: "Bundled with Yorishiro",
   vrmYoriAuthor: "LUCAS",
   vrmYoriUseWithinApp: "Use within Yorishiro is permitted for everyone.",
   vrmYoriAvatarPerformance: "Performing as the avatar is limited to explicitly licensed persons.",
@@ -403,14 +452,26 @@ const JA: UiStrings = {
   motionLevelOver: "オーバー",
   selectVrmFile: "VRM ファイルを選択",
   vrmChooseAvatar: "アバターを選ぶ",
-  vrmImportNew: "新しく読み込む…",
-  vrmCatalogIntro:
-    "制作者と利用条件を確認してから、アバターを適用してください。Yorishiro は記録された条件を示しますが、法的な利用可否を判断しません。",
+  vrmDialogTitle: "アバターを変更",
+  vrmCloseDialog: "アバター選択を閉じる",
+  vrmChange: "変更…",
+  vrmCurrent: "現在",
+  vrmImportNew: "ファイルを追加…",
+  vrmSearchPlaceholder: "名前・制作者で検索",
+  vrmNoMatches: "該当するアバターはありません",
+  vrmImportedNotApplied: "追加しました。まだ切り替えていません。",
+  vrmImportFailed: "VRM ファイルを追加できませんでした。",
+  vrmThumbnailAlt: "{name} のサムネイル",
+  vrmThumbnailUnavailable: "サムネイルはありません",
+  vrmCatalogIntro: "「記載なし」は許可を意味しません。最終的な判断は利用者が行います。",
   vrmActive: "使用中",
+  vrmPending: "切り替え前",
+  vrmPendingSwitch: "{from} → {to} に切り替えます",
   vrmInvalid: "無効",
+  vrmMissingBadge: "見つかりません",
   vrmMissingActive: "使用中の VRM がアバターフォルダに見つかりません。",
-  vrmApply: "アバターを適用",
-  vrmCancel: "選択をキャンセル",
+  vrmApply: "このアバターに切り替える",
+  vrmCancel: "キャンセル",
   vrmApplyDisabledInvalid: "無効なファイルのため適用できません。",
   vrmApplyDisabledMissing: "見つからないアバターは適用できません。",
   vrmApplyDisabledActive: "このアバターは現在使用中です。",
@@ -427,6 +488,17 @@ const JA: UiStrings = {
   vrmLicenseUrls: "ライセンス・許諾 URL",
   vrmThirdPartyLicenses: "第三者ライセンス",
   vrmUsageConditions: "利用条件",
+  vrmSummaryHeading: "利用条件の要点",
+  vrmWhoMayUse: "利用できる人",
+  vrmContentRestrictions: "表現の制限",
+  vrmMoreDetails: "詳細情報",
+  vrmRestrictionsBlocked: "不許可",
+  vrmRestrictionsAllowed: "許可",
+  vrmRestrictionsUnstated: "記載なし",
+  vrmRestrictionViolence: "暴力表現",
+  vrmRestrictionSexual: "性的表現",
+  vrmRestrictionPolitical: "政治・宗教目的",
+  vrmRestrictionAntisocial: "反社会・憎悪表現",
   vrmAllowedUser: "利用可能なユーザー（VRM 0.x）",
   vrmAvatarPermission: "アバター利用権限（VRM 1.0）",
   vrmViolentUsage: "暴力表現での利用",
@@ -437,7 +509,7 @@ const JA: UiStrings = {
   vrmRedistribution: "再配布",
   vrmModification: "改変",
   vrmCredit: "クレジット表記",
-  vrmNotSpecified: "指定なし",
+  vrmNotSpecified: "記載なし",
   vrmUnknown: "不明（許可として扱いません）",
   vrmPermissionAllowed: "許可",
   vrmPermissionDisallowed: "不許可",
@@ -453,6 +525,7 @@ const JA: UiStrings = {
   vrmPermissionAllowModification: "改変を許可",
   vrmPermissionAllowModificationRedistribution: "改変と再配布を許可",
   vrmBundledDescription: "Yorishiro に同梱されたアバターです。",
+  vrmBundledSource: "Yorishiro に同梱",
   vrmYoriAuthor: "LUCAS",
   vrmYoriUseWithinApp: "Yorishiro 内での使用は、すべての人に許可されています。",
   vrmYoriAvatarPerformance: "アバターとして演じることは、明示的に許諾された人に限られます。",

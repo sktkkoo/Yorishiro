@@ -143,12 +143,14 @@ describe("changeStrings", () => {
   });
 
   it("localizes the VRM review and explicit apply flow", () => {
-    expect(getStrings("en").vrmImportNew).toBe("Import new…");
-    expect(getStrings("ja").vrmImportNew).toBe("新しく読み込む…");
-    expect(getStrings("en").vrmNotSpecified).toBe("Not specified");
-    expect(getStrings("ja").vrmNotSpecified).toBe("指定なし");
-    expect(getStrings("en").vrmApply).toBe("Apply avatar");
-    expect(getStrings("ja").vrmApply).toBe("アバターを適用");
+    expect(getStrings("en").vrmImportNew).toBe("Add from file…");
+    expect(getStrings("ja").vrmImportNew).toBe("ファイルを追加…");
+    expect(getStrings("en").vrmNotSpecified).toBe("Not stated");
+    expect(getStrings("ja").vrmNotSpecified).toBe("記載なし");
+    expect(getStrings("en").vrmApply).toBe("Switch to this avatar");
+    expect(getStrings("ja").vrmApply).toBe("このアバターに切り替える");
+    expect(getStrings("en").vrmDialogTitle).toBe("Change avatar");
+    expect(getStrings("ja").vrmDialogTitle).toBe("アバターを変更");
   });
 });
 

@@ -33,6 +33,7 @@ const THEME = {
 
 export const COLORS = {
   ...THEME,
+  overlayBackdrop: "rgba(0, 0, 0, 0.64)",
   statusError: "#ff756f",
   statusWarning: "#d6b15c",
 } as const;
@@ -60,4 +61,14 @@ export const FONT = {
   sizeL: "14px",
   weightNormal: 400,
   weightSemibold: 600,
+} as const;
+
+export const SIZE = {
+  targetMin: "36px",
+  vrmListColumn: "280px",
+  vrmDialogMaxWidth: "880px",
+  vrmDialogMaxHeight: "640px",
+  vrmThumbnailList: "40px",
+  vrmThumbnailPreview: "96px",
+  vrmThumbnailPreviewCompact: "56px",
 } as const;

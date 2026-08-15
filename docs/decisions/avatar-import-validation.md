@@ -5,7 +5,7 @@
 
 ## TL;DR
 
-`import_vrm` は source を (1) symlink・非 regular file を拒否、(2) GLB header と最大 4 MiB の先頭 JSON chunk、VRM 0.x / 1.0 meta を検証、(3) 検証済みの file handle をそのまま temporary file へコピーして `sync_all` 後に同一 directory 内で rename する。任意ファイルの吸い出し、検証後すり替え（TOCTOU）、同名 avatar の上書きを塞ぐための境界である。
+`import_vrm` は source を (1) symlink・非 regular file を拒否、(2) GLB header と最大 4 MiB の先頭 JSON chunk、VRM 0.x / 1.0 meta を検証、(3) 検証済みの file handle をそのまま temporary file へコピーして `sync_all` 後に同一 directory 内で rename する。任意ファイルの吸い出し、検証後すり替え（TOCTOU）、同名 avatar の上書きを塞ぐための境界である。chooser のサムネイルは別 command が AppData 内の catalog ID だけを受け、埋め込み PNG/JPEG を上限付きで遅延取得する。
 
 ## 何を決めたか
 
@@ -13,11 +13,13 @@
 
 - **symlink 拒否 / regular file のみ**：`symlink_metadata` で種別を確認し、symlink と非 regular file（dir / device / fifo 等）を拒否する
 - **GLB content 検証**：先頭 12 byte を読み、magic == `glTF`、version == 2、宣言長 == 実ファイルサイズ を確認。拡張子だけ `.vrm` の偽装ファイルを弾く
-- **VRM metadata 検証**：先頭 chunk が JSON type で 4 MiB 以下であることを確認し、`extensions.VRM.meta` または `extensions.VRMC_vrm.meta` の object だけを読む。BIN、texture、thumbnail は読まない
+- **VRM metadata 検証**：先頭 chunk が JSON type で 4 MiB 以下であることを確認し、`extensions.VRM.meta` または `extensions.VRMC_vrm.meta` の object だけを読む。catalog 時は同じ JSON から埋め込み thumbnail の image/bufferView 参照だけを解決し、画像 bytes は読まない
 - **TOCTOU-safe copy**：検証で開いた file handle を rewind して `std::io::copy` でコピーする。`std::fs::copy(path, ...)` のように path を再オープンしない
 - **非上書き・atomic finalize**：同一 directory の `.tmp-<pid>-<nonce>.vrm` へ copy / `sync_all` した後、no-clobber rename で publish する。同名との競合時は検証済み temporary copy と既存 file を size + 固定長 buffer で完全比較し、同一なら既存 path を返す。内容が異なる場合だけ `name (2).vrm`、`name (3).vrm` と再試行し、失敗時は temporary を cleanup する
 
 `list_vrm_avatars` は `$APPDATA/avatars/` 直下の `.vrm` だけを決定的な basename 順で返す。symlink、非 regular file、破損 file は追跡・除外せず理由付き invalid row とし、temporary file と他拡張子は列挙しない。metadata の欠落は `NotSpecified`、未知 enum は `Unknown` として、許可扱いしない。raw enum も残し、アプリは法的判断を代行しない。
+
+`read_vrm_thumbnail` は catalog の basename ID だけを受ける。`$APPDATA/avatars` 直下の regular file に再制限し、外部/data URI と symlink を拒否する。埋め込み BIN の PNG/JPEG だけを最大 2 MiB・最大辺 2048px・宣言範囲内で読み、magic と画像 header を確認して raw bytes を返す。catalog response には画像 bytes を含めず、chooser が可視候補と選択中候補だけを遅延取得する。
 
 ## なぜそう決めたか
 
@@ -42,6 +44,6 @@ symlink・非 regular file・非 GLB を拒否し、検証した handle を直�
 
 ## 関連 reference
 
-- `src-tauri/src/lib.rs` — `open_vrm_import_source` / `read_vrm_meta` / `list_vrm_avatars_in_dir` / `import_vrm_into_dir`
+- `src-tauri/src/lib.rs` — `open_vrm_import_source` / `read_vrm_document` / `read_vrm_thumbnail` / `list_vrm_avatars_in_dir` / `import_vrm_into_dir`
 - [`voice-clip-resolution.md`](voice-clip-resolution.md) — pack-local ref の `.`/`..` 拒否（同じく asset 解決の security 境界）
 - `docs/security.md`「Current enforcement status」
