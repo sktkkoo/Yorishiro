@@ -7,3 +7,9 @@ export { SayTtsEngine } from "./tts-engine";
 export { VoicePlaybackLeaseSync } from "./voice-playback-lease-sync";
 export type { VoiceClipResolver } from "./voice-player";
 export { VoicePlayer } from "./voice-player";
+export {
+  clampVoiceVolume,
+  createPersistedVoiceVolumeSetter,
+  getVoiceVolumeStore,
+  VoiceVolumeStore,
+} from "./voice-volume-store";

@@ -15,7 +15,10 @@ export interface UiStrings {
   readonly noPacks: string;
   readonly unmuteAmbient: string;
   readonly muteAmbient: string;
+  readonly unmuteVoice: string;
+  readonly muteVoice: string;
   readonly ambientVolume: string;
+  readonly voiceVolume: string;
   readonly motionIntensity: string;
   readonly motionLevelCalm: string;
   readonly motionLevelNormal: string;
@@ -69,7 +72,6 @@ export interface UiStrings {
   readonly voiceRestartConfirmButton: string;
   readonly labelPersona: string;
   readonly labelScene: string;
-  readonly labelSound: string;
   readonly labelAgent: string;
   readonly labelPresence: string;
   readonly labelAura: string;
@@ -151,7 +153,10 @@ const EN: UiStrings = {
   noPacks: "(no packs)",
   unmuteAmbient: "Unmute ambient sound",
   muteAmbient: "Mute ambient sound",
-  ambientVolume: "Ambient volume",
+  unmuteVoice: "Unmute voice",
+  muteVoice: "Mute voice",
+  ambientVolume: "Ambience",
+  voiceVolume: "Voice",
   motionIntensity: "Motion Intensity",
   motionLevelCalm: "Calm",
   motionLevelNormal: "Normal",
@@ -198,7 +203,6 @@ const EN: UiStrings = {
   voiceRestartConfirmButton: "Restart",
   labelPersona: "Persona",
   labelScene: "Scene",
-  labelSound: "Sound",
   labelAgent: "Main Agent",
   labelPresence: "Sidebar",
   labelAura: "Aura",
@@ -282,7 +286,10 @@ const JA: UiStrings = {
   noPacks: "（パックなし）",
   unmuteAmbient: "環境音をミュート解除",
   muteAmbient: "環境音をミュート",
-  ambientVolume: "環境音ボリューム",
+  unmuteVoice: "音声のミュートを解除",
+  muteVoice: "音声をミュート",
+  ambientVolume: "環境音",
+  voiceVolume: "音声",
   motionIntensity: "Motion Intensity",
   motionLevelCalm: "控えめ",
   motionLevelNormal: "標準",
@@ -328,7 +335,6 @@ const JA: UiStrings = {
   voiceRestartConfirmButton: "再起動する",
   labelPersona: "Persona",
   labelScene: "Scene",
-  labelSound: "Sound",
   labelAgent: "Main Agent",
   labelPresence: "Sidebar",
   labelAura: "Aura",

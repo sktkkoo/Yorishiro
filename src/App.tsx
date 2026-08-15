@@ -115,7 +115,13 @@ import { registerSceneLayerBridge } from "./core/scene/scene-layer-bridge";
 import { EffectDispatcher, EffectPackRunner, Renderer } from "./core/space";
 import { Time } from "./core/time";
 import { applyLayout, type LayoutTargets, resetLayout } from "./core/ui-layout";
-import { SayTtsEngine, VoicePlaybackLeaseSync, VoicePlayer } from "./core/voice";
+import {
+  createPersistedVoiceVolumeSetter,
+  getVoiceVolumeStore,
+  SayTtsEngine,
+  VoicePlaybackLeaseSync,
+  VoicePlayer,
+} from "./core/voice";
 import {
   changeStrings,
   getStrings,
@@ -1058,6 +1064,7 @@ function App() {
         terminalAgent: string;
         ambientAudioMuted: boolean;
         ambientAudioVolume: number;
+        voiceVolume: number;
         attentionLightNotifications: boolean;
         motionIntensity: number;
         language: AppLanguage;
@@ -1066,6 +1073,10 @@ function App() {
       }>,
     ): Promise<void> => updateYorishiroConfig((cur) => ({ ...cur, ...patch })).then(() => {}),
     [updateYorishiroConfig],
+  );
+  const setVoiceVolume = useMemo(
+    () => createPersistedVoiceVolumeSetter((voiceVolume) => updateConfig({ voiceVolume })),
+    [updateConfig],
   );
   const updateActiveSceneConfig = useCallback(
     (id: string | null, projectRoot: ProjectRootResolution): Promise<ProjectSceneSelectionResult> =>
@@ -1626,6 +1637,7 @@ function App() {
         ambientAudioMuted = config.ambientAudioMuted;
         ambientAudioVolume = config.ambientAudioVolume;
         ambientAudioLiveState = { muted: ambientAudioMuted, volume: ambientAudioVolume };
+        getVoiceVolumeStore().set(config.voiceVolume);
         getAttentionLightSettingsStore().setEnabled(config.attentionLightNotifications);
         getThreeRuntime().setMotionIntensity(config.motionIntensity);
         voiceFrequency = config.voiceFrequency;
@@ -3525,6 +3537,7 @@ function App() {
             await updateConfig({ ambientAudioVolume: clamped });
             ambientAudio.setVolume(clamped);
           },
+          setVoiceVolume,
           setAttentionLightNotifications: async (enabled) => {
             await updateConfig({ attentionLightNotifications: enabled });
             getAttentionLightSettingsStore().setEnabled(enabled);
@@ -3584,6 +3597,7 @@ function App() {
               agentPinnedByProfile: resolveDefaultAgentProfileId(cur),
               ambientAudioMuted: cur.ambientAudioMuted,
               ambientAudioVolume: cur.ambientAudioVolume,
+              voiceVolume: cur.voiceVolume,
               attentionLightNotifications: cur.attentionLightNotifications,
               motionIntensity: cur.motionIntensity,
               activeAmbientUi: cur.activeAmbientUi,
@@ -3760,6 +3774,7 @@ function App() {
     enqueueConfigWrite,
     updateYorishiroConfig,
     updateConfig,
+    setVoiceVolume,
     beginCurtainReload,
     switchMainAgent,
     setActiveSceneFromUserSelection,
