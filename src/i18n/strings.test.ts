@@ -118,8 +118,13 @@ describe("changeStrings", () => {
   });
 
   it("labels the independent voice volume control in both languages", () => {
+    expect(getStrings("en").ambientVolume).toBe("Ambient Volume");
     expect(getStrings("en").voiceVolume).toBe("Voice Volume");
+    expect(getStrings("en").muteVoice).toBe("Mute voice");
+    expect(getStrings("en").unmuteVoice).toBe("Unmute voice");
     expect(getStrings("ja").voiceVolume).toBe("音声ボリューム");
+    expect(getStrings("ja").muteVoice).toBe("音声をミュート");
+    expect(getStrings("ja").unmuteVoice).toBe("音声のミュートを解除");
   });
 
   it("uses explicit settings section labels", () => {

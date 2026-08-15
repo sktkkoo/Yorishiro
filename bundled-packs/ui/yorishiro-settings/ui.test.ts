@@ -13,12 +13,28 @@ import {
   resolveNewSessionConfirm,
   resolvePersonaSelectValue,
   resolveSceneSelectValue,
+  resolveVoiceMuteToggle,
   SETTINGS_PACK_ID,
   selectWorkbenchPack,
   summarizePackDiagnosis,
   TERMINAL_AGENT_OPTIONS,
   terminalAgentLabel,
 } from "./ui";
+
+describe("resolveVoiceMuteToggle", () => {
+  it("mutes to zero and restores the previous non-zero volume", () => {
+    const muted = resolveVoiceMuteToggle(0.42, 1);
+    expect(muted).toEqual({ nextVolume: 0, restoreVolume: 0.42 });
+    expect(resolveVoiceMuteToggle(muted.nextVolume, muted.restoreVolume)).toEqual({
+      nextVolume: 0.42,
+      restoreVolume: 0.42,
+    });
+  });
+
+  it("unmutes to full volume when no previous non-zero value exists", () => {
+    expect(resolveVoiceMuteToggle(0, 0)).toEqual({ nextVolume: 1, restoreVolume: 1 });
+  });
+});
 
 describe("resolveCloseTarget", () => {
   it("returns the saved previous id when valid", () => {

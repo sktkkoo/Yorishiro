@@ -15,6 +15,8 @@ export interface UiStrings {
   readonly noPacks: string;
   readonly unmuteAmbient: string;
   readonly muteAmbient: string;
+  readonly unmuteVoice: string;
+  readonly muteVoice: string;
   readonly ambientVolume: string;
   readonly voiceVolume: string;
   readonly motionIntensity: string;
@@ -70,7 +72,6 @@ export interface UiStrings {
   readonly voiceRestartConfirmButton: string;
   readonly labelPersona: string;
   readonly labelScene: string;
-  readonly labelSound: string;
   readonly labelAgent: string;
   readonly labelPresence: string;
   readonly labelAura: string;
@@ -152,7 +153,9 @@ const EN: UiStrings = {
   noPacks: "(no packs)",
   unmuteAmbient: "Unmute ambient sound",
   muteAmbient: "Mute ambient sound",
-  ambientVolume: "Ambient volume",
+  unmuteVoice: "Unmute voice",
+  muteVoice: "Mute voice",
+  ambientVolume: "Ambient Volume",
   voiceVolume: "Voice Volume",
   motionIntensity: "Motion Intensity",
   motionLevelCalm: "Calm",
@@ -200,7 +203,6 @@ const EN: UiStrings = {
   voiceRestartConfirmButton: "Restart",
   labelPersona: "Persona",
   labelScene: "Scene",
-  labelSound: "Sound",
   labelAgent: "Main Agent",
   labelPresence: "Sidebar",
   labelAura: "Aura",
@@ -284,6 +286,8 @@ const JA: UiStrings = {
   noPacks: "（パックなし）",
   unmuteAmbient: "環境音をミュート解除",
   muteAmbient: "環境音をミュート",
+  unmuteVoice: "音声のミュートを解除",
+  muteVoice: "音声をミュート",
   ambientVolume: "環境音ボリューム",
   voiceVolume: "音声ボリューム",
   motionIntensity: "Motion Intensity",
@@ -331,7 +335,6 @@ const JA: UiStrings = {
   voiceRestartConfirmButton: "再起動する",
   labelPersona: "Persona",
   labelScene: "Scene",
-  labelSound: "Sound",
   labelAgent: "Main Agent",
   labelPresence: "Sidebar",
   labelAura: "Aura",
