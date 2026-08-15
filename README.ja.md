@@ -208,7 +208,7 @@ packやinit.jsが変わるたびに、チェックポイントが自動で作ら
 
 ## Status
 
-**v0.7.1**
+**v0.7.2**
 
 実装フェーズの途中です。API・データ形状・pack仕様は今後変わります。
 
@@ -216,6 +216,7 @@ packやinit.jsが変わるたびに、チェックポイントが自動で作ら
 
 - Claude CodeまたはCodexをターミナルとして起動し、そのまま作業できる
 - Codexは可能なら最新threadをresumeし、別clientが使用中なら履歴を安全にforkして起動する
+- Main Agentの会話: shell tabを閉じずに新しい会話を始め、最近の会話を戻る/進むで移動できる
 - Session tabs: title bar上で複数のshellセッションを操作し、tabごとの状態badge（実行中/入力待ち/失敗/未読）を表示（`Cmd+T` / `Ctrl+Tab`）
 - サイドバーからの作業フォルダ切替——暗転を挟んでそのフォルダで開き直す
 - VRMの3DキャラクターYoriが呼吸し、瞬きし、視線を動かし、生きたビートでアイドルする（同梱）
@@ -228,6 +229,7 @@ packやinit.jsが変わるたびに、チェックポイントが自動で作ら
 - マイクロエクスプレッション: 眉・目・口の微細なアイドル表情変化
 - 発話時の表情: 話しているあいだ顔全体が動き、ひとことの長さだけ表情（mood）を乗せられる
 - 6種類のpackによるカスタマイズ（persona/scene/effect/ui/amenity/ambient-ui）
+- Local Scene / Ambient UIのTSX authoring、hot reload、診断、pack-local asset、共有R3F post-processing module
 - 自己参照的MCP（20以上のツール）— カメラ・ライティング制御を含む
 - 反射層によるPTY観察と即時反応
 - 住人の`git push`成功を花火で祝う（同梱Yoriペルソナの反応）

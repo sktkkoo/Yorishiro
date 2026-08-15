@@ -207,7 +207,7 @@ Three characteristics define this mechanism.
 
 ## Status
 
-**v0.7.1**
+**v0.7.2**
 
 Under active development. APIs, data shapes, and pack specs will change.
 
@@ -215,6 +215,7 @@ What works today:
 
 - Launches Claude Code or Codex as the terminal — you work right there
 - Codex resumes the latest thread when available and safely forks its history when another client is actively using it
+- Main Agent conversations: start fresh or move Back / Forward through recent conversations without closing shell tabs
 - Session tabs: multiple shell sessions in the title bar, with per-tab status badges — running / awaiting input / failed / unread (`Cmd+T` / `Ctrl+Tab`)
 - Working folder switching from the sidebar — the app reopens in the chosen folder behind a fade
 - Yori, a VRM 3D character that breathes, blinks, shifts gaze, and idles with lifelike beats (bundled)
@@ -227,6 +228,7 @@ What works today:
 - Microexpressions: subtle idle facial movements across brow, eye, and mouth regions
 - Speech expression: the face activates while speaking, and a single line can carry a mood for exactly as long as it lasts
 - Customization via six pack types (persona / scene / effect / ui / amenity / ambient-ui)
+- Local Scene and Ambient UI TSX authoring with hot reload, diagnostics, pack-local assets, and shared R3F post-processing modules
 - Self-referential MCP (20+ tools) including camera/lighting controls
 - Reflex layer: PTY observation and instant reactions
 - Fireworks celebrate a successful `git push` by the inhabitant (bundled Yori persona)

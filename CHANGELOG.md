@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 0.7.2 - 2026-08-15
+
+- Added one-click Main Agent conversation controls: start fresh or move Back and Forward through recent conversations without closing shell tabs or resetting the workspace. Conversation replacement is serialized, GPT Live reconnects when needed, and a failed navigation restores the exact outgoing Codex session.
+- Expanded local TSX Pack authoring with Ambient UI discovery, compilation, hot reload, diagnostics, shared React Three Fiber post-processing modules, pack-local asset resolution, and distributed SDK declarations. Public host capabilities now cover controls, attention cues, app version, HTTPS links, and confirmed history restore without exposing internal registries or raw Tauri APIs.
+- Added a stable Amenity service boundary for Ambient UI state reads and commands, and migrated the bundled Pomodoro UI to that public contract.
+- Fixed active Ambient UI disappearing after an atomic save or hot reload by reapplying configured activation only after successful registration while preserving inactive and deleted states.
+- Added direct terminal links: Cmd+click opens a visible HTTP/HTTPS URL in the default browser. Whole-line Terminal Reference Marker capture moved to Cmd+Shift+click; Option+Shift+drag remains unchanged.
+- Fixed development-time React Three Fiber context splits after Vite dependency re-optimization, and isolated scene render failures so the VRM, shared controls, fallback lighting, and scene switching remain available.
+
 ## 0.7.1 - 2026-08-08
 
 - Fixed Codex startup after updating from pre-registry source or pre-release builds by safely reaping only narrowly verified, clientless orphan app-server sidecars. Process identity, connection state, and the latest sidecar registry are rechecked around signal delivery to avoid terminating active or unrelated Codex integrations.
