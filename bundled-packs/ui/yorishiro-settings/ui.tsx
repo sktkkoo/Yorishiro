@@ -2368,6 +2368,55 @@ function VrmDetailRow({
   );
 }
 
+export function safeVrmExternalUrl(value: string): string | null {
+  try {
+    const url = new URL(value.trim());
+    if (url.protocol !== "https:" || url.username || url.password) return null;
+    return url.href;
+  } catch {
+    return null;
+  }
+}
+
+function VrmExternalLinks({
+  values,
+  onOpenExternal,
+}: {
+  readonly values: readonly string[];
+  readonly onOpenExternal: (url: string) => Promise<void>;
+}): React.JSX.Element {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "3px" }}>
+      {values.map((value) => {
+        const safeUrl = safeVrmExternalUrl(value);
+        return safeUrl ? (
+          <button
+            key={value}
+            type="button"
+            onClick={() => void onOpenExternal(safeUrl)}
+            style={{
+              border: 0,
+              padding: 0,
+              background: "transparent",
+              color: COLORS.accent,
+              font: "inherit",
+              textAlign: "left",
+              textDecoration: "underline",
+              textUnderlineOffset: "2px",
+              overflowWrap: "anywhere",
+              cursor: "pointer",
+            }}
+          >
+            {value}
+          </button>
+        ) : (
+          <span key={value}>{value}</span>
+        );
+      })}
+    </div>
+  );
+}
+
 export function vrmCandidateDisplayName(candidate: VrmCandidate): string {
   const metadataName = candidate.meta?.name?.trim();
   if (metadataName) return metadataName;
@@ -2724,9 +2773,11 @@ function VrmThumbnail({
 
 function VrmCandidateDetail({
   candidate,
+  onOpenExternal,
   strings,
 }: {
   readonly candidate: VrmCandidate | undefined;
+  readonly onOpenExternal: (url: string) => Promise<void>;
   readonly strings: UiStrings;
 }): React.JSX.Element {
   if (!candidate) {
@@ -2903,7 +2954,13 @@ function VrmCandidateDetail({
           />
           <VrmDetailRow
             label={strings.vrmReferences}
-            value={meta.references.join("\n") || strings.vrmNotSpecified}
+            value={
+              meta.references.length ? (
+                <VrmExternalLinks values={meta.references} onOpenExternal={onOpenExternal} />
+              ) : (
+                strings.vrmNotSpecified
+              )
+            }
           />
           <VrmDetailRow
             label={strings.vrmLicenseName}
@@ -2911,7 +2968,13 @@ function VrmCandidateDetail({
           />
           <VrmDetailRow
             label={strings.vrmLicenseUrls}
-            value={meta.license.urls.join("\n") || strings.vrmNotSpecified}
+            value={
+              meta.license.urls.length ? (
+                <VrmExternalLinks values={meta.license.urls} onOpenExternal={onOpenExternal} />
+              ) : (
+                strings.vrmNotSpecified
+              )
+            }
           />
           <VrmDetailRow
             label={strings.vrmThirdPartyLicenses}
@@ -2945,6 +3008,7 @@ interface VrmChooserDialogProps {
   readonly onImport: () => void;
   readonly onRetryLoad: () => void;
   readonly onRetryImport: () => void;
+  readonly onOpenExternal: (url: string) => Promise<void>;
   readonly onRemove: (candidate: VrmCandidate) => Promise<boolean>;
   readonly onApply: () => void;
   readonly onClose: () => void;
@@ -2967,6 +3031,7 @@ function VrmChooserDialog({
   onImport,
   onRetryLoad,
   onRetryImport,
+  onOpenExternal,
   onRemove,
   onApply,
   onClose,
@@ -3549,7 +3614,11 @@ function VrmChooserDialog({
                 fontSize: FONT.sizeS,
               }}
             >
-              <VrmCandidateDetail candidate={selected} strings={strings} />
+              <VrmCandidateDetail
+                candidate={selected}
+                onOpenExternal={onOpenExternal}
+                strings={strings}
+              />
             </div>
           </section>
         </div>
@@ -4626,6 +4695,7 @@ export function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
           onImport={() => void onImportVrm()}
           onRetryLoad={() => void loadVrmCatalog()}
           onRetryImport={retryLastVrmImport}
+          onOpenExternal={(url) => ctx.app.openExternal(url)}
           onRemove={onRemoveVrm}
           onApply={onApplyVrm}
           onClose={closeVrmDialog}

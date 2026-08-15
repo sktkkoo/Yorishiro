@@ -55,10 +55,21 @@ const importedEntry: VrmAvatarEntry = {
   meta:
     activeEntry.meta === null
       ? null
-      : { ...activeEntry.meta, specVersion: "1.1", name: "Imported" },
+      : {
+          ...activeEntry.meta,
+          specVersion: "1.1",
+          name: "Imported",
+          license: {
+            ...activeEntry.meta.license,
+            urls: ["https://example.test/permission"],
+          },
+        },
 };
 
-function settingsContext(setVrm: (path: string | null) => void): UiContext {
+function settingsContext(
+  setVrm: (path: string | null) => void,
+  openExternal = vi.fn().mockResolvedValue(undefined),
+): UiContext {
   return {
     app: {
       listPersonas: () => [],
@@ -91,6 +102,7 @@ function settingsContext(setVrm: (path: string | null) => void): UiContext {
         tabMetadataBadges: false,
       }),
       setVrm,
+      openExternal,
     },
     state: { get: () => null },
     history: { list: vi.fn().mockResolvedValue([]), restore: vi.fn() },
@@ -113,6 +125,7 @@ describe("VRM import settings handler", () => {
   it("inspects import without applying, then applies explicitly and cancels back to active", async () => {
     localStorage.setItem("yorishiro:vrm", activeEntry.path);
     const setVrm = vi.fn();
+    const openExternal = vi.fn().mockResolvedValue(undefined);
     dialogOpenMock.mockResolvedValue("/downloads/imported.vrm");
     invokeMock.mockImplementation(async (command: string) => {
       if (command === "import_vrm") return importedEntry.path;
@@ -123,7 +136,7 @@ describe("VRM import settings handler", () => {
       throw new Error(`unexpected command: ${command}`);
     });
 
-    render(<Panel ctx={settingsContext(setVrm)} />);
+    render(<Panel ctx={settingsContext(setVrm, openExternal)} />);
     await waitFor(() => expect(invokeMock).toHaveBeenCalledWith("list_vrm_avatars"));
     fireEvent.click(screen.getByRole("button", { name: "Change…" }));
     await screen.findByRole("dialog", { name: "Change avatar" });
@@ -149,6 +162,9 @@ describe("VRM import settings handler", () => {
     expect(importedOption.getAttribute("aria-selected")).toBe("true");
     expect(screen.getByText("Added to the list.")).toBeTruthy();
     expect(screen.getAllByText("1.1").length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByText("More details"));
+    fireEvent.click(screen.getByRole("button", { name: "https://example.test/permission" }));
+    expect(openExternal).toHaveBeenCalledWith("https://example.test/permission");
     expect(setVrm).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));

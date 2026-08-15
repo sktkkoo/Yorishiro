@@ -19,6 +19,7 @@ import {
   resolveSceneSelectValue,
   resolveVrmCandidates,
   SETTINGS_PACK_ID,
+  safeVrmExternalUrl,
   selectWorkbenchPack,
   sortVrmCandidates,
   summarizePackDiagnosis,
@@ -137,6 +138,14 @@ describe("VRM chooser discovery", () => {
 });
 
 describe("VRM permission presentation", () => {
+  it("only turns credential-free HTTPS metadata into external links", () => {
+    expect(safeVrmExternalUrl("https://example.test/license")).toBe("https://example.test/license");
+    expect(safeVrmExternalUrl("http://example.test/license")).toBeNull();
+    expect(safeVrmExternalUrl("javascript:alert(1)")).toBeNull();
+    expect(safeVrmExternalUrl("https://user:secret@example.test/license")).toBeNull();
+    expect(safeVrmExternalUrl("not a url")).toBeNull();
+  });
+
   it("localizes known statuses without redundant boolean or enum raw values", () => {
     expect(formatVrmMetaValue({ normalized: "allowed", raw: "true" }, getStrings("en"))).toBe(
       "Allowed",
