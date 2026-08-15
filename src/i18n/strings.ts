@@ -105,8 +105,7 @@ export interface UiStrings {
   readonly vrmPermissionUnnecessary: string;
   readonly vrmPermissionAllowModification: string;
   readonly vrmPermissionAllowModificationRedistribution: string;
-  readonly vrmBundledDescription: string;
-  readonly vrmBundledSource: string;
+  readonly vrmDefaultAvatar: string;
   readonly vrmYoriAuthor: string;
   readonly vrmYoriUseWithinApp: string;
   readonly vrmYoriAvatarPerformance: string;
@@ -332,8 +331,7 @@ const EN: UiStrings = {
   vrmPermissionUnnecessary: "Not required",
   vrmPermissionAllowModification: "Modification allowed",
   vrmPermissionAllowModificationRedistribution: "Modification and redistribution allowed",
-  vrmBundledDescription: "The avatar bundled with Yorishiro.",
-  vrmBundledSource: "Bundled with Yorishiro",
+  vrmDefaultAvatar: "Default avatar",
   vrmYoriAuthor: "LUCAS",
   vrmYoriUseWithinApp: "Use within Yorishiro is permitted for everyone.",
   vrmYoriAvatarPerformance: "Performing as the avatar is limited to explicitly licensed persons.",
@@ -554,8 +552,7 @@ const JA: UiStrings = {
   vrmPermissionUnnecessary: "不要",
   vrmPermissionAllowModification: "改変を許可",
   vrmPermissionAllowModificationRedistribution: "改変と再配布を許可",
-  vrmBundledDescription: "Yorishiro に同梱されたアバターです。",
-  vrmBundledSource: "Yorishiro に同梱",
+  vrmDefaultAvatar: "標準アバター",
   vrmYoriAuthor: "LUCAS",
   vrmYoriUseWithinApp: "Yorishiro 内での使用は、すべての人に許可されています。",
   vrmYoriAvatarPerformance: "アバターとして演じることは、明示的に許諾された人に限られます。",

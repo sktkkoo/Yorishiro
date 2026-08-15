@@ -53,6 +53,7 @@ import { COLORS, FONT, RADIUS, SIZE, SPACING } from "./tokens";
 export const SETTINGS_PACK_ID = "yorishiro-settings";
 export const PREVIOUS_ACTIVE_UI_KEY = "previous-active-ui";
 const DEFAULT_VRM_NAME = "Yori";
+export const DEFAULT_VRM_THUMBNAIL_URL = "/models/Yori-thumbnail.png";
 const YORI_VRM_ID = "builtin:yori";
 const DEFAULT_SCENE_ID = simpleRoomManifest.id;
 
@@ -2742,8 +2743,10 @@ function VrmThumbnail({
   readonly strings: UiStrings;
 }): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
+  const [bundledThumbnailFailed, setBundledThumbnailFailed] = useState(false);
   const cacheEntry = candidate ? cache.get(candidate) : undefined;
   const size = detail ? SIZE.vrmThumbnailPreview : SIZE.vrmThumbnailList;
+  const bundledThumbnailReady = candidate?.kind === "yori" && !bundledThumbnailFailed;
 
   useEffect(() => {
     if (!candidate?.thumbnail || !candidate.valid) return;
@@ -2769,7 +2772,7 @@ function VrmThumbnail({
 
   const displayName = candidate ? vrmCandidateDisplayName(candidate) : "";
   const accessibleLabel = detail
-    ? cacheEntry?.phase === "ready"
+    ? bundledThumbnailReady || cacheEntry?.phase === "ready"
       ? strings.vrmThumbnailAlt.replace("{name}", displayName)
       : strings.vrmThumbnailUnavailable
     : undefined;
@@ -2793,7 +2796,17 @@ function VrmThumbnail({
         color: COLORS.fgDimmer,
       }}
     >
-      {cacheEntry?.phase === "ready" ? (
+      {bundledThumbnailReady ? (
+        <img
+          src={DEFAULT_VRM_THUMBNAIL_URL}
+          alt=""
+          aria-hidden="true"
+          draggable={false}
+          decoding="async"
+          onError={() => setBundledThumbnailFailed(true)}
+          style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "50% 20%" }}
+        />
+      ) : cacheEntry?.phase === "ready" ? (
         <img
           src={cacheEntry.url}
           alt=""
@@ -3525,6 +3538,13 @@ function VrmChooserDialog({
                         >
                           {strings.vrmActive}
                         </span>
+                      ) : candidate.kind === "yori" ? (
+                        <span
+                          aria-hidden="true"
+                          style={{ color: COLORS.fgDim, fontSize: FONT.sizeXs }}
+                        >
+                          {strings.vrmDefaultAvatar}
+                        </span>
                       ) : !candidate.valid ? (
                         <span style={{ color: COLORS.statusError, fontSize: FONT.sizeXs }}>
                           {candidate.kind === "missing"
@@ -3638,7 +3658,7 @@ function VrmChooserDialog({
                 ) : null}
                 {selected?.kind === "yori" ? (
                   <div style={{ marginTop: "2px", color: COLORS.fgDim, fontSize: FONT.sizeXs }}>
-                    {strings.vrmBundledSource}
+                    {strings.vrmDefaultAvatar}
                   </div>
                 ) : null}
               </div>

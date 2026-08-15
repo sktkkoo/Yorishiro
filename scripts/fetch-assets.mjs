@@ -8,12 +8,18 @@
 // 外部ストアの既定位置: `../Yorishiro-assets/`（worktree と同じ親に置く運用）
 // 上書きしたい場合は env var `YORISHIRO_ASSETS_DIR` を設定する。
 
-import { cp, mkdir, readdir, rm, stat } from "node:fs/promises";
+import { cp, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "..");
+const BUNDLED_YORI_TARGET = join(REPO_ROOT, "public", "models", "Yori.vrm");
+const BUNDLED_YORI_THUMBNAIL_TARGET = join(REPO_ROOT, "public", "models", "Yori-thumbnail.png");
+const GLB_MAGIC = 0x46546c67;
+const GLB_JSON_CHUNK = 0x4e4f534a;
+const GLB_BIN_CHUNK = 0x004e4942;
+const MAX_BUNDLED_THUMBNAIL_BYTES = 8 * 1024 * 1024;
 
 const externalRoot = process.env.YORISHIRO_ASSETS_DIR
   ? resolve(process.env.YORISHIRO_ASSETS_DIR)
@@ -42,9 +48,87 @@ const FILE_TARGETS = [
   {
     label: "bundled VRM (Yori)",
     from: join(externalRoot, "models", "Yori.vrm"),
-    to: join(REPO_ROOT, "public", "models", "Yori.vrm"),
+    to: BUNDLED_YORI_TARGET,
   },
 ];
+
+/**
+ * Controlled bundled asset only: extract Yori's embedded PNG without loading the
+ * complete VRM in the Settings WebView. Imported/user VRMs stay on the bounded
+ * Rust thumbnail path.
+ */
+export function extractBundledYoriThumbnail(vrmBytes) {
+  if (vrmBytes.length < 20 || vrmBytes.readUInt32LE(0) !== GLB_MAGIC) {
+    throw new Error("bundled Yori is not a GLB file");
+  }
+  const declaredLength = vrmBytes.readUInt32LE(8);
+  if (declaredLength > vrmBytes.length || declaredLength < 20) {
+    throw new Error("bundled Yori has an invalid GLB length");
+  }
+
+  let json = null;
+  let bin = null;
+  let offset = 12;
+  while (offset + 8 <= declaredLength) {
+    const length = vrmBytes.readUInt32LE(offset);
+    const type = vrmBytes.readUInt32LE(offset + 4);
+    const start = offset + 8;
+    const end = start + length;
+    if (end > declaredLength) throw new Error("bundled Yori has a truncated GLB chunk");
+    if (type === GLB_JSON_CHUNK && json === null) json = vrmBytes.subarray(start, end);
+    if (type === GLB_BIN_CHUNK && bin === null) bin = vrmBytes.subarray(start, end);
+    offset = end;
+  }
+  if (!json || !bin) throw new Error("bundled Yori is missing JSON or BIN data");
+
+  let jsonText = json.toString("utf8");
+  while (jsonText.length > 0 && [0, 32].includes(jsonText.charCodeAt(jsonText.length - 1))) {
+    jsonText = jsonText.slice(0, -1);
+  }
+  const root = JSON.parse(jsonText);
+  const vrm1Image = root.extensions?.VRMC_vrm?.meta?.thumbnailImage;
+  const vrm0Texture = root.extensions?.VRM?.meta?.texture;
+  const imageIndex =
+    Number.isInteger(vrm1Image) && vrm1Image >= 0
+      ? vrm1Image
+      : Number.isInteger(vrm0Texture) && vrm0Texture >= 0
+        ? root.textures?.[vrm0Texture]?.source
+        : undefined;
+  const image = Number.isInteger(imageIndex) ? root.images?.[imageIndex] : undefined;
+  const view = Number.isInteger(image?.bufferView)
+    ? root.bufferViews?.[image.bufferView]
+    : undefined;
+  if (image?.mimeType !== "image/png" || view?.buffer !== 0) {
+    throw new Error("bundled Yori has no supported embedded PNG thumbnail");
+  }
+  const byteOffset = Number(view.byteOffset ?? 0);
+  const byteLength = Number(view.byteLength);
+  if (
+    !Number.isSafeInteger(byteOffset) ||
+    byteOffset < 0 ||
+    !Number.isSafeInteger(byteLength) ||
+    byteLength <= 0 ||
+    byteLength > MAX_BUNDLED_THUMBNAIL_BYTES ||
+    byteOffset + byteLength > bin.length
+  ) {
+    throw new Error("bundled Yori thumbnail range is invalid");
+  }
+  const thumbnail = bin.subarray(byteOffset, byteOffset + byteLength);
+  const pngMagic = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  if (thumbnail.length < pngMagic.length || !thumbnail.subarray(0, 8).equals(pngMagic)) {
+    throw new Error("bundled Yori thumbnail is not a PNG image");
+  }
+  return Buffer.from(thumbnail);
+}
+
+async function syncBundledYoriThumbnail() {
+  if (!(await exists(BUNDLED_YORI_TARGET))) return false;
+  const thumbnail = extractBundledYoriThumbnail(await readFile(BUNDLED_YORI_TARGET));
+  await mkdir(dirname(BUNDLED_YORI_THUMBNAIL_TARGET), { recursive: true });
+  await writeFile(BUNDLED_YORI_THUMBNAIL_TARGET, thumbnail);
+  console.log(`  [ok]   bundled VRM thumbnail (Yori): → ${BUNDLED_YORI_THUMBNAIL_TARGET}`);
+  return true;
+}
 
 async function exists(path) {
   try {
@@ -123,6 +207,7 @@ under the store and re-run:
   mkdir -p ${externalRoot}/{animations,voices,models}
   YORISHIRO_ASSETS_DIR=/path/to/assets npm run fetch-assets
 `);
+    await syncBundledYoriThumbnail();
     return;
   }
 
@@ -134,6 +219,7 @@ under the store and re-run:
   for (const ft of FILE_TARGETS) {
     results.push(await syncFile(ft));
   }
+  await syncBundledYoriThumbnail();
 
   if (required) {
     // optional なターゲット（voices 等）の不在は許容し、必須アセットの欠落のみで止める。
@@ -154,7 +240,9 @@ complete Yorishiro-assets store and retry.
   }
 }
 
-main().catch((err) => {
-  console.error("fetch-assets failed:", err);
-  process.exit(1);
-});
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  main().catch((err) => {
+    console.error("fetch-assets failed:", err);
+    process.exit(1);
+  });
+}

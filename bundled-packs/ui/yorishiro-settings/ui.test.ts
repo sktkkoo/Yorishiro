@@ -8,6 +8,7 @@ import {
   configActiveSceneForSelection,
   configPrimaryPersonaForSelection,
   creditsSections,
+  DEFAULT_VRM_THUMBNAIL_URL,
   filterPersonaOptionsForLanguage,
   filterVrmCandidates,
   formatVrmMetaValue,
@@ -59,6 +60,16 @@ const validVrmEntry = {
 } as const;
 
 describe("VRM catalog selection boundary", () => {
+  it("treats Yori as the default avatar with its build-extracted thumbnail", () => {
+    expect(resolveVrmCandidates([], null)[0]).toMatchObject({
+      kind: "yori",
+      active: true,
+      sourceId: null,
+      thumbnail: null,
+    });
+    expect(DEFAULT_VRM_THUMBNAIL_URL).toBe("/models/Yori-thumbnail.png");
+  });
+
   it("puts Yori first and marks the persisted file as active", () => {
     const candidates = resolveVrmCandidates([validVrmEntry], validVrmEntry.path);
     expect(candidates.map((candidate) => candidate.label)).toEqual(["Yori", "avatar.vrm"]);

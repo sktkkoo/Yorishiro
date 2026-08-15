@@ -141,11 +141,14 @@ describe("VRM import settings handler", () => {
     fireEvent.click(screen.getByRole("button", { name: "Change…" }));
     await screen.findByRole("dialog", { name: "Change avatar" });
     await screen.findByRole("option", { name: /active\.vrm/ });
+    const yoriOption = screen.getByRole("option", { name: "Yori" });
+    expect(yoriOption.querySelector("img")?.getAttribute("src")).toBe("/models/Yori-thumbnail.png");
     expect(screen.getByText("Creator")).toBeTruthy();
     expect(screen.getAllByText("Active Author").length).toBeGreaterThan(0);
     const activeRestrictions = screen.getByRole("group", { name: "Content restrictions" });
     expect(activeRestrictions.querySelectorAll(":scope > div")).toHaveLength(1);
     fireEvent.click(screen.getByRole("option", { name: "Yori" }));
+    expect(screen.getAllByText("Default avatar").length).toBeGreaterThan(0);
     expect(
       screen.getByRole("group", { name: "Content restrictions" }).querySelectorAll(":scope > div"),
     ).toHaveLength(2);
