@@ -57,7 +57,7 @@ pub enum SpawnSpec {
         /// false のとき agent adapter の既存会話 resume を禁止して完全新規 session を起動する。
         #[serde(default = "default_true")]
         resume: bool,
-        /// provider 固有の会話 ID を指定して再開する。現在は Codex adapter のみ使用する。
+        /// provider 固有の会話 ID を指定して再開する。Claude / Codex adapter が使用する。
         #[serde(default)]
         resume_session_id: Option<String>,
     },
@@ -259,11 +259,11 @@ pub struct CodexRealtimeCapabilities {
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub struct CodexSelectedThread {
+pub struct AgentSelectedConversation {
     pub session_id: String,
-    /// resume / fork、または最初の turn/start 済みなら true。thread/start だけなら false。
+    /// provider上で会話IDが確定済みならtrue。
     pub confirmed: bool,
-    /// 同じ app-server process 内の top-level selection / turn-start revision。
+    /// 同じPTY process内のtop-level selection revision。
     pub revision: u64,
 }
 
@@ -413,11 +413,11 @@ impl CodexAppServerProcess {
             .and_then(CodexTuiProxy::selected_thread_id)
     }
 
-    fn selected_thread(&self) -> Option<CodexSelectedThread> {
+    fn selected_thread(&self) -> Option<AgentSelectedConversation> {
         self.tui_proxy
             .as_ref()
             .and_then(CodexTuiProxy::selected_thread)
-            .map(|selected| CodexSelectedThread {
+            .map(|selected| AgentSelectedConversation {
                 session_id: selected.id,
                 confirmed: selected.confirmed,
                 revision: selected.revision,
@@ -470,6 +470,7 @@ impl Drop for CodexAppServerProcess {
 pub struct PtySession {
     /// Reader thread が registry に activity を反映するときに使う。
     session_id: SessionId,
+    hook_launch_id: String,
     registry: Arc<SessionRegistry>,
     writer: Mutex<Option<Box<dyn Write + Send>>>,
     master: Mutex<Option<Box<dyn portable_pty::MasterPty + Send>>>,
@@ -481,6 +482,8 @@ pub struct PtySession {
     spawned_cwd: Mutex<Option<String>>,
     temp_config_paths: Mutex<Vec<std::path::PathBuf>>,
     codex_app_server: Mutex<Option<CodexAppServerProcess>>,
+    /// Hook-based agents (currently Claude Code) が通知した active conversation。
+    hook_selected_conversation: Mutex<Option<AgentSelectedConversation>>,
     /// true のとき reader thread は pty-exit event を emit しない。
     /// session_spawn が旧 session を replace する際に立てる。
     suppress_exit_event: Arc<std::sync::atomic::AtomicBool>,
@@ -490,6 +493,7 @@ impl PtySession {
     pub fn new(session_id: SessionId, registry: Arc<SessionRegistry>) -> Self {
         Self {
             session_id,
+            hook_launch_id: uuid::Uuid::new_v4().to_string(),
             registry,
             writer: Mutex::new(None),
             master: Mutex::new(None),
@@ -499,6 +503,7 @@ impl PtySession {
             spawned_cwd: Mutex::new(None),
             temp_config_paths: Mutex::new(Vec::new()),
             codex_app_server: Mutex::new(None),
+            hook_selected_conversation: Mutex::new(None),
             suppress_exit_event: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         }
     }
@@ -523,6 +528,7 @@ impl PtySession {
     ) -> Result<(), String> {
         // Kill existing PTY if any
         let _ = self.kill();
+        *lock_or_recover(&self.hook_selected_conversation) = None;
         std::thread::sleep(std::time::Duration::from_millis(10));
 
         if let Some(ref dir) = cwd {
@@ -583,13 +589,17 @@ impl PtySession {
 
                 let prompt_reminder =
                     crate::sessions::agent_adapter::build_prompt_reminder_from_config();
+                let hook_server = app.state::<crate::pty::HookServerEndpoint>();
                 let ctx = crate::sessions::agent_adapter::LaunchContext {
+                    host_session_id: &self.session_id,
+                    hook_launch_id: &self.hook_launch_id,
                     cwd: cwd.as_deref().map(std::path::Path::new),
                     system_prompt: system_prompt.as_deref(),
                     prompt_reminder: prompt_reminder.as_deref(),
                     plugin_dir: plugin_dir.as_deref(),
                     mcp_endpoint: mcp_endpoint.as_deref(),
-                    hook_port: crate::pty::HOOK_SERVER_PORT,
+                    hook_port: hook_server.port,
+                    hook_token: hook_server.token(),
                     resume: *resume,
                     resume_session_id: resume_session_id.as_deref(),
                     realtime_endpoint: pending_app_server
@@ -617,12 +627,17 @@ impl PtySession {
                 if *integration {
                     let yorishiro_home = crate::yorishiro_home_path().ok();
                     if let Some(home) = yorishiro_home {
-                        super::shell_wrapper::apply_agent_shim_env(
-                            &mut cmd,
-                            &home,
-                            &self.session_id,
-                            crate::pty::HOOK_SERVER_PORT,
-                        );
+                        let hook_server = app.state::<crate::pty::HookServerEndpoint>();
+                        if hook_server.is_available() {
+                            super::shell_wrapper::apply_agent_shim_env(
+                                &mut cmd,
+                                &home,
+                                &self.session_id,
+                                &self.hook_launch_id,
+                                hook_server.port,
+                                hook_server.token(),
+                            );
+                        }
                         super::shell_wrapper::apply_integration(&mut cmd, &binary, &home);
                     }
                 }
@@ -794,15 +809,54 @@ impl PtySession {
     }
 
     pub fn realtime_selected_thread_id(&self) -> Option<String> {
-        lock_or_recover(&self.codex_app_server)
+        let codex_session_id = lock_or_recover(&self.codex_app_server)
             .as_ref()
-            .and_then(CodexAppServerProcess::selected_thread_id)
+            .and_then(CodexAppServerProcess::selected_thread_id);
+        codex_session_id.or_else(|| {
+            lock_or_recover(&self.hook_selected_conversation)
+                .as_ref()
+                .map(|selection| selection.session_id.clone())
+        })
     }
 
-    pub fn realtime_selected_thread(&self) -> Option<CodexSelectedThread> {
-        lock_or_recover(&self.codex_app_server)
+    pub fn realtime_selected_thread(&self) -> Option<AgentSelectedConversation> {
+        let codex_selection = lock_or_recover(&self.codex_app_server)
             .as_ref()
-            .and_then(CodexAppServerProcess::selected_thread)
+            .and_then(CodexAppServerProcess::selected_thread);
+        codex_selection.or_else(|| lock_or_recover(&self.hook_selected_conversation).clone())
+    }
+
+    pub fn record_hook_selected_conversation(
+        &self,
+        hook_launch_id: &str,
+        provider_session_id: &str,
+    ) {
+        if hook_launch_id != self.hook_launch_id {
+            return;
+        }
+        let provider_session_id = provider_session_id.trim();
+        if provider_session_id.is_empty() {
+            return;
+        }
+        let mut selected = lock_or_recover(&self.hook_selected_conversation);
+        let revision = selected
+            .as_ref()
+            .map(|current| current.revision.saturating_add(1))
+            .unwrap_or(1);
+        *selected = Some(AgentSelectedConversation {
+            session_id: provider_session_id.to_string(),
+            confirmed: true,
+            revision,
+        });
+    }
+
+    pub fn matches_hook_launch(&self, hook_launch_id: &str) -> bool {
+        hook_launch_id == self.hook_launch_id
+    }
+
+    #[cfg(test)]
+    pub(crate) fn hook_launch_id(&self) -> &str {
+        &self.hook_launch_id
     }
 
     pub fn write_data(&self, data: &str) -> Result<(), String> {
@@ -1007,6 +1061,41 @@ mod tests {
         rb.write(b"data");
         rb.clear();
         assert!(rb.read().is_empty());
+    }
+
+    #[test]
+    fn hook_selected_conversation_is_confirmed_and_revisioned() {
+        let session = PtySession::new(
+            "default-session".to_string(),
+            Arc::new(SessionRegistry::new()),
+        );
+        assert_eq!(session.realtime_selected_thread(), None);
+        let launch_id = session.hook_launch_id.clone();
+        assert!(session.matches_hook_launch(&launch_id));
+        assert!(!session.matches_hook_launch("stale-launch"));
+
+        session.record_hook_selected_conversation("stale-launch", "ignored");
+        assert_eq!(session.realtime_selected_thread(), None);
+
+        session.record_hook_selected_conversation(&launch_id, " claude-a ");
+        assert_eq!(
+            session.realtime_selected_thread(),
+            Some(AgentSelectedConversation {
+                session_id: "claude-a".to_string(),
+                confirmed: true,
+                revision: 1,
+            })
+        );
+
+        session.record_hook_selected_conversation(&launch_id, "claude-b");
+        assert_eq!(
+            session.realtime_selected_thread(),
+            Some(AgentSelectedConversation {
+                session_id: "claude-b".to_string(),
+                confirmed: true,
+                revision: 2,
+            })
+        );
     }
 
     #[test]

@@ -127,14 +127,20 @@ fn hook_script(shell_dir: &Path, file_name: &str, endpoint: &str) -> io::Result<
     let path = hooks_dir.join(file_name);
     let script = format!(
         r#"#!/bin/sh
-port="${{YORISHIRO_HOOK_PORT:-19001}}"
+port="${{YORISHIRO_HOOK_PORT:-}}"
+token="${{YORISHIRO_HOOK_TOKEN:-}}"
+launch="${{YORISHIRO_HOOK_LAUNCH_ID:-}}"
 session="${{YORISHIRO_SESSION_ID:-}}"
 agent="${{YORISHIRO_AGENT_KIND:-}}"
+if [ -z "$port" ] || [ -z "$token" ] || [ -z "$launch" ]; then
+  printf '{{}}'
+  exit 0
+fi
 body="$(cat 2>/dev/null || true)"
 if [ -z "$body" ]; then
   body="{{}}"
 fi
-url="http://127.0.0.1:${{port}}{endpoint}?sessionId=${{session}}&agent=${{agent}}"
+url="http://127.0.0.1:${{port}}{endpoint}?sessionId=${{session}}&agent=${{agent}}&token=${{token}}&launch=${{launch}}"
 if command -v curl >/dev/null 2>&1; then
   printf '%s' "$body" | curl -s -m 1 -X POST --data-binary @- "$url" >/dev/null 2>&1 || true
 fi
@@ -462,12 +468,16 @@ pub fn apply_agent_shim_env(
     cmd: &mut portable_pty::CommandBuilder,
     yorishiro_home: &Path,
     session_id: &str,
+    hook_launch_id: &str,
     hook_port: u16,
+    hook_token: &str,
 ) {
     match prepare_agent_command_shims(yorishiro_home, session_id) {
         Ok(shim_dir) => {
             cmd.env("YORISHIRO_SESSION_ID", session_id);
+            cmd.env("YORISHIRO_HOOK_LAUNCH_ID", hook_launch_id);
             cmd.env("YORISHIRO_HOOK_PORT", hook_port.to_string());
+            cmd.env("YORISHIRO_HOOK_TOKEN", hook_token);
             cmd.env("YORISHIRO_AGENT_SHIM_ROOT", &shim_dir);
             cmd.env(
                 "PATH",
@@ -863,6 +873,17 @@ mod tests {
             .as_str()
             .unwrap()
             .contains("hook-stop-failure.sh"));
+
+        let notification_hook = fs::read_to_string(
+            root.join("shell")
+                .join("hooks")
+                .join("hook-notification.sh"),
+        )
+        .unwrap();
+        assert!(notification_hook.contains("YORISHIRO_HOOK_PORT:-}"));
+        assert!(notification_hook.contains("YORISHIRO_HOOK_TOKEN:-}"));
+        assert!(notification_hook.contains("YORISHIRO_HOOK_LAUNCH_ID:-}"));
+        assert!(notification_hook.contains("&token=${token}&launch=${launch}"));
 
         let _ = fs::remove_dir_all(&root);
     }

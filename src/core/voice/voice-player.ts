@@ -13,6 +13,7 @@ import type { MouthValues } from "./mouth-values";
 import { clearMouthValues, copyMouthValues, createMouthValues, ZERO_MOUTH } from "./mouth-values";
 import type { TtsEngine } from "./tts-engine";
 import { isPlayableVoiceUrl, resolveSharedVoiceRef } from "./voice-clip-resolver";
+import { getVoiceVolumeStore } from "./voice-volume-store";
 
 const FADE_OUT_MS = 150;
 
@@ -52,6 +53,7 @@ export class VoicePlayer {
   private analyserNode: AnalyserNode | null = null;
   private silentSinkNode: GainNode | null = null;
   private gainNode: GainNode | null = null;
+  private masterGainNode: GainNode | null = null;
   private graphContext: AudioContext | null = null;
   private lipSync: LipSyncAnalyser | null = null;
   private currentSource: AudioBufferSourceNode | null = null;
@@ -68,10 +70,23 @@ export class VoicePlayer {
   private playbackOwnerId: string | null = null;
   private playbackEnabled = true;
   private playbackGeneration = 0;
+  // Native tts_speak only reports that the OS process was spawned; it has no
+  // natural-completion callback. Keep a conservative active flag: an extra
+  // tts_stop after natural completion is harmless. Unmuting never resumes a
+  // stopped utterance; the new volume applies to the next say() request.
+  private osTtsActive = false;
+  private osTtsGeneration = 0;
+  private readonly unsubscribeVoiceVolume: () => void;
 
   constructor(voice?: string, engine?: TtsEngine) {
     this.voice = voice ?? null;
     this.engine = engine ?? null;
+    this.unsubscribeVoiceVolume = getVoiceVolumeStore().subscribe((volume) => {
+      this.applyMasterVolume(volume);
+      // OS TTS has no gain control. Exact mute still takes effect immediately by
+      // stopping any fallback speech that is currently in progress.
+      if (volume === 0 && this.osTtsActive) void this.stopOsTts();
+    });
   }
 
   /** 口形素コールバックを設定する。rAF ループで毎フレーム呼ばれる。 */
@@ -116,7 +131,7 @@ export class VoicePlayer {
     if (!enabled) {
       this.cancelOperations("playback-disabled");
       this.stopPlayback();
-      void invoke("tts_stop", {});
+      void this.stopOsTts();
     }
     return this.getPlaybackOwnershipState();
   }
@@ -181,7 +196,7 @@ export class VoicePlayer {
       silence: (_fadeMs?: number): void => {
         this.cancelOperations("stopped");
         this.stopPlayback();
-        invoke("tts_stop", {});
+        void this.stopOsTts();
       },
     };
   }
@@ -190,7 +205,9 @@ export class VoicePlayer {
     this.playbackGeneration += 1;
     this.cancelOperations("disposed");
     this.stopPlayback();
+    if (this.osTtsActive) void this.stopOsTts();
     this.disconnectGraph();
+    this.unsubscribeVoiceVolume();
     this.onMouthValues = null;
   }
 
@@ -222,7 +239,7 @@ export class VoicePlayer {
         if (!this.isOperationCurrent(operation)) return;
         this.stopPlayback(playbackId);
         console.error("[voice] Web Audio TTS failed; lip sync cannot run.", error);
-        await invoke("tts_speak", { text, voice: this.voice });
+        await this.speakViaOsTts(text);
       }
     })();
     const completion = this.completeOperation(operation, work);
@@ -235,7 +252,7 @@ export class VoicePlayer {
       stop: () => {
         operation.cancel("stopped");
         this.stopPlayback(playbackId);
-        void invoke("tts_stop", {});
+        void this.stopOsTts();
         return Promise.resolve();
       },
       completion,
@@ -252,10 +269,13 @@ export class VoicePlayer {
     this.silentSinkNode = ctx.createGain();
     this.silentSinkNode.gain.value = 0;
     this.gainNode = ctx.createGain();
+    this.masterGainNode = ctx.createGain();
+    this.masterGainNode.gain.value = getVoiceVolumeStore().get();
 
     this.analyserNode.connect(this.silentSinkNode);
     this.silentSinkNode.connect(ctx.destination);
-    this.gainNode.connect(ctx.destination);
+    this.gainNode.connect(this.masterGainNode);
+    this.masterGainNode.connect(ctx.destination);
     this.lipSync = new LipSyncAnalyser(this.analyserNode);
     this.graphContext = ctx;
   }
@@ -434,9 +454,11 @@ export class VoicePlayer {
     disconnectNode(this.analyserNode);
     disconnectNode(this.silentSinkNode);
     disconnectNode(this.gainNode);
+    disconnectNode(this.masterGainNode);
     this.analyserNode = null;
     this.silentSinkNode = null;
     this.gainNode = null;
+    this.masterGainNode = null;
     this.lipSync = null;
     this.graphContext = null;
   }
@@ -475,12 +497,7 @@ export class VoicePlayer {
 
   private sayViaOsTts(text: string): VoiceHandle {
     const operation = this.createOperation();
-    const work = this.isOperationCurrent(operation)
-      ? invoke("tts_speak", {
-          text,
-          voice: this.voice,
-        }).then(() => {})
-      : Promise.resolve();
+    const work = this.isOperationCurrent(operation) ? this.speakViaOsTts(text) : Promise.resolve();
     const completion = this.completeOperation(operation, work);
 
     return {
@@ -490,10 +507,37 @@ export class VoicePlayer {
       },
       stop: () => {
         operation.cancel("stopped");
-        return invoke("tts_stop", {}).then(() => {});
+        return this.stopOsTts();
       },
       completion,
     };
+  }
+
+  private speakViaOsTts(text: string): Promise<void> {
+    if (getVoiceVolumeStore().get() === 0) return Promise.resolve();
+    const generation = ++this.osTtsGeneration;
+    this.osTtsActive = true;
+    return invoke("tts_speak", { text, voice: this.voice }).then(
+      () => {},
+      (error) => {
+        if (this.osTtsGeneration === generation) this.osTtsActive = false;
+        throw error;
+      },
+    );
+  }
+
+  private stopOsTts(): Promise<void> {
+    this.osTtsGeneration += 1;
+    this.osTtsActive = false;
+    return invoke("tts_stop", {}).then(() => {});
+  }
+
+  private applyMasterVolume(volume: number): void {
+    const gain = this.masterGainNode;
+    const ctx = this.graphContext;
+    if (!gain || !ctx) return;
+    gain.gain.cancelScheduledValues(ctx.currentTime);
+    gain.gain.setValueAtTime(volume, ctx.currentTime);
   }
 
   private createOperation(): VoicePlaybackOperation {

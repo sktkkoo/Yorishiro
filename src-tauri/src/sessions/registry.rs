@@ -14,7 +14,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use super::pty_session::PtySession;
+use super::pty_session::{AgentSelectedConversation, PtySession};
 use super::types::{SessionActivity, SessionDescriptor, SessionEvent, SessionId, SessionLifecycle};
 
 type Listener = Box<dyn Fn(&SessionEvent) + Send + Sync>;
@@ -117,6 +117,40 @@ impl SessionRegistry {
 
     pub fn get_pty_session(&self, id: &str) -> Option<Arc<PtySession>> {
         self.lock().pty_sessions.get(id).cloned()
+    }
+
+    /// hook acceptance と replace snapshot が同じ registry lock 上で全順序になるようにする。
+    /// true を返した signal の SessionStart selection は、後続の detach snapshot に必ず入る。
+    pub fn accept_hook_signal(
+        &self,
+        id: &str,
+        hook_launch_id: &str,
+        provider_session_id: Option<&str>,
+    ) -> bool {
+        let guard = self.lock();
+        let Some(session) = guard.pty_sessions.get(id) else {
+            return false;
+        };
+        if !session.matches_hook_launch(hook_launch_id) {
+            return false;
+        }
+        if let Some(provider_session_id) = provider_session_id {
+            session.record_hook_selected_conversation(hook_launch_id, provider_session_id);
+        }
+        true
+    }
+
+    /// 旧 launch を hook routing から先に外し、その同じ境界で confirmed selection を取る。
+    /// accept_hook_signal と registry lock を共有するため、signal は「snapshotへ含まれる」か
+    /// 「staleとして拒否される」のどちらかになり、両方から脱落しない。
+    pub fn detach_pty_with_selected_conversation(
+        &self,
+        id: &str,
+    ) -> Option<(Arc<PtySession>, Option<AgentSelectedConversation>)> {
+        let mut guard = self.lock();
+        let session = guard.pty_sessions.remove(id)?;
+        let selection = session.realtime_selected_thread();
+        Some((session, selection))
     }
 
     /// App 終了時の teardown。全 PtySession を drain して kill し、以降の
@@ -266,6 +300,39 @@ mod tests {
         let session = Arc::new(PtySession::new("a".to_string(), Arc::clone(&reg)));
         reg.attach_pty("a", session);
         assert!(reg.get_pty_session("a").is_none());
+    }
+
+    #[test]
+    fn concurrent_hook_acceptance_is_either_snapshotted_or_rejected_at_detach() {
+        use std::sync::Barrier;
+
+        for _ in 0..256 {
+            let reg = Arc::new(SessionRegistry::new());
+            reg.add(make_descriptor("a"));
+            let session = Arc::new(PtySession::new("a".to_string(), Arc::clone(&reg)));
+            let launch_id = session.hook_launch_id().to_string();
+            reg.attach_pty("a", session);
+
+            let barrier = Arc::new(Barrier::new(2));
+            let hook_reg = Arc::clone(&reg);
+            let hook_barrier = Arc::clone(&barrier);
+            let hook_launch_id = launch_id.clone();
+            let hook = std::thread::spawn(move || {
+                hook_barrier.wait();
+                hook_reg.accept_hook_signal("a", &hook_launch_id, Some("claude-b"))
+            });
+
+            barrier.wait();
+            let (_, snapshot) = reg
+                .detach_pty_with_selected_conversation("a")
+                .expect("attached session should detach");
+            let accepted = hook.join().expect("hook thread should finish");
+            assert_eq!(
+                snapshot.map(|selection| selection.session_id),
+                accepted.then(|| "claude-b".to_string())
+            );
+            assert!(!reg.accept_hook_signal("a", &launch_id, Some("late-claude-c")));
+        }
     }
 
     #[test]

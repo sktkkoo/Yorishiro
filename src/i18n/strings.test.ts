@@ -117,6 +117,17 @@ describe("changeStrings", () => {
     expect(getStrings("ja").motionLevelOver).toBe("オーバー");
   });
 
+  it("labels the independent voice volume control in both languages", () => {
+    expect(getStrings("en").ambientVolume).toBe("Ambience");
+    expect(getStrings("en").voiceVolume).toBe("Voice");
+    expect(getStrings("en").muteVoice).toBe("Mute voice");
+    expect(getStrings("en").unmuteVoice).toBe("Unmute voice");
+    expect(getStrings("ja").ambientVolume).toBe("環境音");
+    expect(getStrings("ja").voiceVolume).toBe("音声");
+    expect(getStrings("ja").muteVoice).toBe("音声をミュート");
+    expect(getStrings("ja").unmuteVoice).toBe("音声のミュートを解除");
+  });
+
   it("uses explicit settings section labels", () => {
     expect(getStrings("en").labelAgent).toBe("Main Agent");
     expect(getStrings("ja").labelAgent).toBe("Main Agent");

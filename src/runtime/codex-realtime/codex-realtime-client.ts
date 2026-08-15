@@ -10,6 +10,7 @@ import { ensureAudioContextRunning } from "../../core/voice/audio-context";
 import { LipSyncAnalyser } from "../../core/voice/lip-sync-analyser";
 import type { MouthValues } from "../../core/voice/mouth-values";
 import { clearMouthValues, ZERO_MOUTH } from "../../core/voice/mouth-values";
+import { getVoiceVolumeStore } from "../../core/voice/voice-volume-store";
 import {
   RealtimeStateExpressionController,
   type RealtimeStateExpressionControllerOptions,
@@ -162,6 +163,8 @@ export class CodexRealtimeClient implements LipSyncSource {
   private remoteStream: MediaStream | null = null;
   private remoteSource: MediaStreamAudioSourceNode | null = null;
   private analyserNode: AnalyserNode | null = null;
+  private outputGainNode: GainNode | null = null;
+  private unsubscribeVoiceVolume: (() => void) | null = null;
   private lipSync: LipSyncAnalyser | null = null;
   private remoteSpeechSampleInterval: ReturnType<typeof globalThis.setInterval> | null = null;
   private threadId: string | null = null;
@@ -709,10 +712,18 @@ export class CodexRealtimeClient implements LipSyncSource {
         this.currentStage = "playback";
         const analyser = LipSyncAnalyser.createAnalyserNode(context);
         const source = context.createMediaStreamSource(stream);
+        const outputGain = context.createGain();
+        outputGain.gain.value = getVoiceVolumeStore().get();
         source.connect(analyser);
-        analyser.connect(context.destination);
+        analyser.connect(outputGain);
+        outputGain.connect(context.destination);
         this.remoteSource = source;
         this.analyserNode = analyser;
+        this.outputGainNode = outputGain;
+        this.unsubscribeVoiceVolume = getVoiceVolumeStore().subscribe((volume) => {
+          outputGain.gain.cancelScheduledValues(context.currentTime);
+          outputGain.gain.setValueAtTime(volume, context.currentTime);
+        });
         this.lipSync = new LipSyncAnalyser(analyser);
         this.startRemoteSpeechObservation(attempt);
       })
@@ -1045,6 +1056,10 @@ export class CodexRealtimeClient implements LipSyncSource {
     this.remoteSource = null;
     this.analyserNode?.disconnect();
     this.analyserNode = null;
+    this.unsubscribeVoiceVolume?.();
+    this.unsubscribeVoiceVolume = null;
+    this.outputGainNode?.disconnect();
+    this.outputGainNode = null;
     this.lipSync?.reset();
     this.lipSync = null;
     const connectionId = this.connectionId;

@@ -17,6 +17,7 @@ import {
   resolveNewSessionConfirm,
   resolvePersonaSelectValue,
   resolveSceneSelectValue,
+  resolveVoiceMuteToggle,
   resolveVrmCandidates,
   SETTINGS_PACK_ID,
   safeVrmExternalUrl,
@@ -188,6 +189,21 @@ describe("VRM permission presentation", () => {
   });
 });
 
+describe("resolveVoiceMuteToggle", () => {
+  it("mutes to zero and restores the previous non-zero volume", () => {
+    const muted = resolveVoiceMuteToggle(0.42, 1);
+    expect(muted).toEqual({ nextVolume: 0, restoreVolume: 0.42 });
+    expect(resolveVoiceMuteToggle(muted.nextVolume, muted.restoreVolume)).toEqual({
+      nextVolume: 0.42,
+      restoreVolume: 0.42,
+    });
+  });
+
+  it("unmutes to full volume when no previous non-zero value exists", () => {
+    expect(resolveVoiceMuteToggle(0, 0)).toEqual({ nextVolume: 1, restoreVolume: 1 });
+  });
+});
+
 describe("resolveCloseTarget", () => {
   it("returns the saved previous id when valid", () => {
     expect(resolveCloseTarget({ saved: "attention-aura", availableIds: ["attention-aura"] })).toBe(
@@ -262,6 +278,96 @@ describe("applyConfigUpdate", () => {
       field: "activeScene",
       reason: "disk full",
     });
+  });
+
+  it("keeps a newer voice-volume value when an older rapid write fails", async () => {
+    let displayed = 1;
+    let canonical = 1;
+    let seq = 0;
+    let rejectFirst: (error: Error) => void = () => {};
+    let resolveSecond: () => void = () => {};
+    const firstGate = new Promise<void>((_resolve, reject) => {
+      rejectFirst = reject;
+    });
+    const secondGate = new Promise<void>((resolve) => {
+      resolveSecond = resolve;
+    });
+    const readCanonical = vi.fn(async () => canonical);
+    const run = (next: number, write: (value: number) => Promise<void>) => {
+      const request = ++seq;
+      return applyConfigUpdate({
+        next,
+        prev: displayed,
+        setLocal: (value) => {
+          displayed = value;
+        },
+        write,
+        emitEvent: vi.fn(),
+        field: "voiceVolume",
+        shouldRollback: () => request === seq,
+        readRollbackValue: readCanonical,
+      });
+    };
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const older = run(0.2, async () => firstGate);
+      const newer = run(0.8, async (value) => {
+        await secondGate;
+        canonical = value;
+      });
+      expect(displayed).toBe(0.8);
+
+      rejectFirst(new Error("first write failed"));
+      await older;
+      expect(displayed).toBe(0.8);
+      expect(readCanonical).not.toHaveBeenCalled();
+
+      resolveSecond();
+      await newer;
+      expect(canonical).toBe(0.8);
+      expect(displayed).toBe(0.8);
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
+  it("refreshes canonical voice volume when the newest rapid write fails", async () => {
+    let displayed = 1;
+    let seq = 0;
+    const failures: Array<(error: Error) => void> = [];
+    const run = (next: number) => {
+      const request = ++seq;
+      return applyConfigUpdate({
+        next,
+        prev: displayed,
+        setLocal: (value) => {
+          displayed = value;
+        },
+        write: () =>
+          new Promise<void>((_resolve, reject) => {
+            failures.push(reject);
+          }),
+        emitEvent: vi.fn(),
+        field: "voiceVolume",
+        shouldRollback: () => request === seq,
+        readRollbackValue: async () => 1,
+      });
+    };
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const older = run(0.2);
+      const newer = run(0.8);
+
+      failures[0](new Error("first write failed"));
+      await older;
+      expect(displayed).toBe(0.8);
+
+      failures[1](new Error("second write failed"));
+      await newer;
+      expect(displayed).toBe(1);
+    } finally {
+      errorSpy.mockRestore();
+    }
   });
 });
 

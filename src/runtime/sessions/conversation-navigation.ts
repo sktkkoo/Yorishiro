@@ -1,6 +1,15 @@
 export type ConversationNavigationDirection = "back" | "forward";
 export type ConversationTransitionKind = "new" | ConversationNavigationDirection;
 
+export function supportsConversationNavigation(agent: string): boolean {
+  return agent === "claude" || agent === "codex";
+}
+
+/** Claude can emit SessionStart only after cold-start plugin/MCP initialization. */
+export function conversationResumeObservationTimeoutMs(agent: string): number {
+  return agent === "claude" ? 15_000 : 2_000;
+}
+
 export interface ConversationTransitionLease {
   readonly id: number;
   readonly kind: ConversationTransitionKind;
@@ -161,6 +170,19 @@ export const EMPTY_CONVERSATION_NAVIGATION_TRAIL: ConversationNavigationTrail = 
 
 function isNonEmpty(value: string | null): value is string {
   return typeof value === "string" && value.length > 0;
+}
+
+/**
+ * PTY replace境界でbackendが捕捉した会話をrollback source of truthにする。
+ * click-time観測がblank draftのままでも、実際に置換したconfirmed会話を失わない。
+ */
+export function conversationReplacementRollbackEntry(
+  modeledEntry: ActiveConversationEntry | null,
+  replacedConfirmedSessionId: string | null,
+): ActiveConversationEntry | null {
+  return isNonEmpty(replacedConfirmedSessionId)
+    ? { kind: "session", id: replacedConfirmedSessionId }
+    : modeledEntry;
 }
 
 export function conversationEntriesEqual(

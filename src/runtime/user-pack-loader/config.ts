@@ -18,6 +18,7 @@
  * - `language: "auto" | "en" | "ja"`（optional）: UI / persona fallback / command prompt の言語
  * - `terminalAgent: string`（optional）: legacy。`defaultProfile` 未指定時の fallback として使われる
  * - `ambientAudioMuted: boolean`（optional）: scene pack の環境音を mute する
+ * - `voiceVolume: number`（optional）: TTS / voice clip / GPT Live の出力音量
  * - `attentionLightNotifications: boolean`（optional）: 入力/承認待ちの照明通知を有効にする。default true
  * - `motionIntensity: number`（optional）: idle procedural motion の大きさ倍率
  * - `codexRealtimeVoice: string`（optional）: Codex GPT Live の出力 voice。default `sol`
@@ -67,6 +68,8 @@ export interface YorishiroConfig {
   readonly ambientAudioMuted: boolean;
   /** 環境音のマスターボリューム（0.0-1.0）。全 Howl の volume にこの値を乗算する。 */
   readonly ambientAudioVolume: number;
+  /** TTS / voice clip / GPT Live のマスターボリューム（0.0-1.0）。 */
+  readonly voiceVolume: number;
   /** 入力/承認待ち時の red flash lighting notification を有効にする。 */
   readonly attentionLightNotifications: boolean;
   /** idle procedural motion（呼吸・揺れ・頭）の大きさ倍率。0.0-3.0、default 1.0。 */
@@ -122,6 +125,7 @@ export const EMPTY_CONFIG: YorishiroConfig = {
   terminalAgent: "claude",
   ambientAudioMuted: false,
   ambientAudioVolume: 1.0,
+  voiceVolume: 1.0,
   attentionLightNotifications: true,
   motionIntensity: 1.0,
   profiles: [],
@@ -345,6 +349,7 @@ export function parseConfig(text: string): YorishiroConfig {
     terminalAgent: toTerminalAgent(obj.terminalAgent),
     ambientAudioMuted: toBoolean(obj.ambientAudioMuted),
     ambientAudioVolume: toUnitFloat(obj.ambientAudioVolume),
+    voiceVolume: toUnitFloat(obj.voiceVolume),
     attentionLightNotifications: toDefaultTrueBoolean(obj.attentionLightNotifications),
     motionIntensity: toMotionIntensity(obj.motionIntensity),
     profiles: toSessionProfiles(obj.profiles),
@@ -381,6 +386,7 @@ export function serializeConfig(cfg: YorishiroConfig): string {
   if (cfg.terminalAgent !== "claude") out.terminalAgent = cfg.terminalAgent;
   if (cfg.ambientAudioMuted) out.ambientAudioMuted = true;
   if (cfg.ambientAudioVolume !== 1.0) out.ambientAudioVolume = cfg.ambientAudioVolume;
+  if (cfg.voiceVolume !== 1.0) out.voiceVolume = cfg.voiceVolume;
   if (!cfg.attentionLightNotifications) out.attentionLightNotifications = false;
   if (cfg.motionIntensity !== 1.0) out.motionIntensity = cfg.motionIntensity;
   if (cfg.profiles.length > 0) out.profiles = cfg.profiles.map(serializeProfile);

@@ -86,6 +86,7 @@ vi.stubGlobal("fetch", mockFetch);
 
 import type { TtsEngine } from "./tts-engine";
 import { VoicePlayer } from "./voice-player";
+import { getVoiceVolumeStore } from "./voice-volume-store";
 
 const flushPlaybackStart = async (): Promise<void> => {
   await Promise.resolve();
@@ -94,6 +95,10 @@ const flushPlaybackStart = async (): Promise<void> => {
   await Promise.resolve();
   await new Promise((resolve) => setTimeout(resolve, 0));
 };
+
+afterEach(() => {
+  getVoiceVolumeStore().set(1);
+});
 
 // ---------------------------------------------------------------------------
 // engine なし (従来の OS TTS フォールバック)
@@ -145,6 +150,30 @@ describe("VoicePlayer (engine なし — OS TTS フォールバック)", () => {
     expect(typeof handle.stop).toBe("function");
   });
 
+  it("voice volume が 0 のとき OS TTS fallback を開始しない", async () => {
+    getVoiceVolumeStore().set(0);
+    const player = new VoicePlayer();
+
+    const handle = player.createVoiceAPI().say("muted");
+    await handle.completion;
+
+    expect(mockInvoke).not.toHaveBeenCalledWith("tts_speak", expect.anything());
+    player.dispose();
+  });
+
+  it("OS TTS fallback の再生中に mute すると即時停止する", async () => {
+    const player = new VoicePlayer();
+    const handle = player.createVoiceAPI().say("speaking");
+    // Native tts_speak resolves after spawning the OS process, while speech may continue.
+    await handle.completion;
+    mockInvoke.mockClear();
+
+    getVoiceVolumeStore().set(0);
+
+    expect(mockInvoke).toHaveBeenCalledWith("tts_stop", {});
+    player.dispose();
+  });
+
   it("handle.stop() は tts_stop を invoke する", async () => {
     const player = new VoicePlayer();
     const api = player.createVoiceAPI();
@@ -179,7 +208,15 @@ describe("VoicePlayer (engine なし — OS TTS フォールバック)", () => {
     expect(mockAudioContext.createBuffer).not.toHaveBeenCalled();
 
     const outputGain = mockAudioContext.createGain.mock.results[1].value;
+    const masterGain = mockAudioContext.createGain.mock.results[2].value;
     expect(outputGain.gain.setValueAtTime).toHaveBeenCalledWith(0.4, mockAudioContext.currentTime);
+    expect(outputGain.connect).toHaveBeenCalledWith(masterGain);
+    expect(masterGain.connect).toHaveBeenCalledWith(mockAudioContext.destination);
+
+    getVoiceVolumeStore().set(0.25);
+    expect(masterGain.gain.setValueAtTime).toHaveBeenCalledWith(0.25, mockAudioContext.currentTime);
+    mockAudioContext.createBufferSource.mock.results[0].value.onended?.();
+    player.dispose();
   });
 
   it("play() は clip が解決できない場合 startedAt=0 のまま completion で失敗する", async () => {
@@ -563,12 +600,14 @@ describe("VoicePlayer (engine あり — Web Audio)", () => {
     const analyser = mockAudioContext.createAnalyser.mock.results[0].value;
     const silentSink = mockAudioContext.createGain.mock.results[0].value;
     const outputGain = mockAudioContext.createGain.mock.results[1].value;
+    const masterGain = mockAudioContext.createGain.mock.results[2].value;
 
     player.dispose();
 
     expect(analyser.disconnect).toHaveBeenCalled();
     expect(silentSink.disconnect).toHaveBeenCalled();
     expect(outputGain.disconnect).toHaveBeenCalled();
+    expect(masterGain.disconnect).toHaveBeenCalled();
   });
 
   it("PCM WAV は native decodeAudioData を優先する", async () => {
@@ -623,14 +662,36 @@ describe("VoicePlayer (engine あり — Web Audio)", () => {
     const analyser = mockAudioContext.createAnalyser.mock.results[0].value;
     const silentSink = mockAudioContext.createGain.mock.results[0].value;
     const outputGain = mockAudioContext.createGain.mock.results[1].value;
+    const masterGain = mockAudioContext.createGain.mock.results[2].value;
     const source = mockAudioContext.createBufferSource.mock.results[0].value;
 
     expect(silentSink.gain.value).toBe(0);
     expect(analyser.connect).toHaveBeenCalledWith(silentSink);
     expect(silentSink.connect).toHaveBeenCalledWith(mockAudioContext.destination);
-    expect(outputGain.connect).toHaveBeenCalledWith(mockAudioContext.destination);
+    expect(outputGain.connect).toHaveBeenCalledWith(masterGain);
+    expect(masterGain.connect).toHaveBeenCalledWith(mockAudioContext.destination);
     expect(source.connect).toHaveBeenCalledWith(analyser);
     expect(source.connect).toHaveBeenCalledWith(outputGain);
+  });
+
+  it("master voice volume は再生中に即時反映され、analyser 経路を維持する", async () => {
+    getVoiceVolumeStore().set(0.6);
+    const player = new VoicePlayer(undefined, createMockEngine());
+    player.createVoiceAPI().say("hello");
+    await flushPlaybackStart();
+    const analyser = mockAudioContext.createAnalyser.mock.results[0].value;
+    const silentSink = mockAudioContext.createGain.mock.results[0].value;
+    const masterGain = mockAudioContext.createGain.mock.results[2].value;
+    const source = mockAudioContext.createBufferSource.mock.results[0].value;
+
+    expect(masterGain.gain.value).toBe(0.6);
+    getVoiceVolumeStore().set(0);
+
+    expect(masterGain.gain.setValueAtTime).toHaveBeenCalledWith(0, mockAudioContext.currentTime);
+    expect(source.connect).toHaveBeenCalledWith(analyser);
+    expect(analyser.connect).toHaveBeenCalledWith(silentSink);
+    source.onended?.();
+    player.dispose();
   });
 
   it("Web Audio 再生に失敗した場合は OS TTS にフォールバックする", async () => {

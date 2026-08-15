@@ -237,6 +237,30 @@ const YORISHIRO_REPO_URL = "https://github.com/sktkkoo/Yorishiro";
 /** CREDITS.md（正本の全クレジット）。Credits 画面下部の「Full credits」リンク先。 */
 const YORISHIRO_CREDITS_URL = "https://github.com/sktkkoo/Yorishiro/blob/main/CREDITS.md";
 
+export interface VoiceMuteToggleState {
+  readonly nextVolume: number;
+  readonly restoreVolume: number;
+}
+
+/**
+ * Voice Volume は 0 を exact mute として永続化する。mute 前の非ゼロ値を
+ * UI-local に保持し、解除時に戻す。起動時から 0 の場合は 1 を fallback にする。
+ */
+export function resolveVoiceMuteToggle(
+  currentVolume: number,
+  previousNonZeroVolume: number,
+): VoiceMuteToggleState {
+  const current = Number.isFinite(currentVolume) ? Math.max(0, Math.min(1, currentVolume)) : 1;
+  const previous = Number.isFinite(previousNonZeroVolume)
+    ? Math.max(0, Math.min(1, previousNonZeroVolume))
+    : 1;
+  if (current > 0) {
+    return { nextVolume: 0, restoreVolume: current };
+  }
+  const restoreVolume = previous > 0 ? previous : 1;
+  return { nextVolume: restoreVolume, restoreVolume };
+}
+
 const QUICK_ACTION_KEYS: ReadonlyArray<{
   readonly key: FixedTerminalPromptKey;
   readonly stringKey: keyof UiStrings;
@@ -273,6 +297,10 @@ export interface ApplyConfigUpdateArgs<T> {
   readonly write: (value: T) => Promise<void>;
   readonly emitEvent: (name: string, payload?: unknown) => void;
   readonly field: string;
+  /** Rapid optimistic updates may only let the newest request roll UI state back. */
+  readonly shouldRollback?: () => boolean;
+  /** Read the persisted canonical value after a failed write. */
+  readonly readRollbackValue?: () => Promise<T>;
 }
 
 /**
@@ -293,7 +321,17 @@ export async function applyConfigUpdate<T>(args: ApplyConfigUpdateArgs<T>): Prom
     const reason = err instanceof Error ? err.message : String(err);
     console.error(`[yorishiro-settings] ${args.field} write failed:`, reason);
     args.emitEvent("yorishiro-settings:write-failed", { field: args.field, reason });
-    args.setLocal(args.prev);
+    if (args.shouldRollback?.() === false) return;
+    let rollbackValue = args.prev;
+    if (args.readRollbackValue) {
+      try {
+        rollbackValue = await args.readRollbackValue();
+      } catch {
+        // Keep the captured previous value if the canonical refresh also fails.
+      }
+    }
+    if (args.shouldRollback?.() === false) return;
+    args.setLocal(rollbackValue);
   }
 }
 
@@ -3810,6 +3848,10 @@ export function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
   const [ambientMuted, setAmbientMuted] = useState<boolean | null>(null);
   // 環境音ボリューム（0.0-1.0）。config 読み込み前は null。
   const [ambientVolume, setAmbientVolume] = useState<number | null>(null);
+  // Voice Summary / voice clip / GPT Live 共通ボリューム（0.0-1.0）。
+  const [voiceVolume, setVoiceVolume] = useState<number | null>(null);
+  const voiceVolumeBeforeMuteRef = useRef(1);
+  const voiceVolumeChangeSeq = useRef(0);
   // idle motion の大きさ（0.0-3.0）。config 読み込み前は null。
   const [motionIntensity, setMotionIntensity] = useState<number | null>(null);
   // activeAmbientUi（Aura toggle 等の状態管理用）。
@@ -3911,6 +3953,9 @@ export function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
       setAgentPinnedBy(cur.agentPinnedByProfile);
       setAmbientMuted(cur.ambientAudioMuted);
       setAmbientVolume(cur.ambientAudioVolume);
+      const loadedVoiceVolume = cur.voiceVolume ?? 1;
+      setVoiceVolume(loadedVoiceVolume);
+      if (loadedVoiceVolume > 0) voiceVolumeBeforeMuteRef.current = loadedVoiceVolume;
       setMotionIntensity(cur.motionIntensity);
       setActiveAmbientUiLocal(cur.activeAmbientUi);
       setAttentionLightNotifications(cur.attentionLightNotifications);
@@ -4101,6 +4146,35 @@ export function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
       emitEvent: (n, p) => ctx.emitEvent(n, p),
       field: "ambientAudioVolume",
     });
+  };
+
+  const applyVoiceVolumeChange = (next: number) => {
+    if (voiceVolume === null) return;
+    const seq = ++voiceVolumeChangeSeq.current;
+    void applyConfigUpdate({
+      next,
+      prev: voiceVolume,
+      setLocal: (value) => {
+        setVoiceVolume(value);
+        if (value > 0) voiceVolumeBeforeMuteRef.current = value;
+      },
+      write: (v) => ctx.app.setVoiceVolume(v),
+      emitEvent: (n, p) => ctx.emitEvent(n, p),
+      field: "voiceVolume",
+      shouldRollback: () => seq === voiceVolumeChangeSeq.current,
+      readRollbackValue: async () => (await ctx.app.getConfig()).voiceVolume,
+    });
+  };
+
+  const onVoiceVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    applyVoiceVolumeChange(Number.parseFloat(e.target.value));
+  };
+
+  const onVoiceMutedToggle = () => {
+    if (voiceVolume === null) return;
+    const next = resolveVoiceMuteToggle(voiceVolume, voiceVolumeBeforeMuteRef.current);
+    voiceVolumeBeforeMuteRef.current = next.restoreVolume;
+    applyVoiceVolumeChange(next.nextVolume);
   };
 
   const onMotionIntensityChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -4578,9 +4652,9 @@ export function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
         {/* 24px gap */}
         <div style={{ height: "24px" }} />
 
-        {/* グループ 2: Sound（mute icon + volume slider） */}
+        {/* グループ 2: Ambient / Voice volume（mute icon + volume slider） */}
         <div style={gridStyle}>
-          <div style={{ opacity: 0.7 }}>{strings.labelSound}</div>
+          <div style={{ opacity: 0.7 }}>{strings.ambientVolume}</div>
           <div
             style={{
               display: "flex",
@@ -4621,7 +4695,49 @@ export function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
           </div>
         </div>
 
-        {/* Voice Summary（Sound の直下）。再起動の告知は確認ダイアログが担う。 */}
+        <div style={{ ...gridStyle, marginTop: SPACING.md }}>
+          <div style={{ opacity: 0.7 }}>{strings.voiceVolume}</div>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: SPACING.sm,
+              width: "100%",
+              minWidth: "220px",
+              maxWidth: "360px",
+            }}
+          >
+            <AudioMuteToggle
+              muted={(voiceVolume ?? 1) === 0}
+              disabled={voiceVolume === null}
+              onToggle={onVoiceMutedToggle}
+              labels={{ mute: strings.muteVoice, unmute: strings.unmuteVoice }}
+            />
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.01"
+              value={voiceVolume ?? 1}
+              onChange={onVoiceVolumeChange}
+              disabled={voiceVolume === null}
+              aria-label={strings.voiceVolume}
+              style={{
+                flex: 1,
+                height: "4px",
+                appearance: "none",
+                WebkitAppearance: "none",
+                background: COLORS.borderSubtle,
+                borderRadius: "2px",
+                outline: "none",
+                cursor: voiceVolume === null ? "default" : "pointer",
+                accentColor: COLORS.accent,
+              }}
+            />
+          </div>
+        </div>
+
+        {/* Voice Summary。再起動の告知は確認ダイアログが担う。 */}
         <div style={{ ...gridStyle, marginTop: SPACING.md }}>
           <div style={{ opacity: 0.7 }}>{strings.voiceFrequency}</div>
           <div>
