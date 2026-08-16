@@ -207,7 +207,7 @@ Three characteristics define this mechanism.
 
 ## Status
 
-**v0.7.2**
+**v0.7.3**
 
 Under active development. APIs, data shapes, and pack specs will change.
 
@@ -215,14 +215,15 @@ What works today:
 
 - Launches Claude Code or Codex as the terminal — you work right there
 - Codex resumes the latest thread when available and safely forks its history when another client is actively using it
-- Main Agent conversations: start fresh or move Back / Forward through recent conversations without closing shell tabs
+- Main Agent conversations: start fresh or move Back / Forward through recent conversations without closing shell tabs (Claude Code and Codex)
 - Session tabs: multiple shell sessions in the title bar, with per-tab status badges — running / awaiting input / failed / unread (`Cmd+T` / `Ctrl+Tab`)
 - Working folder switching from the sidebar — the app reopens in the chosen folder behind a fade
 - Yori, a VRM 3D character that breathes, blinks, shifts gaze, and idles with lifelike beats (bundled)
-- Custom VRM: swap in your own VRM model from Settings, or let a persona pack ship its own `avatar.vrm`
+- Custom VRM: import and switch avatars from a Settings chooser with thumbnails, metadata, and usage permissions, or let a persona pack ship its own `avatar.vrm`
 - Motion size: scale Yori's idle motion intensity from Settings or via MCP
 - VRMA animation clip playback
 - Lip sync: voice playback with real-time mouth animation via Web Audio analysis
+- Audio mixer: independent Ambient Sound and Voice volume with mute, applied live to Voice Summary and GPT Live
 - GPT Live voice conversations with Codex 0.145.0+, sharing the current thread with the visible TUI and supporting global or per-persona voice selection
 - Agent State Expression: grounded conversational cues from GPT Live drive coordinated facial expression and body motion without overriding reflexes
 - Microexpressions: subtle idle facial movements across brow, eye, and mouth regions

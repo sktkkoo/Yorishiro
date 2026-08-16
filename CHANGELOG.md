@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.7.3 - 2026-08-16
+
+- Added Claude Code conversation history navigation: Main Agent New / Back / Forward now works with Claude Code, resuming exact conversations from the observed session ID and restoring the previous conversation when navigation fails. Claude hooks are isolated per app instance and PTY launch with a dynamic loopback port and scoped tokens.
+- Isolated runtime MCP endpoints per Yorishiro instance so production and development builds can run side by side; the owned endpoint is injected into Claude Code, Codex, and OpenCode, and reported in MCP status and Health.
+- Redesigned the VRM import and selection experience as a bounded modal chooser with embedded thumbnails, creator and VRM spec-version rows, grouped expression permissions, safe HTTPS license links, and a progressive catalog. Import and selection only open a candidate; the explicit switch action changes the active avatar. Managed entries can be removed from the list without deleting the original source VRM, repeated imports are idempotent, and the bundled Yori thumbnail is extracted at build time.
+- Added a shared Voice Volume setting with mute, applied live to Voice Summary, voice playback, and GPT Live audio; the audio mixer is presented as `Ambient Sound / Voice` (`環境音 / 音声`).
+- Added a regression test that keeps `index.html` free of inline styles so the CSP black-screen failure cannot be reintroduced.
+
 ## 0.7.2 - 2026-08-15
 
 - Added one-click Main Agent conversation controls: start fresh or move Back and Forward through recent conversations without closing shell tabs or resetting the workspace. Conversation replacement is serialized, GPT Live reconnects when needed, and a failed navigation restores the exact outgoing Codex session.

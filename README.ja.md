@@ -208,7 +208,7 @@ packやinit.jsが変わるたびに、チェックポイントが自動で作ら
 
 ## Status
 
-**v0.7.2**
+**v0.7.3**
 
 実装フェーズの途中です。API・データ形状・pack仕様は今後変わります。
 
@@ -216,14 +216,15 @@ packやinit.jsが変わるたびに、チェックポイントが自動で作ら
 
 - Claude CodeまたはCodexをターミナルとして起動し、そのまま作業できる
 - Codexは可能なら最新threadをresumeし、別clientが使用中なら履歴を安全にforkして起動する
-- Main Agentの会話: shell tabを閉じずに新しい会話を始め、最近の会話を戻る/進むで移動できる
+- Main Agentの会話: shell tabを閉じずに新しい会話を始め、最近の会話を戻る/進むで移動できる（Claude Code / Codex）
 - Session tabs: title bar上で複数のshellセッションを操作し、tabごとの状態badge（実行中/入力待ち/失敗/未読）を表示（`Cmd+T` / `Ctrl+Tab`）
 - サイドバーからの作業フォルダ切替——暗転を挟んでそのフォルダで開き直す
 - VRMの3DキャラクターYoriが呼吸し、瞬きし、視線を動かし、生きたビートでアイドルする（同梱）
-- カスタムVRM: 設定画面から自分のVRMモデルに差し替えられる。persona packに`avatar.vrm`を同梱しておけば、persona切替でその姿になる
+- カスタムVRM: 設定画面のchooserからサムネイル・メタデータ・使用許諾を確認してVRMを取り込み・切替できる。persona packに`avatar.vrm`を同梱しておけば、persona切替でその姿になる
 - モーションサイズ: Yoriのアイドルモーションの強度をSettingsから、またはMCP経由で調整
 - VRMAアニメーションクリップの再生
 - リップシンク: Web Audio解析によるリアルタイムの口の動きと音声再生
+- 音声ミキサー: 環境音と音声の音量を個別に調整・ミュートでき、Voice SummaryとGPT Liveに即時反映
 - Codex 0.145.0以降でのGPT Live音声会話——表示中のTUIと同じthreadを共有し、voiceを全体またはpersonaごとに選択可能
 - Agent State Expression: GPT Liveの会話に基づくcueから、反射を上書きせずに表情と身体動作を連携
 - マイクロエクスプレッション: 眉・目・口の微細なアイドル表情変化
