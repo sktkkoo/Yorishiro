@@ -28,6 +28,8 @@ const activeEntry: VrmAvatarEntry = {
   invalidReason: null,
   meta: {
     specVersion: "1.0",
+    specVersionDeclared: true,
+    exporterVersion: null,
     name: "Active",
     version: "1",
     authors: ["Active Author"],
@@ -63,6 +65,24 @@ const importedEntry: VrmAvatarEntry = {
             ...activeEntry.meta.license,
             urls: ["https://example.test/permission"],
           },
+        },
+};
+
+const legacyEntry: VrmAvatarEntry = {
+  ...activeEntry,
+  id: "legacy.vrm",
+  fileName: "legacy.vrm",
+  path: "/app/avatars/legacy.vrm",
+  meta:
+    activeEntry.meta === null
+      ? null
+      : {
+          ...activeEntry.meta,
+          specVersion: "0.x",
+          specVersionDeclared: false,
+          exporterVersion: "UniVRM-0.89.0",
+          name: "Legacy",
+          version: "0.9",
         },
 };
 
@@ -122,6 +142,24 @@ beforeEach(() => {
 });
 
 describe("VRM import settings handler", () => {
+  it("shows a truthful VRM0 fallback and preserves exporter/model versions", async () => {
+    localStorage.setItem("yorishiro:vrm", activeEntry.path);
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "list_vrm_avatars") return [activeEntry, legacyEntry];
+      throw new Error(`unexpected command: ${command}`);
+    });
+
+    render(<Panel ctx={settingsContext(vi.fn())} />);
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith("list_vrm_avatars"));
+    fireEvent.click(screen.getByRole("button", { name: "Change…" }));
+    fireEvent.click(await screen.findByRole("option", { name: /legacy\.vrm/ }));
+
+    expect(screen.getAllByText("0.x (exact spec version not declared)").length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByText("More details"));
+    expect(screen.getByText("UniVRM-0.89.0")).toBeTruthy();
+    expect(screen.getByText("0.9")).toBeTruthy();
+  });
+
   it("inspects import without applying, then applies explicitly and cancels back to active", async () => {
     localStorage.setItem("yorishiro:vrm", activeEntry.path);
     const setVrm = vi.fn();
