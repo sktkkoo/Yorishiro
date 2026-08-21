@@ -17,7 +17,7 @@
 - **TOCTOU-safe copy**：検証で開いた file handle を rewind して `std::io::copy` でコピーする。`std::fs::copy(path, ...)` のように path を再オープンしない
 - **非上書き・atomic finalize**：同一 directory の `.tmp-<pid>-<nonce>.vrm` へ copy / `sync_all` した後、no-clobber rename で publish する。同名との競合時は検証済み temporary copy と既存 file を size + 固定長 buffer で完全比較し、同一なら既存 path を返す。内容が異なる場合だけ `name (2).vrm`、`name (3).vrm` と再試行し、失敗時は temporary を cleanup する
 
-`list_vrm_avatars` は `$APPDATA/avatars/` 直下の `.vrm` だけを決定的な basename 順で返す。VRM本体や画像を展開せず、bounded JSON chunk の metadata と thumbnail 参照だけを読む。extension に `specVersion` があればその実値を返し、欠落時だけ系列名へ fallback する。symlink、非 regular file、破損 file は追跡・除外せず理由付き invalid row とし、temporary file と他拡張子は列挙しない。metadata の欠落は `NotSpecified`、未知 enum は `Unknown` として、許可扱いしない。raw enum も残し、アプリは法的判断を代行しない。UI は検索対象 metadata を保持しつつ最初の20件だけ描画し、scroll末尾付近で20件ずつ追加する。
+`list_vrm_avatars` は `$APPDATA/avatars/` 直下の `.vrm` だけを決定的な basename 順で返す。VRM本体や画像を展開せず、bounded JSON chunk の metadata と thumbnail 参照だけを読む。VRM1 の `VRMC_vrm.specVersion`、またはファイルに存在する `specVersion` の実値は保持し、欠落時は系列名へ fallback したうえで「正確な仕様バージョンの記載なし」と表示する（標準 VRM0 に仕様 version フィールドはない）。VRM0 の標準 `exporterVersion` と model `meta.version` は、glTF `asset.version` とは別の値として保持・表示する。symlink、非 regular file、破損 file は追跡・除外せず理由付き invalid row とし、temporary file と他拡張子は列挙しない。metadata の欠落は `NotSpecified`、未知 enum は `Unknown` として、許可扱いしない。raw enum も残し、アプリは法的判断を代行しない。UI は検索対象 metadata を保持しつつ最初の20件だけ描画し、scroll末尾付近で20件ずつ追加する。
 
 `read_vrm_thumbnail` は catalog の basename ID だけを受ける。`$APPDATA/avatars` 直下の regular file に再制限し、外部/data URI と symlink を拒否する。埋め込み BIN の PNG/JPEG だけを最大 8 MiB・最大辺 2048px・宣言範囲内で読み、magic と画像 header を確認して raw bytes を返す。catalog response には画像 bytes を含めず、chooser が可視候補と選択中候補だけを最大3件ずつ遅延取得し、ready cache は48件か64 MiBの小さい方に制限する。
 

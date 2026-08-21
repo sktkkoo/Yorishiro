@@ -59,8 +59,10 @@ export interface UiStrings {
   readonly vrmRetry: string;
   readonly vrmDetails: string;
   readonly vrmSpec: string;
+  readonly vrmSpecVersionNotDeclared: string;
   readonly vrmName: string;
   readonly vrmVersion: string;
+  readonly vrmExporterVersion: string;
   readonly vrmAuthors: string;
   readonly vrmContact: string;
   readonly vrmReferences: string;
@@ -285,8 +287,10 @@ const EN: UiStrings = {
   vrmRetry: "Retry",
   vrmDetails: "Avatar details",
   vrmSpec: "VRM spec",
+  vrmSpecVersionNotDeclared: "{version} (exact spec version not declared)",
   vrmName: "Name",
-  vrmVersion: "Version",
+  vrmVersion: "Model version",
+  vrmExporterVersion: "Exporter version",
   vrmAuthors: "Authors",
   vrmContact: "Contact",
   vrmReferences: "References",
@@ -506,8 +510,10 @@ const JA: UiStrings = {
   vrmRetry: "再試行",
   vrmDetails: "アバターの詳細",
   vrmSpec: "VRM 仕様",
+  vrmSpecVersionNotDeclared: "{version}（正確な仕様バージョンの記載なし）",
   vrmName: "名前",
-  vrmVersion: "バージョン",
+  vrmVersion: "モデルバージョン",
+  vrmExporterVersion: "エクスポーターバージョン",
   vrmAuthors: "制作者",
   vrmContact: "連絡先",
   vrmReferences: "参照情報",

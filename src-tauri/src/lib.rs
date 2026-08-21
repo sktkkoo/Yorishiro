@@ -2299,6 +2299,8 @@ enum VrmMetaNormalized {
 #[serde(rename_all = "camelCase")]
 struct VrmAvatarMeta {
     spec_version: String,
+    spec_version_declared: bool,
+    exporter_version: Option<String>,
     name: Option<String>,
     version: Option<String>,
     authors: Vec<String>,
@@ -2421,8 +2423,11 @@ fn missing_meta_value() -> VrmMetaValue {
     }
 }
 
-fn declared_vrm_spec_version(extension: &serde_json::Value, fallback: &str) -> String {
-    limited_meta_text(extension.get("specVersion")).unwrap_or_else(|| fallback.to_string())
+fn declared_vrm_spec_version(extension: &serde_json::Value, fallback: &str) -> (String, bool) {
+    match limited_meta_text(extension.get("specVersion")) {
+        Some(version) => (version, true),
+        None => (fallback.to_string(), false),
+    }
 }
 
 fn parse_vrm0_meta(extension: &serde_json::Value, meta: &serde_json::Value) -> VrmAvatarMeta {
@@ -2453,8 +2458,11 @@ fn parse_vrm0_meta(extension: &serde_json::Value, meta: &serde_json::Value) -> V
         }
     }
 
+    let (spec_version, spec_version_declared) = declared_vrm_spec_version(extension, "0.x");
     VrmAvatarMeta {
-        spec_version: declared_vrm_spec_version(extension, "0.x"),
+        spec_version,
+        spec_version_declared,
+        exporter_version: limited_meta_text(extension.get("exporterVersion")),
         name: limited_meta_text(meta.get("title")),
         version: limited_meta_text(meta.get("version")),
         authors: limited_meta_text(meta.get("author")).into_iter().collect(),
@@ -2489,8 +2497,11 @@ fn parse_vrm1_meta(extension: &serde_json::Value, meta: &serde_json::Value) -> V
         }
     }
 
+    let (spec_version, spec_version_declared) = declared_vrm_spec_version(extension, "1.x");
     VrmAvatarMeta {
-        spec_version: declared_vrm_spec_version(extension, "1.x"),
+        spec_version,
+        spec_version_declared,
+        exporter_version: None,
         name: limited_meta_text(meta.get("name")),
         version: limited_meta_text(meta.get("version")),
         authors: limited_meta_list(meta.get("authors")),
@@ -3216,6 +3227,7 @@ mod import_vrm_tests {
     fn vrm1_glb(name: &str) -> Vec<u8> {
         glb_bytes(
             &serde_json::json!({
+                "asset": { "version": "2.0", "generator": "Example VRM exporter" },
                 "extensions": { "VRMC_vrm": { "specVersion": "1.1", "meta": {
                     "name": name,
                     "version": "1.2",
@@ -3384,7 +3396,7 @@ mod import_vrm_tests {
     #[test]
     fn parses_vrm0_metadata_and_preserves_raw_permissions() {
         let bytes = glb_bytes(
-            &serde_json::json!({"extensions":{"VRM":{"specVersion":"0.7","meta":{
+            &serde_json::json!({"asset":{"version":"2.0","generator":"UniVRM-0.89.0"},"extensions":{"VRM":{"specVersion":"0.7","exporterVersion":"UniVRM-0.89.0","meta":{
                 "title":"Old Avatar","version":"0.9","author":"Creator",
                 "contactInformation":"contact","reference":"https://example.test",
                 "allowedUserName":"ExplicitlyLicensedPerson","violentUssageName":"Disallow",
@@ -3399,7 +3411,15 @@ mod import_vrm_tests {
         let mut file = fs::File::open(&path).expect("open");
         let meta = read_vrm_meta(&mut file, bytes.len() as u64).expect("parse");
         assert_eq!(meta.spec_version, "0.7");
+        assert!(meta.spec_version_declared);
+        assert_eq!(meta.exporter_version.as_deref(), Some("UniVRM-0.89.0"));
         assert_eq!(meta.name.as_deref(), Some("Old Avatar"));
+        assert_eq!(meta.version.as_deref(), Some("0.9"));
+        let serialized = serde_json::to_value(&meta).expect("serialize metadata");
+        assert_eq!(serialized["specVersion"], "0.7");
+        assert_eq!(serialized["specVersionDeclared"], true);
+        assert_eq!(serialized["exporterVersion"], "UniVRM-0.89.0");
+        assert!(serialized.get("assetVersion").is_none());
         assert_eq!(meta.authors, ["Creator"]);
         assert_eq!(meta.commercial_usage.raw.as_deref(), Some("Disallow"));
         assert_eq!(meta.license.name.as_deref(), Some("CC_BY_NC"));
@@ -3420,6 +3440,9 @@ mod import_vrm_tests {
         let mut file = fs::File::open(&path).expect("open");
         let meta = read_vrm_meta(&mut file, bytes.len() as u64).expect("parse");
         assert_eq!(meta.spec_version, "1.1");
+        assert!(meta.spec_version_declared);
+        assert_eq!(meta.exporter_version, None);
+        assert_eq!(meta.version.as_deref(), Some("1.2"));
         assert_eq!(meta.authors, ["Alice", "Bob"]);
         assert_eq!(meta.commercial_usage.raw.as_deref(), Some("personalProfit"));
         assert_eq!(
@@ -3484,6 +3507,8 @@ mod import_vrm_tests {
         let mut file = fs::File::open(&path).expect("open");
         let document = read_vrm_document(&mut file, bytes.len() as u64).expect("parse");
         assert_eq!(document.meta.spec_version, "0.x");
+        assert!(!document.meta.spec_version_declared);
+        assert_eq!(document.meta.exporter_version, None);
         assert_eq!(document.thumbnail.expect("thumbnail").public.image_index, 0);
         let _ = fs::remove_dir_all(dir);
     }

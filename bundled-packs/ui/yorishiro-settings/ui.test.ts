@@ -12,6 +12,7 @@ import {
   filterPersonaOptionsForLanguage,
   filterVrmCandidates,
   formatVrmMetaValue,
+  formatVrmSpecVersion,
   type NewSessionChangeKind,
   packWorkbenchKey,
   resolveCloseTarget,
@@ -40,6 +41,8 @@ const validVrmEntry = {
   invalidReason: null,
   meta: {
     specVersion: "1.0",
+    specVersionDeclared: true,
+    exporterVersion: null,
     name: "Avatar",
     version: null,
     authors: ["Creator"],
@@ -152,6 +155,15 @@ describe("VRM chooser discovery", () => {
 });
 
 describe("VRM permission presentation", () => {
+  it("keeps declared spec versions exact and labels VRM0 fallbacks honestly", () => {
+    const en = getStrings("en");
+    expect(formatVrmSpecVersion({ specVersion: "0.7", specVersionDeclared: true }, en)).toBe("0.7");
+    expect(formatVrmSpecVersion({ specVersion: "1.1", specVersionDeclared: true }, en)).toBe("1.1");
+    expect(formatVrmSpecVersion({ specVersion: "0.x", specVersionDeclared: false }, en)).toBe(
+      "0.x (exact spec version not declared)",
+    );
+  });
+
   it("only turns credential-free HTTPS metadata into external links", () => {
     expect(safeVrmExternalUrl("https://example.test/license")).toBe("https://example.test/license");
     expect(safeVrmExternalUrl("http://example.test/license")).toBeNull();

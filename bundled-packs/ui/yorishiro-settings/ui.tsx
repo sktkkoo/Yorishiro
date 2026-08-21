@@ -87,6 +87,8 @@ export interface VrmLicenseInfo {
 
 export interface VrmAvatarMeta {
   readonly specVersion: string;
+  readonly specVersionDeclared: boolean;
+  readonly exporterVersion: string | null;
   readonly name: string | null;
   readonly version: string | null;
   readonly authors: readonly string[];
@@ -2391,6 +2393,14 @@ export function formatVrmMetaValue(value: VrmMetaValue, strings: UiStrings): str
   return localized;
 }
 
+export function formatVrmSpecVersion(
+  meta: Pick<VrmAvatarMeta, "specVersion" | "specVersionDeclared">,
+  strings: UiStrings,
+): string {
+  if (meta.specVersionDeclared) return meta.specVersion;
+  return strings.vrmSpecVersionNotDeclared.replace("{version}", meta.specVersion);
+}
+
 function VrmDetailRow({
   label,
   value,
@@ -2998,12 +3008,15 @@ function VrmCandidateDetail({
             marginTop: SPACING.sm,
           }}
         >
-          <VrmDetailRow label={strings.vrmSpec} value={meta.specVersion} />
+          <VrmDetailRow label={strings.vrmSpec} value={formatVrmSpecVersion(meta, strings)} />
           <VrmDetailRow label={strings.vrmName} value={meta.name ?? strings.vrmNotSpecified} />
           <VrmDetailRow
             label={strings.vrmVersion}
             value={meta.version ?? strings.vrmNotSpecified}
           />
+          {meta.exporterVersion ? (
+            <VrmDetailRow label={strings.vrmExporterVersion} value={meta.exporterVersion} />
+          ) : null}
           <VrmDetailRow
             label={strings.vrmAuthors}
             value={meta.authors.join(", ") || strings.vrmNotSpecified}
@@ -3662,7 +3675,9 @@ function VrmChooserDialog({
                     }}
                   >
                     <span style={{ color: COLORS.fgDimmer, fontSize: FONT.sizeXs }}>VRM</span>
-                    <span style={{ color: COLORS.fg }}>{selected.meta.specVersion}</span>
+                    <span style={{ color: COLORS.fg }}>
+                      {formatVrmSpecVersion(selected.meta, strings)}
+                    </span>
                   </div>
                 ) : null}
                 {selected?.kind === "yori" ? (
