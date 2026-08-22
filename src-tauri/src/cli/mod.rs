@@ -1,9 +1,14 @@
+#[cfg(any(target_os = "macos", test))]
 use serde::Deserialize;
 use std::ffi::OsString;
+#[cfg(any(target_os = "macos", test))]
 use std::fs;
+#[cfg(any(target_os = "macos", test))]
 use std::io;
+#[cfg(any(target_os = "macos", test))]
 use std::path::{Path, PathBuf};
 
+#[cfg(any(target_os = "macos", test))]
 use yorishiro_lib::attach::protocol::{
     decode_frame, encode_frame, Frame, ListedSession, FRAME_HEADER_LENGTH, MAX_PAYLOAD_LENGTH,
 };
@@ -102,12 +107,14 @@ fn run(_command: Command) -> Result<i32, String> {
     Err("external terminal attach is currently supported only on macOS".into())
 }
 
+#[cfg(any(target_os = "macos", test))]
 #[derive(Debug, Deserialize)]
 struct InstanceRegistry {
     version: u32,
     instances: Vec<InstanceRecord>,
 }
 
+#[cfg(any(target_os = "macos", test))]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 struct InstanceRecord {
@@ -115,6 +122,7 @@ struct InstanceRecord {
     socket_path: PathBuf,
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn read_registry(home: &Path) -> Result<Vec<InstanceRecord>, String> {
     let path = home.join("run/instances.json");
     let contents = fs::read_to_string(&path).map_err(|error| {
@@ -135,6 +143,7 @@ fn read_registry(home: &Path) -> Result<Vec<InstanceRecord>, String> {
     Ok(registry.instances)
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn live_instances(
     instances: Vec<InstanceRecord>,
     mut pid_alive: impl FnMut(u32) -> bool,
@@ -146,20 +155,24 @@ fn live_instances(
         .collect()
 }
 
+#[cfg(target_os = "macos")]
 fn resolve_home() -> Result<PathBuf, String> {
     dirs::home_dir()
         .map(|home| home.join(".yorishiro"))
         .ok_or_else(|| "home directory not found".into())
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn not_running() -> String {
     "Yorishiro is not running".into()
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn is_self_attach(source_session_id: Option<&std::ffi::OsStr>, target_session_id: &str) -> bool {
     source_session_id.is_some_and(|value| !value.is_empty() && value == target_session_id)
 }
 
+#[cfg(target_os = "macos")]
 fn print_sessions(sessions: &[ListedSession]) {
     if sessions.is_empty() {
         println!("No terminal sessions.");
@@ -178,6 +191,7 @@ fn print_sessions(sessions: &[ListedSession]) {
     }
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn select_session(sessions: &[ListedSession], requested: Option<&str>) -> Result<String, String> {
     let live: Vec<&ListedSession> = sessions.iter().filter(|session| session.alive).collect();
     if let Some(requested) = requested {
@@ -227,6 +241,7 @@ impl<R: std::io::Read> FrameStream<R> {
     }
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn take_buffered_frame(buffered: &mut Vec<u8>) -> Result<Option<Frame>, String> {
     if buffered.len() < FRAME_HEADER_LENGTH {
         return Ok(None);
@@ -248,17 +263,20 @@ fn take_buffered_frame(buffered: &mut Vec<u8>) -> Result<Option<Frame>, String> 
     Ok(Some(frame))
 }
 
+#[cfg(any(target_os = "macos", test))]
 struct DetachFilter {
     pending_prefix: bool,
     agent_session: bool,
 }
 
+#[cfg(any(target_os = "macos", test))]
 struct FilteredInput {
     data: Vec<u8>,
     detach: bool,
     quit_requested: bool,
 }
 
+#[cfg(any(target_os = "macos", test))]
 impl DetachFilter {
     fn new(agent_session: bool) -> Self {
         Self {
@@ -326,6 +344,7 @@ impl DetachFilter {
     }
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn encode(frame: Frame) -> Result<Vec<u8>, String> {
     encode_frame(&frame).map_err(|error| format!("could not encode attach frame: {error}"))
 }
