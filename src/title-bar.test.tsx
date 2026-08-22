@@ -33,6 +33,12 @@ describe("TitleBar", () => {
     expect(onToggleSidebar).toHaveBeenCalledTimes(1);
   });
 
+  it("does not render the sidebar toggle when it is hidden", () => {
+    renderTitleBar({ showSidebarToggle: false });
+
+    expect(screen.queryByRole("button", { name: "Sidebar" })).toBeNull();
+  });
+
   it("calls onOpenSettings when the settings button is clicked", () => {
     const onOpenSettings = vi.fn();
     renderTitleBar({ onOpenSettings });

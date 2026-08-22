@@ -3,6 +3,7 @@ import * as ReactThreeFiber from "@react-three/fiber";
 import * as ReactThreePostprocessing from "@react-three/postprocessing";
 import { getVersion } from "@tauri-apps/api/app";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import type {
   AmbientAudioAPI,
@@ -54,6 +55,8 @@ import {
   attentionAuraManifest,
   cameraMoveManifest,
   cameraMovePack,
+  companionManifest,
+  companionPack,
   desaturateManifest,
   desaturatePack,
   fireworksManifest,
@@ -165,6 +168,7 @@ import {
   resolveVoiceEntryAction,
 } from "./runtime/codex-realtime/voice-entry";
 import { EventBus, type EventBusLogger } from "./runtime/event-bus";
+import { createExternalAttachController } from "./runtime/external-attach";
 import { collectHealthReport } from "./runtime/health-check";
 import { buildRestoreRows } from "./runtime/history/describe-snapshot";
 import { createHistoryApi } from "./runtime/history/history-api";
@@ -361,7 +365,7 @@ import * as YorishiroR3f from "./sdk/r3f";
 import type { ScenePackDefinition, ScenePackManifest } from "./sdk/scene-pack";
 import Sidebar from "./sidebar";
 import TitleBar from "./title-bar";
-import { useSettingsActive, useSidebarOpen } from "./title-bar-state";
+import { useActiveUiId, useSettingsActive, useSidebarOpen } from "./title-bar-state";
 import {
   layoutNeedsHostPresenceResume,
   shouldResumeHostPresenceForUiActivation,
@@ -1014,6 +1018,7 @@ function App() {
   const exitFullscreenToClosedRef = useRef(false);
   const strings = useMemo(() => getStrings(appLanguage.resolved), [appLanguage.resolved]);
   const sidebarOpen = useSidebarOpen();
+  const activeUiId = useActiveUiId();
   const settingsActive = useSettingsActive(SETTINGS_PACK_ID);
   // Historical debug switch. Practical tab metadata badges are allowlisted and always shown.
   const [, setTabMetadataBadgesEnabled] = useState(false);
@@ -1411,6 +1416,21 @@ function App() {
     appLog.write({
       phase: "register",
       note: `registered bundled UI pack '${theaterPack.id}'`,
+    });
+
+    // bundled companion UI pack（細い常時手前 window + terminal 非表示）。
+    uiPackRegistry.register({
+      id: companionPack.id,
+      origin: "bundled",
+      manifest: companionManifest as UiPackManifest,
+      pack: {
+        layout: companionPack.layout,
+        mount: companionPack.mount,
+      },
+    });
+    appLog.write({
+      phase: "register",
+      note: `registered bundled UI pack '${companionPack.id}'`,
     });
 
     // ── PersonaReflexDispatcher を構築 ───────────────────────────────────────
@@ -2673,6 +2693,18 @@ function App() {
     [applyTerminalPresentationForSession],
   );
 
+  const refitPresentedTerminals = useCallback(() => {
+    const layout = activeUiLayoutRef.current;
+    for (const sessionId of queryMountedSessionIds()) {
+      const presentation = resolveTerminalPresentation(
+        layout,
+        visibleTerminalSessionIdSetRef.current.has(sessionId),
+        tabManager.getState().activeSessionId === sessionId,
+      );
+      if (!presentation.hidden) getTerminalRuntime(sessionId).refit();
+    }
+  }, [tabManager]);
+
   useEffect(() => {
     return tabManager.subscribe(setTabState);
   }, [tabManager]);
@@ -3077,6 +3109,54 @@ function App() {
     let currentContainer: HTMLDivElement | null = null;
     let currentAbort: AbortController | null = null;
     let currentLayout: UiLayout | null = null;
+    let nativeWindowUpdate = Promise.resolve();
+    let savedWindowSize: LogicalSize | null = null;
+    const applyNativeWindowLayout = (layout: UiLayout | null): void => {
+      const width = layout?.window?.width;
+      const height = layout?.window?.height;
+      const minWidth = layout?.window?.minWidth ?? 900;
+      const minHeight = layout?.window?.minHeight ?? 600;
+      const alwaysOnTop = layout?.window?.alwaysOnTop ?? false;
+
+      // active UI が短時間に連続で変わっても古い async call が後から勝たないよう直列化する。
+      nativeWindowUpdate = nativeWindowUpdate
+        .then(async () => {
+          const appWindow = getCurrentWindow();
+          const requestsSize = width !== undefined || height !== undefined;
+          if (requestsSize && savedWindowSize === null) {
+            const [innerSize, scaleFactor] = await Promise.all([
+              appWindow.innerSize(),
+              appWindow.scaleFactor(),
+            ]);
+            savedWindowSize = innerSize.toLogical(scaleFactor);
+          }
+
+          await appWindow.setMinSize(new LogicalSize(minWidth, minHeight));
+          if (requestsSize) {
+            const [innerSize, scaleFactor] = await Promise.all([
+              appWindow.innerSize(),
+              appWindow.scaleFactor(),
+            ]);
+            const currentSize = innerSize.toLogical(scaleFactor);
+            await appWindow.setSize(
+              new LogicalSize(width ?? currentSize.width, height ?? currentSize.height),
+            );
+          } else if (savedWindowSize !== null) {
+            const restoreSize = savedWindowSize;
+            savedWindowSize = null;
+            await appWindow.setSize(restoreSize);
+          }
+          await appWindow.setAlwaysOnTop(alwaysOnTop);
+        })
+        .catch((error) => {
+          devLog.write({
+            subsystem: "UiPack",
+            phase: "window-layout",
+            note: "failed to apply native window layout",
+            data: { error: error instanceof Error ? error.message : String(error) },
+          });
+        });
+    };
     const setCurrentLayout = (layout: UiLayout | null): void => {
       currentLayout = layout;
       activeUiLayoutRef.current = layout;
@@ -3158,17 +3238,6 @@ function App() {
         void transition.then(settlePresenceClosed);
       } else {
         void transition;
-      }
-    };
-
-    const refitPresentedTerminals = () => {
-      for (const sessionId of getMountedSessionIds()) {
-        const presentation = resolveTerminalPresentation(
-          currentLayout,
-          visibleTerminalSessionIdSetRef.current.has(sessionId),
-          tabManager.getState().activeSessionId === sessionId,
-        );
-        if (!presentation.hidden) getTerminalRuntime(sessionId).refit();
       }
     };
 
@@ -3413,6 +3482,7 @@ function App() {
           update: (layout: UiLayout) => {
             resetLayoutForAllTerminals();
             applyLayoutForAllTerminals(layout);
+            applyNativeWindowLayout(layout);
             setCurrentLayout(layout);
             refitPresentedTerminals();
           },
@@ -3628,6 +3698,7 @@ function App() {
       }
       setCurrentLayout(null);
       if (resetLayoutForAllTerminals()) refitPresentedTerminals();
+      applyNativeWindowLayout(entry?.pack.layout ?? null);
       claimState.releaseAll();
       setSceneLayerOverrides([]);
 
@@ -3745,6 +3816,7 @@ function App() {
       if (currentContainer) currentContainer.remove();
       setCurrentLayout(null);
       if (resetLayoutForAllTerminals()) refitPresentedTerminals();
+      applyNativeWindowLayout(null);
       claimState.releaseAll();
       setSceneLayerOverrides([]);
     };
@@ -3779,6 +3851,83 @@ function App() {
     switchMainAgent,
     setActiveSceneFromUserSelection,
     historyApi,
+    refitPresentedTerminals,
+  ]);
+
+  // ── External terminal attach → companion UI ─────────────────────────
+  useEffect(() => {
+    if (!isUserLayerReady) return;
+
+    const controller = createExternalAttachController({
+      companionUiId: companionPack.id,
+      getActiveUiId: () => uiPackRegistry.getActiveUiId(),
+      setActiveUi: (id) => uiPackRegistry.setActiveUi(id),
+      subscribeActiveUi: (listener) => {
+        const subscription = uiPackRegistry.subscribeActive((entry) => listener(entry?.id ?? null));
+        return () => subscription.dispose();
+      },
+      capturePresentation: () => {
+        const presence = getPresenceSnapshot();
+        const active = uiPackRegistry.getActiveUi();
+        return {
+          level: presence.level,
+          source: presence.source,
+          target: active?.pack.layout.presence ? ("active-ui" as const) : ("host-default" as const),
+        };
+      },
+      restorePresentation: (snapshot) => {
+        applyPresenceLevelFromApp(
+          snapshot.level,
+          snapshot.source,
+          { immediate: true },
+          snapshot.target,
+        );
+      },
+      refitPresentedTerminals,
+    });
+
+    let disposed = false;
+    let unlisten: (() => void) | null = null;
+    void (async () => {
+      try {
+        const { listen } = await import("@tauri-apps/api/event");
+        const stopListening = await listen<{ count: number }>(
+          "external-clients-changed",
+          (event) => {
+            if (!disposed) controller.handleClientCount(event.payload.count);
+          },
+        );
+        if (disposed) {
+          stopListening();
+        } else {
+          unlisten = stopListening;
+          // The server starts before the user layer. Ask it to emit a snapshot
+          // only after the listener exists so an early attach edge is not lost.
+          await invoke<number>("external_attach_sync_client_count");
+        }
+      } catch (error) {
+        if (!disposed) {
+          devLog.write({
+            subsystem: "ExternalAttach",
+            phase: "listen",
+            note: "failed to listen for external terminal clients",
+            data: { error: error instanceof Error ? error.message : String(error) },
+          });
+        }
+      }
+    })();
+
+    return () => {
+      disposed = true;
+      unlisten?.();
+      controller.dispose();
+    };
+  }, [
+    applyPresenceLevelFromApp,
+    devLog,
+    isUserLayerReady,
+    refitPresentedTerminals,
+    uiPackRegistry,
   ]);
 
   const bodyDevLog = useMemo(() => createSubsystemLog(devLog, "Body"), [devLog]);
@@ -5348,6 +5497,7 @@ function App() {
         sidebarOpen={sidebarOpen}
         settingsActive={settingsActive}
         sidebarLabel={strings.labelPresence}
+        showSidebarToggle={activeUiId !== companionPack.id}
         settingsLabel={strings.settings}
         onToggleSidebar={handleToggleSidebar}
         onOpenSettings={handleOpenSettings}

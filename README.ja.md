@@ -75,6 +75,19 @@ npm run tauri dev
 
 初回起動時には、選択中のagent、ユーザーデータディレクトリ、safe mode、pack、startup reportを確認するhealth checkが表示されます。同じ内容は後から設定画面の「Status」セクションでも確認できます。
 
+### 外部ターミナルで使う
+
+```sh
+yorishiro companion [session-id]
+yorishiro attach [session-id]
+```
+
+`yorishiro companion`はYorishiroを起動して、そのまま外部ターミナルから接続します。`yorishiro attach`は、起動中のYorishiroへ接続します。接続先が1つなら`session-id`は省略できます。
+
+<p align="center">
+  <img src="docs/assets/external-terminal-companion.png" alt="Yorishiroと接続中の外部ターミナル" width="960" />
+</p>
+
 ### Yorishiroのコマンドとスキル
 
 Yorishiroのコマンドを使うと、packの作成・編集・チュートリアルなどを対話的に行えます。agentごとに次の記法を使います：

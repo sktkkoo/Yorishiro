@@ -74,6 +74,19 @@ On launch, the configured terminal agent starts inside the terminal and **Yori**
 
 The first launch runs a health check for the selected agent, user data directory, safe mode state, packs, and startup report. The same report is available later from the "Status" section in Settings.
 
+### Use from an external terminal
+
+```sh
+yorishiro companion [session-id]
+yorishiro attach [session-id]
+```
+
+`yorishiro companion` starts Yorishiro and connects from your external terminal in one step. `yorishiro attach` connects to a running Yorishiro. You may omit `session-id` when there is only one available session.
+
+<p align="center">
+  <img src="docs/assets/external-terminal-companion.png" alt="Yorishiro beside an attached external terminal" width="960" />
+</p>
+
 ### Yorishiro commands and skills
 
 Yorishiro's commands let you create and edit packs, run tutorials, and more — all through conversation. Use the syntax for your agent:

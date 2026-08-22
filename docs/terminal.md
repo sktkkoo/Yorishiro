@@ -66,6 +66,14 @@ UI pack が terminal を fullscreen / hidden / fixed position にする layout �
 
 ---
 
+## 外部ターミナルから attach（macOS）
+
+- `yorishiro companion [session-id]`: Yorishiroを起動し、外部ターミナルから接続する。
+- `yorishiro attach [session-id]`: 起動中のYorishiroへ接続する。
+- 接続先が1つなら`session-id`は省略できる。
+
+---
+
 ## Terminal context selection
 
 Terminal 上で表示中の HTTP/HTTPS URL を `Cmd+click` すると、Tauri opener 経由で OS の

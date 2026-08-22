@@ -17,6 +17,7 @@ export interface TitleBarProps {
   readonly settingsActive: boolean;
   readonly settingsLabel: string;
   readonly sidebarLabel: string;
+  readonly showSidebarToggle?: boolean;
   readonly voiceAvailable?: boolean;
   readonly voiceDisabled?: boolean;
   readonly voiceState?: VoiceControlState;
@@ -35,6 +36,7 @@ export default function TitleBar({
   settingsActive,
   settingsLabel,
   sidebarLabel,
+  showSidebarToggle = true,
   voiceAvailable = false,
   voiceDisabled = false,
   voiceState = "idle",
@@ -49,16 +51,18 @@ export default function TitleBar({
   return (
     <header className="title-bar" data-tauri-drag-region="">
       <div className="title-bar-controls">
-        <button
-          type="button"
-          className="title-bar-button title-bar-sidebar-button"
-          onClick={onToggleSidebar}
-          aria-label={sidebarLabel}
-          aria-pressed={sidebarOpen}
-          title={sidebarLabel}
-        >
-          <SidebarIcon size={15} strokeWidth={1.8} aria-hidden="true" />
-        </button>
+        {showSidebarToggle ? (
+          <button
+            type="button"
+            className="title-bar-button title-bar-sidebar-button"
+            onClick={onToggleSidebar}
+            aria-label={sidebarLabel}
+            aria-pressed={sidebarOpen}
+            title={sidebarLabel}
+          >
+            <SidebarIcon size={15} strokeWidth={1.8} aria-hidden="true" />
+          </button>
+        ) : null}
         <button
           type="button"
           className={`title-bar-button title-bar-settings-button${
