@@ -156,6 +156,10 @@ fn not_running() -> String {
     "Yorishiro is not running".into()
 }
 
+fn is_self_attach(source_session_id: Option<&std::ffi::OsStr>, target_session_id: &str) -> bool {
+    source_session_id.is_some_and(|value| !value.is_empty() && value == target_session_id)
+}
+
 fn print_sessions(sessions: &[ListedSession]) {
     if sessions.is_empty() {
         println!("No terminal sessions.");
@@ -490,6 +494,21 @@ mod tests {
             "live"
         );
         assert!(select_session(&[session("dead", false)], Some("dead")).is_err());
+    }
+
+    #[test]
+    fn detects_only_same_session_recursive_attach() {
+        use std::ffi::OsStr;
+
+        assert!(is_self_attach(
+            Some(OsStr::new("default-session")),
+            "default-session",
+        ));
+        assert!(!is_self_attach(
+            Some(OsStr::new("default-session")),
+            "shell-1",
+        ));
+        assert!(!is_self_attach(None, "default-session"));
     }
 
     #[test]

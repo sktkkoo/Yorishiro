@@ -87,6 +87,8 @@ yorishiro companion [session-id]
 
 `yorishiro list`で接続可能なセッションを確認し、`yorishiro attach`で起動中のYorishiroへ接続します。`yorishiro companion`なら、Yorishiroが未起動の場合にアプリを起動してセッションの準備を待ち、そのまま接続できます。生きているセッションが1つだけなら`session-id`は省略できます。接続中は外部ターミナルの入出力とウィンドウサイズがYorishiro内の同じPTYへ反映され、Yorishiro本体は住人だけを表示する細いコンパニオンモードへ自動的に切り替わります。最後の外部接続が切れると、途中でUIを手動変更していない限り元の表示へ戻ります。
 
+Yorishiro内蔵ターミナルから同じセッション自身への接続は、入出力が循環するため安全に拒否されます。別のliveセッションIDを明示した接続は利用できます。
+
 agentセッションでは`Esc`が通常どおりClaude CodeやCodexへ送られ、現在の処理を中断します。`Ctrl+C`はagentへ送らず外部接続を終了します。`yorishiro companion`が新しく起動したYorishiroなら本体も一緒に終了し、既存Yorishiroへの接続なら本体は残ります。shellセッションの`Ctrl+C`は通常どおりPTYへ送られます。どのセッションでも`Ctrl+Q`（または`Ctrl-\\`に続けて`q`）なら接続だけを終了でき、agentへ生の`Ctrl+C`を送る特殊な場合は`Ctrl-\\`に続けて`c`を使えます。接続前の過去出力は再送されないため、TUIによっては次の再描画や出力まで画面が空に見えることがあります。
 
 CLIがPATHにないインストール版では、`"/Applications/Yorishiro.app/Contents/MacOS/yorishiro" attach`でも実行できます。詳しい動作とsource buildでの使い方は[ターミナルのドキュメント](docs/terminal.md#外部ターミナルから-attachmacos)を参照してください。

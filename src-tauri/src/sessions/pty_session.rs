@@ -726,6 +726,9 @@ impl PtySession {
                 (binary, cmd)
             }
         };
+        // Child commands can detect that they already run inside a Yorishiro
+        // PTY and refuse recursive external-attach attempts.
+        cmd.env("YORISHIRO_SESSION_ID", &self.session_id);
 
         if let Some(ref dir) = cwd {
             cmd.cwd(dir);

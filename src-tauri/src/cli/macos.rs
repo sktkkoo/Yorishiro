@@ -1,6 +1,6 @@
 use super::{
-    encode, live_instances, not_running, print_sessions, read_registry, resolve_home,
-    select_session, take_buffered_frame, Command, DetachFilter, InstanceRecord,
+    encode, is_self_attach, live_instances, not_running, print_sessions, read_registry,
+    resolve_home, select_session, take_buffered_frame, Command, DetachFilter, InstanceRecord,
 };
 use std::collections::{HashSet, VecDeque};
 use std::fs;
@@ -63,6 +63,14 @@ fn attach_to_session(
             return Err(error);
         }
     };
+    if is_self_attach(
+        std::env::var_os("YORISHIRO_SESSION_ID").as_deref(),
+        &selected,
+    ) {
+        return Err(format!(
+            "cannot attach Yorishiro session '{selected}' to itself; select a different session or run the command from an external terminal"
+        ));
+    }
     let agent_session = sessions
         .iter()
         .find(|session| session.id == selected)
