@@ -3,7 +3,7 @@ use super::protocol::{
     EXTERNAL_CLIENTS_CHANGED_EVENT,
 };
 use crate::sessions::pty_session::{ExternalPtySink, ExternalResizeResult, PtySession};
-use crate::sessions::SessionRegistry;
+use crate::sessions::{SessionKind, SessionRegistry};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 #[cfg(target_os = "macos")]
 use std::sync::mpsc::{self, SyncSender, TrySendError};
@@ -161,10 +161,11 @@ impl AttachServer {
         }));
         let state_counter = Arc::clone(&counter);
         let thread_shutdown = Arc::clone(&shutdown);
+        let quit_app: Arc<dyn Fn() + Send + Sync> = Arc::new(move || app.exit(0));
         let thread = match std::thread::Builder::new()
             .name("yorishiro-attach-server".into())
             .spawn(move || {
-                run_listener(listener, thread_shutdown, registry, counter);
+                run_listener(listener, thread_shutdown, registry, counter, quit_app);
             }) {
             Ok(thread) => thread,
             Err(error) => {
@@ -328,6 +329,7 @@ fn run_listener(
     shutdown: Arc<AtomicBool>,
     registry: Arc<SessionRegistry>,
     counter: Arc<ClientCounter>,
+    quit_app: Arc<dyn Fn() + Send + Sync>,
 ) {
     let mut clients = Vec::new();
     while !shutdown.load(Ordering::Acquire) {
@@ -347,10 +349,17 @@ fn run_listener(
                 let client_shutdown = Arc::clone(&shutdown);
                 let client_registry = Arc::clone(&registry);
                 let client_counter = Arc::clone(&counter);
+                let client_quit_app = Arc::clone(&quit_app);
                 match std::thread::Builder::new()
                     .name("yorishiro-attach-client".into())
                     .spawn(move || {
-                        handle_client(stream, client_shutdown, client_registry, client_counter);
+                        handle_client(
+                            stream,
+                            client_shutdown,
+                            client_registry,
+                            client_counter,
+                            client_quit_app,
+                        );
                     }) {
                     Ok(thread) => clients.push(thread),
                     Err(error) => eprintln!("[attach-server] client thread failed: {error}"),
@@ -386,6 +395,7 @@ fn listed_sessions(registry: &SessionRegistry) -> Vec<ListedSession> {
                 id: descriptor.id,
                 cwd: descriptor.display_cwd.or(descriptor.cwd),
                 alive,
+                agent: descriptor.kind == SessionKind::Agent,
             }
         })
         .collect()
@@ -417,6 +427,7 @@ fn handle_client(
     shutdown: Arc<AtomicBool>,
     registry: Arc<SessionRegistry>,
     counter: Arc<ClientCounter>,
+    quit_app: Arc<dyn Fn() + Send + Sync>,
 ) {
     use std::io::ErrorKind;
 
@@ -548,6 +559,11 @@ fn handle_client(
             }
             Frame::Control(ControlMessage::Detach) => {
                 clear_attachment(&mut attached, &client_id, &counter);
+            }
+            Frame::Control(ControlMessage::Quit) => {
+                clear_attachment(&mut attached, &client_id, &counter);
+                quit_app();
+                break;
             }
             Frame::Control(
                 ControlMessage::ListResult { .. }
@@ -718,6 +734,7 @@ mod tests {
                 server_shutdown,
                 server_registry,
                 server_counter,
+                Arc::new(|| {}),
             );
         });
 
@@ -740,6 +757,7 @@ mod tests {
                     id: "shell-1".into(),
                     cwd: Some("/current".into()),
                     alive: false,
+                    agent: false,
                 }],
             }))
         );
@@ -748,5 +766,42 @@ mod tests {
         let _ = client_stream.shutdown(std::net::Shutdown::Both);
         server_thread.join().expect("server client thread");
         assert!(lock_or_recover(&changes).is_empty());
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn quit_control_invokes_the_app_exit_callback() {
+        let registry = Arc::new(SessionRegistry::new());
+        let counter = Arc::new(ClientCounter::new(|_| {}));
+        let shutdown = Arc::new(AtomicBool::new(false));
+        let quit_called = Arc::new(AtomicBool::new(false));
+        let observed_quit = Arc::clone(&quit_called);
+        let (server_stream, mut client_stream) =
+            super::super::transport::Stream::pair().expect("socket pair");
+        let server_thread = std::thread::spawn(move || {
+            handle_client(
+                server_stream,
+                shutdown,
+                registry,
+                counter,
+                Arc::new(move || observed_quit.store(true, Ordering::Release)),
+            );
+        });
+
+        let mut frames = super::super::transport::FrameReader::new(
+            client_stream.try_clone().expect("clone client"),
+        );
+        assert_eq!(
+            frames.read_frame().expect("server hello"),
+            Some(Frame::Control(ControlMessage::Hello { replay: false }))
+        );
+        super::super::transport::write_frame(
+            &mut client_stream,
+            &Frame::Control(ControlMessage::Quit),
+        )
+        .expect("send quit");
+
+        server_thread.join().expect("server client thread");
+        assert!(quit_called.load(Ordering::Acquire));
     }
 }

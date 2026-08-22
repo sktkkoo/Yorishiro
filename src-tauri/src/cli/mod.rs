@@ -15,6 +15,7 @@ mod macos;
 enum Command {
     List,
     Attach(Option<String>),
+    Companion(Option<String>),
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -28,7 +29,7 @@ pub enum Dispatch {
     Cli(Result<i32, String>),
 }
 
-/// Only the two exact CLI command names opt out of the GUI startup path.
+/// Only the exact CLI command names opt out of the GUI startup path.
 /// LaunchServices and Tauri are allowed to pass arbitrary arguments through.
 pub fn dispatch(args: impl IntoIterator<Item = OsString>) -> Dispatch {
     match parse_dispatch(args) {
@@ -67,6 +68,25 @@ fn parse_dispatch(args: impl IntoIterator<Item = OsString>) -> ParsedDispatch {
             return ParsedDispatch::Cli(Err("usage: yorishiro attach [session]".into()));
         }
         return ParsedDispatch::Cli(Ok(Command::Attach(session)));
+    }
+
+    if first == "companion" {
+        let session = match args.next() {
+            Some(value) => match value.into_string() {
+                Ok(value) => Some(value),
+                Err(_) => {
+                    return ParsedDispatch::Cli(Err(
+                        "session id is not valid UTF-8\nusage: yorishiro companion [session]"
+                            .into(),
+                    ));
+                }
+            },
+            None => None,
+        };
+        if args.next().is_some() {
+            return ParsedDispatch::Cli(Err("usage: yorishiro companion [session]".into()));
+        }
+        return ParsedDispatch::Cli(Ok(Command::Companion(session)));
     }
 
     ParsedDispatch::Gui
@@ -224,30 +244,62 @@ fn take_buffered_frame(buffered: &mut Vec<u8>) -> Result<Option<Frame>, String> 
     Ok(Some(frame))
 }
 
-#[derive(Default)]
 struct DetachFilter {
     pending_prefix: bool,
+    agent_session: bool,
 }
 
 struct FilteredInput {
     data: Vec<u8>,
     detach: bool,
+    quit_requested: bool,
 }
 
 impl DetachFilter {
+    fn new(agent_session: bool) -> Self {
+        Self {
+            pending_prefix: false,
+            agent_session,
+        }
+    }
+
     fn filter(&mut self, input: &[u8]) -> FilteredInput {
         let mut data = Vec::with_capacity(input.len());
         for &byte in input {
             if self.pending_prefix {
-                if byte == b'q' {
-                    self.pending_prefix = false;
-                    return FilteredInput { data, detach: true };
+                match byte {
+                    b'q' => {
+                        self.pending_prefix = false;
+                        return FilteredInput {
+                            data,
+                            detach: true,
+                            quit_requested: false,
+                        };
+                    }
+                    b'c' => {
+                        self.pending_prefix = false;
+                        data.push(0x03);
+                        continue;
+                    }
+                    _ => {}
                 }
                 data.push(yorishiro_lib::attach::protocol::DETACH_SEQUENCE[0]);
                 self.pending_prefix = false;
             }
 
-            if byte == yorishiro_lib::attach::protocol::DETACH_SEQUENCE[0] {
+            if byte == 0x03 && self.agent_session {
+                return FilteredInput {
+                    data,
+                    detach: true,
+                    quit_requested: true,
+                };
+            } else if byte == 0x11 {
+                return FilteredInput {
+                    data,
+                    detach: true,
+                    quit_requested: false,
+                };
+            } else if byte == yorishiro_lib::attach::protocol::DETACH_SEQUENCE[0] {
                 self.pending_prefix = true;
             } else {
                 data.push(byte);
@@ -256,6 +308,7 @@ impl DetachFilter {
         FilteredInput {
             data,
             detach: false,
+            quit_requested: false,
         }
     }
 
@@ -288,6 +341,7 @@ mod tests {
             id: id.into(),
             cwd: None,
             alive,
+            agent: false,
         }
     }
 
@@ -311,6 +365,14 @@ mod tests {
         assert_eq!(
             parse_dispatch(args(&["attach", "main"])),
             ParsedDispatch::Cli(Ok(Command::Attach(Some("main".into()))))
+        );
+        assert_eq!(
+            parse_dispatch(args(&["companion"])),
+            ParsedDispatch::Cli(Ok(Command::Companion(None)))
+        );
+        assert_eq!(
+            parse_dispatch(args(&["companion", "main"])),
+            ParsedDispatch::Cli(Ok(Command::Companion(Some("main".into()))))
         );
         assert!(matches!(
             parse_dispatch(args(&["attach", "one", "two"])),
@@ -346,7 +408,7 @@ mod tests {
 
     #[test]
     fn detach_filter_recognizes_split_sequence_without_forwarding_it() {
-        let mut filter = DetachFilter::default();
+        let mut filter = DetachFilter::new(false);
         let first = filter.filter(b"hello\x1c");
         assert_eq!(first.data, b"hello");
         assert!(!first.detach);
@@ -357,12 +419,54 @@ mod tests {
 
     #[test]
     fn detach_filter_forwards_false_prefix_and_flushes_trailing_prefix() {
-        let mut filter = DetachFilter::default();
+        let mut filter = DetachFilter::new(false);
         let filtered = filter.filter(b"a\x1cxb");
         assert_eq!(filtered.data, b"a\x1cxb");
         assert!(!filtered.detach);
         filter.filter(b"\x1c");
         assert_eq!(filter.finish(), b"\x1c");
+    }
+
+    #[test]
+    fn detach_filter_uses_ctrl_c_to_close_agent_attach() {
+        let mut filter = DetachFilter::new(true);
+        let filtered = filter.filter(b"\x03");
+
+        assert!(filtered.data.is_empty());
+        assert!(filtered.detach);
+        assert!(filtered.quit_requested);
+    }
+
+    #[test]
+    fn detach_filter_forwards_ctrl_c_to_shell_sessions() {
+        let mut filter = DetachFilter::new(false);
+        let filtered = filter.filter(b"\x03");
+
+        assert_eq!(filtered.data, b"\x03");
+        assert!(!filtered.detach);
+        assert!(!filtered.quit_requested);
+    }
+
+    #[test]
+    fn detach_filter_forwards_escape_to_agent_sessions() {
+        let mut filter = DetachFilter::new(true);
+        let filtered = filter.filter(b"\x1b");
+
+        assert_eq!(filtered.data, b"\x1b");
+        assert!(!filtered.detach);
+        assert!(!filtered.quit_requested);
+    }
+
+    #[test]
+    fn detach_filter_forwards_explicit_ctrl_c_escape() {
+        let mut filter = DetachFilter::new(true);
+        let first = filter.filter(b"\x1c");
+        assert!(first.data.is_empty());
+        assert!(!first.detach);
+
+        let second = filter.filter(b"c");
+        assert_eq!(second.data, b"\x03");
+        assert!(!second.detach);
     }
 
     #[test]

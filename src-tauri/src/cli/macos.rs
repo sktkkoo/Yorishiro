@@ -9,20 +9,24 @@ use std::mem::MaybeUninit;
 use std::os::fd::{AsRawFd, RawFd};
 use std::os::unix::fs::FileTypeExt;
 use std::os::unix::net::UnixStream;
+use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
+use std::process::{Command as ProcessCommand, Stdio};
 use std::sync::atomic::{AtomicI32, Ordering};
-use std::time::Duration;
+use std::thread;
+use std::time::{Duration, Instant};
 use yorishiro_lib::attach::protocol::{ControlMessage, Frame, ListedSession};
 
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(3);
+const STARTUP_TIMEOUT: Duration = Duration::from_secs(30);
+const STARTUP_POLL_INTERVAL: Duration = Duration::from_millis(100);
 const STDIN_FD: RawFd = libc::STDIN_FILENO;
 
 pub(super) fn run(command: Command) -> Result<i32, String> {
-    let instances = discover_instances()?;
-    let mut snapshots = query_instances(instances)?;
-
     match command {
         Command::List => {
+            let instances = discover_instances()?;
+            let snapshots = query_instances(instances)?;
             let sessions = snapshots
                 .iter()
                 .flat_map(|snapshot| snapshot.sessions.iter().cloned())
@@ -31,35 +35,107 @@ pub(super) fn run(command: Command) -> Result<i32, String> {
             Ok(0)
         }
         Command::Attach(requested) => {
-            let sessions = snapshots
-                .iter()
-                .flat_map(|snapshot| snapshot.sessions.iter().cloned())
-                .collect::<Vec<_>>();
-            let selected = match select_session(&sessions, requested.as_deref()) {
-                Ok(selected) => selected,
-                Err(error) => {
-                    if requested.is_none()
-                        && sessions.iter().filter(|session| session.alive).count() > 1
-                    {
-                        print_sessions(&sessions);
-                    }
-                    return Err(error);
-                }
-            };
-            let snapshot_index = snapshots
-                .iter()
-                .position(|snapshot| {
-                    snapshot
-                        .sessions
-                        .iter()
-                        .any(|session| session.alive && session.id == selected)
-                })
-                .ok_or_else(|| format!("no live session named '{selected}'"))?;
-            let mut snapshot = snapshots.swap_remove(snapshot_index);
-            drop(snapshots);
-            snapshot.client.attach(&selected)?;
-            snapshot.client.interact()
+            let snapshots = query_instances(discover_instances()?)?;
+            attach_to_session(snapshots, requested, false)
         }
+        Command::Companion(requested) => {
+            let (snapshots, launched) = discover_companion_snapshots()?;
+            attach_to_session(snapshots, requested, launched)
+        }
+    }
+}
+
+fn attach_to_session(
+    mut snapshots: Vec<InstanceSnapshot>,
+    requested: Option<String>,
+    quit_app_on_ctrl_c: bool,
+) -> Result<i32, String> {
+    let sessions = snapshots
+        .iter()
+        .flat_map(|snapshot| snapshot.sessions.iter().cloned())
+        .collect::<Vec<_>>();
+    let selected = match select_session(&sessions, requested.as_deref()) {
+        Ok(selected) => selected,
+        Err(error) => {
+            if requested.is_none() && sessions.iter().filter(|session| session.alive).count() > 1 {
+                print_sessions(&sessions);
+            }
+            return Err(error);
+        }
+    };
+    let agent_session = sessions
+        .iter()
+        .find(|session| session.id == selected)
+        .is_some_and(|session| session.agent);
+    let snapshot_index = snapshots
+        .iter()
+        .position(|snapshot| {
+            snapshot
+                .sessions
+                .iter()
+                .any(|session| session.alive && session.id == selected)
+        })
+        .ok_or_else(|| format!("no live session named '{selected}'"))?;
+    let mut snapshot = snapshots.swap_remove(snapshot_index);
+    drop(snapshots);
+    snapshot.client.attach(&selected)?;
+    snapshot.client.interact(agent_session, quit_app_on_ctrl_c)
+}
+
+fn discover_companion_snapshots() -> Result<(Vec<InstanceSnapshot>, bool), String> {
+    match discover_instances() {
+        Ok(instances) => query_instances(instances).map(|snapshots| (snapshots, false)),
+        Err(error) if error == not_running() => {
+            launch_gui()?;
+            wait_for_attachable_instance().map(|snapshots| (snapshots, true))
+        }
+        Err(error) => Err(error),
+    }
+}
+
+fn launch_gui() -> Result<(), String> {
+    let executable = std::env::current_exe()
+        .map_err(|error| format!("could not locate the Yorishiro executable: {error}"))?;
+    eprintln!("Starting Yorishiro...");
+    ProcessCommand::new(&executable)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .process_group(0)
+        .spawn()
+        .map_err(|error| format!("could not start {}: {error}", executable.display()))?;
+    Ok(())
+}
+
+fn wait_for_attachable_instance() -> Result<Vec<InstanceSnapshot>, String> {
+    let deadline = Instant::now() + STARTUP_TIMEOUT;
+    let mut last_error = None;
+    loop {
+        match discover_instances().and_then(query_instances) {
+            Ok(snapshots)
+                if snapshots
+                    .iter()
+                    .any(|snapshot| snapshot.sessions.iter().any(|session| session.alive)) =>
+            {
+                return Ok(snapshots);
+            }
+            Ok(_) => {}
+            Err(error) => last_error = Some(error),
+        }
+
+        if Instant::now() >= deadline {
+            return Err(match last_error {
+                Some(error) => format!(
+                    "Yorishiro started, but no live terminal session became available within {} seconds ({error})",
+                    STARTUP_TIMEOUT.as_secs()
+                ),
+                None => format!(
+                    "Yorishiro started, but no live terminal session became available within {} seconds",
+                    STARTUP_TIMEOUT.as_secs()
+                ),
+            });
+        }
+        thread::sleep(STARTUP_POLL_INTERVAL);
     }
 }
 
@@ -202,13 +278,13 @@ impl Client {
         }
     }
 
-    fn interact(&mut self) -> Result<i32, String> {
+    fn interact(&mut self, agent_session: bool, quit_app_on_ctrl_c: bool) -> Result<i32, String> {
         let signals = SignalGuard::install()?;
         let _terminal = RawTerminalGuard::new(STDIN_FD)?;
         self.send_current_size()?;
 
         let socket_fd = self.socket.as_raw_fd();
-        let mut detach_filter = DetachFilter::default();
+        let mut detach_filter = DetachFilter::new(agent_session);
         let mut stdout = io::stdout().lock();
 
         loop {
@@ -300,7 +376,12 @@ impl Client {
                         self.send(Frame::Data(filtered.data))?;
                     }
                     if filtered.detach {
-                        self.send(Frame::Control(ControlMessage::Detach))?;
+                        let control = if filtered.quit_requested && quit_app_on_ctrl_c {
+                            ControlMessage::Quit
+                        } else {
+                            ControlMessage::Detach
+                        };
+                        self.send(Frame::Control(control))?;
                         return Ok(0);
                     }
                 }

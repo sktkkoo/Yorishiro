@@ -33,6 +33,8 @@ pub struct ListedSession {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cwd: Option<String>,
     pub alive: bool,
+    #[serde(default)]
+    pub agent: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -58,6 +60,7 @@ pub enum ControlMessage {
         rows: u16,
     },
     Detach,
+    Quit,
     Exit {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         code: Option<i32>,
@@ -222,11 +225,13 @@ mod tests {
                         id: "shell-1".into(),
                         cwd: Some("/work".into()),
                         alive: true,
+                        agent: false,
                     },
                     ListedSession {
                         id: "shell-2".into(),
                         cwd: None,
                         alive: false,
+                        agent: false,
                     },
                 ],
             },
@@ -240,6 +245,7 @@ mod tests {
             },
             ControlMessage::Resize { cols: 80, rows: 24 },
             ControlMessage::Detach,
+            ControlMessage::Quit,
             ControlMessage::Exit { code: Some(7) },
             ControlMessage::Exit { code: None },
             ControlMessage::SizeChanged {

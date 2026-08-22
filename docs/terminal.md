@@ -73,11 +73,12 @@ UI pack が terminal を fullscreen / hidden / fixed position にする layout �
 ```sh
 yorishiro list
 yorishiro attach [session-id]
+yorishiro companion [session-id]
 ```
 
-生きている session が 1 つだけなら `session-id` は省略できる。複数ある場合は `yorishiro list` で id を確認する。attach 中は外部ターミナルが入出力とサイズ変更を担当し、Yorishiro の window は自動的に companion UI へ切り替わる。最後の外部接続が切れると、手動で UI を変更していない限り元の UI に戻る。
+`attach` は起動中のYorishiroへ接続する。`companion` はYorishiroが未起動なら同じ binary の GUI を起動し、live session の準備を最大30秒待ってそのまま接続する。生きている session が 1 つだけなら `session-id` は省略できる。複数ある場合は `yorishiro list` で id を確認する。attach 中は外部ターミナルが入出力とサイズ変更を担当し、Yorishiro の window は自動的に companion UI へ切り替わる。最後の外部接続が切れると、手動で UI を変更していない限り元の UI に戻る。
 
-外部接続へ過去出力は再送しない。接続直後に PTY の再描画を促すが、実行中の TUI / shell が再描画しない場合は次の出力や prompt まで空に見えることがある。切断は `Ctrl-\\` に続けて `q`。PTY 自体は終了せず、Yorishiro 内でそのまま動き続ける。
+外部接続へ過去出力は再送しない。接続直後に PTY の再描画を促すが、実行中の TUI / shell が再描画しない場合は次の出力や prompt まで空に見えることがある。agent session では `Esc` をそのままPTYへ送り、Claude Code / Codexの現在処理を中断する。agent session の `Ctrl+C` はPTYへ送らず接続を終了し、`companion` が新規起動したYorishiroだけはapp本体も終了する。既存instanceへの接続ではappを残す。shell session の `Ctrl+C` は通常どおりPTYへ送る。接続だけを明示的に切る場合は `Ctrl+Q`（または `Ctrl-\\` に続けて `q`）、agentへ生の`Ctrl+C`を送る場合は `Ctrl-\\` に続けて `c`を使う。
 
 現段階では app bundle の CLI を PATH に自動登録しない。インストール版は次の完全パスでも実行できる。
 
