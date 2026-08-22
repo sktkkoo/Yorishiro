@@ -86,6 +86,10 @@ yorishiro companion [session-id]
 
 Use `yorishiro list` to see available sessions, then connect to a running Yorishiro with `yorishiro attach`. Use `yorishiro companion` to start the app when needed, wait for its terminal session, and connect in one step. You may omit `session-id` when exactly one session is live. While attached, input, output, and window-size changes from the external terminal are applied to the same PTY used inside Yorishiro. The Yorishiro window automatically switches to a narrow companion mode that shows only the inhabitant. When the final external connection closes, the previous UI is restored unless you changed the UI manually in the meantime.
 
+<p align="center">
+  <img src="docs/assets/external-terminal-companion.png" alt="An external terminal attached to Yorishiro beside its narrow companion window" width="960" />
+</p>
+
 Attaching a Yorishiro terminal session to itself is safely rejected because it would create an input/output loop. From an internal terminal, you may explicitly select a different live session id.
 
 In agent sessions, `Esc` is forwarded normally to interrupt the current Claude Code or Codex task. `Ctrl+C` is kept local and closes the external connection instead of reaching the agent. If `yorishiro companion` launched a new Yorishiro instance, that app closes too; an existing Yorishiro remains open. In shell sessions, `Ctrl+C` retains its normal PTY behavior. In either kind of session, `Ctrl+Q` (or `Ctrl-\\`, then `q`) detaches without closing Yorishiro. For the unusual case where an agent session needs a literal `Ctrl+C`, press `Ctrl-\\`, then `c`. Earlier output is not replayed on connection, so some TUIs may remain blank until their next redraw or output.
