@@ -74,6 +74,21 @@ On launch, the configured terminal agent starts inside the terminal and **Yori**
 
 The first launch runs a health check for the selected agent, user data directory, safe mode state, packs, and startup report. The same report is available later from the "Status" section in Settings.
 
+### Connect from an external terminal
+
+You can operate a running Yorishiro terminal session from Ghostty, Terminal.app, iTerm2, or another external terminal.
+
+```sh
+yorishiro list
+yorishiro attach [session-id]
+```
+
+Use `yorishiro list` to see available sessions, then connect with `yorishiro attach`. You may omit `session-id` when exactly one session is live. While attached, input, output, and window-size changes from the external terminal are applied to the same PTY used inside Yorishiro. The Yorishiro window automatically switches to a narrow companion mode that shows only the inhabitant. When the final external connection closes, the previous UI is restored unless you changed the UI manually in the meantime.
+
+To detach, press `Ctrl-\\`, then `q`. This disconnects only the external view; it does not terminate the Yorishiro session or its running process. Earlier output is not replayed on connection, so some TUIs may remain blank until their next redraw or output.
+
+If the installed CLI is not on your `PATH`, run `"/Applications/Yorishiro.app/Contents/MacOS/yorishiro" attach`. See the [terminal documentation](docs/terminal.md#外部ターミナルから-attachmacos) for details and source-build usage.
+
 ### Yorishiro commands and skills
 
 Yorishiro's commands let you create and edit packs, run tutorials, and more — all through conversation. Use the syntax for your agent:

@@ -35,6 +35,22 @@ export type UiPresenceLevel = "default" | "closed";
  *   前回 apply した値は残らない。
  */
 export interface UiLayout {
+  /**
+   * UI pack が有効な間だけ適用する native window の制約。
+   * 未指定時と pack 解除時は host default（900x600 / always-on-top=false）へ戻る。
+   */
+  readonly window?: {
+    /** 有効化時に変更する横幅（logical px）。解除時は直前の size を復元する。 */
+    readonly width?: number;
+    /** 有効化時に変更する縦幅（logical px）。解除時は直前の size を復元する。 */
+    readonly height?: number;
+    /** native window の最小横幅（logical px）。 */
+    readonly minWidth?: number;
+    /** native window の最小縦幅（logical px）。 */
+    readonly minHeight?: number;
+    /** true にすると他アプリより手前へ保つ。companion / overlay UI 用。 */
+    readonly alwaysOnTop?: boolean;
+  };
   readonly sidebar?: {
     /**
      * "default" = 280px, "fullscreen" = 100vw, "hidden" = 0, number = px 指定。

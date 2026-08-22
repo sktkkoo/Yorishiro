@@ -75,6 +75,21 @@ npm run tauri dev
 
 初回起動時には、選択中のagent、ユーザーデータディレクトリ、safe mode、pack、startup reportを確認するhealth checkが表示されます。同じ内容は後から設定画面の「Status」セクションでも確認できます。
 
+### 外部ターミナルから接続する
+
+起動中のYorishiroのターミナルセッションは、Ghostty、Terminal.app、iTerm2などの外部ターミナルから操作できます。
+
+```sh
+yorishiro list
+yorishiro attach [session-id]
+```
+
+`yorishiro list`で接続可能なセッションを確認し、`yorishiro attach`で接続します。生きているセッションが1つだけなら`session-id`は省略できます。接続中は外部ターミナルの入出力とウィンドウサイズがYorishiro内の同じPTYへ反映され、Yorishiro本体は住人だけを表示する細いコンパニオンモードへ自動的に切り替わります。最後の外部接続を切ると、途中でUIを手動変更していない限り元の表示へ戻ります。
+
+接続を終了するには`Ctrl-\\`に続けて`q`を押します。これは外部表示だけを切断し、Yorishiro内のセッションや実行中のプロセスは終了しません。接続前の過去出力は再送されないため、TUIによっては次の再描画や出力まで画面が空に見えることがあります。
+
+CLIがPATHにないインストール版では、`"/Applications/Yorishiro.app/Contents/MacOS/yorishiro" attach`でも実行できます。詳しい動作とsource buildでの使い方は[ターミナルのドキュメント](docs/terminal.md#外部ターミナルから-attachmacos)を参照してください。
+
 ### Yorishiroのコマンドとスキル
 
 Yorishiroのコマンドを使うと、packの作成・編集・チュートリアルなどを対話的に行えます。agentごとに次の記法を使います：

@@ -8,6 +8,7 @@
 
 use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::process::{Child, Command, Stdio};
@@ -16,6 +17,7 @@ use std::time::{Duration, Instant};
 use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Emitter, Manager};
 
+use crate::attach::protocol::ControlMessage;
 use crate::pty::PtyExit;
 
 use super::codex_tui_proxy::CodexTuiProxy;
@@ -168,6 +170,78 @@ pub(super) struct RingBuffer {
 pub struct AttachResult {
     pub attached: bool,
     pub replay: Vec<u8>,
+}
+
+/// A live external terminal connection. Implementations serialize writes so a
+/// PTY output frame cannot interleave with a server control frame.
+pub(crate) trait ExternalPtySink: Send + Sync {
+    fn send_data(&self, data: &[u8]) -> Result<(), String>;
+    fn send_control(&self, control: &ControlMessage) -> Result<(), String>;
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ExternalAttachInfo {
+    pub cols: u16,
+    pub rows: u16,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ExternalResizeResult {
+    Applied { cols: u16, rows: u16 },
+    NotAuthority { cols: u16, rows: u16 },
+}
+
+#[derive(Default)]
+struct ExternalClients {
+    sinks: HashMap<String, Arc<dyn ExternalPtySink>>,
+    resize_authority: Option<String>,
+}
+
+impl ExternalClients {
+    fn remove_failed(&mut self, failed: &[String]) {
+        for client_id in failed {
+            self.sinks.remove(client_id);
+            if self.resize_authority.as_deref() == Some(client_id) {
+                self.resize_authority = None;
+            }
+        }
+    }
+}
+
+fn fan_out_external_data(clients: &Mutex<ExternalClients>, data: &[u8]) {
+    let sinks: Vec<(String, Arc<dyn ExternalPtySink>)> = {
+        let guard = lock_or_recover(clients);
+        guard
+            .sinks
+            .iter()
+            .map(|(id, sink)| (id.clone(), Arc::clone(sink)))
+            .collect()
+    };
+    let failed: Vec<String> = sinks
+        .into_iter()
+        .filter_map(|(id, sink)| sink.send_data(data).err().map(|_| id))
+        .collect();
+    if !failed.is_empty() {
+        lock_or_recover(clients).remove_failed(&failed);
+    }
+}
+
+fn broadcast_external_control(clients: &Mutex<ExternalClients>, control: &ControlMessage) {
+    let sinks: Vec<(String, Arc<dyn ExternalPtySink>)> = {
+        let guard = lock_or_recover(clients);
+        guard
+            .sinks
+            .iter()
+            .map(|(id, sink)| (id.clone(), Arc::clone(sink)))
+            .collect()
+    };
+    let failed: Vec<String> = sinks
+        .into_iter()
+        .filter_map(|(id, sink)| sink.send_control(control).err().map(|_| id))
+        .collect();
+    if !failed.is_empty() {
+        lock_or_recover(clients).remove_failed(&failed);
+    }
 }
 
 impl AttachResult {
@@ -479,6 +553,10 @@ pub struct PtySession {
     /// Reader thread と共有。webview reload で channel を swap する。
     output_channel: Arc<Mutex<Option<Channel>>>,
     ring_buffer: Arc<Mutex<RingBuffer>>,
+    external_clients: Arc<Mutex<ExternalClients>>,
+    external_input: Mutex<()>,
+    size: Mutex<(u16, u16)>,
+    internal_size: Mutex<(u16, u16)>,
     spawned_cwd: Mutex<Option<String>>,
     temp_config_paths: Mutex<Vec<std::path::PathBuf>>,
     codex_app_server: Mutex<Option<CodexAppServerProcess>>,
@@ -500,6 +578,10 @@ impl PtySession {
             child: Arc::new(Mutex::new(None)),
             output_channel: Arc::new(Mutex::new(None)),
             ring_buffer: Arc::new(Mutex::new(RingBuffer::new())),
+            external_clients: Arc::new(Mutex::new(ExternalClients::default())),
+            external_input: Mutex::new(()),
+            size: Mutex::new((80, 24)),
+            internal_size: Mutex::new((80, 24)),
             spawned_cwd: Mutex::new(None),
             temp_config_paths: Mutex::new(Vec::new()),
             codex_app_server: Mutex::new(None),
@@ -670,6 +752,8 @@ impl PtySession {
         *lock_or_recover(&self.master) = Some(pair.master);
 
         *lock_or_recover(&self.output_channel) = Some(on_output);
+        *lock_or_recover(&self.size) = (cols, rows);
+        *lock_or_recover(&self.internal_size) = (cols, rows);
         *lock_or_recover(&self.spawned_cwd) = cwd;
         *lock_or_recover(&self.temp_config_paths) = temp_paths_to_cleanup;
         *lock_or_recover(&self.codex_app_server) = pending_app_server;
@@ -681,6 +765,7 @@ impl PtySession {
         let app_handle = app.clone();
         let channel_arc = Arc::clone(&self.output_channel);
         let ring_arc = Arc::clone(&self.ring_buffer);
+        let external_clients_arc = Arc::clone(&self.external_clients);
         let child_arc = Arc::clone(&self.child);
         let registry_for_thread = Arc::clone(&self.registry);
         let session_id_for_thread = self.session_id.clone();
@@ -735,6 +820,10 @@ impl PtySession {
                         if let Some(ch) = guard.as_ref() {
                             let _ = ch.send(InvokeResponseBody::Raw(chunk.to_vec()));
                         }
+                        drop(guard);
+                        // External clients deliberately get live output only: no ring replay.
+                        // Keep this at the end of the one existing PTY reader loop.
+                        fan_out_external_data(&external_clients_arc, chunk);
                     }
                 }
             }
@@ -745,6 +834,10 @@ impl PtySession {
                 .and_then(|c| c.try_wait().ok().flatten().map(|s| s.exit_code() as i32))
                 .unwrap_or(-1);
             drop(child_guard);
+            broadcast_external_control(
+                &external_clients_arc,
+                &ControlMessage::Exit { code: Some(code) },
+            );
             if !suppress_exit.load(std::sync::atomic::Ordering::Relaxed) {
                 let _ = app_handle.emit(
                     "pty-exit",
@@ -793,6 +886,145 @@ impl PtySession {
 
     pub fn detach(&self) {
         *lock_or_recover(&self.output_channel) = None;
+    }
+
+    pub(crate) fn is_alive(&self) -> bool {
+        let mut guard = lock_or_recover(&self.child);
+        guard
+            .as_mut()
+            .and_then(|child| child.try_wait().ok())
+            .map(|status| status.is_none())
+            .unwrap_or(false)
+    }
+
+    pub(crate) fn current_size(&self) -> ExternalAttachInfo {
+        let (cols, rows) = *lock_or_recover(&self.size);
+        ExternalAttachInfo { cols, rows }
+    }
+
+    pub(crate) fn register_external_sink(
+        &self,
+        client_id: String,
+        sink: Arc<dyn ExternalPtySink>,
+    ) -> Result<ExternalAttachInfo, String> {
+        if !self.is_alive() {
+            return Err("PTY session is not alive".to_string());
+        }
+        let mut clients = lock_or_recover(&self.external_clients);
+        clients.sinks.insert(client_id.clone(), sink);
+        if clients.resize_authority.is_none() {
+            clients.resize_authority = Some(client_id);
+        }
+        Ok(self.current_size())
+    }
+
+    pub(crate) fn remove_external_sink(&self, client_id: &str) -> bool {
+        let mut clients = lock_or_recover(&self.external_clients);
+        let removed = clients.sinks.remove(client_id).is_some();
+        if clients.resize_authority.as_deref() == Some(client_id) {
+            clients.resize_authority = None;
+        }
+        removed
+    }
+
+    pub(crate) fn external_write(&self, client_id: &str, data: &[u8]) -> Result<(), String> {
+        // Keep the writer order, authority state, notification, and nudge in one
+        // external-input order. UI writes still share the existing writer lock.
+        let _external_order = lock_or_recover(&self.external_input);
+        let authority_changed = {
+            let clients = lock_or_recover(&self.external_clients);
+            if !clients.sinks.contains_key(client_id) {
+                return Err("external client is not attached".to_string());
+            }
+            clients.resize_authority.as_deref() != Some(client_id)
+        };
+
+        {
+            let mut writer = lock_or_recover(&self.writer);
+            let Some(writer) = writer.as_mut() else {
+                return Err("PTY writer is not available".to_string());
+            };
+            writer.write_all(data).map_err(|error| error.to_string())?;
+            writer.flush().map_err(|error| error.to_string())?;
+        }
+
+        if authority_changed {
+            {
+                let mut clients = lock_or_recover(&self.external_clients);
+                if !clients.sinks.contains_key(client_id) {
+                    return Ok(());
+                }
+                clients.resize_authority = Some(client_id.to_string());
+            }
+            broadcast_external_control(
+                &self.external_clients,
+                &ControlMessage::ResizeAuthority {
+                    client_id: client_id.to_string(),
+                },
+            );
+            self.nudge_external_size()?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn external_resize(
+        &self,
+        client_id: &str,
+        cols: u16,
+        rows: u16,
+    ) -> Result<ExternalResizeResult, String> {
+        let _external_order = lock_or_recover(&self.external_input);
+        if cols == 0 || rows == 0 {
+            return Err("terminal size must be non-zero".to_string());
+        }
+        let is_authority = {
+            let clients = lock_or_recover(&self.external_clients);
+            clients.sinks.contains_key(client_id)
+                && clients.resize_authority.as_deref() == Some(client_id)
+        };
+        if !is_authority {
+            let size = self.current_size();
+            return Ok(ExternalResizeResult::NotAuthority {
+                cols: size.cols,
+                rows: size.rows,
+            });
+        }
+
+        self.resize_inner(cols, rows)?;
+        broadcast_external_control(
+            &self.external_clients,
+            &ControlMessage::SizeChanged { cols, rows },
+        );
+        Ok(ExternalResizeResult::Applied { cols, rows })
+    }
+
+    pub(crate) fn nudge_external_size(&self) -> Result<(), String> {
+        let size = self.current_size();
+        let nudge_rows = if size.rows < u16::MAX {
+            size.rows.saturating_add(1).max(1)
+        } else {
+            size.rows.saturating_sub(1).max(1)
+        };
+        let guard = lock_or_recover(&self.master);
+        let Some(master) = guard.as_ref() else {
+            return Err("PTY master is not available".to_string());
+        };
+        master
+            .resize(PtySize {
+                rows: nudge_rows,
+                cols: size.cols.max(1),
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .map_err(|error| error.to_string())?;
+        master
+            .resize(PtySize {
+                rows: size.rows.max(1),
+                cols: size.cols.max(1),
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .map_err(|error| error.to_string())
     }
 
     /// Active Codex session と同じ thread に接続する realtime WebSocket endpoint。
@@ -860,17 +1092,52 @@ impl PtySession {
     }
 
     pub fn write_data(&self, data: &str) -> Result<(), String> {
-        let mut guard = lock_or_recover(&self.writer);
-        if let Some(writer) = guard.as_mut() {
-            writer
-                .write_all(data.as_bytes())
-                .map_err(|e| e.to_string())?;
-            writer.flush().map_err(|e| e.to_string())?;
+        self.write_bytes(data.as_bytes())
+    }
+
+    fn write_bytes(&self, data: &[u8]) -> Result<(), String> {
+        let _external_order = lock_or_recover(&self.external_input);
+        {
+            let mut guard = lock_or_recover(&self.writer);
+            if let Some(writer) = guard.as_mut() {
+                writer.write_all(data).map_err(|e| e.to_string())?;
+                writer.flush().map_err(|e| e.to_string())?;
+            }
+        }
+
+        let released_external_authority = {
+            let mut clients = lock_or_recover(&self.external_clients);
+            clients.resize_authority.take().is_some()
+        };
+        if released_external_authority {
+            let (cols, rows) = *lock_or_recover(&self.internal_size);
+            self.resize_inner(cols, rows)?;
+            broadcast_external_control(
+                &self.external_clients,
+                &ControlMessage::SizeChanged { cols, rows },
+            );
         }
         Ok(())
     }
 
     pub fn resize(&self, cols: u16, rows: u16) -> Result<(), String> {
+        let _external_order = lock_or_recover(&self.external_input);
+        *lock_or_recover(&self.internal_size) = (cols, rows);
+        let external_has_authority = lock_or_recover(&self.external_clients)
+            .resize_authority
+            .is_some();
+        if external_has_authority {
+            return Ok(());
+        }
+        self.resize_inner(cols, rows)?;
+        broadcast_external_control(
+            &self.external_clients,
+            &ControlMessage::SizeChanged { cols, rows },
+        );
+        Ok(())
+    }
+
+    fn resize_inner(&self, cols: u16, rows: u16) -> Result<(), String> {
         let guard = lock_or_recover(&self.master);
         if let Some(master) = guard.as_ref() {
             master
@@ -882,6 +1149,7 @@ impl PtySession {
                 })
                 .map_err(|e| e.to_string())?;
         }
+        *lock_or_recover(&self.size) = (cols, rows);
         Ok(())
     }
 
@@ -1017,6 +1285,29 @@ impl Drop for PtySession {
 mod tests {
     use super::*;
 
+    struct MemoryExternalSink {
+        data: Mutex<Vec<Vec<u8>>>,
+        fail: bool,
+    }
+
+    impl ExternalPtySink for MemoryExternalSink {
+        fn send_data(&self, data: &[u8]) -> Result<(), String> {
+            if self.fail {
+                return Err("closed".to_string());
+            }
+            lock_or_recover(&self.data).push(data.to_vec());
+            Ok(())
+        }
+
+        fn send_control(&self, _control: &ControlMessage) -> Result<(), String> {
+            if self.fail {
+                Err("closed".to_string())
+            } else {
+                Ok(())
+            }
+        }
+    }
+
     #[test]
     fn ring_buffer_empty() {
         let rb = RingBuffer::new();
@@ -1061,6 +1352,49 @@ mod tests {
         rb.write(b"data");
         rb.clear();
         assert!(rb.read().is_empty());
+    }
+
+    #[test]
+    fn external_fanout_sends_live_chunk_to_every_in_memory_sink() {
+        let first = Arc::new(MemoryExternalSink {
+            data: Mutex::new(Vec::new()),
+            fail: false,
+        });
+        let second = Arc::new(MemoryExternalSink {
+            data: Mutex::new(Vec::new()),
+            fail: false,
+        });
+        let clients = Mutex::new(ExternalClients::default());
+        {
+            let mut guard = lock_or_recover(&clients);
+            guard.sinks.insert("first".into(), first.clone());
+            guard.sinks.insert("second".into(), second.clone());
+        }
+
+        fan_out_external_data(&clients, b"live only");
+
+        assert_eq!(*lock_or_recover(&first.data), vec![b"live only".to_vec()]);
+        assert_eq!(*lock_or_recover(&second.data), vec![b"live only".to_vec()]);
+    }
+
+    #[test]
+    fn external_fanout_removes_failed_sink_and_its_authority() {
+        let failed = Arc::new(MemoryExternalSink {
+            data: Mutex::new(Vec::new()),
+            fail: true,
+        });
+        let clients = Mutex::new(ExternalClients::default());
+        {
+            let mut guard = lock_or_recover(&clients);
+            guard.sinks.insert("failed".into(), failed);
+            guard.resize_authority = Some("failed".into());
+        }
+
+        fan_out_external_data(&clients, b"chunk");
+
+        let guard = lock_or_recover(&clients);
+        assert!(guard.sinks.is_empty());
+        assert_eq!(guard.resize_authority, None);
     }
 
     #[test]

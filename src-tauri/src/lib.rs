@@ -1,3 +1,4 @@
+pub mod attach;
 mod bundled_examples_gen;
 mod history;
 mod journal;
@@ -3769,6 +3770,11 @@ mod import_vrm_tests {
     }
 }
 
+#[tauri::command]
+fn external_attach_sync_client_count(server: State<'_, attach::AttachServer>) -> usize {
+    server.emit_current_client_count()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // SessionRegistry を先に Arc 化して PtyState と Tauri managed state の両方
@@ -3795,7 +3801,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .manage(pty_state)
-        .manage(registry)
+        .manage(Arc::clone(&registry))
         .manage(hook_server_endpoint)
         .manage(RealtimeBridgeState::default())
         .manage(WatcherState::new())
@@ -3860,6 +3866,7 @@ pub fn run() {
             history::snapshot_list,
             history::snapshot_restore,
             history::snapshot_prune,
+            external_attach_sync_client_count,
             system_exec
         ])
         .setup(move |app| {
@@ -3867,6 +3874,16 @@ pub fn run() {
             // orphan が ~/.codex/thread-writer-locks の writer lock を握ったままだと
             // 最初の Codex session の `resume --last` が -32600 で失敗する（issue #109）。
             sessions::codex_sidecar_registry::reap_stale_sidecars();
+
+            let attach_server =
+                match attach::AttachServer::start(app.handle().clone(), Arc::clone(&registry)) {
+                    Ok(server) => server,
+                    Err(error) => {
+                        eprintln!("[attach-server] startup unavailable: {error}");
+                        attach::AttachServer::disabled()
+                    }
+                };
+            app.manage(attach_server);
 
             if let Err(e) = pty::ensure_reminder_script() {
                 eprintln!("[reminder] script 配置失敗: {e}");
@@ -3911,6 +3928,8 @@ pub fn run() {
                 // managed state の Drop は process exit では走らない（issue #109）。
                 let registry: State<'_, Arc<SessionRegistry>> = app.state();
                 registry.kill_all_pty_sessions();
+                let attach_server: State<'_, attach::AttachServer> = app.state();
+                attach_server.stop();
 
                 // 終了時に cohabitation hours を保存
                 let start_state: State<'_, CohabitationStart> = app.state();

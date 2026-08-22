@@ -66,6 +66,29 @@ UI pack が terminal を fullscreen / hidden / fixed position にする layout �
 
 ---
 
+## 外部ターミナルから attach（macOS）
+
+起動中の Yorishiro session は、Ghostty・Terminal.app・iTerm2 など別のターミナルから同じ PTY に接続できる。
+
+```sh
+yorishiro list
+yorishiro attach [session-id]
+```
+
+生きている session が 1 つだけなら `session-id` は省略できる。複数ある場合は `yorishiro list` で id を確認する。attach 中は外部ターミナルが入出力とサイズ変更を担当し、Yorishiro の window は自動的に companion UI へ切り替わる。最後の外部接続が切れると、手動で UI を変更していない限り元の UI に戻る。
+
+外部接続へ過去出力は再送しない。接続直後に PTY の再描画を促すが、実行中の TUI / shell が再描画しない場合は次の出力や prompt まで空に見えることがある。切断は `Ctrl-\\` に続けて `q`。PTY 自体は終了せず、Yorishiro 内でそのまま動き続ける。
+
+現段階では app bundle の CLI を PATH に自動登録しない。インストール版は次の完全パスでも実行できる。
+
+```sh
+"/Applications/Yorishiro.app/Contents/MacOS/yorishiro" attach
+```
+
+source build では `src-tauri/target/debug/yorishiro attach` を使える。socket は `~/.yorishiro/run/attach.sock` に置かれ、同一 macOS user の process だけを受け付ける。
+
+---
+
 ## Terminal context selection
 
 Terminal 上で表示中の HTTP/HTTPS URL を `Cmd+click` すると、Tauri opener 経由で OS の

@@ -30,6 +30,19 @@ export function useSidebarOpen(): boolean {
   return sidebarOpen;
 }
 
+export function useActiveUiId(): string | null {
+  const [activeUiId, setActiveUiId] = useState(() => getUiRegistry().getActiveUi()?.id ?? null);
+
+  useEffect(() => {
+    const sub = getUiRegistry().subscribeActive((entry) => {
+      setActiveUiId(entry?.id ?? null);
+    });
+    return () => sub.dispose();
+  }, []);
+
+  return activeUiId;
+}
+
 export function useSettingsActive(settingsPackId: string): boolean {
   const [settingsActive, setSettingsActive] = useState(
     () => getUiRegistry().getActiveUi()?.id === settingsPackId,

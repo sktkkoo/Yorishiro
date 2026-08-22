@@ -1,0 +1,12 @@
+{
+  "$schema": "https://yorishiro.dev/schemas/pack-manifest.schema.json",
+  "id": "companion",
+  "name": "Companion",
+  "type": "ui",
+  "version": "0.1.0",
+  "yorishiroVersion": "^0.1.0",
+  "executionClass": "trusted-main-thread-js",
+  "author": "Yorishiro team",
+  "description": "A narrow, always-on-top resident view with the terminal hidden.",
+  "entry": "ui.tsx"
+}

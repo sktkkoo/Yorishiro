@@ -6,7 +6,7 @@ import { _clearForTest as clearHotDataForTest } from "./runtime/hot-data/hot-dat
 import { _resetForTest as resetPresenceForTest } from "./runtime/presence-intensity/presence-intensity";
 import type { UiPackEntry } from "./runtime/ui-pack-registry";
 import { getUiRegistry } from "./runtime/ui-pack-registry";
-import { useSettingsActive, useSidebarOpen } from "./title-bar-state";
+import { useActiveUiId, useSettingsActive, useSidebarOpen } from "./title-bar-state";
 
 const SETTINGS_PACK_ID = "yorishiro-settings";
 
@@ -18,6 +18,11 @@ function SidebarOpenProbe() {
 function SettingsActiveProbe() {
   const settingsActive = useSettingsActive(SETTINGS_PACK_ID);
   return <output aria-label="settings-active">{settingsActive ? "active" : "inactive"}</output>;
+}
+
+function ActiveUiProbe() {
+  const activeUiId = useActiveUiId();
+  return <output aria-label="active-ui">{activeUiId ?? "none"}</output>;
 }
 
 function uiEntry(id: string): UiPackEntry {
@@ -90,6 +95,23 @@ describe("title bar state hooks", () => {
     } finally {
       settingsRegistration.dispose();
       otherRegistration.dispose();
+    }
+  });
+
+  it("syncs active UI id from the active UI registry", () => {
+    const registry = getUiRegistry();
+    const companionRegistration = registry.register(uiEntry("companion"));
+
+    try {
+      render(<ActiveUiProbe />);
+      expect(screen.getByLabelText("active-ui").textContent).toBe("none");
+
+      act(() => {
+        registry.setActiveUi("companion");
+      });
+      expect(screen.getByLabelText("active-ui").textContent).toBe("companion");
+    } finally {
+      companionRegistration.dispose();
     }
   });
 });
