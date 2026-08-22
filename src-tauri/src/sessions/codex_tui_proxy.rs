@@ -1,6 +1,6 @@
 use futures_util::{SinkExt, StreamExt};
 use serde_json::Value;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::net::TcpListener;
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
@@ -153,6 +153,8 @@ async fn proxy_connection(
     let (mut upstream_sink, mut upstream_stream) = upstream.split();
     let mut thread_selection_requests = HashMap::new();
     let mut resume_fallback_requests = HashMap::new();
+    let mut fresh_start_fallback_requests = HashMap::new();
+    let mut fresh_fallback_threads = HashSet::new();
     let mut turn_start_requests = HashMap::new();
 
     loop {
@@ -161,6 +163,14 @@ async fn proxy_connection(
                 let Some(message) = message else { break };
                 let message = message.map_err(|error| format!("TUI receive failed: {error}"))?;
                 if let Message::Text(text) = &message {
+                    if let Some(response) = empty_unmaterialized_history_response(
+                        text.as_ref(),
+                        &fresh_fallback_threads,
+                    ) {
+                        client_sink.send(response).await
+                            .map_err(|error| format!("TUI history fallback send failed: {error}"))?;
+                        continue;
+                    }
                     track_thread_selection_request(text.as_ref(), &mut thread_selection_requests);
                     track_resume_fallback_request(text.as_ref(), &mut resume_fallback_requests);
                     track_turn_start_request(text.as_ref(), &mut turn_start_requests);
@@ -177,8 +187,9 @@ async fn proxy_connection(
                         &mut turn_start_requests,
                     ) {
                         mark_selected_thread_confirmed(&thread_id, &selected_thread);
+                        fresh_fallback_threads.remove(&thread_id);
                     }
-                    if let Some(fallback) = take_active_writer_fallback_request(
+                    if let Some((key, fork, fresh_start)) = take_active_writer_fallback_request(
                         text.as_ref(),
                         &mut resume_fallback_requests,
                     ) {
@@ -186,15 +197,36 @@ async fn proxy_connection(
                             "[codex-tui-proxy] resume target has an active writer; forking it instead"
                         );
                         upstream_sink
-                            .send(Message::Text(fallback.to_string().into()))
+                            .send(Message::Text(fork.to_string().into()))
                             .await
                             .map_err(|error| format!("upstream fallback send failed: {error}"))?;
+                        fresh_start_fallback_requests.insert(key, fresh_start);
+                        continue;
+                    }
+                    if let Some((key, fresh_start)) = take_failed_fork_start_fallback_request(
+                        text.as_ref(),
+                        &mut fresh_start_fallback_requests,
+                    ) {
+                        eprintln!(
+                            "[codex-tui-proxy] resume fork failed; starting a fresh thread instead"
+                        );
+                        // The original resume request registered this ID as a confirmed
+                        // selection. A fresh thread/start is provisional until its first
+                        // turn succeeds.
+                        thread_selection_requests.insert(key, false);
+                        upstream_sink
+                            .send(Message::Text(fresh_start.to_string().into()))
+                            .await
+                            .map_err(|error| format!("upstream fresh-start send failed: {error}"))?;
                         continue;
                     }
                     if let Some(mut selection) = take_selected_thread_response(
                         text.as_ref(),
                         &mut thread_selection_requests,
                     ) {
+                        if !selection.confirmed {
+                            fresh_fallback_threads.insert(selection.id.clone());
+                        }
                         let mut selected = selected_thread
                             .lock()
                             .unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -210,6 +242,41 @@ async fn proxy_connection(
         }
     }
     Ok(())
+}
+
+/// A newly started paginated thread is usable immediately, but Codex does not
+/// materialize its persisted history until the first user turn. The TUI always
+/// hydrates a selection with bounded turn and item requests, so answer those
+/// requests as the empty history that the fresh thread actually has.
+fn empty_unmaterialized_history_response(
+    raw: &str,
+    fresh_threads: &HashSet<String>,
+) -> Option<Message> {
+    let message = serde_json::from_str::<Value>(raw).ok()?;
+    let method = message.get("method").and_then(Value::as_str)?;
+    if !matches!(method, "thread/turns/list" | "thread/items/list") {
+        return None;
+    }
+    let thread_id = message
+        .get("params")
+        .and_then(|params| params.get("threadId"))
+        .and_then(Value::as_str)?;
+    if !fresh_threads.contains(thread_id) {
+        return None;
+    }
+    let id = message.get("id")?.clone();
+    Some(Message::Text(
+        serde_json::json!({
+            "id": id,
+            "result": {
+                "data": [],
+                "nextCursor": null,
+                "backwardsCursor": null
+            }
+        })
+        .to_string()
+        .into(),
+    ))
 }
 
 fn request_id_key(value: &Value) -> Option<String> {
@@ -294,7 +361,13 @@ fn mark_selected_thread_confirmed(
 /// Keep a `thread/fork` equivalent of each resume request until its response arrives.
 /// If Codex rejects the resume because another process still owns the thread writer
 /// lock, the proxy can retry the same selection as a fork without restarting the TUI.
-fn track_resume_fallback_request(raw: &str, pending: &mut HashMap<String, Value>) {
+#[derive(Clone, Debug, PartialEq)]
+struct ResumeFallback {
+    fork: Value,
+    fresh_start: Value,
+}
+
+fn track_resume_fallback_request(raw: &str, pending: &mut HashMap<String, ResumeFallback>) {
     const FORK_COMPATIBLE_RESUME_FIELDS: &[&str] = &[
         "approvalPolicy",
         "approvalsReviewer",
@@ -312,7 +385,7 @@ fn track_resume_fallback_request(raw: &str, pending: &mut HashMap<String, Value>
         "threadId",
     ];
 
-    let Ok(mut message) = serde_json::from_str::<Value>(raw) else {
+    let Ok(message) = serde_json::from_str::<Value>(raw) else {
         return;
     };
     if message.get("method").and_then(Value::as_str) != Some("thread/resume") {
@@ -322,8 +395,9 @@ fn track_resume_fallback_request(raw: &str, pending: &mut HashMap<String, Value>
         return;
     };
 
-    message["method"] = Value::String("thread/fork".to_string());
-    if let Some(params) = message.get_mut("params").and_then(Value::as_object_mut) {
+    let mut fork = message.clone();
+    fork["method"] = Value::String("thread/fork".to_string());
+    if let Some(params) = fork.get_mut("params").and_then(Value::as_object_mut) {
         // Forward only fields accepted by both ThreadResumeParams and
         // ThreadForkParams. A future resume-only field must not make the fallback
         // fail with invalid params merely because the proxy did not know to drop it.
@@ -335,13 +409,41 @@ fn track_resume_fallback_request(raw: &str, pending: &mut HashMap<String, Value>
         // reads the persisted history without contending for that live rollout.
         params.retain(|key, _| FORK_COMPATIBLE_RESUME_FIELDS.contains(&key.as_str()));
     }
-    pending.insert(key, message);
+
+    const START_COMPATIBLE_RESUME_FIELDS: &[&str] = &[
+        "approvalPolicy",
+        "approvalsReviewer",
+        "baseInstructions",
+        "config",
+        "cwd",
+        "developerInstructions",
+        "model",
+        "modelProvider",
+        "permissions",
+        "runtimeWorkspaceRoots",
+        "sandbox",
+        "serviceTier",
+    ];
+    let mut fresh_start = message;
+    fresh_start["method"] = Value::String("thread/start".to_string());
+    if let Some(params) = fresh_start.get_mut("params").and_then(Value::as_object_mut) {
+        params.retain(|key, _| START_COMPATIBLE_RESUME_FIELDS.contains(&key.as_str()));
+        // The TUI requested `excludeTurns` on resume and hydrates turns after the
+        // selection response. A legacy blank thread is not materialized until its
+        // first user message, so that hydration fails and exits the TUI. Paginated
+        // blank threads support an empty turns page immediately.
+        params.insert(
+            "historyMode".to_string(),
+            Value::String("paginated".to_string()),
+        );
+    }
+    pending.insert(key, ResumeFallback { fork, fresh_start });
 }
 
 fn take_active_writer_fallback_request(
     raw: &str,
-    pending: &mut HashMap<String, Value>,
-) -> Option<Value> {
+    pending: &mut HashMap<String, ResumeFallback>,
+) -> Option<(String, Value, Value)> {
     let message = serde_json::from_str::<Value>(raw).ok()?;
     let object = message.as_object()?;
     if object.contains_key("method") {
@@ -360,7 +462,31 @@ fn take_active_writer_fallback_request(
             .get("message")
             .and_then(Value::as_str)
             .is_some_and(|message| message.contains("already has an active writer"));
-    is_active_writer.then_some(fallback)
+    is_active_writer.then_some((key, fallback.fork, fallback.fresh_start))
+}
+
+/// A fork can still fail when the source history is incomplete or corrupt (for
+/// example, when Ctrl+C interrupts a paginated writer between projection
+/// records). The protected main session must remain recoverable, so use a fresh
+/// thread as the final fallback. Successful fork responses merely clear this
+/// pending fallback and continue to the TUI unchanged.
+fn take_failed_fork_start_fallback_request(
+    raw: &str,
+    pending: &mut HashMap<String, Value>,
+) -> Option<(String, Value)> {
+    let message = serde_json::from_str::<Value>(raw).ok()?;
+    let object = message.as_object()?;
+    if object.contains_key("method") {
+        return None;
+    }
+    let has_result = object.contains_key("result");
+    let has_error = object.contains_key("error");
+    if has_result == has_error {
+        return None;
+    }
+    let key = message.get("id").and_then(request_id_key)?;
+    let fresh_start = pending.remove(&key)?;
+    has_error.then_some((key, fresh_start))
 }
 
 fn take_selected_thread_response(
@@ -571,6 +697,194 @@ mod tests {
             tokio::time::sleep(std::time::Duration::from_millis(10)).await;
         }
         assert_eq!(proxy.selected_thread_id().as_deref(), Some("forked"));
+        upstream_task.await.expect("upstream task");
+    }
+
+    #[tokio::test]
+    async fn starts_fresh_when_active_writer_fork_cannot_read_persisted_history() {
+        let upstream_listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+            .await
+            .expect("upstream listener");
+        let upstream_address = upstream_listener.local_addr().expect("upstream address");
+        let upstream_task = tokio::spawn(async move {
+            let (stream, _) = upstream_listener.accept().await.expect("upstream accept");
+            let mut socket = tokio_tungstenite::accept_async(stream)
+                .await
+                .expect("upstream handshake");
+
+            let resume = socket.next().await.expect("resume").expect("valid resume");
+            let Message::Text(resume) = resume else {
+                panic!("expected text resume request");
+            };
+            assert_eq!(
+                serde_json::from_str::<Value>(resume.as_ref()).expect("resume json")["method"],
+                "thread/resume"
+            );
+            socket
+                .send(Message::Text(
+                    r#"{"id":7,"error":{"code":-32600,"message":"thread old already has an active writer"}}"#
+                        .into(),
+                ))
+                .await
+                .expect("active writer response");
+
+            let fork = socket.next().await.expect("fork").expect("valid fork");
+            let Message::Text(fork) = fork else {
+                panic!("expected text fork request");
+            };
+            assert_eq!(
+                serde_json::from_str::<Value>(fork.as_ref()).expect("fork json")["method"],
+                "thread/fork"
+            );
+            socket
+                .send(Message::Text(
+                    r#"{"id":7,"error":{"code":-32603,"message":"failed to prepare paginated fork: thread history projection expected ordinal 2324, got 2323"}}"#
+                        .into(),
+                ))
+                .await
+                .expect("fork failure");
+
+            let start = socket.next().await.expect("start").expect("valid start");
+            let Message::Text(start) = start else {
+                panic!("expected text start request");
+            };
+            let start: Value = serde_json::from_str(start.as_ref()).expect("start json");
+            assert_eq!(start["id"], 7);
+            assert_eq!(start["method"], "thread/start");
+            assert_eq!(start["params"]["cwd"], "/workspace");
+            assert_eq!(start["params"]["historyMode"], "paginated");
+            assert!(start["params"].get("threadId").is_none());
+            assert!(start["params"].get("excludeTurns").is_none());
+            assert!(start["params"].get("path").is_none());
+            socket
+                .send(Message::Text(
+                    r#"{"id":7,"result":{"thread":{"id":"fresh"}}}"#.into(),
+                ))
+                .await
+                .expect("fresh start response");
+            let turn = socket
+                .next()
+                .await
+                .expect("turn start")
+                .expect("valid turn start");
+            let Message::Text(turn) = turn else {
+                panic!("expected text turn request");
+            };
+            assert_eq!(
+                serde_json::from_str::<Value>(turn.as_ref()).expect("turn json")["method"],
+                "turn/start"
+            );
+            socket
+                .send(Message::Text(
+                    r#"{"id":10,"result":{"turn":{"id":"turn-1"}}}"#.into(),
+                ))
+                .await
+                .expect("turn response");
+            let history = socket
+                .next()
+                .await
+                .expect("materialized history")
+                .expect("valid history");
+            let Message::Text(history) = history else {
+                panic!("expected text materialized history request");
+            };
+            assert_eq!(
+                serde_json::from_str::<Value>(history.as_ref()).expect("history json")["method"],
+                "thread/turns/list"
+            );
+            socket
+                .send(Message::Text(
+                    r#"{"id":11,"result":{"data":[{"id":"turn-1"}],"nextCursor":null,"backwardsCursor":null}}"#.into(),
+                ))
+                .await
+                .expect("materialized history response");
+        });
+
+        let proxy =
+            CodexTuiProxy::spawn(format!("ws://{upstream_address}")).expect("proxy should start");
+        let (mut client, _) = tokio_tungstenite::connect_async(proxy.endpoint())
+            .await
+            .expect("proxy handshake");
+        client
+            .send(Message::Text(
+                r#"{"method":"thread/resume","id":7,"params":{"threadId":"old","cwd":"/workspace","excludeTurns":true}}"#
+                    .into(),
+            ))
+            .await
+            .expect("proxy request");
+        let response = client
+            .next()
+            .await
+            .expect("response")
+            .expect("valid response");
+        let Message::Text(response) = response else {
+            panic!("expected text response");
+        };
+        let response: Value = serde_json::from_str(response.as_ref()).expect("response json");
+        assert_eq!(response["result"]["thread"]["id"], "fresh");
+        for (id, method) in [(8, "thread/turns/list"), (9, "thread/items/list")] {
+            client
+                .send(Message::Text(
+                    serde_json::json!({
+                        "id": id,
+                        "method": method,
+                        "params": { "threadId": "fresh" }
+                    })
+                    .to_string()
+                    .into(),
+                ))
+                .await
+                .expect("history hydration request");
+            let history = client
+                .next()
+                .await
+                .expect("history response")
+                .expect("valid history response");
+            let Message::Text(history) = history else {
+                panic!("expected text history response");
+            };
+            let history: Value =
+                serde_json::from_str(history.as_ref()).expect("history response json");
+            assert_eq!(history["id"], id);
+            assert_eq!(history["result"]["data"], serde_json::json!([]));
+            assert!(history["result"]["nextCursor"].is_null());
+            assert!(history["result"]["backwardsCursor"].is_null());
+        }
+        client
+            .send(Message::Text(
+                r#"{"id":10,"method":"turn/start","params":{"threadId":"fresh"}}"#.into(),
+            ))
+            .await
+            .expect("turn start request");
+        let _turn = client
+            .next()
+            .await
+            .expect("turn response")
+            .expect("valid turn response");
+        client
+            .send(Message::Text(
+                r#"{"id":11,"method":"thread/turns/list","params":{"threadId":"fresh"}}"#.into(),
+            ))
+            .await
+            .expect("materialized history request");
+        let history = client
+            .next()
+            .await
+            .expect("materialized history response")
+            .expect("valid materialized history response");
+        let Message::Text(history) = history else {
+            panic!("expected text materialized history response");
+        };
+        let history: Value = serde_json::from_str(history.as_ref()).expect("history response json");
+        assert_eq!(history["result"]["data"][0]["id"], "turn-1");
+        assert_eq!(
+            proxy.selected_thread(),
+            Some(SelectedThread {
+                id: "fresh".to_string(),
+                confirmed: true,
+                revision: 2,
+            })
+        );
         upstream_task.await.expect("upstream task");
     }
 
