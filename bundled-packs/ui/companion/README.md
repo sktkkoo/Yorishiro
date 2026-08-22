@@ -1,4 +1,4 @@
-# companion — 作業の横に住人だけを置く UI
+# companion
 
 terminal、chrome、tab indicator を隠し、住人の stage だけを window 全体へ広げる。native
 window の最小サイズを 320x420 logical px へ下げ、起動時に最小幅の 320x720 へ自動で縮める。
@@ -8,8 +8,8 @@ always-on-top にする。
 `theater` 用の stage transition は使わない。native window resize と fullscreen stage animation を
 同時に走らせると、resize 前の viewport 幅を基準に camera が動いたあと新しい幅へ snap するため。
 
-`theater` は Yorishiro の通常 window 内で住人を全画面表示する鑑賞モード。`companion` は他の作業の
-横へ置く常駐表示であり、目的を分けている。
+`theater` は Yorishiro の通常 window 内で住人を全画面表示する。`companion` は terminal と chrome を
+隠し、細い window で表示する。
 
 ## 開く・閉じる
 
