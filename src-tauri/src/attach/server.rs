@@ -1,27 +1,39 @@
+#[cfg(target_os = "macos")]
 use super::protocol::{
     ControlMessage, ExternalClientsChangedPayload, Frame, ListedSession,
     EXTERNAL_CLIENTS_CHANGED_EVENT,
 };
+#[cfg(target_os = "macos")]
 use crate::sessions::pty_session::{ExternalPtySink, ExternalResizeResult, PtySession};
-use crate::sessions::{SessionKind, SessionRegistry};
+#[cfg(target_os = "macos")]
+use crate::sessions::SessionKind;
+use crate::sessions::SessionRegistry;
+#[cfg(target_os = "macos")]
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 #[cfg(target_os = "macos")]
 use std::sync::mpsc::{self, SyncSender, TrySendError};
-use std::sync::{Arc, Mutex, MutexGuard};
-use tauri::{AppHandle, Emitter};
+use std::sync::Arc;
+#[cfg(target_os = "macos")]
+use std::sync::{Mutex, MutexGuard};
+use tauri::AppHandle;
+#[cfg(target_os = "macos")]
+use tauri::Emitter;
 
+#[cfg(target_os = "macos")]
 fn lock_or_recover<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
+#[cfg(target_os = "macos")]
 struct ClientCounter {
     count: AtomicUsize,
     emit_lock: Mutex<()>,
     changed: Arc<dyn Fn(usize) + Send + Sync>,
 }
 
+#[cfg(target_os = "macos")]
 impl ClientCounter {
     fn new(changed: impl Fn(usize) + Send + Sync + 'static) -> Self {
         Self {
@@ -583,7 +595,7 @@ fn handle_client(
     sink.shutdown_and_join();
 }
 
-#[cfg(test)]
+#[cfg(all(test, target_os = "macos"))]
 mod tests {
     use super::*;
 

@@ -180,12 +180,14 @@ pub(crate) trait ExternalPtySink: Send + Sync {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg(target_os = "macos")]
 pub(crate) struct ExternalAttachInfo {
     pub cols: u16,
     pub rows: u16,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg(target_os = "macos")]
 pub(crate) enum ExternalResizeResult {
     Applied { cols: u16, rows: u16 },
     NotAuthority { cols: u16, rows: u16 },
@@ -891,6 +893,7 @@ impl PtySession {
         *lock_or_recover(&self.output_channel) = None;
     }
 
+    #[cfg(target_os = "macos")]
     pub(crate) fn is_alive(&self) -> bool {
         let mut guard = lock_or_recover(&self.child);
         guard
@@ -900,11 +903,13 @@ impl PtySession {
             .unwrap_or(false)
     }
 
+    #[cfg(target_os = "macos")]
     pub(crate) fn current_size(&self) -> ExternalAttachInfo {
         let (cols, rows) = *lock_or_recover(&self.size);
         ExternalAttachInfo { cols, rows }
     }
 
+    #[cfg(target_os = "macos")]
     pub(crate) fn register_external_sink(
         &self,
         client_id: String,
@@ -921,6 +926,7 @@ impl PtySession {
         Ok(self.current_size())
     }
 
+    #[cfg(target_os = "macos")]
     pub(crate) fn remove_external_sink(&self, client_id: &str) -> bool {
         let mut clients = lock_or_recover(&self.external_clients);
         let removed = clients.sinks.remove(client_id).is_some();
@@ -930,6 +936,7 @@ impl PtySession {
         removed
     }
 
+    #[cfg(target_os = "macos")]
     pub(crate) fn external_write(&self, client_id: &str, data: &[u8]) -> Result<(), String> {
         // Keep the writer order, authority state, notification, and nudge in one
         // external-input order. UI writes still share the existing writer lock.
@@ -970,6 +977,7 @@ impl PtySession {
         Ok(())
     }
 
+    #[cfg(target_os = "macos")]
     pub(crate) fn external_resize(
         &self,
         client_id: &str,
@@ -1001,6 +1009,7 @@ impl PtySession {
         Ok(ExternalResizeResult::Applied { cols, rows })
     }
 
+    #[cfg(target_os = "macos")]
     pub(crate) fn nudge_external_size(&self) -> Result<(), String> {
         let size = self.current_size();
         let nudge_rows = if size.rows < u16::MAX {
