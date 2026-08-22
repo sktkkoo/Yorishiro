@@ -305,7 +305,6 @@ fn track_resume_fallback_request(raw: &str, pending: &mut HashMap<String, Value>
         "excludeTurns",
         "model",
         "modelProvider",
-        "path",
         "permissions",
         "runtimeWorkspaceRoots",
         "sandbox",
@@ -328,6 +327,12 @@ fn track_resume_fallback_request(raw: &str, pending: &mut HashMap<String, Value>
         // Forward only fields accepted by both ThreadResumeParams and
         // ThreadForkParams. A future resume-only field must not make the fallback
         // fail with invalid params merely because the proxy did not know to drop it.
+        //
+        // In particular, do not forward `path`: Codex gives a non-empty rollout
+        // path precedence over `threadId` for fork. The resume target's rollout is
+        // still owned by the active writer, so retrying by path can hit the same
+        // writer lock instead of creating an independent fork. Forking by thread ID
+        // reads the persisted history without contending for that live rollout.
         params.retain(|key, _| FORK_COMPATIBLE_RESUME_FIELDS.contains(&key.as_str()));
     }
     pending.insert(key, message);
@@ -523,6 +528,7 @@ mod tests {
             assert_eq!(fork["method"], "thread/fork");
             assert_eq!(fork["params"]["threadId"], "old");
             assert_eq!(fork["params"]["cwd"], "/workspace");
+            assert!(fork["params"].get("path").is_none());
             assert!(fork["params"].get("history").is_none());
             assert!(fork["params"].get("initialTurnsPage").is_none());
             assert!(fork["params"].get("personality").is_none());
@@ -542,7 +548,7 @@ mod tests {
             .expect("proxy handshake");
         client
             .send(Message::Text(
-                r#"{"method":"thread/resume","id":7,"params":{"threadId":"old","cwd":"/workspace","history":[],"initialTurnsPage":null,"personality":"friendly","futureResumeOnly":true}}"#
+                r#"{"method":"thread/resume","id":7,"params":{"threadId":"old","path":"/workspace/.codex/sessions/old.jsonl","cwd":"/workspace","history":[],"initialTurnsPage":null,"personality":"friendly","futureResumeOnly":true}}"#
                     .into(),
             ))
             .await
