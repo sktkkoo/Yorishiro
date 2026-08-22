@@ -219,9 +219,6 @@ struct SocketSink {
 const WRITER_QUEUE_CAPACITY: usize = 512;
 
 #[cfg(target_os = "macos")]
-const SOCKET_WRITE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
-
-#[cfg(target_os = "macos")]
 impl SocketSink {
     fn new(writer: super::transport::Stream) -> Result<Self, String> {
         Self::new_with_capacity(writer, WRITER_QUEUE_CAPACITY)
@@ -231,9 +228,10 @@ impl SocketSink {
         mut writer: super::transport::Stream,
         capacity: usize,
     ) -> Result<Self, String> {
-        writer
-            .set_write_timeout(Some(SOCKET_WRITE_TIMEOUT))
-            .map_err(|error| format!("failed to configure attach writer: {error}"))?;
+        // macOS rejects SO_SNDTIMEO for listener-accepted Unix-domain sockets
+        // with EINVAL. The bounded queue keeps the PTY reader non-blocking, and
+        // shutting down `close_stream` interrupts a blocked writer during
+        // overflow or teardown, so a socket write timeout is not required.
         let close_stream = writer
             .try_clone()
             .map_err(|error| format!("failed to clone attach writer: {error}"))?;
@@ -651,6 +649,29 @@ mod tests {
         assert!(sink.closed.load(Ordering::Acquire));
         assert!(lock_or_recover(&sink.writer_thread).is_none());
         sink.shutdown_and_join(); // idempotent, and cannot leak a second join handle
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn asynchronous_writer_accepts_a_listener_connected_unix_socket() {
+        use std::os::unix::net::{UnixListener, UnixStream};
+
+        let temp = tempfile::tempdir().expect("tempdir");
+        let socket_path = temp.path().join("attach.sock");
+        let listener = UnixListener::bind(&socket_path).expect("bind listener");
+        let client_stream = UnixStream::connect(&socket_path).expect("connect client");
+        let (server_stream, _) = listener.accept().expect("accept client");
+
+        let sink = SocketSink::new_with_capacity(server_stream, 4).expect("writer");
+        sink.send_control(&ControlMessage::Hello { replay: false })
+            .expect("enqueue hello");
+
+        let mut frames = super::super::transport::FrameReader::new(client_stream);
+        assert_eq!(
+            frames.read_frame().expect("hello"),
+            Some(Frame::Control(ControlMessage::Hello { replay: false }))
+        );
+        sink.shutdown_and_join();
     }
 
     #[cfg(target_os = "macos")]
