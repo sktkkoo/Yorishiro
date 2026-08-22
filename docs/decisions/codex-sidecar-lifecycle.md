@@ -26,6 +26,9 @@ reaper 後も別の正当な Codex client が最新 thread を使用中なら、
 Yorishiro は同一 thread の resume を先に試し、active writer error の場合だけ同じ履歴を
 fork して起動を継続する。これにより stale sidecar は可能な範囲で回収しつつ、利用中の
 別 client を巻き込まずに Terminal を開ける。
+fallback 時は resume request の rollout `path` を引き継がず、`threadId` で fork する。
+Codex app-server は非空 `path` を `threadId` より優先するため、利用中の rollout path で
+fork すると active writer 競合を再度踏み、main session が stopped のままになる。
 
 debug build を例外にしない理由は経験的で、実装当日に確認された。Rust hot reload で backend process が再起動すると、現行構成では旧 process が所有していた PTY との接続が切れ、新 process から再 attach できない。sidecar だけ残しても session の継続は得られず、残留 sidecar が writer lock を握って次の session の `resume --last` を塞ぐ——つまり issue #109 と同じ故障を dev loop 内で再現する。実際、debug でこの teardown / reaper をスキップする変更を入れた直後の dev iteration で `-32600` が再発し、手動 cleanup が必要になった。
 
@@ -63,5 +66,6 @@ debug build を例外にしない理由は経験的で、実装当日に確認�
 
 ## 改訂履歴
 
+- 2026-08-22: active writer fallback を rollout path ではなく thread ID ベースの fork に限定。
 - 2026-08-08: reaper で停止できない正当な active writer がいる場合の resume-first / fork fallback を追加。
 - 2026-08-08: 初版は build profile で teardown / reaper を分ける案だったが、debug スキップが dev loop 内で issue #109 の resume 失敗を再現したため、公開前に一律動作へ改めた。自己改修セッション保護は session supervisor の future work とする。
