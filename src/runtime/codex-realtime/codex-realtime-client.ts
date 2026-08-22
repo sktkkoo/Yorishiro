@@ -134,6 +134,8 @@ export const DEFAULT_CODEX_REALTIME_VOICE = "sol";
 const REMOTE_SPEECH_SAMPLE_INTERVAL_MS = 33;
 const START_RETRY_BASE_DELAYS_MS = [500, 1_500] as const;
 const APP_VERSION = "0.6.2";
+const REALTIME_V3_SESSION_MODEL_REJECTION =
+  "Field `session.model` is not allowed for this Codex realtime session";
 
 class StartAttemptCancelledError extends Error {
   constructor() {
@@ -354,7 +356,7 @@ export class CodexRealtimeClient implements LipSyncSource {
     const threadId = await this.waitForLoadedThread(attempt);
     this.assertAttemptOwner(attempt);
     this.threadId = threadId;
-    await this.startWebRtc(
+    const realtimeVersion = await this.startWebRtc(
       threadId,
       attempt,
       personaApplication.initialItems,
@@ -362,7 +364,15 @@ export class CodexRealtimeClient implements LipSyncSource {
       personaApplication.startupContextIncluded,
     );
     this.assertAttemptOwner(attempt);
-    return { billing, personaApplication: personaApplication.diagnostic };
+    const personaDiagnostic =
+      realtimeVersion === "v2" && personaApplication.diagnostic.delivery === "initial-items"
+        ? {
+            personaId: personaApplication.diagnostic.personaId,
+            status: "unsupported" as const,
+            appServerVersion: personaApplication.diagnostic.appServerVersion,
+          }
+        : personaApplication.diagnostic;
+    return { billing, personaApplication: personaDiagnostic };
   }
 
   stop(): void {
@@ -591,7 +601,7 @@ export class CodexRealtimeClient implements LipSyncSource {
     initialItems?: ReadonlyArray<{ readonly role: "developer"; readonly text: string }>,
     prompt?: string,
     startupContextIncluded = true,
-  ): Promise<void> {
+  ): Promise<"v2" | "v3"> {
     this.assertAttemptOwner(attempt);
     this.currentStage = "microphone";
     const peer = new RTCPeerConnection();
@@ -657,6 +667,7 @@ export class CodexRealtimeClient implements LipSyncSource {
     // （persona override → global → built-in default）で再試行する。認証・接続などの
     // 一般エラーはそのまま投げ、voice fallback で隠さない。
     let remoteSdp: Promise<string> | null = null;
+    let realtimeVersion: "v2" | "v3" = "v3";
     this.currentStage = "realtime-start";
     for (let index = 0; index < candidates.length && remoteSdp === null; index++) {
       const voice = candidates[index];
@@ -668,24 +679,52 @@ export class CodexRealtimeClient implements LipSyncSource {
       // start が失敗した attempt の promise は誰も await しない。後始末の
       // rejectAllPending が reject しても unhandled rejection にしない。
       void attemptRemoteSdp.catch(() => {});
+      let startError: unknown = null;
       try {
         await this.request("thread/realtime/start", {
           threadId,
           outputModality: "audio",
-          version: "v3",
+          version: realtimeVersion,
           voice,
-          includeStartupContext: startupContextIncluded,
-          ...(initialItems ? { initialItems } : {}),
+          includeStartupContext:
+            realtimeVersion === "v2" && initialItems ? true : startupContextIncluded,
+          ...(realtimeVersion === "v3" && initialItems ? { initialItems } : {}),
           ...(prompt ? { prompt } : {}),
           transport: { type: "webrtc", sdp },
         });
-        remoteSdp = attemptRemoteSdp;
       } catch (error) {
         if (error instanceof StartAttemptCancelledError) throw error;
         this.assertAttemptOwner(attempt, peer);
+        if (realtimeVersion === "v3" && isRealtimeV3SessionModelRejection(error)) {
+          // Codex 0.149.0 can inject a v3 default session.model that the selected
+          // Frameless backend rejects. Retry the non-Frameless v2 compatibility path.
+          // initialItems is v3-only, so retain Codex startup context when omitting it.
+          realtimeVersion = "v2";
+          try {
+            await this.request("thread/realtime/start", {
+              threadId,
+              outputModality: "audio",
+              version: realtimeVersion,
+              voice,
+              includeStartupContext: initialItems ? true : startupContextIncluded,
+              ...(prompt ? { prompt } : {}),
+              transport: { type: "webrtc", sdp },
+            });
+          } catch (fallbackError) {
+            startError = fallbackError;
+          }
+        } else {
+          startError = error;
+        }
+      }
+      if (startError === null) {
+        remoteSdp = attemptRemoteSdp;
+      } else {
+        if (startError instanceof StartAttemptCancelledError) throw startError;
+        this.assertAttemptOwner(attempt, peer);
         const nextVoice = candidates[index + 1];
-        const reason = error instanceof Error ? error.message : String(error);
-        if (nextVoice === undefined || !isCodexVoiceRejectionMessage(reason)) throw error;
+        const reason = startError instanceof Error ? startError.message : String(startError);
+        if (nextVoice === undefined || !isCodexVoiceRejectionMessage(reason)) throw startError;
         this.onVoiceFallback?.({ fromVoice: voice, toVoice: nextVoice, reason });
       }
     }
@@ -702,6 +741,7 @@ export class CodexRealtimeClient implements LipSyncSource {
     this.currentStage = "sdp-application";
     await peer.setRemoteDescription({ type: "answer", sdp: answerSdp });
     this.assertAttemptOwner(attempt, peer);
+    return realtimeVersion;
   }
 
   private connectRemoteAudio(stream: MediaStream, attempt: number): void {
@@ -1129,6 +1169,17 @@ function jsonRpcErrorMessage(error: unknown): string {
   }
   const message = (error as { readonly message?: unknown }).message;
   return typeof message === "string" ? message : "Codex app-server request failed";
+}
+
+function isRealtimeV3SessionModelRejection(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  if (error.message === REALTIME_V3_SESSION_MODEL_REJECTION) return true;
+  try {
+    const body: unknown = JSON.parse(error.message);
+    return isRecord(body) && body.detail === REALTIME_V3_SESSION_MODEL_REJECTION;
+  } catch {
+    return false;
+  }
 }
 
 function normalizeThreadIdSet(values: ReadonlyArray<unknown>): string[] | null {

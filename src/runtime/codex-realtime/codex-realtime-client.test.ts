@@ -41,6 +41,8 @@ const bridge = vi.hoisted(() => ({
   threadReadFailures: {} as Record<string, number>,
   /** voice → error message。entry がある voice の thread/realtime/start を error 応答にする。 */
   realtimeStartErrors: {} as Record<string, string>,
+  /** version → error message。specific protocol rejection の compatibility test 用。 */
+  realtimeStartVersionErrors: {} as Record<string, string>,
   initializeUserAgent: "codex_cli_rs/0.146.0",
   capabilities: { appServerVersion: "0.146.0", personaInitialItems: true },
   suppressRealtimeSdp: false,
@@ -127,7 +129,10 @@ vi.mock("../../bindings/tauri-commands", () => ({
         });
       } else if (request.method === "thread/realtime/start") {
         const voice = request.params?.voice;
-        const rejection = typeof voice === "string" ? bridge.realtimeStartErrors[voice] : undefined;
+        const version = request.params?.version;
+        const rejection =
+          (typeof version === "string" ? bridge.realtimeStartVersionErrors[version] : undefined) ??
+          (typeof voice === "string" ? bridge.realtimeStartErrors[voice] : undefined);
         if (rejection !== undefined) {
           queueMicrotask(() => {
             bridge.channel?.onmessage(
@@ -260,6 +265,7 @@ describe("CodexRealtimeClient", () => {
     vi.mocked(ensureAudioContextRunning).mockResolvedValue({} as AudioContext);
     bridge.threadReadFailures = {};
     bridge.realtimeStartErrors = {};
+    bridge.realtimeStartVersionErrors = {};
     bridge.suppressRealtimeSdp = false;
     Object.defineProperty(navigator, "mediaDevices", {
       configurable: true,
@@ -500,6 +506,75 @@ describe("CodexRealtimeClient", () => {
       bridge.sent.find((message) => message.method === "thread/realtime/start")?.params,
     ).toMatchObject({ voice: "juniper" });
     client.stop();
+  });
+
+  it.each([
+    {
+      name: "plain detail",
+      rejection: "Field `session.model` is not allowed for this Codex realtime session",
+    },
+    {
+      name: "reported JSON detail",
+      rejection:
+        '{ "detail": "Field `session.model` is not allowed for this Codex realtime session" }',
+    },
+  ])("retries with realtime v2 for the exact v3 session.model rejection as $name", async ({
+    rejection,
+  }) => {
+    bridge.realtimeStartVersionErrors = {
+      v3: rejection,
+    };
+    const diagnostics: CodexRealtimePersonaApplication[] = [];
+    const voiceFallbacks: CodexRealtimeVoiceFallback[] = [];
+    const client = new CodexRealtimeClient("main-session", undefined, {
+      getPersonaSnapshot: () => ({ personaId: "yori", instructions: "persona guidance" }),
+      includeStartupContext: false,
+      getVoiceCandidates: () => ["maple", "sol"],
+      onVoiceFallback: (fallback) => voiceFallbacks.push(fallback),
+      onPersonaApplication: (application) => diagnostics.push(application),
+    });
+
+    await client.start();
+
+    const starts = bridge.sent.filter((message) => message.method === "thread/realtime/start");
+    expect(starts).toHaveLength(2);
+    expect(starts[0]?.params).toMatchObject({
+      threadId: "thread-1",
+      outputModality: "audio",
+      version: "v3",
+      voice: "maple",
+      includeStartupContext: false,
+      initialItems: [{ role: "developer", text: "persona guidance" }],
+      transport: { type: "webrtc", sdp: "local-offer" },
+    });
+    expect(starts[1]?.params).toEqual({
+      threadId: "thread-1",
+      outputModality: "audio",
+      version: "v2",
+      voice: "maple",
+      includeStartupContext: true,
+      transport: { type: "webrtc", sdp: "local-offer" },
+    });
+    expect(voiceFallbacks).toEqual([]);
+    expect(diagnostics).toEqual([
+      { personaId: "yori", status: "unsupported", appServerVersion: "0.146.0" },
+    ]);
+    expect(client.getStatus()).toBe("active");
+    client.stop();
+  });
+
+  it("does not downgrade realtime for other v3 start failures", async () => {
+    bridge.realtimeStartVersionErrors = {
+      v3: "realtime is not enabled for this account",
+    };
+    const client = new CodexRealtimeClient("main-session");
+
+    await expect(client.start()).rejects.toThrow("realtime is not enabled for this account");
+
+    const starts = bridge.sent.filter((message) => message.method === "thread/realtime/start");
+    expect(starts).toHaveLength(1);
+    expect(starts[0]?.params?.version).toBe("v3");
+    expect(client.getStatus()).toBe("error");
   });
 
   it("falls back to the next candidate only when the app-server rejects the voice", async () => {
