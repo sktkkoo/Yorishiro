@@ -43,6 +43,8 @@ const bridge = vi.hoisted(() => ({
   realtimeStartErrors: {} as Record<string, string>,
   /** version → error message。specific protocol rejection の compatibility test 用。 */
   realtimeStartVersionErrors: {} as Record<string, string>,
+  /** version → async error notification。backend negotiation failure の実順序を再現する。 */
+  realtimeStartVersionRemoteErrors: {} as Record<string, string>,
   initializeUserAgent: "codex_cli_rs/0.146.0",
   capabilities: { appServerVersion: "0.146.0", personaInitialItems: true },
   suppressRealtimeSdp: false,
@@ -142,7 +144,20 @@ vi.mock("../../bindings/tauri-commands", () => ({
           return;
         }
         respond({});
-        if (!bridge.suppressRealtimeSdp) {
+        const remoteRejection =
+          typeof version === "string"
+            ? bridge.realtimeStartVersionRemoteErrors[version]
+            : undefined;
+        if (remoteRejection !== undefined) {
+          queueMicrotask(() => {
+            bridge.channel?.onmessage(
+              JSON.stringify({
+                method: "thread/realtime/error",
+                params: { threadId: "thread-1", message: remoteRejection },
+              }),
+            );
+          });
+        } else if (!bridge.suppressRealtimeSdp) {
           queueMicrotask(() => {
             bridge.channel?.onmessage(
               JSON.stringify({
@@ -266,6 +281,7 @@ describe("CodexRealtimeClient", () => {
     bridge.threadReadFailures = {};
     bridge.realtimeStartErrors = {};
     bridge.realtimeStartVersionErrors = {};
+    bridge.realtimeStartVersionRemoteErrors = {};
     bridge.suppressRealtimeSdp = false;
     Object.defineProperty(navigator, "mediaDevices", {
       configurable: true,
@@ -518,10 +534,10 @@ describe("CodexRealtimeClient", () => {
       rejection:
         '{ "detail": "Field `session.model` is not allowed for this Codex realtime session" }',
     },
-  ])("retries with realtime v2 for the exact v3 session.model rejection as $name", async ({
+  ])("retries with realtime v1 after the async v3 session.model rejection as $name", async ({
     rejection,
   }) => {
-    bridge.realtimeStartVersionErrors = {
+    bridge.realtimeStartVersionRemoteErrors = {
       v3: rejection,
     };
     const diagnostics: CodexRealtimePersonaApplication[] = [];
@@ -550,7 +566,7 @@ describe("CodexRealtimeClient", () => {
     expect(starts[1]?.params).toEqual({
       threadId: "thread-1",
       outputModality: "audio",
-      version: "v2",
+      version: "v1",
       voice: "maple",
       includeStartupContext: true,
       transport: { type: "webrtc", sdp: "local-offer" },
@@ -563,8 +579,8 @@ describe("CodexRealtimeClient", () => {
     client.stop();
   });
 
-  it("does not downgrade realtime for other v3 start failures", async () => {
-    bridge.realtimeStartVersionErrors = {
+  it("does not downgrade realtime for other async v3 start failures", async () => {
+    bridge.realtimeStartVersionRemoteErrors = {
       v3: "realtime is not enabled for this account",
     };
     const client = new CodexRealtimeClient("main-session");

@@ -365,7 +365,7 @@ export class CodexRealtimeClient implements LipSyncSource {
     );
     this.assertAttemptOwner(attempt);
     const personaDiagnostic =
-      realtimeVersion === "v2" && personaApplication.diagnostic.delivery === "initial-items"
+      realtimeVersion === "v1" && personaApplication.diagnostic.delivery === "initial-items"
         ? {
             personaId: personaApplication.diagnostic.personaId,
             status: "unsupported" as const,
@@ -601,7 +601,7 @@ export class CodexRealtimeClient implements LipSyncSource {
     initialItems?: ReadonlyArray<{ readonly role: "developer"; readonly text: string }>,
     prompt?: string,
     startupContextIncluded = true,
-  ): Promise<"v2" | "v3"> {
+  ): Promise<"v1" | "v3"> {
     this.assertAttemptOwner(attempt);
     this.currentStage = "microphone";
     const peer = new RTCPeerConnection();
@@ -666,49 +666,45 @@ export class CodexRealtimeClient implements LipSyncSource {
     // 確定させる。app-server が voice を明確に拒否した場合に限り、次の候補
     // （persona override → global → built-in default）で再試行する。認証・接続などの
     // 一般エラーはそのまま投げ、voice fallback で隠さない。
-    let remoteSdp: Promise<string> | null = null;
-    let realtimeVersion: "v2" | "v3" = "v3";
+    let answerSdp: string | null = null;
+    let realtimeVersion: "v1" | "v3" = "v3";
     this.currentStage = "realtime-start";
-    for (let index = 0; index < candidates.length && remoteSdp === null; index++) {
+    for (let index = 0; index < candidates.length && answerSdp === null; index++) {
       const voice = candidates[index];
       this.assertAttemptOwner(attempt, peer);
-      const attemptRemoteSdp = new Promise<string>((resolve, reject) => {
-        this.acceptRemoteSdp = resolve;
-        this.rejectRemoteSdp = reject;
-      });
-      // start が失敗した attempt の promise は誰も await しない。後始末の
-      // rejectAllPending が reject しても unhandled rejection にしない。
-      void attemptRemoteSdp.catch(() => {});
       let startError: unknown = null;
       try {
-        await this.request("thread/realtime/start", {
+        answerSdp = await this.startRealtimeSdpAttempt({
           threadId,
-          outputModality: "audio",
+          attempt,
+          peer,
+          sdp,
           version: realtimeVersion,
           voice,
-          includeStartupContext:
-            realtimeVersion === "v2" && initialItems ? true : startupContextIncluded,
-          ...(realtimeVersion === "v3" && initialItems ? { initialItems } : {}),
-          ...(prompt ? { prompt } : {}),
-          transport: { type: "webrtc", sdp },
+          initialItems,
+          prompt,
+          startupContextIncluded,
         });
       } catch (error) {
         if (error instanceof StartAttemptCancelledError) throw error;
         this.assertAttemptOwner(attempt, peer);
         if (realtimeVersion === "v3" && isRealtimeV3SessionModelRejection(error)) {
-          // Codex 0.149.0 can inject a v3 default session.model that the selected
-          // Frameless backend rejects. Retry the non-Frameless v2 compatibility path.
-          // initialItems is v3-only, so retain Codex startup context when omitting it.
-          realtimeVersion = "v2";
+          // Codex 0.149.x returns success from thread/realtime/start before the backend
+          // rejects its v3 session shape through thread/realtime/error. WebRTC v2 is not
+          // available on AVAS, while v1 remains accepted. Retry the same offer and voice
+          // through v1. initialItems is v3-only, so retain startup context when omitting it.
+          realtimeVersion = "v1";
           try {
-            await this.request("thread/realtime/start", {
+            answerSdp = await this.startRealtimeSdpAttempt({
               threadId,
-              outputModality: "audio",
+              attempt,
+              peer,
+              sdp,
               version: realtimeVersion,
               voice,
-              includeStartupContext: initialItems ? true : startupContextIncluded,
-              ...(prompt ? { prompt } : {}),
-              transport: { type: "webrtc", sdp },
+              initialItems,
+              prompt,
+              startupContextIncluded,
             });
           } catch (fallbackError) {
             startError = fallbackError;
@@ -717,9 +713,7 @@ export class CodexRealtimeClient implements LipSyncSource {
           startError = error;
         }
       }
-      if (startError === null) {
-        remoteSdp = attemptRemoteSdp;
-      } else {
+      if (startError !== null) {
         if (startError instanceof StartAttemptCancelledError) throw startError;
         this.assertAttemptOwner(attempt, peer);
         const nextVoice = candidates[index + 1];
@@ -728,20 +722,68 @@ export class CodexRealtimeClient implements LipSyncSource {
         this.onVoiceFallback?.({ fromVoice: voice, toVoice: nextVoice, reason });
       }
     }
-    if (remoteSdp === null) throw new Error("Codex realtime start did not accept any voice");
+    if (answerSdp === null) throw new Error("Codex realtime start did not accept any voice");
     this.assertAttemptOwner(attempt, peer);
-    const answerSdp = await withTimeout(
-      remoteSdp,
-      RPC_TIMEOUT_MS,
-      "Codex realtime SDP answer timed out",
-    );
-    this.assertAttemptOwner(attempt, peer);
-    this.acceptRemoteSdp = null;
-    this.rejectRemoteSdp = null;
     this.currentStage = "sdp-application";
     await peer.setRemoteDescription({ type: "answer", sdp: answerSdp });
     this.assertAttemptOwner(attempt, peer);
     return realtimeVersion;
+  }
+
+  /**
+   * One protocol/voice attempt includes both the JSON-RPC acknowledgement and the later
+   * SDP-or-error notification. Codex may acknowledge start before backend negotiation fails,
+   * so callers must catch across both phases.
+   */
+  private async startRealtimeSdpAttempt({
+    threadId,
+    attempt,
+    peer,
+    sdp,
+    version,
+    voice,
+    initialItems,
+    prompt,
+    startupContextIncluded,
+  }: {
+    readonly threadId: string;
+    readonly attempt: number;
+    readonly peer: RTCPeerConnection;
+    readonly sdp: string;
+    readonly version: "v1" | "v3";
+    readonly voice: string;
+    readonly initialItems?: ReadonlyArray<{ readonly role: "developer"; readonly text: string }>;
+    readonly prompt?: string;
+    readonly startupContextIncluded: boolean;
+  }): Promise<string> {
+    let acceptRemoteSdp!: (sdp: string) => void;
+    let rejectRemoteSdp!: (error: Error) => void;
+    const remoteSdp = new Promise<string>((resolve, reject) => {
+      acceptRemoteSdp = resolve;
+      rejectRemoteSdp = reject;
+    });
+    // A synchronous RPC rejection leaves the notification promise unsettled. Keep it handled
+    // while the finally block detaches its callbacks.
+    void remoteSdp.catch(() => {});
+    this.acceptRemoteSdp = acceptRemoteSdp;
+    this.rejectRemoteSdp = rejectRemoteSdp;
+    try {
+      await this.request("thread/realtime/start", {
+        threadId,
+        outputModality: "audio",
+        version,
+        voice,
+        includeStartupContext: version === "v1" && initialItems ? true : startupContextIncluded,
+        ...(version === "v3" && initialItems ? { initialItems } : {}),
+        ...(prompt ? { prompt } : {}),
+        transport: { type: "webrtc", sdp },
+      });
+      this.assertAttemptOwner(attempt, peer);
+      return await withTimeout(remoteSdp, RPC_TIMEOUT_MS, "Codex realtime SDP answer timed out");
+    } finally {
+      if (this.acceptRemoteSdp === acceptRemoteSdp) this.acceptRemoteSdp = null;
+      if (this.rejectRemoteSdp === rejectRemoteSdp) this.rejectRemoteSdp = null;
+    }
   }
 
   private connectRemoteAudio(stream: MediaStream, attempt: number): void {
