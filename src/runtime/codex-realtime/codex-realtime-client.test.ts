@@ -316,6 +316,7 @@ describe("CodexRealtimeClient", () => {
       threadId: "thread-1",
       outputModality: "audio",
       version: "v3",
+      model: "gpt-live-1-codex",
       voice: "sol",
       transport: { type: "webrtc", sdp: "local-offer" },
     });
@@ -524,59 +525,31 @@ describe("CodexRealtimeClient", () => {
     client.stop();
   });
 
-  it.each([
-    {
-      name: "plain detail",
-      rejection: "Field `session.model` is not allowed for this Codex realtime session",
-    },
-    {
-      name: "reported JSON detail",
-      rejection:
-        '{ "detail": "Field `session.model` is not allowed for this Codex realtime session" }',
-    },
-  ])("retries with realtime v1 after the async v3 session.model rejection as $name", async ({
-    rejection,
-  }) => {
+  it("uses the official v3 model override and never downgrades to the incompatible v1 path", async () => {
     bridge.realtimeStartVersionRemoteErrors = {
-      v3: rejection,
+      v3: '{ "detail": "Field `session.model` is not allowed for this Codex realtime session" }',
     };
-    const diagnostics: CodexRealtimePersonaApplication[] = [];
-    const voiceFallbacks: CodexRealtimeVoiceFallback[] = [];
     const client = new CodexRealtimeClient("main-session", undefined, {
       getPersonaSnapshot: () => ({ personaId: "yori", instructions: "persona guidance" }),
       includeStartupContext: false,
       getVoiceCandidates: () => ["maple", "sol"],
-      onVoiceFallback: (fallback) => voiceFallbacks.push(fallback),
-      onPersonaApplication: (application) => diagnostics.push(application),
     });
 
-    await client.start();
+    await expect(client.start()).rejects.toThrow("session.model");
 
     const starts = bridge.sent.filter((message) => message.method === "thread/realtime/start");
-    expect(starts).toHaveLength(2);
+    expect(starts).toHaveLength(1);
     expect(starts[0]?.params).toMatchObject({
       threadId: "thread-1",
       outputModality: "audio",
       version: "v3",
+      model: "gpt-live-1-codex",
       voice: "maple",
       includeStartupContext: false,
       initialItems: [{ role: "developer", text: "persona guidance" }],
       transport: { type: "webrtc", sdp: "local-offer" },
     });
-    expect(starts[1]?.params).toEqual({
-      threadId: "thread-1",
-      outputModality: "audio",
-      version: "v1",
-      voice: "maple",
-      includeStartupContext: true,
-      transport: { type: "webrtc", sdp: "local-offer" },
-    });
-    expect(voiceFallbacks).toEqual([]);
-    expect(diagnostics).toEqual([
-      { personaId: "yori", status: "unsupported", appServerVersion: "0.146.0" },
-    ]);
-    expect(client.getStatus()).toBe("active");
-    client.stop();
+    expect(client.getStatus()).toBe("error");
   });
 
   it("does not downgrade realtime for other async v3 start failures", async () => {
@@ -590,6 +563,7 @@ describe("CodexRealtimeClient", () => {
     const starts = bridge.sent.filter((message) => message.method === "thread/realtime/start");
     expect(starts).toHaveLength(1);
     expect(starts[0]?.params?.version).toBe("v3");
+    expect(starts[0]?.params?.model).toBe("gpt-live-1-codex");
     expect(client.getStatus()).toBe("error");
   });
 

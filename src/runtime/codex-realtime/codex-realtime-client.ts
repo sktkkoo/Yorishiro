@@ -131,11 +131,10 @@ interface PendingRequest {
 const RPC_TIMEOUT_MS = 15_000;
 const THREAD_DISCOVERY_TIMEOUT_MS = 8_000;
 export const DEFAULT_CODEX_REALTIME_VOICE = "sol";
+const CODEX_REALTIME_V3_MODEL = "gpt-live-1-codex";
 const REMOTE_SPEECH_SAMPLE_INTERVAL_MS = 33;
 const START_RETRY_BASE_DELAYS_MS = [500, 1_500] as const;
 const APP_VERSION = "0.6.2";
-const REALTIME_V3_SESSION_MODEL_REJECTION =
-  "Field `session.model` is not allowed for this Codex realtime session";
 
 class StartAttemptCancelledError extends Error {
   constructor() {
@@ -356,7 +355,7 @@ export class CodexRealtimeClient implements LipSyncSource {
     const threadId = await this.waitForLoadedThread(attempt);
     this.assertAttemptOwner(attempt);
     this.threadId = threadId;
-    const realtimeVersion = await this.startWebRtc(
+    await this.startWebRtc(
       threadId,
       attempt,
       personaApplication.initialItems,
@@ -364,15 +363,7 @@ export class CodexRealtimeClient implements LipSyncSource {
       personaApplication.startupContextIncluded,
     );
     this.assertAttemptOwner(attempt);
-    const personaDiagnostic =
-      realtimeVersion === "v1" && personaApplication.diagnostic.delivery === "initial-items"
-        ? {
-            personaId: personaApplication.diagnostic.personaId,
-            status: "unsupported" as const,
-            appServerVersion: personaApplication.diagnostic.appServerVersion,
-          }
-        : personaApplication.diagnostic;
-    return { billing, personaApplication: personaDiagnostic };
+    return { billing, personaApplication: personaApplication.diagnostic };
   }
 
   stop(): void {
@@ -601,7 +592,7 @@ export class CodexRealtimeClient implements LipSyncSource {
     initialItems?: ReadonlyArray<{ readonly role: "developer"; readonly text: string }>,
     prompt?: string,
     startupContextIncluded = true,
-  ): Promise<"v1" | "v3"> {
+  ): Promise<void> {
     this.assertAttemptOwner(attempt);
     this.currentStage = "microphone";
     const peer = new RTCPeerConnection();
@@ -667,7 +658,6 @@ export class CodexRealtimeClient implements LipSyncSource {
     // （persona override → global → built-in default）で再試行する。認証・接続などの
     // 一般エラーはそのまま投げ、voice fallback で隠さない。
     let answerSdp: string | null = null;
-    let realtimeVersion: "v1" | "v3" = "v3";
     this.currentStage = "realtime-start";
     for (let index = 0; index < candidates.length && answerSdp === null; index++) {
       const voice = candidates[index];
@@ -679,7 +669,6 @@ export class CodexRealtimeClient implements LipSyncSource {
           attempt,
           peer,
           sdp,
-          version: realtimeVersion,
           voice,
           initialItems,
           prompt,
@@ -688,30 +677,7 @@ export class CodexRealtimeClient implements LipSyncSource {
       } catch (error) {
         if (error instanceof StartAttemptCancelledError) throw error;
         this.assertAttemptOwner(attempt, peer);
-        if (realtimeVersion === "v3" && isRealtimeV3SessionModelRejection(error)) {
-          // Codex 0.149.x returns success from thread/realtime/start before the backend
-          // rejects its v3 session shape through thread/realtime/error. WebRTC v2 is not
-          // available on AVAS, while v1 remains accepted. Retry the same offer and voice
-          // through v1. initialItems is v3-only, so retain startup context when omitting it.
-          realtimeVersion = "v1";
-          try {
-            answerSdp = await this.startRealtimeSdpAttempt({
-              threadId,
-              attempt,
-              peer,
-              sdp,
-              version: realtimeVersion,
-              voice,
-              initialItems,
-              prompt,
-              startupContextIncluded,
-            });
-          } catch (fallbackError) {
-            startError = fallbackError;
-          }
-        } else {
-          startError = error;
-        }
+        startError = error;
       }
       if (startError !== null) {
         if (startError instanceof StartAttemptCancelledError) throw startError;
@@ -727,7 +693,6 @@ export class CodexRealtimeClient implements LipSyncSource {
     this.currentStage = "sdp-application";
     await peer.setRemoteDescription({ type: "answer", sdp: answerSdp });
     this.assertAttemptOwner(attempt, peer);
-    return realtimeVersion;
   }
 
   /**
@@ -740,7 +705,6 @@ export class CodexRealtimeClient implements LipSyncSource {
     attempt,
     peer,
     sdp,
-    version,
     voice,
     initialItems,
     prompt,
@@ -750,7 +714,6 @@ export class CodexRealtimeClient implements LipSyncSource {
     readonly attempt: number;
     readonly peer: RTCPeerConnection;
     readonly sdp: string;
-    readonly version: "v1" | "v3";
     readonly voice: string;
     readonly initialItems?: ReadonlyArray<{ readonly role: "developer"; readonly text: string }>;
     readonly prompt?: string;
@@ -771,10 +734,14 @@ export class CodexRealtimeClient implements LipSyncSource {
       await this.request("thread/realtime/start", {
         threadId,
         outputModality: "audio",
-        version,
+        version: "v3",
+        // OpenAI's documented workaround for Codex 0.149.x: its default v3 model is no
+        // longer accepted by ChatGPT-authenticated realtime, despite the misleading
+        // `session.model` rejection. The override belongs at thread/realtime/start top level.
+        model: CODEX_REALTIME_V3_MODEL,
         voice,
-        includeStartupContext: version === "v1" && initialItems ? true : startupContextIncluded,
-        ...(version === "v3" && initialItems ? { initialItems } : {}),
+        includeStartupContext: startupContextIncluded,
+        ...(initialItems ? { initialItems } : {}),
         ...(prompt ? { prompt } : {}),
         transport: { type: "webrtc", sdp },
       });
@@ -1211,17 +1178,6 @@ function jsonRpcErrorMessage(error: unknown): string {
   }
   const message = (error as { readonly message?: unknown }).message;
   return typeof message === "string" ? message : "Codex app-server request failed";
-}
-
-function isRealtimeV3SessionModelRejection(error: unknown): boolean {
-  if (!(error instanceof Error)) return false;
-  if (error.message === REALTIME_V3_SESSION_MODEL_REJECTION) return true;
-  try {
-    const body: unknown = JSON.parse(error.message);
-    return isRecord(body) && body.detail === REALTIME_V3_SESSION_MODEL_REJECTION;
-  } catch {
-    return false;
-  }
 }
 
 function normalizeThreadIdSet(values: ReadonlyArray<unknown>): string[] | null {
