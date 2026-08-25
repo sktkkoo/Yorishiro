@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.7.4 - 2026-08-26
+
+- Added macOS external-terminal companion mode: `yorishiro companion` launches and connects in one step, while `yorishiro attach` joins a running session through a local authenticated transport without losing the in-app terminal view.
+- Improved Codex session recovery so a stopped or locked latest thread can fall back to a fresh session when history forking cannot proceed.
+- Preserved and displayed the VRM specification version declared by imported avatars instead of replacing it with the parser's normalized version.
+- Fixed GPT Live startup with current Codex app-server builds by selecting the supported Codex realtime model explicitly and waiting for asynchronous SDP or error notifications.
+
 ## 0.7.3 - 2026-08-16
 
 - Added Claude Code conversation history navigation: Main Agent New / Back / Forward now works with Claude Code, resuming exact conversations from the observed session ID and restoring the previous conversation when navigation fails. Claude hooks are isolated per app instance and PTY launch with a dynamic loopback port and scoped tokens.
