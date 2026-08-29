@@ -80,6 +80,15 @@ describe("UiPackRegistry", () => {
     expect(reg.listEntries()).toHaveLength(2);
   });
 
+  it("subscribeEntries tracks installation and removal", () => {
+    const reg = createUiPackRegistry();
+    const snapshots: string[][] = [];
+    reg.subscribeEntries((entries) => snapshots.push(entries.map((item) => item.id)));
+    const handle = reg.register(entry("portrait"));
+    handle.dispose();
+    expect(snapshots).toEqual([[], ["portrait"], []]);
+  });
+
   it("getActiveUiId returns active entry's id (alias of base getActiveId)", () => {
     const registry = createUiPackRegistry();
     expect(registry.getActiveUiId()).toBeNull();

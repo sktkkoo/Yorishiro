@@ -161,6 +161,10 @@ function makeFakeUiPackRegistry(): UiPackRegistry & { readonly entries: UiPackEn
     getActiveUiId: () => null,
     setActiveUi: () => {},
     subscribeActive: () => ({ dispose: () => {} }),
+    subscribeEntries: (listener) => {
+      listener(entries);
+      return { dispose: () => {} };
+    },
     listEntries: () => entries,
   };
 }

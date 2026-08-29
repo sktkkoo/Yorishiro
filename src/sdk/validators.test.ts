@@ -5,7 +5,31 @@ import {
   validateEffectDefinition,
   validatePersonaDefinition,
   validateUiPackDefinition,
+  validateUiPackManifest,
 } from "./validators";
+
+describe("validateUiPackManifest", () => {
+  const manifest = {
+    id: "portrait",
+    type: "ui",
+    version: "1.0.0",
+    yorishiroVersion: "*",
+    entry: "ui.tsx",
+  };
+  it("accepts valid View Mode metadata", () => {
+    expect(
+      validateUiPackManifest({
+        ...manifest,
+        viewMode: { enabled: true, label: "Portrait", icon: "portrait", order: 40 },
+      }).viewMode?.label,
+    ).toBe("Portrait");
+  });
+  it("rejects incomplete View Mode metadata", () => {
+    expect(() =>
+      validateUiPackManifest({ ...manifest, viewMode: { enabled: true, label: "Portrait" } }),
+    ).toThrow(/icon/);
+  });
+});
 
 describe("validateEffectDefinition", () => {
   const validEffect = {

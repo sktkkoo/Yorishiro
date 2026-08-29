@@ -6,6 +6,22 @@
 [`docs/decisions/local-source-authoring-contract.md`](../../docs/decisions/local-source-authoring-contract.md)
 を読む。Bundled PackのVite importをlocal Packへそのままコピーできるとは限らない。
 
+## View Mode UI packs
+
+UI packをタイトルバーのView Mode pickerへ表示するには、manifestで明示的にopt inする。
+
+```json
+"viewMode": {
+  "enabled": true,
+  "label": "My Presentation",
+  "icon": "scene",
+  "order": 100,
+  "category": "companion"
+}
+```
+
+`label`、`icon`、`order`は必須。native behaviorを利用できるhostだけに限定する場合は`platforms`を指定する。通常のUI packとSettingsはpickerへ表示されず、View Mode packのinstall、remove、hot reloadはregistry subscription経由でpickerへ反映される。
+
 ---
 
 ## UGC の Pack 種別（6 種類）
