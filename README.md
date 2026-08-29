@@ -228,7 +228,7 @@ Three characteristics define this mechanism.
 
 ## Status
 
-**v0.7.4**
+**v0.7.5**
 
 Under active development. APIs, data shapes, and pack specs will change.
 
@@ -245,7 +245,7 @@ What works today:
 - VRMA animation clip playback
 - Lip sync: voice playback with real-time mouth animation via Web Audio analysis
 - Audio mixer: independent Ambient Sound and Voice volume with mute, applied live to Voice Summary and GPT Live
-- GPT Live voice conversations with Codex 0.145.0+, sharing the current thread with the visible TUI and supporting global or per-persona voice selection
+- GPT Live voice conversations with Codex 0.145.0+, sharing the durable workspace thread with the visible TUI across automatic title generation and voice reconnection, with global or per-persona voice selection
 - Agent State Expression: grounded conversational cues from GPT Live drive coordinated facial expression and body motion without overriding reflexes
 - Microexpressions: subtle idle facial movements across brow, eye, and mouth regions
 - Speech expression: the face activates while speaking, and a single line can carry a mood for exactly as long as it lasts

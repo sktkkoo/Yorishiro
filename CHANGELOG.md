@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.7.5 - 2026-08-29
+
+- Fixed GPT Live local-work delegation after the first voice turn by keeping it attached to the durable workspace thread across automatic title generation and voice reconnection, preventing internal title threads from producing misleading completion reports.
+- Updated Settings to show imported VRM model names instead of opaque filenames, with a filename fallback when metadata does not declare a name, and added a dedicated custom-avatar guide to the English and Japanese READMEs.
+- Strengthened macOS release verification by checking packaged app signatures and entitlements before release assets are uploaded.
+
 ## 0.7.4 - 2026-08-26
 
 - Added macOS external-terminal companion mode: `yorishiro companion` launches and connects in one step, while `yorishiro attach` joins a running session through a local authenticated transport without losing the in-app terminal view.
