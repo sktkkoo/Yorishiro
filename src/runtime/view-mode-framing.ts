@@ -37,7 +37,7 @@ export function entryCameraForViewMode(
         : 1.62;
     return { x: 0, y: faceCenterY, z: callTier === "small-face" ? 0.84 : 0.98 };
   }
-  return { x: 0, y: 1.36, z: 0.985 };
+  return { x: 0, y: 1.31, z: 1.135 };
 }
 
 export function acquireFixedViewModeCamera(
