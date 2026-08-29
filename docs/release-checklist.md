@@ -70,8 +70,8 @@ npm run check:macos-signature
 The verification script runs the equivalent of:
 
 ```bash
-codesign --verify --deep --strict src-tauri/target/release/bundle/macos/Yorishiro.app
-codesign -d --entitlements :- src-tauri/target/release/bundle/macos/Yorishiro.app
+codesign --verify --deep --strict --verbose=4 src-tauri/target/release/bundle/macos/Yorishiro.app
+codesign -d --verbose=4 --entitlements - --xml src-tauri/target/release/bundle/macos/Yorishiro.app
 ```
 
 and requires the audio-input, network-client, JIT, and unsigned executable
@@ -80,6 +80,21 @@ notarized and do not establish a developer identity. In release CI,
 `APPLE_SIGNING_IDENTITY` overrides the ad-hoc configuration with the imported
 Developer ID identity, after which Tauri performs the existing signing and
 notarization flow.
+
+Release CI additionally runs `npm run check:macos-release-artifacts --
+<bundle-root>` before uploading anything. It extracts the updater archive,
+mounts the DMG read-only, and verifies both app payloads with `codesign`,
+Gatekeeper, and `stapler`. The release check requires the Developer ID chain,
+hardened runtime, secure timestamp, required entitlements, and stapled
+notarization ticket.
+
+Run Developer ID trust checks from a normal macOS shell or CI runner with
+access to Security.framework trust services. A restricted process that cannot
+reach `trustd` or the system keychains can falsely report
+`Authority=(unavailable)`, `invalid signature`, or `invalid entitlements blob`
+for every Developer ID app. If that happens, repeat the check outside the
+sandbox and compare it with a known notarized app before diagnosing an artifact
+as damaged.
 
 ## 2. Fresh macOS install
 
