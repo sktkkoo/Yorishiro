@@ -27,10 +27,11 @@ const TUI_SELECTION_POLL_MS = 100;
 class TrackerRequestTimeoutError extends Error {}
 
 /**
- * TUI の thread/started broadcast を voice が停止中も監視する。
+ * TUI proxy が確認した選択 thread を voice が停止中も追跡する。
  *
- * thread/loaded/list は unsubscribe 済み thread も grace period 中は返すため、
- * /clear や /resume 後の current TUI thread を一覧だけから特定することはできない。
+ * app-server の `thread/started` は全 client の内部 thread も broadcast するため、
+ * TUI ownership の根拠にはできない。`thread/loaded/list` も unsubscribe 済み thread を
+ * grace period 中は返すので、接続後の /clear や /resume は proxy 選択だけを正本にする。
  */
 export class CodexThreadTracker {
   private readonly sessionId: string;
@@ -173,7 +174,7 @@ export class CodexThreadTracker {
       if (epoch !== this.epoch || generation !== this.topLevelStartedGeneration) return;
       const thread = (read as { readonly thread?: unknown }).thread;
       if (!isRecord(thread) || thread.id !== id || !("parentThreadId" in thread)) return;
-      if (thread.parentThreadId === null) topLevelIds.push(id);
+      if (thread.parentThreadId === null && thread.ephemeral !== true) topLevelIds.push(id);
     }
 
     // Startup 時に一意なら初期値にできる。複数時は過去の broadcast がないため推測しない。
@@ -225,7 +226,8 @@ export class CodexThreadTracker {
           isRecord(thread) &&
           thread.id === threadId &&
           "parentThreadId" in thread &&
-          thread.parentThreadId === null
+          thread.parentThreadId === null &&
+          thread.ephemeral !== true
         ) {
           this.setCurrentThreadId(threadId);
         }
@@ -312,10 +314,11 @@ export class CodexThreadTracker {
         thread.parentThreadId === null &&
         (!("forkedFromId" in thread) || thread.forkedFromId === null)
       ) {
+        // This broadcast is app-server-global. Realtime handoffs, title generation, and other
+        // clients can all create indistinguishable top-level threads. It may invalidate an
+        // in-flight startup snapshot, but only the TUI proxy may retarget an established voice.
         this.topLevelStartedGeneration += 1;
-        this.threadSelectionGeneration += 1;
         this.knownLoadedThreadIds.add(thread.id);
-        this.setCurrentThreadId(thread.id);
       }
       return;
     }

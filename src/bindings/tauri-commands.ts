@@ -195,6 +195,8 @@ export interface SessionRealtimeCapabilities {
   readonly appServerVersion: string | null;
   /** Codex V3 supports supplemental developer `initialItems` without replacing its base prompt. */
   readonly personaInitialItems: boolean;
+  /** Realtime V3 can disable its synthetic acknowledgement after creating a delegation. */
+  readonly delegationAckFiller: boolean;
 }
 
 /** Host-verified capabilities of the Codex binary that owns this session's app-server. */

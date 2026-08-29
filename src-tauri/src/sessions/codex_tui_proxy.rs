@@ -288,10 +288,18 @@ fn track_thread_selection_request(raw: &str, pending: &mut HashMap<String, bool>
         return;
     };
     let method = message.get("method").and_then(Value::as_str);
+    let ephemeral = message
+        .get("params")
+        .and_then(|params| params.get("ephemeral"))
+        .and_then(Value::as_bool)
+        == Some(true);
     let confirmed = match method {
-        Some("thread/start") => Some(false),
+        // Codex creates ephemeral low-effort threads for internal work such as task-title
+        // generation. Those requests share the TUI transport but never represent a user
+        // workspace selection, so they must not replace the backing thread used by GPT Live.
+        Some("thread/start") if !ephemeral => Some(false),
         Some("thread/resume") => Some(true),
-        Some("thread/fork") => (message
+        Some("thread/fork") if !ephemeral => (message
             .get("params")
             .and_then(|params| params.get("excludeTurns"))
             .and_then(Value::as_bool)
@@ -925,6 +933,60 @@ mod tests {
                 id: "blank".to_string(),
                 confirmed: false,
                 revision: 0,
+            })
+        );
+    }
+
+    #[test]
+    fn ignores_ephemeral_internal_threads_as_tui_selections() {
+        let selected = Arc::new(Mutex::new(Some(SelectedThread {
+            id: "workspace-thread".to_string(),
+            confirmed: true,
+            revision: 7,
+        })));
+        let mut selection_pending = HashMap::new();
+        track_thread_selection_request(
+            r#"{"method":"thread/start","id":"title","params":{"ephemeral":true}}"#,
+            &mut selection_pending,
+        );
+        track_thread_selection_request(
+            r#"{"method":"thread/fork","id":"internal-fork","params":{"ephemeral":true}}"#,
+            &mut selection_pending,
+        );
+
+        assert!(selection_pending.is_empty());
+        assert_eq!(
+            take_selected_thread_response(
+                r#"{"id":"title","result":{"thread":{"id":"title-thread"}}}"#,
+                &mut selection_pending,
+            ),
+            None
+        );
+
+        // The title generator immediately starts a turn on its ephemeral thread. Even
+        // after that succeeds, it must not confirm or replace the durable workspace
+        // selection that GPT Live uses.
+        let mut turn_pending = HashMap::new();
+        track_turn_start_request(
+            r#"{"method":"turn/start","id":"title-turn","params":{"threadId":"title-thread","input":[]}}"#,
+            &mut turn_pending,
+        );
+        let thread_id = take_successful_turn_start_response(
+            r#"{"id":"title-turn","result":{"turn":{"id":"generated-title"}}}"#,
+            &mut turn_pending,
+        )
+        .expect("accepted internal title turn");
+        mark_selected_thread_confirmed(&thread_id, &selected);
+
+        assert_eq!(
+            selected
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .clone(),
+            Some(SelectedThread {
+                id: "workspace-thread".to_string(),
+                confirmed: true,
+                revision: 7,
             })
         );
     }

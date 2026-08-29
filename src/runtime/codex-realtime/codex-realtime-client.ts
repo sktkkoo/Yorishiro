@@ -132,6 +132,12 @@ const RPC_TIMEOUT_MS = 15_000;
 const THREAD_DISCOVERY_TIMEOUT_MS = 8_000;
 export const DEFAULT_CODEX_REALTIME_VOICE = "sol";
 const CODEX_REALTIME_V3_MODEL = "gpt-live-1-codex";
+const CODEX_REALTIME_LOCAL_WORK_HANDOFF = [
+  "You are the realtime conversational surface of the same local Codex work session, not a standalone chat screen.",
+  "When the user asks for an action, local work, or current-state inspection, you must create a delegation to the backing Codex agent; conversation alone is not execution.",
+  "Do not say that you are checking, started, working, or completed before delegation, and report completion only after delegated Codex output confirms it.",
+  "If you cannot delegate, say that execution did not start. Never simulate progress. Keep this internal handoff topology private unless the user asks.",
+].join(" ");
 const REMOTE_SPEECH_SAMPLE_INTERVAL_MS = 33;
 const START_RETRY_BASE_DELAYS_MS = [500, 1_500] as const;
 const APP_VERSION = "0.6.2";
@@ -336,6 +342,15 @@ export class CodexRealtimeClient implements LipSyncSource {
       realtimeCapabilities,
       await personaSnapshot,
     );
+    // Keep Codex's backing-executor prompt intact. This supplemental Live-side item only
+    // corrects routing decisions made before a request is handed to that executor.
+    const initialItems =
+      realtimeCapabilities.personaInitialItems && this.personaPromptMode !== "replace"
+        ? [
+            ...(personaApplication.initialItems ?? []),
+            { role: "developer" as const, text: CODEX_REALTIME_LOCAL_WORK_HANDOFF },
+          ]
+        : personaApplication.initialItems;
     this.assertAttemptOwner(attempt);
     this.currentStage = "account";
     const account = (await this.request("account/read", { refreshToken: false })) as {
@@ -358,9 +373,10 @@ export class CodexRealtimeClient implements LipSyncSource {
     await this.startWebRtc(
       threadId,
       attempt,
-      personaApplication.initialItems,
+      initialItems,
       personaApplication.prompt,
       personaApplication.startupContextIncluded,
+      realtimeCapabilities.delegationAckFiller,
     );
     this.assertAttemptOwner(attempt);
     return { billing, personaApplication: personaApplication.diagnostic };
@@ -437,14 +453,18 @@ export class CodexRealtimeClient implements LipSyncSource {
       if (typeof thread !== "object" || thread === null) {
         throw new Error("Codex returned an invalid loaded thread.");
       }
-      const loaded = thread as { readonly id?: unknown; readonly parentThreadId?: unknown };
+      const loaded = thread as {
+        readonly id?: unknown;
+        readonly parentThreadId?: unknown;
+        readonly ephemeral?: unknown;
+      };
       if (loaded.id !== threadId || !("parentThreadId" in loaded)) {
         throw new Error("Codex returned an invalid loaded thread.");
       }
       // parentThreadId は subagent にだけ設定される。agent team の子 thread を除外し、
       // TUI が所有する唯一の top-level thread へ接続する。
       if (loaded.parentThreadId === null) {
-        primaryThreadIds.push(threadId);
+        if (loaded.ephemeral !== true) primaryThreadIds.push(threadId);
       } else if (typeof loaded.parentThreadId !== "string" || loaded.parentThreadId.length === 0) {
         throw new Error("Codex returned an invalid loaded thread.");
       }
@@ -505,6 +525,7 @@ export class CodexRealtimeClient implements LipSyncSource {
     capabilities: {
       readonly appServerVersion: string | null;
       readonly personaInitialItems: boolean;
+      readonly delegationAckFiller: boolean;
     },
     personaSnapshot: PersonaSnapshotLoadResult,
   ): {
@@ -592,6 +613,7 @@ export class CodexRealtimeClient implements LipSyncSource {
     initialItems?: ReadonlyArray<{ readonly role: "developer"; readonly text: string }>,
     prompt?: string,
     startupContextIncluded = true,
+    disableDelegationAckFiller = false,
   ): Promise<void> {
     this.assertAttemptOwner(attempt);
     this.currentStage = "microphone";
@@ -673,6 +695,7 @@ export class CodexRealtimeClient implements LipSyncSource {
           initialItems,
           prompt,
           startupContextIncluded,
+          disableDelegationAckFiller,
         });
       } catch (error) {
         if (error instanceof StartAttemptCancelledError) throw error;
@@ -709,6 +732,7 @@ export class CodexRealtimeClient implements LipSyncSource {
     initialItems,
     prompt,
     startupContextIncluded,
+    disableDelegationAckFiller,
   }: {
     readonly threadId: string;
     readonly attempt: number;
@@ -718,6 +742,7 @@ export class CodexRealtimeClient implements LipSyncSource {
     readonly initialItems?: ReadonlyArray<{ readonly role: "developer"; readonly text: string }>;
     readonly prompt?: string;
     readonly startupContextIncluded: boolean;
+    readonly disableDelegationAckFiller: boolean;
   }): Promise<string> {
     let acceptRemoteSdp!: (sdp: string) => void;
     let rejectRemoteSdp!: (error: Error) => void;
@@ -743,6 +768,7 @@ export class CodexRealtimeClient implements LipSyncSource {
         includeStartupContext: startupContextIncluded,
         ...(initialItems ? { initialItems } : {}),
         ...(prompt ? { prompt } : {}),
+        ...(disableDelegationAckFiller ? { delegationAckFiller: false } : {}),
         transport: { type: "webrtc", sdp },
       });
       this.assertAttemptOwner(attempt, peer);
