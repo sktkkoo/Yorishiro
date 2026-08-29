@@ -202,6 +202,85 @@ describe("ProceduralBones breathing offsets", () => {
     expect(getBone("head").rotation.x).toBeCloseTo(baseline, 5);
   });
 
+  it("restoreHeadBaseRotation は一時的な上向き pitch を AnimationMixer の原点から外す", () => {
+    const { vrm, getBone } = mockVrm();
+    const bones = new ProceduralBones(() => 0.5);
+    bones.bindVrm(vrm);
+    bones.setHeadLookAtOffset(0, 0.14);
+
+    for (let t = 0; t < 2; t += DT) bones.update(DT, t, 1.0);
+    expect(getBone("head").rotation.x).toBeGreaterThan(0.08);
+
+    bones.restoreHeadBaseRotation();
+
+    expect(getBone("head").rotation.x).toBeCloseTo(0, 6);
+  });
+
+  it("restoreHeadBaseRotation は外部 animation が置換した回転へ stale base を戻さない", () => {
+    const { vrm, getBone } = mockVrm();
+    const bones = new ProceduralBones(() => 0.5);
+    bones.bindVrm(vrm);
+    bones.setHeadLookAtOffset(0, 0.14);
+
+    for (let t = 0; t < 2; t += DT) bones.update(DT, t, 1.0);
+    // AnimationAction.stop() は activation 時に保存した quaternion を直接復元する。
+    getBone("head").rotation.x = 0;
+
+    bones.restoreHeadBaseRotation();
+
+    expect(getBone("head").rotation.x).toBe(0);
+  });
+
+  it("AnimationMixer の再生・停止を反復しても thinking pitch が idle の原点に残らない", () => {
+    const { vrm, getBone } = mockVrm();
+    const head = getBone("head");
+    const bones = new ProceduralBones(() => 0.5);
+    bones.bindVrm(vrm);
+    const mixer = new THREE.AnimationMixer(head);
+    const clip = new THREE.AnimationClip("head-motion", 1, [
+      new THREE.QuaternionKeyframeTrack(
+        ".quaternion",
+        [0, 1],
+        [0, 0, 0, 1, Math.sin(0.1), 0, 0, Math.cos(0.1)],
+      ),
+    ]);
+    const action = mixer.clipAction(clip);
+    let elapsed = 0;
+    const updateProcedural = (durationS: number, weight = 1): void => {
+      const end = elapsed + durationS;
+      while (elapsed < end) {
+        bones.update(DT, elapsed, weight);
+        elapsed += DT;
+      }
+    };
+
+    for (let cycle = 0; cycle < 5; cycle++) {
+      bones.setActivityState("thinking");
+      updateProcedural(2);
+      expect(head.rotation.x).toBeGreaterThan(0.015);
+
+      // Body / AnimationPlayer do this immediately before action.play().
+      bones.restoreHeadBaseRotation();
+      expect(head.rotation.x).toBeCloseTo(0, 6);
+      action.reset().setLoop(THREE.LoopRepeat, Infinity).setEffectiveWeight(0.5).play();
+      bones.setActivityState("idle");
+      const animationEnd = elapsed + 1;
+      while (elapsed < animationEnd) {
+        bones.restoreHeadBaseRotation();
+        mixer.update(DT);
+        bones.update(DT, elapsed, 0.5);
+        elapsed += DT;
+      }
+
+      // stop() writes the original quaternion directly, invalidating the last
+      // procedural write. restoreHeadBaseRotation must recognize that takeover.
+      action.stop();
+      bones.restoreHeadBaseRotation();
+      updateProcedural(2);
+      expect(head.rotation.x).toBeCloseTo(-0.035, 3);
+    }
+  });
+
   it("weight 0 では breathing offset も適用されない", () => {
     const { vrm, getBone } = mockVrm();
     const bones = new ProceduralBones(() => 0.5);

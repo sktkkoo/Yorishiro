@@ -409,9 +409,11 @@ export class Body {
       },
       /* ambientGate */ () => getAttentionRuntime().get().target !== null,
     );
-    this.animationPlayer = new AnimationPlayer(vrm, devLog);
     this.proceduralBones = new ProceduralBones();
     this.proceduralBones.bindVrm(vrm);
+    this.animationPlayer = new AnimationPlayer(vrm, devLog, () =>
+      this.proceduralBones.restoreHeadBaseRotation(),
+    );
     this.beatTarget = this.createBeatTarget();
     this.beatScheduler = new IdleBeatScheduler(defaultProfiles);
 
@@ -678,6 +680,10 @@ export class Body {
     this.logCursorAttentionSample(delta, cursorAttention);
 
     // 1. Animation mixer
+    // Previous-frame procedural head pose must not be seen as AnimationMixer's base
+    // pose. This also clears the last offset while an external animation claim
+    // owns the body.
+    this.proceduralBones.restoreHeadBaseRotation();
     if (!animationClaimed) {
       this.animationPlayer.update(delta);
     }
