@@ -71,6 +71,8 @@ import {
   PREVIOUS_ACTIVE_UI_KEY,
   pomodoroManifest,
   pomodoroUiManifest,
+  portraitManifest,
+  portraitPack,
   resolveCloseTarget,
   SETTINGS_PACK_ID,
   screenFlashPack,
@@ -352,6 +354,16 @@ import {
   writeYorishiroConfigText,
 } from "./runtime/user-pack-loader/yorishiro-io";
 import {
+  acquireFixedViewModeCamera,
+  acquireResponsiveCallCamera,
+} from "./runtime/view-mode-framing";
+import { enqueueNativeWindowMutation } from "./runtime/view-mode-native-window";
+import {
+  nextViewModeHudVisibility,
+  shouldRevealViewModeHud,
+  shouldStartViewModeWindowDrag,
+} from "./runtime/view-mode-window-interaction";
+import {
   getWorkspaceAttentionStore,
   startCommandRunAttentionProducer,
   startSessionAttentionProducer,
@@ -365,10 +377,26 @@ import * as YorishiroR3f from "./sdk/r3f";
 import type { ScenePackDefinition, ScenePackManifest } from "./sdk/scene-pack";
 import Sidebar from "./sidebar";
 import TitleBar from "./title-bar";
-import { useActiveUiId, useSettingsActive, useSidebarOpen } from "./title-bar-state";
 import {
+  activePresentationViewModeId,
+  buildViewModeShortcuts,
+  matchesViewModeShortcut,
+  nativeWindowControlsVisibleForViewMode,
+  resolvePickerActiveViewModeId,
+  roundedWindowForViewMode,
+  shouldShowProjectSelector,
+  useActiveUiId,
+  useSettingsActive,
+  useSidebarOpen,
+  useViewModes,
+} from "./title-bar-state";
+import {
+  isUiPackHostReady,
   layoutNeedsHostPresenceResume,
+  resolvePersistedUiId,
+  shouldAnimateTheaterTransition,
   shouldResumeHostPresenceForUiActivation,
+  subscribeAndActivateCurrentUi,
 } from "./ui-pack-activation";
 import "./App.css";
 
@@ -1020,6 +1048,104 @@ function App() {
   const sidebarOpen = useSidebarOpen();
   const activeUiId = useActiveUiId();
   const settingsActive = useSettingsActive(SETTINGS_PACK_ID);
+  const viewModes = useViewModes();
+  const savedViewMode = settingsActive
+    ? getUiStateStore().get(SETTINGS_PACK_ID, PREVIOUS_ACTIVE_UI_KEY)
+    : null;
+  const resolvedPickerViewModeId = resolvePickerActiveViewModeId(
+    settingsActive,
+    savedViewMode,
+    activeUiId,
+  );
+  const pickerActiveViewModeId = viewModes.some((entry) => entry.id === resolvedPickerViewModeId)
+    ? resolvedPickerViewModeId
+    : null;
+  const activePresentationViewModeIdValue = activePresentationViewModeId(
+    settingsActive,
+    pickerActiveViewModeId,
+  );
+  const viewModeOwnsChrome = activePresentationViewModeIdValue !== null;
+  const viewModeUsesRoundedWindow = roundedWindowForViewMode(activePresentationViewModeIdValue);
+  const isMac = /Mac/i.test(navigator.platform);
+  const viewModeShortcuts = useMemo(
+    () => buildViewModeShortcuts(viewModes, isMac),
+    [viewModes, isMac],
+  );
+  const viewModeShortcutHints = useMemo(
+    () =>
+      Object.fromEntries(
+        viewModeShortcuts.flatMap((shortcut) =>
+          shortcut.id === null ? [] : [[shortcut.id, shortcut.hint]],
+        ),
+      ),
+    [viewModeShortcuts],
+  );
+  const [viewModeHudVisible, setViewModeHudVisible] = useState(false);
+  useEffect(() => {
+    const subscription = getUiRegistry().subscribeActive(() => setViewModeHudVisible(false));
+    return () => subscription.dispose();
+  }, []);
+  useEffect(() => {
+    void enqueueNativeWindowMutation(() =>
+      invoke<void>("set_window_controls_visible", {
+        visible: nativeWindowControlsVisibleForViewMode(activePresentationViewModeIdValue),
+      }),
+    ).catch((error) => {
+      console.error(
+        "[UiPack:native-window-controls] failed to update native window controls",
+        error,
+      );
+    });
+  }, [activePresentationViewModeIdValue]);
+  useEffect(
+    () => () => {
+      void enqueueNativeWindowMutation(() =>
+        invoke<void>("set_window_controls_visible", { visible: true }),
+      ).catch(() => undefined);
+    },
+    [],
+  );
+  useEffect(() => {
+    // Settings is a temporary surface over the originating View Mode. Keep that
+    // mode's camera claim alive so opening/closing Settings never re-frames the resident.
+    const cameraViewModeId = pickerActiveViewModeId;
+    const compact = cameraViewModeId === companionPack.id || cameraViewModeId === "portrait";
+    const runtime = getThreeRuntime();
+    if (!compact) {
+      runtime.setCameraBase(0, 1.35, 1.1);
+      return;
+    }
+    const mode = cameraViewModeId === companionPack.id ? "scene" : cameraViewModeId;
+    const windowedMode = mode as "scene" | "portrait";
+    const characterAnchorY =
+      windowedMode === "portrait" ? runtime.getCharacterAnchor()?.y : undefined;
+    if (windowedMode === "portrait") {
+      return acquireResponsiveCallCamera(
+        characterAnchorY,
+        runtime.acquireFixedCamera.bind(runtime),
+        {
+          getWidth: () => window.innerWidth,
+          addEventListener: (_type, listener) => window.addEventListener("resize", listener),
+          removeEventListener: (_type, listener) => window.removeEventListener("resize", listener),
+        },
+      );
+    }
+    return acquireFixedViewModeCamera(
+      windowedMode,
+      runtime.acquireFixedCamera.bind(runtime),
+      characterAnchorY,
+    );
+  }, [pickerActiveViewModeId]);
+  useEffect(() => {
+    const rounded = roundedWindowForViewMode(activePresentationViewModeIdValue);
+    document.documentElement.toggleAttribute("data-rounded-view", rounded);
+    void enqueueNativeWindowMutation(() =>
+      getCurrentWindow().setBackgroundColor(rounded ? [0, 0, 0, 0] : [2, 3, 4, 255]),
+    ).catch(() => undefined);
+    return () => {
+      document.documentElement.removeAttribute("data-rounded-view");
+    };
+  }, [activePresentationViewModeIdValue]);
   // Historical debug switch. Practical tab metadata badges are allowlisted and always shown.
   const [, setTabMetadataBadgesEnabled] = useState(false);
   const [restoreDialog, setRestoreDialog] = useState<RestoreDialogRequest | null>(null);
@@ -1432,6 +1558,15 @@ function App() {
       phase: "register",
       note: `registered bundled UI pack '${companionPack.id}'`,
     });
+    for (const { pack, manifest } of [{ pack: portraitPack, manifest: portraitManifest }]) {
+      uiPackRegistry.register({
+        id: pack.id,
+        origin: "bundled",
+        manifest: manifest as UiPackManifest,
+        pack: { layout: pack.layout, mount: pack.mount },
+      });
+      appLog.write({ phase: "register", note: `registered bundled UI pack '${pack.id}'` });
+    }
 
     // ── PersonaReflexDispatcher を構築 ───────────────────────────────────────
     // active persona の reflex（customTriggers + responses）を EventBus に bridge する。
@@ -1694,7 +1829,7 @@ function App() {
         scenePackRegistry.setActiveScene(
           resolveSceneForProject(config, projectRootValue(projectRoot)),
         );
-        uiPackRegistry.setActiveUi(config.activeUi);
+        uiPackRegistry.setActiveUi(resolvePersistedUiId(config.activeUi));
         syncAmbientUiActiveSet(config.activeAmbientUi);
         // ─ Persona resume gate ─
         // per (agent, place) で最後に spawn した persona を記録し、変わっていたら
@@ -2829,8 +2964,11 @@ function App() {
     applyTerminalPresentationForMountedSessions();
   }, [tabState.activeSessionId, applyTerminalPresentationForMountedSessions]);
 
-  const canMountTerminals =
-    isUserLayerReady && isSessionRestoreReady && resolvedSystemPrompt !== undefined;
+  const canMountTerminals = isUiPackHostReady(
+    isUserLayerReady,
+    isSessionRestoreReady,
+    resolvedSystemPrompt !== undefined,
+  );
   const getTerminalSpec = useCallback(
     (sessionId: SessionId): SpawnSpec => {
       if (sessionId !== DEFAULT_SESSION_ID) {
@@ -3101,61 +3239,69 @@ function App() {
   // Yorishiro 本体の layout と独立にするため。pointer-events: none で default 透過し、
   // pack 側で auto を明示した要素だけがクリックを受ける。
   useEffect(() => {
-    // Terminal が mount されるまでは subscribe しない（空振り事故防止）。
-    // bundled register は factory 内の同期 code なので、ここに到達した時点で registry は既に埋まっている。
-    if (!isUserLayerReady) return;
+    // Terminal と host surface が DOM commit されるまでは subscribe しない。
+    // user layer の準備だけでは session restore / prompt 解決前で terminal がまだ存在せず、
+    // persisted View Mode の初回 activation が空振りしたまま再通知されない。
+    // bundled register は factory 内の同期 code なので、この時点で registry も埋まっている。
+    if (!canMountTerminals) return;
 
     let currentDisposable: Disposable | null = null;
     let currentContainer: HTMLDivElement | null = null;
     let currentAbort: AbortController | null = null;
     let currentLayout: UiLayout | null = null;
-    let nativeWindowUpdate = Promise.resolve();
+    let currentEntryId: string | null = null;
     let savedWindowSize: LogicalSize | null = null;
+    let savedFullscreen: boolean | null = null;
     const applyNativeWindowLayout = (layout: UiLayout | null): void => {
       const width = layout?.window?.width;
       const height = layout?.window?.height;
       const minWidth = layout?.window?.minWidth ?? 900;
       const minHeight = layout?.window?.minHeight ?? 600;
       const alwaysOnTop = layout?.window?.alwaysOnTop ?? false;
+      const fullscreen = layout?.window?.fullscreen ?? false;
 
       // active UI が短時間に連続で変わっても古い async call が後から勝たないよう直列化する。
-      nativeWindowUpdate = nativeWindowUpdate
-        .then(async () => {
-          const appWindow = getCurrentWindow();
-          const requestsSize = width !== undefined || height !== undefined;
-          if (requestsSize && savedWindowSize === null) {
-            const [innerSize, scaleFactor] = await Promise.all([
-              appWindow.innerSize(),
-              appWindow.scaleFactor(),
-            ]);
-            savedWindowSize = innerSize.toLogical(scaleFactor);
-          }
+      void enqueueNativeWindowMutation(async () => {
+        const appWindow = getCurrentWindow();
+        const requestsSize = width !== undefined || height !== undefined;
+        if (requestsSize && savedWindowSize === null) {
+          const [innerSize, scaleFactor] = await Promise.all([
+            appWindow.innerSize(),
+            appWindow.scaleFactor(),
+          ]);
+          savedWindowSize = innerSize.toLogical(scaleFactor);
+        }
 
-          await appWindow.setMinSize(new LogicalSize(minWidth, minHeight));
-          if (requestsSize) {
-            const [innerSize, scaleFactor] = await Promise.all([
-              appWindow.innerSize(),
-              appWindow.scaleFactor(),
-            ]);
-            const currentSize = innerSize.toLogical(scaleFactor);
-            await appWindow.setSize(
-              new LogicalSize(width ?? currentSize.width, height ?? currentSize.height),
-            );
-          } else if (savedWindowSize !== null) {
-            const restoreSize = savedWindowSize;
-            savedWindowSize = null;
-            await appWindow.setSize(restoreSize);
-          }
-          await appWindow.setAlwaysOnTop(alwaysOnTop);
-        })
-        .catch((error) => {
-          devLog.write({
-            subsystem: "UiPack",
-            phase: "window-layout",
-            note: "failed to apply native window layout",
-            data: { error: error instanceof Error ? error.message : String(error) },
-          });
+        await appWindow.setMinSize(new LogicalSize(minWidth, minHeight));
+        if (requestsSize) {
+          const [innerSize, scaleFactor] = await Promise.all([
+            appWindow.innerSize(),
+            appWindow.scaleFactor(),
+          ]);
+          const currentSize = innerSize.toLogical(scaleFactor);
+          await appWindow.setSize(
+            new LogicalSize(width ?? currentSize.width, height ?? currentSize.height),
+          );
+        } else if (savedWindowSize !== null) {
+          const restoreSize = savedWindowSize;
+          savedWindowSize = null;
+          await appWindow.setSize(restoreSize);
+        }
+        await appWindow.setAlwaysOnTop(alwaysOnTop);
+        if (savedFullscreen === null) savedFullscreen = await appWindow.isFullscreen();
+        await appWindow.setFullscreen(fullscreen || savedFullscreen === true);
+        if (!layout && savedFullscreen !== null) {
+          await appWindow.setFullscreen(savedFullscreen);
+          savedFullscreen = null;
+        }
+      }).catch((error) => {
+        devLog.write({
+          subsystem: "UiPack",
+          phase: "window-layout",
+          note: "failed to apply native window layout",
+          data: { error: error instanceof Error ? error.message : String(error) },
         });
+      });
     };
     const setCurrentLayout = (layout: UiLayout | null): void => {
       currentLayout = layout;
@@ -3687,6 +3833,7 @@ function App() {
     const activateEntry = (entry: UiPackEntry | null) => {
       // 前の layout を捕捉してから cleanup（deactivate 時の閉じアニメ判定に使う）。
       const prevLayout = currentLayout;
+      const prevEntryId = currentEntryId;
       // 前の UI pack を cleanup
       if (currentAbort) currentAbort.abort();
       currentAbort = null;
@@ -3697,6 +3844,7 @@ function App() {
         currentContainer = null;
       }
       setCurrentLayout(null);
+      currentEntryId = entry?.id ?? null;
       if (resetLayoutForAllTerminals()) refitPresentedTerminals();
       applyNativeWindowLayout(entry?.pack.layout ?? null);
       claimState.releaseAll();
@@ -3707,7 +3855,10 @@ function App() {
         // 1-shot フラグはここで必ず消費する（pack 種別に関わらずリークさせない）。
         const exitToClosed = exitFullscreenToClosedRef.current;
         exitFullscreenToClosedRef.current = false;
-        if (prevLayout?.transition?.kind === "stage") {
+        if (
+          prevLayout?.transition?.kind === "stage" &&
+          shouldAnimateTheaterTransition(prevEntryId, null)
+        ) {
           // 前 pack が stage 遷移（theater 等）：reset 後の素の状態から「閉じアニメ」を再生する
           // （resetLayout で end-state を一旦 clear → playStage("close") が反対端へ override して tween）。
           playStage("close", exitToClosed);
@@ -3752,7 +3903,12 @@ function App() {
 
       // stage 遷移を宣言した pack（theater 等）は、applyLayout が置いた end-state を
       // 反対端へ override して「開きアニメ」を再生する（snap でなく Tween）。
-      if (entry.pack.layout.transition?.kind === "stage") playStage("open");
+      if (
+        entry.pack.layout.transition?.kind === "stage" &&
+        shouldAnimateTheaterTransition(prevEntryId, entry.id)
+      ) {
+        playStage("open");
+      }
 
       const container = document.createElement("div");
       container.className = "ui-pack-container";
@@ -3784,7 +3940,8 @@ function App() {
       }
     };
 
-    const sub = uiPackRegistry.subscribeActive(activateEntry);
+    // Persisted activeUi may have been restored before this effect can subscribe.
+    const sub = subscribeAndActivateCurrentUi(uiPackRegistry, activateEntry);
 
     // タブ切替・追加時に active UI pack のレイアウトを新ターミナルにも適用する。
     // React の DOM commit を待つため requestAnimationFrame で遅延させる。
@@ -3827,7 +3984,7 @@ function App() {
     devLog,
     claimState,
     uiState,
-    isUserLayerReady,
+    canMountTerminals,
     logBridge,
     applyVrmPath,
     runtime,
@@ -4364,6 +4521,17 @@ function App() {
     uiState.set(SETTINGS_PACK_ID, PREVIOUS_ACTIVE_UI_KEY, current);
     uiPackRegistry.setActiveUi(SETTINGS_PACK_ID);
   }, []);
+
+  const handleSelectViewMode = useCallback(
+    (id: string | null) => {
+      setViewModeHudVisible(false);
+      getUiRegistry().setActiveUi(id);
+      void updateYorishiroConfig((config) => ({ ...config, activeUi: id })).catch((error) => {
+        console.warn("[App] failed to persist View Mode", error);
+      });
+    },
+    [updateYorishiroConfig],
+  );
 
   const handleVoiceEntryCancel = useCallback(() => {
     setVoiceEntryDialog(null);
@@ -5455,12 +5623,23 @@ function App() {
         event.preventDefault();
         setLevaHidden((prev) => !prev);
       }
+      const viewModeShortcut = viewModeShortcuts.find((shortcut) =>
+        matchesViewModeShortcut(shortcut, event, isMac),
+      );
+      if (viewModeShortcut) {
+        event.preventDefault();
+        handleSelectViewMode(viewModeShortcut.id);
+      }
+      if (event.code === "Escape" && viewModeOwnsChrome) {
+        event.preventDefault();
+        handleSelectViewMode(null);
+      }
     };
     window.addEventListener("keydown", onKeyDown, { capture: true });
     return () => {
       window.removeEventListener("keydown", onKeyDown, { capture: true });
     };
-  }, [handleOpenSettings]);
+  }, [handleOpenSettings, handleSelectViewMode, isMac, viewModeOwnsChrome, viewModeShortcuts]);
 
   // command run の keyboard 操作（active session）。
   // Cmd+Shift+F: 直近 failed run を reference 化。
@@ -5492,15 +5671,40 @@ function App() {
   // 経由で動かす（runtime singleton で register 済み）。この useEffect は不要。
 
   return (
-    <div className="app">
+    // A secondary click is the discoverable HUD gesture for chrome-owning View Modes.
+    <div
+      className={`app${viewModeOwnsChrome ? " view-mode-chrome-hidden" : ""}${viewModeUsesRoundedWindow ? " view-mode-window-rounded" : ""}${viewModeHudVisible ? " view-mode-hud-visible" : ""}`}
+      onContextMenuCapture={(event) => {
+        if (!shouldRevealViewModeHud(viewModeOwnsChrome, event.button)) return;
+        event.preventDefault();
+        setViewModeHudVisible((visible) =>
+          nextViewModeHudVisibility(viewModeOwnsChrome, event.button, visible),
+        );
+      }}
+      onPointerDown={(event) => {
+        if (!shouldStartViewModeWindowDrag(viewModeOwnsChrome, event.button, event.target)) return;
+        event.preventDefault();
+        void getCurrentWindow()
+          .startDragging()
+          .catch(() => undefined);
+      }}
+    >
       <TitleBar
         sidebarOpen={sidebarOpen}
         settingsActive={settingsActive}
         sidebarLabel={strings.labelPresence}
-        showSidebarToggle={activeUiId !== companionPack.id}
+        viewModeLabel={strings.viewMode}
+        terminalLabel={strings.terminal}
+        terminalShortcutHint={viewModeShortcuts[0]?.hint}
+        viewModeShortcutHints={viewModeShortcutHints}
+        settingsShortcutHint={/Mac/i.test(navigator.platform) ? "⌘," : "Ctrl+,"}
+        showSidebarToggle={!viewModeOwnsChrome}
         settingsLabel={strings.settings}
         onToggleSidebar={handleToggleSidebar}
         onOpenSettings={handleOpenSettings}
+        viewModes={viewModes}
+        activeViewModeId={pickerActiveViewModeId}
+        onSelectViewMode={handleSelectViewMode}
         voiceAvailable={voiceEntryAvailable}
         voiceDisabled={mainSessionReplacing}
         voiceState={titleBarVoiceState}
@@ -5596,7 +5800,14 @@ function App() {
             if (el) getSurfaceRegistry().register("shell", el);
           }}
         >
-          <Sidebar folderName={folderName} onPickFolder={handlePickFolder} />
+          <Sidebar
+            folderName={folderName}
+            onPickFolder={handlePickFolder}
+            showProjectSelector={shouldShowProjectSelector(
+              isUserLayerReady,
+              pickerActiveViewModeId,
+            )}
+          />
           <CharacterSurface
             vrmUrl={vrmUrl}
             onBodyReady={handleBodyReady}

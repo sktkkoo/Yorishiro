@@ -29,4 +29,5 @@ export interface UiPackRegistry {
   getActiveUiId(): string | null;
 
   listEntries(): ReadonlyArray<UiPackEntry>;
+  subscribeEntries(listener: (entries: ReadonlyArray<UiPackEntry>) => void): Disposable;
 }

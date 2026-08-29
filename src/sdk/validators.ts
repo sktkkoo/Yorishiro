@@ -78,6 +78,44 @@ export function validateUiPackDefinition(pack: unknown): UiPackDefinition {
   return pack as unknown as UiPackDefinition;
 }
 
+export function validateUiPackManifest(raw: unknown): import("./ui-pack").UiPackManifest {
+  if (!isObject(raw)) throw new PackValidationError("UI pack manifest must be an object");
+  requireField(raw, "id", (v) => typeof v === "string", "a string", "UiPackManifest");
+  requireField(raw, "type", (v) => v === "ui", '"ui"', "UiPackManifest");
+  requireField(raw, "version", (v) => typeof v === "string", "a string", "UiPackManifest");
+  requireField(raw, "yorishiroVersion", (v) => typeof v === "string", "a string", "UiPackManifest");
+  requireField(raw, "entry", (v) => typeof v === "string", "a string", "UiPackManifest");
+  if (raw.viewMode !== undefined) {
+    if (!isObject(raw.viewMode))
+      throw new PackValidationError("UiPackManifest: field 'viewMode' must be an object");
+    const mode = raw.viewMode;
+    requireField(mode, "enabled", (v) => v === true, "true", "UiPackManifest.viewMode");
+    requireField(
+      mode,
+      "label",
+      (v) => typeof v === "string" && v.trim().length > 0,
+      "a non-empty string",
+      "UiPackManifest.viewMode",
+    );
+    const icons = new Set(["immersive", "theater", "scene", "overlay", "portrait"]);
+    requireField(
+      mode,
+      "icon",
+      (v) => typeof v === "string" && icons.has(v),
+      "a supported icon identifier",
+      "UiPackManifest.viewMode",
+    );
+    requireField(
+      mode,
+      "order",
+      (v) => typeof v === "number" && Number.isFinite(v),
+      "a finite number",
+      "UiPackManifest.viewMode",
+    );
+  }
+  return raw as unknown as import("./ui-pack").UiPackManifest;
+}
+
 /**
  * AmbientUiPackDefinition の shape を検証する。成功時は同じ値を返し、失敗時は
  * PackValidationError を throw する。

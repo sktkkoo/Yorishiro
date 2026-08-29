@@ -79,6 +79,7 @@ vi.mock("../scene-pack-registry/asset-resolver", () => ({
 vi.mock("../three-runtime", () => ({
   getThreeRuntime: () => ({
     setCameraTracking: vi.fn(),
+    acquireFixedCamera: vi.fn(() => ({ setTarget: vi.fn(), dispose: vi.fn() })),
     getCameraTracking: () => true,
     getCamera: () => ({
       position: { x: 0, y: 1.35, z: 1.1, set: vi.fn() },

@@ -26,6 +26,7 @@ import {
   validateEffectDefinition,
   validatePersonaDefinition,
   validateUiPackDefinition,
+  validateUiPackManifest,
 } from "../../sdk/validators";
 import type { AmbientUiPackRegistry } from "../ambient-ui-pack-registry";
 import type { AmenityPackRegistry } from "../amenity-pack-registry";
@@ -61,6 +62,7 @@ export interface UserPackEntry {
     readonly author?: string;
     /** 能力ラダーの sandbox 宣言（raw 値。検証は pack-execution-policy 側）。 */
     readonly sandbox?: unknown;
+    readonly viewMode?: unknown;
   };
 }
 
@@ -346,15 +348,17 @@ export async function loadSingleUserPack(
         throw new Error("UiPackRegistry is required to register UI packs");
       }
       const pack = validateUiPackDefinition(def);
+      const manifest = validateUiPackManifest({
+        id: pack.id,
+        type: "ui",
+        version: "0.0.0",
+        yorishiroVersion: "*",
+        entry: userPackEntryFilename(entry.entryPath),
+        viewMode: entry.manifest?.viewMode,
+      });
       const handle = uiPackRegistry.register({
         id: pack.id,
-        manifest: {
-          id: pack.id,
-          type: "ui",
-          version: "0.0.0",
-          yorishiroVersion: "*",
-          entry: userPackEntryFilename(entry.entryPath),
-        },
+        manifest,
         origin: "user",
         pack: {
           layout: pack.layout,

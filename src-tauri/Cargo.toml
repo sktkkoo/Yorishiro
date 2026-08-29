@@ -23,7 +23,7 @@ tauri-build = { version = "2", features = [] }
 # 自動で有効になるため dev 体験は保たれる。一方この feature を付けると release build でも
 # Inspector が開き、console から __TAURI_INTERNALS__.invoke で system_exec を含む全 IPC
 # command を直接叩けてしまう（pack 信頼境界を console から迂回できる）。production には含めない。
-tauri = { version = "2", features = ["protocol-asset"] }
+tauri = { version = "2", features = ["protocol-asset", "macos-private-api"] }
 tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
 # in-app updater: GitHub Releases の latest.json を参照して署名検証つきで自己更新する。

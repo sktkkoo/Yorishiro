@@ -73,6 +73,13 @@ describe("resolveFixedTerminalPrompt", () => {
   });
 });
 
+describe("View Mode labels", () => {
+  it("keeps the null/default selection named Terminal in every locale", () => {
+    expect(getStrings("en").terminal).toBe("Terminal");
+    expect(getStrings("ja").terminal).toBe("Terminal");
+  });
+});
+
 describe("AGENT_COMMAND_SYNTAX", () => {
   // Rust 各 adapter の command_syntax() の mirror。ズレると prefill コマンドが
   // 間違った記法になる。Rust↔TS の drift は health-check で runtime 検知される。

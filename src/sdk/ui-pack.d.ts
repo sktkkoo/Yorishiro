@@ -50,6 +50,9 @@ export interface UiLayout {
     readonly minHeight?: number;
     /** true にすると他アプリより手前へ保つ。companion / overlay UI 用。 */
     readonly alwaysOnTop?: boolean;
+    readonly fullscreen?: boolean;
+    /** Preserve this logical width / height while the user resizes the window. */
+    readonly aspectRatio?: number;
   };
   readonly sidebar?: {
     /**
@@ -136,6 +139,15 @@ export interface UiPackManifest {
     readonly sizeBytes: number;
   };
   readonly entry: string;
+  /** Opts this UI pack into the host View Mode picker. */
+  readonly viewMode?: {
+    readonly enabled: true;
+    readonly label: string;
+    readonly icon: "immersive" | "theater" | "scene" | "overlay" | "portrait";
+    readonly order: number;
+    readonly category?: "presentation" | "companion" | "ambient";
+    readonly platforms?: ReadonlyArray<"macos" | "windows" | "linux">;
+  };
 }
 
 /**

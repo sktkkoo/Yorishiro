@@ -503,10 +503,13 @@ async function reloadPack(
       }
     } else if (action.kind === "ui") {
       const pack = validateUiPackDefinition(def);
+      const existingManifest = deps.uiPackRegistry
+        .listEntries()
+        .find((entry) => entry.id === pack.id)?.manifest;
       deps.packRegistry.dispose(action.id, action.kind);
       const handle = deps.uiPackRegistry.register({
         id: pack.id,
-        manifest: {
+        manifest: existingManifest ?? {
           id: pack.id,
           type: "ui",
           version: "0.0.0",

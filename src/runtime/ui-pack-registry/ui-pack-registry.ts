@@ -20,6 +20,29 @@ export class UiPackRegistryImpl
   extends SingleActiveRegistry<UiPackEntry, UiPackEntry>
   implements UiPackRegistry
 {
+  private readonly entryListeners = new Set<(entries: ReadonlyArray<UiPackEntry>) => void>();
+
+  override register(entry: UiPackEntry) {
+    const registration = super.register(entry);
+    this.emitEntries();
+    return {
+      dispose: () => {
+        registration.dispose();
+        this.emitEntries();
+      },
+    };
+  }
+
+  subscribeEntries(listener: (entries: ReadonlyArray<UiPackEntry>) => void) {
+    this.entryListeners.add(listener);
+    listener(this.listEntries());
+    return { dispose: () => this.entryListeners.delete(listener) };
+  }
+
+  private emitEntries(): void {
+    const snapshot = this.listEntries();
+    for (const listener of [...this.entryListeners]) listener(snapshot);
+  }
   constructor() {
     super({
       extractValue: (entry) => entry,
