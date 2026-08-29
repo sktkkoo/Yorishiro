@@ -40,6 +40,7 @@ const FLINCH_PITCH_RAD = -0.045; // 負 = chin down
 // drift（z/y）と違い pitch には揺らぎが無く中心が素のポーズ任せだったため、ここで中心だけ寄せる。
 // procedural weight に乗せるので、conscious animation 中はフェードして効かない。
 const HEAD_REST_PITCH_RAD = -0.035;
+const APPLIED_ROTATION_EPSILON = 1e-6;
 
 // ─── Utility ─────────────────────────────────────────────
 
@@ -69,8 +70,13 @@ export class ProceduralBones {
   private headLookAtTargetY = 0;
   private headLookAtCurrentX = 0;
   private headLookAtCurrentY = 0;
-  private headLookAtAppliedX = 0;
-  private headLookAtAppliedY = 0;
+  private headBaseRotationX = 0;
+  private headBaseRotationY = 0;
+  private headBaseRotationZ = 0;
+  private headRotationAfterApplyX = 0;
+  private headRotationAfterApplyY = 0;
+  private headRotationAfterApplyZ = 0;
+  private headRotationApplied = false;
   private restPose: VrmRestPose | null = null;
 
   // BreathingSystem からの胸郭・肩オフセット（毎フレーム Body が供給）。
@@ -180,6 +186,34 @@ export class ProceduralBones {
     this.headLookAtTargetX = pitchRad;
   }
 
+  /**
+   * Remove the head overlay written by the previous procedural frame.
+   *
+   * AnimationMixer captures the current quaternion when an action starts and
+   * restores it when the action stops. Leaving a gaze/state pitch on the head
+   * at activation would therefore promote a transient offset into the restored
+   * base pose. If another system has already replaced the quaternion, only
+   * forget our bookkeeping; restoring a stale base would create a new residue.
+   */
+  restoreHeadBaseRotation(): void {
+    const head = this.headBone;
+    if (
+      head &&
+      this.headRotationApplied &&
+      Math.abs(head.rotation.x - this.headRotationAfterApplyX) <= APPLIED_ROTATION_EPSILON &&
+      Math.abs(head.rotation.y - this.headRotationAfterApplyY) <= APPLIED_ROTATION_EPSILON &&
+      Math.abs(head.rotation.z - this.headRotationAfterApplyZ) <= APPLIED_ROTATION_EPSILON
+    ) {
+      head.rotation.set(
+        this.headBaseRotationX,
+        this.headBaseRotationY,
+        this.headBaseRotationZ,
+        head.rotation.order,
+      );
+    }
+    this.headRotationApplied = false;
+  }
+
   /** BreathingSystem の胸郭・肩オフセットを受け取る。update で weight 込みで適用。 */
   setBreathingOffsets(chestPitchRad: number, shoulderLiftRad: number): void {
     this.breathChestPitch = chestPitchRad;
@@ -262,6 +296,10 @@ export class ProceduralBones {
 
     // ── Head drift ──────────────────────────────────────
     if (this.headBone) {
+      this.restoreHeadBaseRotation();
+      this.headBaseRotationX = this.headBone.rotation.x;
+      this.headBaseRotationY = this.headBone.rotation.y;
+      this.headBaseRotationZ = this.headBone.rotation.z;
       this.headDriftTimer -= delta;
       if (this.headDriftTimer <= 0) {
         const ampZ = HEAD_DRIFT_AMP_Z * headGain * this.statePose.driftAmpScale;
@@ -299,16 +337,16 @@ export class ProceduralBones {
       const headArc = Math.abs(this.headSpringZ.pos) * 0.3 * w;
       const appliedPitchX =
         this.headLookAtCurrentX + restPitchX + flinchX - headArc + this.statePose.headPitch * w;
-      this.headBone.rotation.x -= this.headLookAtAppliedX;
-      this.headBone.rotation.y -= this.headLookAtAppliedY;
       if (w >= 0.001) {
         this.headBone.rotation.z = this.headSpringZ.pos * w;
         this.headBone.rotation.y = this.headSpringY.pos * w;
       }
       this.headBone.rotation.x += appliedPitchX;
       this.headBone.rotation.y += this.headLookAtCurrentY;
-      this.headLookAtAppliedX = appliedPitchX;
-      this.headLookAtAppliedY = this.headLookAtCurrentY;
+      this.headRotationAfterApplyX = this.headBone.rotation.x;
+      this.headRotationAfterApplyY = this.headBone.rotation.y;
+      this.headRotationAfterApplyZ = this.headBone.rotation.z;
+      this.headRotationApplied = true;
     }
 
     // ── Arm drag（spine → 遅延追従）──────────────────────

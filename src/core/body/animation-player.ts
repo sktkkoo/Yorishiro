@@ -63,10 +63,12 @@ export class AnimationPlayer {
   private readonly clipCache = new Map<string, THREE.AnimationClip>();
   private readonly active = new Map<number, ActiveAnimation>();
   private readonly devLog?: SubsystemLog;
+  private readonly beforeActionPlay?: () => void;
 
-  constructor(vrm: VRM, devLog?: SubsystemLog) {
+  constructor(vrm: VRM, devLog?: SubsystemLog, beforeActionPlay?: () => void) {
     this.vrm = vrm;
     this.devLog = devLog;
+    this.beforeActionPlay = beforeActionPlay;
     this.mixer = new THREE.AnimationMixer(vrm.scene);
     this.loader = new GLTFLoader();
     this.loader.register((parser) => new VRMAnimationLoaderPlugin(parser));
@@ -159,6 +161,11 @@ export class AnimationPlayer {
     if (opts.speed !== undefined) action.setEffectiveTimeScale(opts.speed);
 
     const fadeInSec = (opts.fadeInMs ?? 200) / 1000;
+
+    // AnimationMixer saves the current bone transforms as the state it restores
+    // when the last action stops. Remove procedural overlays immediately before
+    // activation so a transient gaze/head offset cannot become that base.
+    this.beforeActionPlay?.();
 
     if (prevActive && fadeInSec > 0) {
       // Synchronized crossfade: prev の weight を duration で 0 へ、self の weight

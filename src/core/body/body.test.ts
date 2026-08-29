@@ -339,6 +339,23 @@ describe("Body motion activation ownership", () => {
     expect(updateProcedural.mock.calls[0][2]).toBeCloseTo(0.68);
     speech.cancel();
   });
+
+  it("animation claim 中は procedural head pose を外し、release 後に neutral idleへ戻す", () => {
+    const { vrm, getBone } = mockBodyVrm();
+    const claimState = mockClaimState();
+    const body = new Body(vrm, undefined, claimState);
+
+    body.update(1 / 60, 0);
+    expect(getBone("head").rotation.x).toBeLessThan(0);
+
+    const claim = claimState.claim("animation");
+    body.update(1 / 60, 1 / 60);
+    expect(getBone("head").rotation.x).toBeCloseTo(0, 6);
+
+    claim.dispose();
+    body.update(1 / 60, 2 / 60);
+    expect(getBone("head").rotation.x).toBeLessThan(0);
+  });
 });
 
 // ─── Body speech microexpression wiring ─────────────────
