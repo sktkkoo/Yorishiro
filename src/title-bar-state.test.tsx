@@ -203,8 +203,12 @@ describe("title bar state hooks", () => {
   });
 
   it("shows Terminal while Settings was opened from Terminal", () => {
-    expect(resolvePickerActiveViewModeId(true, null, SETTINGS_PACK_ID)).toBeNull();
-    expect(resolvePickerActiveViewModeId(true, "portrait", SETTINGS_PACK_ID)).toBe("portrait");
+    const terminalOrigin = resolvePickerActiveViewModeId(true, null, SETTINGS_PACK_ID);
+    const portraitOrigin = resolvePickerActiveViewModeId(true, "portrait", SETTINGS_PACK_ID);
+    expect(terminalOrigin).toBeNull();
+    expect(portraitOrigin).toBe("portrait");
+    expect(shouldShowProjectSelector(true, terminalOrigin)).toBe(true);
+    expect(shouldShowProjectSelector(true, portraitOrigin)).toBe(false);
   });
 
   it("keeps the previous picker selection but suspends presentation chrome in Settings", () => {

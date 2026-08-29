@@ -5800,7 +5800,10 @@ function App() {
           <Sidebar
             folderName={folderName}
             onPickFolder={handlePickFolder}
-            showProjectSelector={shouldShowProjectSelector(isUserLayerReady, activeUiId)}
+            showProjectSelector={shouldShowProjectSelector(
+              isUserLayerReady,
+              pickerActiveViewModeId,
+            )}
           />
           <CharacterSurface
             vrmUrl={vrmUrl}
