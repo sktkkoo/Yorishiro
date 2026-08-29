@@ -6,6 +6,7 @@ import { Body } from "../../core/body";
 import { registerOrphanMorphs } from "../../core/body/register-orphan-morphs";
 import { applyVrmRestPose } from "../../core/body/vrm-rest-pose";
 import type { SubsystemLog } from "../../core/dev-log";
+import { easeInOutCubic } from "../../core/tween/lerp";
 import { TweenManager } from "../../core/tween/tween-manager";
 import { getOrInit } from "../hot-data";
 import { KEYS } from "../module-registry/keys";
@@ -14,7 +15,7 @@ import { getVrmCache } from "../vrm-cache";
 import { CameraModulationRegistry } from "./camera-modulation";
 import { R3fHost } from "./r3f-host";
 import { R3fRuntimeRoot } from "./r3f-runtime-root";
-import type { ThreeRuntime } from "./types";
+import type { FixedCameraHandle, ThreeRuntime } from "./types";
 
 const DEFAULT_RENDER_FPS = 30;
 const MIN_RENDER_FRAME_INTERVAL_MS = 1000 / DEFAULT_RENDER_FPS;
@@ -61,6 +62,13 @@ class ThreeRuntimeImpl implements ThreeRuntime {
   private loadToken = 0;
   private readonly tweenManager = new TweenManager();
   private readonly cameraBase = { x: 0, y: 1.35, z: 1.1 };
+  private fixedCamera: {
+    readonly token: symbol;
+    readonly previousBase: { x: number; y: number; z: number };
+    readonly previousPosition: THREE.Vector3;
+    readonly previousQuaternion: THREE.Quaternion;
+    readonly previousTracking: boolean;
+  } | null = null;
   private readonly cameraModulation = new CameraModulationRegistry();
   private readonly baseFov: number;
   private currentPlaceholder: HTMLElement | null = null;
@@ -224,16 +232,18 @@ class ThreeRuntimeImpl implements ThreeRuntime {
               else headPos.set(0, 1.6, 0);
 
               const targetY = headPos.y - 0.05;
-              this.cameraBase.x = 0;
-              this.cameraBase.y = targetY;
-              this.cameraBase.z = 1.1;
-              this.camera.position.set(0, targetY, 1.1);
-              this.camera.lookAt(0, targetY, 0);
+              if (!this.fixedCamera) {
+                this.cameraBase.x = 0;
+                this.cameraBase.y = targetY;
+                this.cameraBase.z = 1.1;
+                this.camera.position.set(0, targetY, 1.1);
+                this.camera.lookAt(0, targetY, 0);
+              }
               // 新しい姿は背丈が違う。切替経路（お別れの暗転中 / 設定画面の
               // live 差し替え）を問わず、ロード時は追従を ON に戻して頭位置の
               // 構図から始める。ここは即時スナップなので、暗転中なら
               // カーテンが明けた瞬間から構図が決まっている。
-              this.cameraTrackingEnabled = true;
+              if (!this.fixedCamera) this.cameraTrackingEnabled = true;
 
               this.bodyListenerRef.current?.(this.currentBody);
               this.updatePlaceholderRect();
@@ -315,6 +325,7 @@ class ThreeRuntimeImpl implements ThreeRuntime {
   }
 
   setCameraTracking(enabled: boolean): void {
+    if (this.fixedCamera) return;
     if (enabled && !this.cameraTrackingEnabled) {
       this.cameraBase.x = this.camera.position.x;
       this.cameraBase.y = this.camera.position.y;
@@ -327,13 +338,68 @@ class ThreeRuntimeImpl implements ThreeRuntime {
     return this.cameraTrackingEnabled;
   }
 
+  acquireFixedCamera(x: number, y: number, z: number): FixedCameraHandle {
+    const token = Symbol("fixed-camera");
+    const tweenKey = `view-mode-fixed-camera:${String(token)}`;
+    const previousBase = { ...this.cameraBase };
+    const previousPosition = this.camera.position.clone();
+    const previousQuaternion = this.camera.quaternion.clone();
+    const previousTracking = this.cameraTrackingEnabled;
+    this.fixedCamera = {
+      token,
+      previousBase,
+      previousPosition,
+      previousQuaternion,
+      previousTracking,
+    };
+    this.cameraTrackingEnabled = false;
+    this.cameraBase.x = x;
+    this.cameraBase.y = y;
+    this.cameraBase.z = z;
+    this.camera.position.set(x, y, z);
+    this.camera.lookAt(0, y, 0);
+    const apply = (nextX: number, nextY: number, nextZ: number) => {
+      if (this.fixedCamera?.token !== token) return;
+      this.cameraBase.x = nextX;
+      this.cameraBase.y = nextY;
+      this.cameraBase.z = nextZ;
+      this.camera.position.set(nextX, nextY, nextZ);
+      this.camera.lookAt(0, nextY, 0);
+    };
+    return {
+      setTarget: (nextX, nextY, nextZ, durationMs) => {
+        this.tweenManager.startVec3(
+          tweenKey,
+          [nextX, nextY, nextZ],
+          durationMs,
+          ([valueX, valueY, valueZ]) => apply(valueX, valueY, valueZ),
+          {
+            from: [this.camera.position.x, this.camera.position.y, this.camera.position.z],
+            easing: easeInOutCubic,
+          },
+        );
+      },
+      dispose: () => {
+        if (this.fixedCamera?.token !== token) return;
+        this.tweenManager.cancel(tweenKey);
+        this.fixedCamera = null;
+        this.cameraBase.x = previousBase.x;
+        this.cameraBase.y = previousBase.y;
+        this.cameraBase.z = previousBase.z;
+        this.camera.position.copy(previousPosition);
+        this.camera.quaternion.copy(previousQuaternion);
+        this.cameraTrackingEnabled = previousTracking;
+      },
+    };
+  }
+
   /**
    * camera が claim されているか（camera-move / UI pack 等が一時占有中）。
    * render loop の Step1-3 と同じ claim を見る。leva debug controls が claim 中に
    * camera 位置を上書きして演出（例: 銃撃の camera-move）を打ち消さないための gate。
    */
   isCameraClaimed(): boolean {
-    return this.claimState.isClaimed("camera");
+    return this.fixedCamera !== null || this.claimState.isClaimed("camera");
   }
 
   /**
@@ -425,7 +491,7 @@ class ThreeRuntimeImpl implements ThreeRuntime {
         this.updateBodyPointerReference();
         this.currentBody.update(delta, elapsed);
 
-        const cameraClaimed = this.claimState.isClaimed("camera");
+        const cameraClaimed = this.isCameraClaimed();
 
         // Step 1: Base — VRM head tracking（claim 未取得時のみ）
         if (this.trackHead && this.cameraTrackingEnabled && !cameraClaimed) {

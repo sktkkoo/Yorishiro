@@ -7,5 +7,12 @@
   "yorishiroVersion": "^0.1.0",
   "author": "Yorishiro team",
   "description": "Transparent terminal background so the character and scene show through clearly.",
-  "entry": "ui.tsx"
+  "entry": "ui.tsx",
+  "viewMode": {
+    "enabled": true,
+    "label": "Immersive",
+    "icon": "immersive",
+    "order": 50,
+    "category": "presentation"
+  }
 }

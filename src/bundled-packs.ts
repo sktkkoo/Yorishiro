@@ -47,6 +47,8 @@ export { default as companionManifest } from "../bundled-packs/ui/companion/mani
 export { default as companionPack } from "../bundled-packs/ui/companion/ui";
 export { default as immersiveManifest } from "../bundled-packs/ui/immersive/manifest.json";
 export { default as immersivePack } from "../bundled-packs/ui/immersive/ui";
+export { default as portraitManifest } from "../bundled-packs/ui/portrait/manifest.json";
+export { default as portraitPack } from "../bundled-packs/ui/portrait/ui";
 export { default as theaterManifest } from "../bundled-packs/ui/theater/manifest.json";
 export { default as theaterPack } from "../bundled-packs/ui/theater/ui";
 export { default as yorishiroSettingsManifest } from "../bundled-packs/ui/yorishiro-settings/manifest.json";

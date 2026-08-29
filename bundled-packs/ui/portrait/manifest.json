@@ -1,0 +1,16 @@
+{
+  "id": "portrait",
+  "name": "Call",
+  "type": "ui",
+  "version": "0.1.0",
+  "yorishiroVersion": "^0.1.0",
+  "description": "A compact face-centered conversation view.",
+  "entry": "ui.tsx",
+  "viewMode": {
+    "enabled": true,
+    "label": "Call",
+    "icon": "portrait",
+    "order": 20,
+    "category": "companion"
+  }
+}

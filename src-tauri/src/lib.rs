@@ -1264,6 +1264,8 @@ struct UserPackManifestSummary {
     /// 能力ラダーの sandbox 宣言。Rust 側は素通しし、検証は TS（pack-execution-policy）が行う。
     #[serde(skip_serializing_if = "Option::is_none")]
     sandbox: Option<serde_json::Value>,
+    #[serde(rename = "viewMode", skip_serializing_if = "Option::is_none")]
+    view_mode: Option<serde_json::Value>,
 }
 
 /// Absolute path to ~/.yorishiro/. Does not create it.
@@ -1576,6 +1578,7 @@ fn discover_user_pack_entries(packs_dir: &Path) -> Result<Vec<UserPackEntry>, St
                         min_client_version: m.min_client_version.clone(),
                         platform: m.platform.clone(),
                         sandbox: m.sandbox.clone(),
+                        view_mode: m.view_mode.clone(),
                     }),
                 });
             }
@@ -3775,6 +3778,49 @@ fn external_attach_sync_client_count(server: State<'_, attach::AttachServer>) ->
     server.emit_current_client_count()
 }
 
+#[tauri::command]
+async fn set_window_controls_visible(
+    window: tauri::WebviewWindow,
+    visible: bool,
+) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        let (tx, rx) = tokio::sync::oneshot::channel::<Result<(), String>>();
+        window
+            .with_webview(move |platform_webview| {
+                use objc2::msg_send;
+                use objc2::runtime::AnyObject;
+
+                let wk_webview: *mut AnyObject = platform_webview.inner().cast();
+                let result = unsafe {
+                    let ns_window: *mut AnyObject = msg_send![wk_webview, window];
+                    if ns_window.is_null() {
+                        Err("WKWebView has no native window".to_string())
+                    } else {
+                        for button_kind in 0_isize..=2 {
+                            let button: *mut AnyObject =
+                                msg_send![ns_window, standardWindowButton: button_kind];
+                            if !button.is_null() {
+                                let _: () = msg_send![button, setHidden: !visible];
+                            }
+                        }
+                        Ok(())
+                    }
+                };
+                let _ = tx.send(result);
+            })
+            .map_err(|error| format!("with_webview failed: {error}"))?;
+        rx.await
+            .map_err(|_| "window control update channel dropped".to_string())?
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (window, visible);
+        Ok(())
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // SessionRegistry を先に Arc 化して PtyState と Tauri managed state の両方
@@ -3867,6 +3913,7 @@ pub fn run() {
             history::snapshot_restore,
             history::snapshot_prune,
             external_attach_sync_client_count,
+            set_window_controls_visible,
             system_exec
         ])
         .setup(move |app| {

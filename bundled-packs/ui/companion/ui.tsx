@@ -10,10 +10,10 @@ const companion: UiPackDefinition = {
   type: "ui",
   layout: {
     window: {
-      width: 320,
-      height: 720,
-      minWidth: 320,
-      minHeight: 420,
+      width: 280,
+      height: 560,
+      minWidth: 240,
+      minHeight: 400,
       alwaysOnTop: true,
     },
     sidebar: { width: "fullscreen" },

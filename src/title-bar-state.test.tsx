@@ -6,7 +6,19 @@ import { _clearForTest as clearHotDataForTest } from "./runtime/hot-data/hot-dat
 import { _resetForTest as resetPresenceForTest } from "./runtime/presence-intensity/presence-intensity";
 import type { UiPackEntry } from "./runtime/ui-pack-registry";
 import { getUiRegistry } from "./runtime/ui-pack-registry";
-import { useActiveUiId, useSettingsActive, useSidebarOpen } from "./title-bar-state";
+import {
+  activePresentationViewModeId,
+  buildViewModeShortcuts,
+  matchesViewModeShortcut,
+  nativeWindowControlsVisibleForViewMode,
+  resolvePickerActiveViewModeId,
+  roundedWindowForViewMode,
+  shouldShowProjectSelector,
+  sortViewModeEntries,
+  useActiveUiId,
+  useSettingsActive,
+  useSidebarOpen,
+} from "./title-bar-state";
 
 const SETTINGS_PACK_ID = "yorishiro-settings";
 
@@ -48,6 +60,81 @@ afterEach(() => {
 });
 
 describe("title bar state hooks", () => {
+  it("assigns real, collision-resistant shortcuts to Terminal and the first nine modes", () => {
+    const shortcuts = buildViewModeShortcuts(
+      Array.from({ length: 10 }, (_, index) => ({ id: `mode-${index + 1}` })),
+      true,
+    );
+
+    expect(shortcuts).toHaveLength(10);
+    expect(shortcuts[0]).toEqual({ id: null, code: "Digit0", hint: "⌥⌘0" });
+    expect(shortcuts[1]).toEqual({ id: "mode-1", code: "Digit1", hint: "⌥⌘1" });
+    expect(shortcuts[shortcuts.length - 1]?.id).toBe("mode-9");
+    expect(
+      matchesViewModeShortcut(
+        shortcuts[1],
+        { code: "Digit1", ctrlKey: false, altKey: true, shiftKey: false, metaKey: true },
+        true,
+      ),
+    ).toBe(true);
+    expect(
+      matchesViewModeShortcut(
+        shortcuts[1],
+        { code: "Digit1", ctrlKey: true, altKey: true, shiftKey: false, metaKey: false },
+        true,
+      ),
+    ).toBe(false);
+    expect(
+      matchesViewModeShortcut(
+        buildViewModeShortcuts([{ id: "mode-1" }], false)[1],
+        { code: "Digit1", ctrlKey: true, altKey: true, shiftKey: false, metaKey: false },
+        false,
+      ),
+    ).toBe(true);
+  });
+
+  it("keeps the finalized built-in order ahead of deterministic user modes", () => {
+    const ordered = sortViewModeEntries([
+      uiEntry("user-z"),
+      uiEntry("immersive"),
+      uiEntry("portrait"),
+      uiEntry("theater"),
+      uiEntry("companion"),
+      uiEntry("user-a"),
+    ]);
+    expect(ordered.map((entry) => entry.id)).toEqual([
+      "companion",
+      "portrait",
+      "theater",
+      "immersive",
+      "user-a",
+      "user-z",
+    ]);
+    expect(buildViewModeShortcuts(ordered, true).map(({ id, hint }) => [id, hint])).toEqual([
+      [null, "⌥⌘0"],
+      ["companion", "⌥⌘1"],
+      ["portrait", "⌥⌘2"],
+      ["theater", "⌥⌘3"],
+      ["immersive", "⌥⌘4"],
+      ["user-a", "⌥⌘5"],
+      ["user-z", "⌥⌘6"],
+    ]);
+  });
+
+  it("shows native window controls only for Terminal", () => {
+    expect(nativeWindowControlsVisibleForViewMode(null)).toBe(true);
+    expect(nativeWindowControlsVisibleForViewMode("theater")).toBe(false);
+    expect(nativeWindowControlsVisibleForViewMode("user-view-mode")).toBe(false);
+  });
+
+  it("rounds only windowed compact presentation modes", () => {
+    expect(roundedWindowForViewMode("companion")).toBe(true);
+    expect(roundedWindowForViewMode("portrait")).toBe(true);
+    expect(roundedWindowForViewMode("theater")).toBe(false);
+    expect(roundedWindowForViewMode("immersive")).toBe(false);
+    expect(roundedWindowForViewMode(null)).toBe(false);
+  });
+
   it("syncs sidebarOpen from presence level change events", () => {
     render(<SidebarOpenProbe />);
 
@@ -113,5 +200,27 @@ describe("title bar state hooks", () => {
     } finally {
       companionRegistration.dispose();
     }
+  });
+
+  it("shows Terminal while Settings was opened from Terminal", () => {
+    expect(resolvePickerActiveViewModeId(true, null, SETTINGS_PACK_ID)).toBeNull();
+    expect(resolvePickerActiveViewModeId(true, "portrait", SETTINGS_PACK_ID)).toBe("portrait");
+  });
+
+  it("keeps the previous picker selection but suspends presentation chrome in Settings", () => {
+    const pickerId = resolvePickerActiveViewModeId(true, "portrait", SETTINGS_PACK_ID);
+    const settingsPresentationId = activePresentationViewModeId(true, pickerId);
+    expect(pickerId).toBe("portrait");
+    expect(settingsPresentationId).toBeNull();
+    expect(nativeWindowControlsVisibleForViewMode(settingsPresentationId)).toBe(true);
+    expect(roundedWindowForViewMode(settingsPresentationId)).toBe(false);
+    expect(activePresentationViewModeId(false, pickerId)).toBe("portrait");
+  });
+
+  it("does not flash the project selector before persisted View Mode bootstrap resolves", () => {
+    expect(shouldShowProjectSelector(false, null)).toBe(false);
+    expect(shouldShowProjectSelector(true, "companion")).toBe(false);
+    expect(shouldShowProjectSelector(true, SETTINGS_PACK_ID)).toBe(false);
+    expect(shouldShowProjectSelector(true, null)).toBe(true);
   });
 });

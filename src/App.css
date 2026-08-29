@@ -42,6 +42,18 @@ body,
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
+html[data-rounded-view],
+html[data-rounded-view] body,
+html[data-rounded-view] #root {
+  border-radius: 14px;
+  background: transparent;
+  overflow: hidden;
+}
+
+html[data-rounded-view] body {
+  clip-path: inset(0 round 14px);
+}
+
 /* ── Layout ─────────────────────────────────────────── */
 .app {
   display: flex;
@@ -49,6 +61,12 @@ body,
   height: 100vh;
   width: 100vw;
   min-height: 0;
+}
+
+.app.view-mode-window-rounded {
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--yorishiro-bg, #0d1117);
 }
 
 .app-body {
@@ -92,6 +110,27 @@ body,
   border-bottom: 1px solid rgba(44, 44, 48, 0.85);
   color: #d0d0d0;
   user-select: none;
+}
+
+.app.view-mode-chrome-hidden .title-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 900;
+  opacity: 0;
+  pointer-events: none;
+  padding-left: 10px;
+  transform: translateY(-100%);
+  transition:
+    opacity 160ms ease,
+    transform 160ms ease;
+}
+.app.view-mode-chrome-hidden.view-mode-hud-visible .title-bar,
+.app.view-mode-chrome-hidden .title-bar:focus-within {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
 }
 
 .title-bar-controls {
@@ -145,6 +184,60 @@ body,
   flex: 0 0 1px;
   margin: 0 3px;
   background: rgba(255, 255, 255, 0.12);
+}
+
+.view-mode-control {
+  position: relative;
+}
+.view-mode-control > .title-bar-button {
+  width: 32px;
+  gap: 1px;
+}
+.view-mode-menu {
+  position: absolute;
+  top: 29px;
+  left: 0;
+  z-index: 1000;
+  min-width: 168px;
+  padding: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  background: rgba(24, 24, 27, 0.98);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+}
+.view-mode-menu button {
+  width: 100%;
+  padding: 7px 9px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: #d4d4d8;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.view-mode-menu kbd {
+  color: #8f8f98;
+  font: inherit;
+  font-size: 11px;
+}
+.view-mode-menu-separator {
+  height: 1px;
+  margin: 4px 5px;
+  border: 0;
+  background: rgba(255, 255, 255, 0.1);
+}
+.view-mode-menu button:hover,
+.view-mode-menu button:focus-visible {
+  outline: none;
+  background: rgba(255, 255, 255, 0.09);
+}
+.view-mode-menu button[aria-checked="true"] {
+  color: white;
+  background: rgba(120, 150, 255, 0.18);
 }
 
 /*

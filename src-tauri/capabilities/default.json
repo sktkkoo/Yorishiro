@@ -10,6 +10,8 @@
     "core:window:allow-set-min-size",
     "core:window:allow-set-size",
     "core:window:allow-set-always-on-top",
+    "core:window:allow-set-fullscreen",
+    "core:window:allow-set-background-color",
     "opener:default",
     "dialog:default",
     "updater:default",

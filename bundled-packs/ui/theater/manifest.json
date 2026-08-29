@@ -7,5 +7,12 @@
   "yorishiroVersion": "^0.1.0",
   "author": "Yorishiro team",
   "description": "Fullscreen character view — hides the terminal and chrome.",
-  "entry": "ui.tsx"
+  "entry": "ui.tsx",
+  "viewMode": {
+    "enabled": true,
+    "label": "Theater",
+    "icon": "theater",
+    "order": 40,
+    "category": "presentation"
+  }
 }

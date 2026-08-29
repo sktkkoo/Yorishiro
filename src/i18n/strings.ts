@@ -5,6 +5,8 @@ import type { ResolvedLanguage } from "../runtime/language/language";
 
 export interface UiStrings {
   readonly settings: string;
+  readonly viewMode: string;
+  readonly terminal: string;
   readonly closeSettings: string;
   readonly language: string;
   readonly languageAuto: string;
@@ -232,6 +234,8 @@ export interface UiStrings {
 
 const EN: UiStrings = {
   settings: "Settings",
+  viewMode: "View Mode",
+  terminal: "Terminal",
   closeSettings: "Close settings",
   language: "Language",
   languageAuto: "Auto",
@@ -455,6 +459,8 @@ const EN: UiStrings = {
 
 const JA: UiStrings = {
   settings: "設定",
+  viewMode: "表示モード",
+  terminal: "Terminal",
   closeSettings: "設定を閉じる",
   language: "言語",
   languageAuto: "自動",

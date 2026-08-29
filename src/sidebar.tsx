@@ -5,9 +5,14 @@ import { getSurfaceRegistry } from "./runtime/surface-registry";
 interface SidebarProps {
   readonly folderName: string;
   readonly onPickFolder: () => void;
+  readonly showProjectSelector?: boolean;
 }
 
-export default function Sidebar({ folderName, onPickFolder }: SidebarProps) {
+export default function Sidebar({
+  folderName,
+  onPickFolder,
+  showProjectSelector = true,
+}: SidebarProps) {
   const ref = useRef<HTMLDivElement>(null);
 
   // NOTE: React StrictMode の effect 二重実行は cleanup→re-register の順で進み、
@@ -22,12 +27,14 @@ export default function Sidebar({ folderName, onPickFolder }: SidebarProps) {
 
   return (
     <div className="sidebar" ref={ref}>
-      <div className="sidebar-top-row">
-        <button type="button" className="folder-btn" onClick={onPickFolder} title={folderName}>
-          <Folder className="folder-icon" size={14} aria-hidden="true" />
-          <span className="folder-name">{folderName}</span>
-        </button>
-      </div>
+      {showProjectSelector ? (
+        <div className="sidebar-top-row">
+          <button type="button" className="folder-btn" onClick={onPickFolder} title={folderName}>
+            <Folder className="folder-icon" size={14} aria-hidden="true" />
+            <span className="folder-name">{folderName}</span>
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }

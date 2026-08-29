@@ -19,6 +19,8 @@
         "minHeight": 600,
         "titleBarStyle": "Overlay",
         "hiddenTitle": true,
+        "trafficLightPosition": { "x": 12, "y": 10 },
+        "transparent": true,
         "backgroundColor": "#020304",
         "backgroundThrottling": "disabled"
       }
@@ -29,7 +31,8 @@
         "enable": true,
         "scope": ["$APPDATA/**", "$HOME/.yorishiro/**"]
       }
-    }
+    },
+    "macOSPrivateApi": true
   },
   "plugins": {
     "updater": {

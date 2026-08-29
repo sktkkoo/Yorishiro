@@ -3,6 +3,7 @@ import type * as THREE from "three";
 import type { Body } from "../../core/body";
 import type { SubsystemLog } from "../../core/dev-log";
 import type { TweenManager } from "../../core/tween/tween-manager";
+import type { Disposable } from "../../sdk/context";
 import type { CameraModulationRegistry } from "./camera-modulation";
 
 /**
@@ -66,6 +67,8 @@ export interface ThreeRuntime {
   /** カメラ自動追従（head tracking）の有効/無効。app-level の設定で、claim とは独立。 */
   setCameraTracking(enabled: boolean): void;
   getCameraTracking(): boolean;
+  /** Atomically owns camera translation until disposed, restoring the previous camera state. */
+  acquireFixedCamera(x: number, y: number, z: number): FixedCameraHandle;
   /** camera が claim 中か（camera-move / UI pack 等が一時占有）。leva debug controls が claim を尊重するための gate。 */
   isCameraClaimed(): boolean;
 
@@ -85,4 +88,8 @@ export interface ThreeRuntime {
 
   /** camera modulation が suspend 中か（claim 中 or enabled=false）。 */
   isCameraModulationSuspended(): boolean;
+}
+
+export interface FixedCameraHandle extends Disposable {
+  setTarget(x: number, y: number, z: number, durationMs: number): void;
 }
