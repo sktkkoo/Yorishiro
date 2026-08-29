@@ -96,6 +96,13 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
 
+      # Verify the packaged payloads, not only the intermediate app bundle. This extracts the
+      # updater archive and mounts the DMG read-only, then requires a valid Developer ID chain,
+      # hardened runtime, entitlements, secure timestamp, Gatekeeper acceptance, and stapled ticket.
+      # Any failure must stop the job before either artifact can be uploaded or published.
+      - name: Verify signed and notarized release artifacts
+        run: node scripts/verify-macos-release-artifacts.mjs "src-tauri/target/${{ matrix.target }}/release/bundle"
+
       # updater artifact（.app.tar.gz + .sig）は両アーキで同名（Yorishiro.app.tar.gz）に
       # なるため、arch を含む名前にリネームしてから artifact 化する。この名前が
       # そのまま Release asset 名になり、latest.json の url が指す。

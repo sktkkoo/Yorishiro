@@ -1,8 +1,23 @@
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import process from "node:process";
+import {
+  macosSignatureErrors,
+  REQUIRED_MACOS_ENTITLEMENTS,
+} from "./lib/macos-signature-verifier.mjs";
 
-const appPath = process.argv[2] ?? "src-tauri/target/release/bundle/macos/Yorishiro.app";
+const args = process.argv.slice(2);
+const requireDeveloperId = args.includes("--require-developer-id");
+const positionalArgs = args.filter((arg) => !arg.startsWith("--"));
+const unknownFlags = args.filter((arg) => arg.startsWith("--") && arg !== "--require-developer-id");
+const appPath = positionalArgs[0] ?? "src-tauri/target/release/bundle/macos/Yorishiro.app";
+
+if (positionalArgs.length > 1 || unknownFlags.length > 0) {
+  console.error(
+    "Usage: node scripts/verify-macos-signature.mjs [app-path] [--require-developer-id]",
+  );
+  process.exit(2);
+}
 
 if (process.platform !== "darwin") {
   console.error("macOS code signatures can only be verified on macOS.");
@@ -15,8 +30,8 @@ if (!existsSync(appPath)) {
   process.exit(1);
 }
 
-function runCodesign(args) {
-  const result = spawnSync("codesign", args, { encoding: "utf8" });
+function run(command, commandArgs) {
+  const result = spawnSync(command, commandArgs, { encoding: "utf8" });
   const output = `${result.stdout ?? ""}${result.stderr ?? ""}`;
   if (result.error) {
     throw result.error;
@@ -28,31 +43,32 @@ function runCodesign(args) {
   return output;
 }
 
-// Keep these equivalent to the commands documented in the release checklist.
-runCodesign(["--verify", "--deep", "--strict", appPath]);
-const entitlements = runCodesign(["-d", "--entitlements", ":-", appPath]);
+run("codesign", ["--verify", "--deep", "--strict", "--verbose=4", appPath]);
+const signatureDetails = run("codesign", [
+  "--display",
+  "--verbose=4",
+  "--entitlements",
+  "-",
+  "--xml",
+  appPath,
+]);
+const errors = macosSignatureErrors(signatureDetails, { requireDeveloperId });
 
-const requiredEntitlements = [
-  "com.apple.security.cs.allow-jit",
-  "com.apple.security.cs.allow-unsigned-executable-memory",
-  "com.apple.security.network.client",
-  "com.apple.security.device.audio-input",
-];
-
-function hasEnabledEntitlement(plist, entitlement) {
-  const escaped = entitlement.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return new RegExp(`<key>\\s*${escaped}\\s*</key>\\s*<true\\s*/>`).test(plist);
-}
-
-const missing = requiredEntitlements.filter(
-  (entitlement) => !hasEnabledEntitlement(entitlements, entitlement),
-);
-
-if (missing.length > 0) {
-  console.error(`Missing signed entitlements: ${missing.join(", ")}`);
-  console.error(entitlements.trim());
+if (errors.length > 0) {
+  console.error(errors.join("\n"));
+  console.error(signatureDetails.trim());
   process.exit(1);
 }
 
+if (requireDeveloperId) {
+  run("spctl", ["--assess", "--type", "execute", "--verbose=4", appPath]);
+  run("xcrun", ["stapler", "validate", appPath]);
+}
+
 console.log(`Valid macOS signature: ${appPath}`);
-console.log(`Signed entitlements: ${requiredEntitlements.join(", ")}`);
+console.log(`Signed entitlements: ${REQUIRED_MACOS_ENTITLEMENTS.join(", ")}`);
+console.log(
+  requireDeveloperId
+    ? "Release trust: Developer ID, secure timestamp, Gatekeeper, and notarization verified"
+    : "Signing mode: local (Developer ID was not required)",
+);

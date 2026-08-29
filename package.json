@@ -34,6 +34,7 @@
     "check": "tsc --noEmit && biome check . && cargo fmt --manifest-path src-tauri/Cargo.toml -- --check && cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings",
     "check:pack": "node scripts/check-pack.mjs",
     "check:macos-signature": "node scripts/verify-macos-signature.mjs",
+    "check:macos-release-artifacts": "node scripts/verify-macos-release-artifacts.mjs",
     "doc": "typedoc",
     "doc:rust": "cargo doc --manifest-path src-tauri/Cargo.toml --no-deps --document-private-items",
     "doc:open": "open docs/api/typescript/index.html",
