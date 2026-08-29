@@ -233,6 +233,11 @@ What works today:
 - Working folder switching from the sidebar — the app reopens in the chosen folder behind a fade
 - Yori, a VRM 3D character that breathes, blinks, shifts gaze, and idles with lifelike beats (bundled)
 - Custom VRM: import and switch avatars from a Settings chooser with thumbnails, metadata, and usage permissions, or let a persona pack ship its own `avatar.vrm`
+
+  <p align="center">
+    <img src="docs/assets/vrm-avatar-chooser.png" alt="Yorishiro VRM avatar chooser with thumbnails, model metadata, and usage permissions" width="960" />
+  </p>
+
 - Motion size: scale Yori's idle motion intensity from Settings or via MCP
 - VRMA animation clip playback
 - Lip sync: voice playback with real-time mouth animation via Web Audio analysis

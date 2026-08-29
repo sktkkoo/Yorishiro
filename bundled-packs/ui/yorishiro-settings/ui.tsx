@@ -3935,8 +3935,10 @@ export function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
     : null;
   const vrmEntries = vrmCatalog.phase === "ready" ? vrmCatalog.entries : vrmEntriesRef.current;
   const vrmCandidates = resolveVrmCandidates(vrmEntries, activeVrmPath);
-  const displayedVrmName =
-    vrmCandidates.find((candidate) => candidate.active)?.label ?? DEFAULT_VRM_NAME;
+  const activeVrmCandidate = vrmCandidates.find((candidate) => candidate.active);
+  const displayedVrmName = activeVrmCandidate
+    ? vrmCandidateDisplayName(activeVrmCandidate)
+    : DEFAULT_VRM_NAME;
   const requestNewSessionChange = (change: PendingNewSessionChange) => {
     setPendingNewSessionChange(change);
   };

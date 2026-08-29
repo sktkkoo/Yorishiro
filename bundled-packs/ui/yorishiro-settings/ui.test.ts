@@ -28,6 +28,7 @@ import {
   summarizePackDiagnosis,
   TERMINAL_AGENT_OPTIONS,
   terminalAgentLabel,
+  vrmCandidateDisplayName,
   yoriVrmDetails,
 } from "./ui";
 
@@ -122,6 +123,24 @@ describe("VRM catalog selection boundary", () => {
 });
 
 describe("VRM chooser discovery", () => {
+  it("shows the model name and falls back to the filename when metadata has no name", () => {
+    const [yori, named] = resolveVrmCandidates([validVrmEntry], validVrmEntry.path);
+    expect(yori && vrmCandidateDisplayName(yori)).toBe("Yori");
+    expect(named && vrmCandidateDisplayName(named)).toBe("Avatar");
+
+    const unnamed = resolveVrmCandidates(
+      [
+        {
+          ...validVrmEntry,
+          fileName: "19355-atri.vrm",
+          meta: { ...validVrmEntry.meta, name: "   " },
+        },
+      ],
+      null,
+    )[1];
+    expect(unnamed && vrmCandidateDisplayName(unnamed)).toBe("19355-atri");
+  });
+
   it("uses metadata names and authors to find opaque filenames", () => {
     const entries = [
       {

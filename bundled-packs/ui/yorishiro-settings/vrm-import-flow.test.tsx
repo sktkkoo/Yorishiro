@@ -151,6 +151,8 @@ describe("VRM import settings handler", () => {
 
     render(<Panel ctx={settingsContext(vi.fn())} />);
     await waitFor(() => expect(invokeMock).toHaveBeenCalledWith("list_vrm_avatars"));
+    expect(screen.getByText("Current: Active")).toBeTruthy();
+    expect(screen.queryByText("Current: active.vrm")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Change…" }));
     fireEvent.click(await screen.findByRole("option", { name: /legacy\.vrm/ }));
 

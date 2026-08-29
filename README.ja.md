@@ -234,6 +234,11 @@ packやinit.jsが変わるたびに、チェックポイントが自動で作ら
 - サイドバーからの作業フォルダ切替——暗転を挟んでそのフォルダで開き直す
 - VRMの3DキャラクターYoriが呼吸し、瞬きし、視線を動かし、生きたビートでアイドルする（同梱）
 - カスタムVRM: 設定画面のchooserからサムネイル・メタデータ・使用許諾を確認してVRMを取り込み・切替できる。persona packに`avatar.vrm`を同梱しておけば、persona切替でその姿になる
+
+  <p align="center">
+    <img src="docs/assets/vrm-avatar-chooser.png" alt="サムネイル、モデル情報、利用条件を確認できるYorishiroのVRMアバターchooser" width="960" />
+  </p>
+
 - モーションサイズ: Yoriのアイドルモーションの強度をSettingsから、またはMCP経由で調整
 - VRMAアニメーションクリップの再生
 - リップシンク: Web Audio解析によるリアルタイムの口の動きと音声再生
