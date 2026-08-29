@@ -178,6 +178,7 @@ describe("VRM import settings handler", () => {
 
     render(<Panel ctx={settingsContext(setVrm, openExternal)} />);
     await waitFor(() => expect(invokeMock).toHaveBeenCalledWith("list_vrm_avatars"));
+    await screen.findByText("Current: Active");
     fireEvent.click(screen.getByRole("button", { name: "Change…" }));
     await screen.findByRole("dialog", { name: "Change avatar" });
     await screen.findByRole("option", { name: /active\.vrm/ });
