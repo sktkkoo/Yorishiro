@@ -331,6 +331,7 @@ struct CodexAppServerProcess {
 pub struct CodexRealtimeCapabilities {
     pub app_server_version: Option<String>,
     pub persona_initial_items: bool,
+    pub delegation_ack_filler: bool,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -409,12 +410,22 @@ fn detect_codex_realtime_capabilities(
         .ok()
         .and_then(|child| read_child_stdout_with_timeout(child, CODEX_VERSION_PROBE_TIMEOUT))
         .and_then(|output| parse_codex_cli_version(&output));
+    codex_realtime_capabilities_for_version(app_server_version)
+}
+
+fn codex_realtime_capabilities_for_version(
+    app_server_version: Option<String>,
+) -> CodexRealtimeCapabilities {
     let persona_initial_items = app_server_version
         .as_deref()
-        .is_some_and(|version| codex_version_at_least(version, [0, 146, 0]));
+        .is_some_and(|version| codex_version_at_least(version, [0, 145, 0]));
+    let delegation_ack_filler = app_server_version
+        .as_deref()
+        .is_some_and(|version| codex_version_at_least(version, [0, 147, 0]));
     CodexRealtimeCapabilities {
         app_server_version,
         persona_initial_items,
+        delegation_ack_filler,
     }
 }
 
@@ -1231,7 +1242,10 @@ impl PtySession {
 
 #[cfg(test)]
 mod codex_realtime_capability_tests {
-    use super::{codex_version_at_least, parse_codex_cli_version, read_child_stdout_with_timeout};
+    use super::{
+        codex_realtime_capabilities_for_version, parse_codex_cli_version,
+        read_child_stdout_with_timeout, CodexRealtimeCapabilities,
+    };
     use std::process::{Command, Stdio};
     use std::time::{Duration, Instant};
 
@@ -1245,11 +1259,51 @@ mod codex_realtime_capability_tests {
     }
 
     #[test]
-    fn gates_realtime_persona_initial_items_by_version() {
-        assert!(!codex_version_at_least("0.145.9", [0, 146, 0]));
-        assert!(codex_version_at_least("0.146.0", [0, 146, 0]));
-        assert!(codex_version_at_least("0.147.0", [0, 146, 0]));
-        assert!(!codex_version_at_least("invalid", [0, 146, 0]));
+    fn gates_realtime_capabilities_by_app_server_version() {
+        let capabilities = |version: Option<&str>| {
+            codex_realtime_capabilities_for_version(version.map(str::to_owned))
+        };
+
+        assert_eq!(
+            capabilities(Some("0.144.6")),
+            CodexRealtimeCapabilities {
+                app_server_version: Some("0.144.6".to_owned()),
+                persona_initial_items: false,
+                delegation_ack_filler: false,
+            }
+        );
+        assert_eq!(
+            capabilities(Some("0.145.0")),
+            CodexRealtimeCapabilities {
+                app_server_version: Some("0.145.0".to_owned()),
+                persona_initial_items: true,
+                delegation_ack_filler: false,
+            }
+        );
+        assert_eq!(
+            capabilities(Some("0.146.0")),
+            CodexRealtimeCapabilities {
+                app_server_version: Some("0.146.0".to_owned()),
+                persona_initial_items: true,
+                delegation_ack_filler: false,
+            }
+        );
+        assert_eq!(
+            capabilities(Some("0.147.0")),
+            CodexRealtimeCapabilities {
+                app_server_version: Some("0.147.0".to_owned()),
+                persona_initial_items: true,
+                delegation_ack_filler: true,
+            }
+        );
+        assert_eq!(
+            capabilities(None),
+            CodexRealtimeCapabilities {
+                app_server_version: None,
+                persona_initial_items: false,
+                delegation_ack_filler: false,
+            }
+        );
     }
 
     #[cfg(unix)]

@@ -18,6 +18,7 @@ const bridge = vi.hoisted(() => ({
   sent: [] as SentMessage[],
   loadedThreads: ["thread-1"] as string[],
   parents: {} as Record<string, string | null>,
+  ephemeralThreads: new Set<string>(),
   pendingReads: false,
   selectedThread: null as string | null,
   connectFailuresRemaining: 0,
@@ -61,6 +62,7 @@ vi.mock("../../bindings/tauri-commands", () => ({
             id: threadId,
             parentThreadId:
               typeof threadId === "string" ? (bridge.parents[threadId] ?? null) : null,
+            ephemeral: typeof threadId === "string" && bridge.ephemeralThreads.has(threadId),
           },
         });
       if (bridge.pendingReads) bridge.readResponders.push(sendRead);
@@ -75,6 +77,7 @@ describe("CodexThreadTracker", () => {
     bridge.sent = [];
     bridge.loadedThreads = ["thread-1"];
     bridge.parents = {};
+    bridge.ephemeralThreads = new Set();
     bridge.pendingReads = false;
     bridge.selectedThread = null;
     bridge.connectFailuresRemaining = 0;
@@ -92,7 +95,7 @@ describe("CodexThreadTracker", () => {
     tracker.stop();
   });
 
-  it("tracks the top-level thread started by /clear while ignoring subagents", async () => {
+  it("ignores generic thread starts and follows /clear only after the TUI proxy selects it", async () => {
     const tracker = new CodexThreadTracker("main-session");
     await tracker.start();
 
@@ -107,10 +110,13 @@ describe("CodexThreadTracker", () => {
     bridge.channel?.onmessage(
       JSON.stringify({
         method: "thread/started",
-        params: { thread: { id: "thread-after-clear", parentThreadId: null } },
+        params: { thread: { id: "internal-title-thread", parentThreadId: null } },
       }),
     );
-    expect(tracker.getCurrentThreadId()).toBe("thread-after-clear");
+    expect(tracker.getCurrentThreadId()).toBe("thread-1");
+
+    bridge.selectedThread = "thread-after-clear";
+    await vi.waitFor(() => expect(tracker.getCurrentThreadId()).toBe("thread-after-clear"));
     tracker.stop();
   });
 
@@ -213,12 +219,8 @@ describe("CodexThreadTracker", () => {
   it("does not switch back when the previous top-level thread later becomes idle", async () => {
     const tracker = new CodexThreadTracker("main-session");
     await tracker.start();
-    bridge.channel?.onmessage(
-      JSON.stringify({
-        method: "thread/started",
-        params: { thread: { id: "thread-2", parentThreadId: null } },
-      }),
-    );
+    bridge.selectedThread = "thread-2";
+    await vi.waitFor(() => expect(tracker.getCurrentThreadId()).toBe("thread-2"));
 
     bridge.channel?.onmessage(
       JSON.stringify({
@@ -259,7 +261,22 @@ describe("CodexThreadTracker", () => {
     tracker.stop();
   });
 
-  it("does not overwrite a broadcast thread with an older discovery snapshot", async () => {
+  it("never selects Codex's ephemeral title-generation thread", async () => {
+    bridge.loadedThreads = ["workspace-thread", "title-thread"];
+    bridge.ephemeralThreads.add("title-thread");
+    const tracker = new CodexThreadTracker("main-session");
+
+    await tracker.start();
+    expect(tracker.getCurrentThreadId()).toBe("workspace-thread");
+
+    // Even if an older proxy reports the internal thread, validation must keep the workspace.
+    bridge.selectedThread = "title-thread";
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expect(tracker.getCurrentThreadId()).toBe("workspace-thread");
+    tracker.stop();
+  });
+
+  it("does not select a generic started thread while startup discovery is in flight", async () => {
     bridge.pendingReads = true;
     const tracker = new CodexThreadTracker("main-session");
     const started = tracker.start();
@@ -274,7 +291,7 @@ describe("CodexThreadTracker", () => {
     bridge.readResponders.shift()?.();
     await started;
 
-    expect(tracker.getCurrentThreadId()).toBe("thread-after-clear");
+    expect(tracker.getCurrentThreadId()).toBeNull();
     tracker.stop();
   });
 

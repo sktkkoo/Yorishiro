@@ -23,6 +23,11 @@ interface SentMessage {
   readonly result?: unknown;
 }
 
+const localWorkHandoffItem = () => ({
+  role: "developer",
+  text: expect.stringContaining("not a standalone chat screen"),
+});
+
 const bridge = vi.hoisted(() => ({
   channel: null as FakeChannel<string> | null,
   sent: [] as SentMessage[],
@@ -38,6 +43,7 @@ const bridge = vi.hoisted(() => ({
   accountPrelude: null as "server-request" | "id-only" | "error-response" | null,
   loadedThreadResponses: [] as string[][],
   loadedThreadParents: {} as Record<string, string | null | undefined>,
+  ephemeralThreads: new Set<string>(),
   threadReadFailures: {} as Record<string, number>,
   /** voice → error message。entry がある voice の thread/realtime/start を error 応答にする。 */
   realtimeStartErrors: {} as Record<string, string>,
@@ -46,7 +52,11 @@ const bridge = vi.hoisted(() => ({
   /** version → async error notification。backend negotiation failure の実順序を再現する。 */
   realtimeStartVersionRemoteErrors: {} as Record<string, string>,
   initializeUserAgent: "codex_cli_rs/0.146.0",
-  capabilities: { appServerVersion: "0.146.0", personaInitialItems: true },
+  capabilities: {
+    appServerVersion: "0.146.0",
+    personaInitialItems: true,
+    delegationAckFiller: false,
+  },
   suppressRealtimeSdp: false,
 }));
 
@@ -127,6 +137,7 @@ vi.mock("../../bindings/tauri-commands", () => ({
           thread: {
             id: threadId,
             ...(parentThreadId !== undefined ? { parentThreadId } : {}),
+            ephemeral: typeof threadId === "string" && bridge.ephemeralThreads.has(threadId),
           },
         });
       } else if (request.method === "thread/realtime/start") {
@@ -274,8 +285,13 @@ describe("CodexRealtimeClient", () => {
     bridge.accountPrelude = null;
     bridge.loadedThreadResponses = [];
     bridge.loadedThreadParents = {};
+    bridge.ephemeralThreads = new Set();
     bridge.initializeUserAgent = "codex_cli_rs/0.146.0";
-    bridge.capabilities = { appServerVersion: "0.146.0", personaInitialItems: true };
+    bridge.capabilities = {
+      appServerVersion: "0.146.0",
+      personaInitialItems: true,
+      delegationAckFiller: false,
+    };
     vi.mocked(ensureAudioContextRunning).mockReset();
     vi.mocked(ensureAudioContextRunning).mockResolvedValue({} as AudioContext);
     bridge.threadReadFailures = {};
@@ -352,6 +368,7 @@ describe("CodexRealtimeClient", () => {
     const start = bridge.sent.find((message) => message.method === "thread/realtime/start");
     expect(start?.params?.initialItems).toEqual([
       { role: "developer", text: "persona speaking guidance" },
+      localWorkHandoffItem(),
     ]);
     // `prompt` replaces Codex's configured realtime backend instructions and must stay absent.
     expect(start?.params).not.toHaveProperty("prompt");
@@ -365,6 +382,36 @@ describe("CodexRealtimeClient", () => {
       },
     ]);
     expect(JSON.stringify(diagnostics)).not.toContain("persona speaking guidance");
+    client.stop();
+  });
+
+  it("grounds local-work delegation without replacing the backing Codex prompt", async () => {
+    bridge.capabilities = {
+      appServerVersion: "0.150.1",
+      personaInitialItems: true,
+      delegationAckFiller: true,
+    };
+    const client = new CodexRealtimeClient("main-session", undefined, {
+      getPersonaSnapshot: () => ({ personaId: "yori-ja", instructions: "persona guidance" }),
+    });
+
+    await client.start();
+
+    const start = bridge.sent.find((message) => message.method === "thread/realtime/start");
+    expect(start?.params?.initialItems).toEqual([
+      { role: "developer", text: "persona guidance" },
+      localWorkHandoffItem(),
+    ]);
+    expect(start?.params?.delegationAckFiller).toBe(false);
+    const handoff = (start?.params?.initialItems as Array<{ text?: string }> | undefined)?.[1];
+    expect(handoff?.text).toContain("must create a delegation to the backing Codex agent");
+    expect(handoff?.text).toContain("Do not say that you are checking");
+    expect(handoff?.text).toContain("report completion only after delegated Codex output");
+    expect(start?.params).not.toHaveProperty("prompt");
+    expect(start?.params).not.toHaveProperty("realtimeStartInstructions");
+    expect(start?.params).not.toHaveProperty("realtimeEndInstructions");
+    expect(start?.params).not.toHaveProperty("clientManagedHandoffs");
+    expect(start?.params).not.toHaveProperty("codexResponseHandoffMode");
     client.stop();
   });
 
@@ -408,7 +455,7 @@ describe("CodexRealtimeClient", () => {
     const start = bridge.sent.find((message) => message.method === "thread/realtime/start");
     expect(start?.params).toMatchObject({
       includeStartupContext: false,
-      initialItems: [{ role: "developer", text: "I am Yori" }],
+      initialItems: [{ role: "developer", text: "I am Yori" }, localWorkHandoffItem()],
     });
     expect(start?.params).not.toHaveProperty("prompt");
     expect(diagnostics[diagnostics.length - 1]).toMatchObject({
@@ -433,8 +480,8 @@ describe("CodexRealtimeClient", () => {
 
     const starts = bridge.sent.filter((message) => message.method === "thread/realtime/start");
     expect(starts.map((message) => message.params?.initialItems)).toEqual([
-      [{ role: "developer", text: "persona A" }],
-      [{ role: "developer", text: "persona B" }],
+      [{ role: "developer", text: "persona A" }, localWorkHandoffItem()],
+      [{ role: "developer", text: "persona B" }, localWorkHandoffItem()],
     ]);
     client.stop();
   });
@@ -450,7 +497,7 @@ describe("CodexRealtimeClient", () => {
       snapshot: { personaId: "quiet", instructions: "  " },
       status: "skipped-empty",
     },
-  ] as const)("starts honestly without persona initial items for $name", async ({
+  ] as const)("starts with grounded workflow and no persona text for $name", async ({
     snapshot,
     status,
   }) => {
@@ -464,14 +511,22 @@ describe("CodexRealtimeClient", () => {
     await client.start();
 
     const start = bridge.sent.find((message) => message.method === "thread/realtime/start");
-    expect(start?.params).not.toHaveProperty("initialItems");
+    expect(start?.params?.initialItems).toEqual([localWorkHandoffItem()]);
     expect(start?.params?.includeStartupContext).toBe(true);
+    expect(start?.params).not.toHaveProperty("prompt");
+    expect(start?.params).not.toHaveProperty("realtimeStartInstructions");
+    expect(start?.params).not.toHaveProperty("realtimeEndInstructions");
+    expect(start?.params).not.toHaveProperty("clientManagedHandoffs");
     expect(diagnostics[0]?.status).toBe(status);
     client.stop();
   });
 
   it("falls back without inventing fields when app-server capability is absent", async () => {
-    bridge.capabilities = { appServerVersion: "0.145.0", personaInitialItems: false };
+    bridge.capabilities = {
+      appServerVersion: "0.145.0",
+      personaInitialItems: false,
+      delegationAckFiller: false,
+    };
     const diagnostics: CodexRealtimePersonaApplication[] = [];
     const client = new CodexRealtimeClient("main-session", undefined, {
       getPersonaSnapshot: () => ({ personaId: "yori", instructions: "persona prompt" }),
@@ -484,6 +539,7 @@ describe("CodexRealtimeClient", () => {
     const start = bridge.sent.find((message) => message.method === "thread/realtime/start");
     expect(start?.params).not.toHaveProperty("initialItems");
     expect(start?.params).not.toHaveProperty("prompt");
+    expect(start?.params).not.toHaveProperty("delegationAckFiller");
     expect(start?.params?.includeStartupContext).toBe(true);
     expect(JSON.stringify(start?.params)).not.toContain("persona prompt");
     expect(diagnostics).toEqual([
@@ -506,6 +562,7 @@ describe("CodexRealtimeClient", () => {
 
     expect(client.getStatus()).toBe("active");
     const start = bridge.sent.find((message) => message.method === "thread/realtime/start");
+    expect(start?.params?.initialItems).toEqual([localWorkHandoffItem()]);
     expect(start?.params?.includeStartupContext).toBe(true);
     expect(diagnostics).toEqual([
       { personaId: null, status: "load-failed", appServerVersion: "0.146.0" },
@@ -546,7 +603,7 @@ describe("CodexRealtimeClient", () => {
       model: "gpt-live-1-codex",
       voice: "maple",
       includeStartupContext: false,
-      initialItems: [{ role: "developer", text: "persona guidance" }],
+      initialItems: [{ role: "developer", text: "persona guidance" }, localWorkHandoffItem()],
       transport: { type: "webrtc", sdp: "local-offer" },
     });
     expect(client.getStatus()).toBe("error");
@@ -568,6 +625,11 @@ describe("CodexRealtimeClient", () => {
   });
 
   it("falls back to the next candidate only when the app-server rejects the voice", async () => {
+    bridge.capabilities = {
+      appServerVersion: "0.149.0",
+      personaInitialItems: true,
+      delegationAckFiller: true,
+    };
     bridge.realtimeStartErrors = { maple: "Invalid voice: maple" };
     const fallbacks: CodexRealtimeVoiceFallback[] = [];
     const client = new CodexRealtimeClient("main-session", undefined, {
@@ -579,6 +641,11 @@ describe("CodexRealtimeClient", () => {
 
     const starts = bridge.sent.filter((message) => message.method === "thread/realtime/start");
     expect(starts.map((message) => message.params?.voice)).toEqual(["maple", "juniper"]);
+    expect(starts.map((message) => message.params?.delegationAckFiller)).toEqual([false, false]);
+    expect(starts.map((message) => message.params?.initialItems)).toEqual([
+      [localWorkHandoffItem()],
+      [localWorkHandoffItem()],
+    ]);
     expect(fallbacks).toEqual([
       { fromVoice: "maple", toVoice: "juniper", reason: "Invalid voice: maple" },
     ]);
@@ -1024,6 +1091,20 @@ describe("CodexRealtimeClient", () => {
     expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(1);
   });
 
+  it("ignores an ephemeral title-generation thread during realtime discovery", async () => {
+    bridge.loadedThreadResponses = [["workspace-thread", "title-thread"]];
+    bridge.loadedThreadParents = { "workspace-thread": null, "title-thread": null };
+    bridge.ephemeralThreads.add("title-thread");
+    const client = new CodexRealtimeClient("main-session");
+
+    await client.start();
+
+    expect(
+      bridge.sent.find((message) => message.method === "thread/realtime/start")?.params,
+    ).toMatchObject({ threadId: "workspace-thread" });
+    expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(1);
+  });
+
   it("fails closed when thread/read omits the subagent relationship", async () => {
     bridge.loadedThreadResponses = [["thread-1", "thread-2"]];
     bridge.loadedThreadParents = { "thread-1": null, "thread-2": undefined };
@@ -1121,6 +1202,7 @@ describe("CodexRealtimeClient", () => {
     expect(starts).toHaveLength(1);
     expect(starts[0]?.params?.initialItems).toEqual([
       { role: "developer", text: "stable persona snapshot" },
+      localWorkHandoffItem(),
     ]);
     expect(diagnostics).toEqual([
       {
@@ -1137,12 +1219,29 @@ describe("CodexRealtimeClient", () => {
   it("sends realtime stop before retrying after an accepted start times out", async () => {
     vi.useFakeTimers();
     vi.spyOn(Math, "random").mockReturnValue(0.5);
+    bridge.capabilities = {
+      appServerVersion: "0.150.1",
+      personaInitialItems: true,
+      delegationAckFiller: true,
+    };
     bridge.suppressRealtimeSdp = true;
     const client = new CodexRealtimeClient("main-session");
     const result = client.start().catch((error: unknown) => error);
 
     await vi.advanceTimersByTimeAsync(47_000);
     expect(await result).toEqual(new Error("Codex realtime SDP answer timed out"));
+    const starts = bridge.sent.filter((message) => message.method === "thread/realtime/start");
+    expect(starts).toHaveLength(3);
+    expect(starts.map((message) => message.params?.delegationAckFiller)).toEqual([
+      false,
+      false,
+      false,
+    ]);
+    expect(starts.map((message) => message.params?.initialItems)).toEqual([
+      [localWorkHandoffItem()],
+      [localWorkHandoffItem()],
+      [localWorkHandoffItem()],
+    ]);
     expect(bridge.disconnect).toHaveBeenCalledTimes(3);
     for (const call of bridge.disconnect.mock.calls) {
       expect(call[0]).toEqual(
