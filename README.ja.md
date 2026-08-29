@@ -109,6 +109,14 @@ Yorishiroでは、Codex 0.145.0以降を使用するとGPT Liveによる音声�
 
 `~/.yorishiro/config.json`の`codexRealtimeVoice`でGPT Liveの出力voiceを全体設定（既定値：`sol`）し、`realtimeVoiceByPersona`でpersona pack idごとに上書きできます。設定は新しい音声会話を始めるたびに読み込まれるため、進行中の会話では一度終了してから開始し直してください。選択したvoiceをapp-serverが明示的に拒否した場合は、persona設定→全体設定→既定値の順に次の候補を試します。それ以外の接続失敗はエラーとして表示します。詳細は[設定](docs/configuration.md#codex-gpt-live-voice)を参照してください。
 
+### カスタムアバター
+
+SettingsからVRMアバターを取り込み、切り替えられます。切り替える前に、chooserで各モデルのサムネイル、モデル名、作者、VRM version、利用条件を確認できます。Persona packに`avatar.vrm`を同梱すると、persona切替時にその姿を適用できます。
+
+<p align="center">
+  <img src="docs/assets/vrm-avatar-chooser.png" alt="サムネイル、モデル情報、利用条件を確認できるYorishiroのVRMアバターchooser" width="960" />
+</p>
+
 ### 言語
 
 Yorishiroは`language: "auto"`を既定値として、起動時にアプリ言語を自動検出します。日本語環境では日本語UI、日本語default persona、日本語のglobal prompt guidance、日本語の`/yori:*`（Codexでは`$yori-*`）コマンドプロンプトを使います。それ以外の環境では英語を使います。設定画面または`~/.yorishiro/config.json`から変更できます。
@@ -234,11 +242,6 @@ packやinit.jsが変わるたびに、チェックポイントが自動で作ら
 - サイドバーからの作業フォルダ切替——暗転を挟んでそのフォルダで開き直す
 - VRMの3DキャラクターYoriが呼吸し、瞬きし、視線を動かし、生きたビートでアイドルする（同梱）
 - カスタムVRM: 設定画面のchooserからサムネイル・メタデータ・使用許諾を確認してVRMを取り込み・切替できる。persona packに`avatar.vrm`を同梱しておけば、persona切替でその姿になる
-
-  <p align="center">
-    <img src="docs/assets/vrm-avatar-chooser.png" alt="サムネイル、モデル情報、利用条件を確認できるYorishiroのVRMアバターchooser" width="960" />
-  </p>
-
 - モーションサイズ: Yoriのアイドルモーションの強度をSettingsから、またはMCP経由で調整
 - VRMAアニメーションクリップの再生
 - リップシンク: Web Audio解析によるリアルタイムの口の動きと音声再生

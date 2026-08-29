@@ -108,6 +108,14 @@ Yorishiro supports voice conversation through GPT Live when using Codex 0.145.0 
 
 Set `codexRealtimeVoice` in `~/.yorishiro/config.json` to choose the GPT Live output voice globally (default: `sol`), and `realtimeVoiceByPersona` to override it per persona pack id. The values are read whenever a new voice session starts, so stop and restart an active voice conversation to apply a change. If the app-server explicitly rejects the selected voice as invalid or unsupported, Yorishiro retries with the next candidate (persona → global → default); other connection failures surface as errors. See [configuration](docs/configuration.md#codex-gpt-live-voice).
 
+### Custom avatars
+
+Import and switch VRM avatars from Settings. The chooser shows each model's thumbnail, declared name, author, VRM version, and usage permissions before you switch. Persona packs can also provide an `avatar.vrm` that is applied when you switch persona.
+
+<p align="center">
+  <img src="docs/assets/vrm-avatar-chooser.png" alt="Yorishiro VRM avatar chooser with thumbnails, model metadata, and usage permissions" width="960" />
+</p>
+
 ### Language
 
 Yorishiro starts with `language: "auto"` and detects the app language at launch. Japanese locales use Japanese UI, the Japanese default persona, Japanese global prompt guidance, and Japanese `/yori:*` (`$yori-*` in Codex) command prompts. Other locales use English. You can switch this from the settings screen or by editing `~/.yorishiro/config.json`.
@@ -233,11 +241,6 @@ What works today:
 - Working folder switching from the sidebar — the app reopens in the chosen folder behind a fade
 - Yori, a VRM 3D character that breathes, blinks, shifts gaze, and idles with lifelike beats (bundled)
 - Custom VRM: import and switch avatars from a Settings chooser with thumbnails, metadata, and usage permissions, or let a persona pack ship its own `avatar.vrm`
-
-  <p align="center">
-    <img src="docs/assets/vrm-avatar-chooser.png" alt="Yorishiro VRM avatar chooser with thumbnails, model metadata, and usage permissions" width="960" />
-  </p>
-
 - Motion size: scale Yori's idle motion intensity from Settings or via MCP
 - VRMA animation clip playback
 - Lip sync: voice playback with real-time mouth animation via Web Audio analysis
