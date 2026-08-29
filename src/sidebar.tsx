@@ -26,7 +26,10 @@ export default function Sidebar({
   }, []);
 
   return (
-    <div className="sidebar" ref={ref}>
+    <div
+      className={`sidebar${showProjectSelector ? "" : " sidebar-project-selector-hidden"}`}
+      ref={ref}
+    >
       {showProjectSelector ? (
         <div className="sidebar-top-row">
           <button type="button" className="folder-btn" onClick={onPickFolder} title={folderName}>

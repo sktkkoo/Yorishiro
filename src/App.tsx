@@ -1106,13 +1106,16 @@ function App() {
     [],
   );
   useEffect(() => {
-    const compact = activeUiId === companionPack.id || activeUiId === "portrait";
+    // Settings is a temporary surface over the originating View Mode. Keep that
+    // mode's camera claim alive so opening/closing Settings never re-frames the resident.
+    const cameraViewModeId = pickerActiveViewModeId;
+    const compact = cameraViewModeId === companionPack.id || cameraViewModeId === "portrait";
     const runtime = getThreeRuntime();
     if (!compact) {
       runtime.setCameraBase(0, 1.35, 1.1);
       return;
     }
-    const mode = activeUiId === companionPack.id ? "scene" : activeUiId;
+    const mode = cameraViewModeId === companionPack.id ? "scene" : cameraViewModeId;
     const windowedMode = mode as "scene" | "portrait";
     const characterAnchorY =
       windowedMode === "portrait" ? runtime.getCharacterAnchor()?.y : undefined;
@@ -1132,7 +1135,7 @@ function App() {
       runtime.acquireFixedCamera.bind(runtime),
       characterAnchorY,
     );
-  }, [activeUiId]);
+  }, [pickerActiveViewModeId]);
   useEffect(() => {
     const rounded = roundedWindowForViewMode(activePresentationViewModeIdValue);
     document.documentElement.toggleAttribute("data-rounded-view", rounded);

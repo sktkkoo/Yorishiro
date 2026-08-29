@@ -209,6 +209,9 @@ describe("title bar state hooks", () => {
     expect(portraitOrigin).toBe("portrait");
     expect(shouldShowProjectSelector(true, terminalOrigin)).toBe(true);
     expect(shouldShowProjectSelector(true, portraitOrigin)).toBe(false);
+    // The same origin value drives camera ownership before, during, and after Settings.
+    expect(resolvePickerActiveViewModeId(false, null, "portrait")).toBe(portraitOrigin);
+    expect(resolvePickerActiveViewModeId(false, null, null)).toBe(terminalOrigin);
   });
 
   it("keeps the previous picker selection but suspends presentation chrome in Settings", () => {

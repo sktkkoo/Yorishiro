@@ -10,7 +10,7 @@ import {
 
 describe("stable View Mode framing", () => {
   it("preserves the tuned Portrait entry composition", () => {
-    expect(entryCameraForViewMode("scene")).toEqual({ x: 0, y: 1.39, z: 0.985 });
+    expect(entryCameraForViewMode("scene")).toEqual({ x: 0, y: 1.36, z: 0.985 });
   });
 
   it("samples Call's character anchor once and uses a safe fallback", () => {

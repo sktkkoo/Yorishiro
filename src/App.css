@@ -676,6 +676,11 @@ html[data-rounded-view] body {
   padding: 12px 12px 0;
 }
 
+/* No selector means no sidebar chrome; collapse it so it cannot leave a top strip. */
+.sidebar.sidebar-project-selector-hidden {
+  display: none;
+}
+
 .folder-btn {
   display: flex;
   align-items: center;
