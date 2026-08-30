@@ -86,6 +86,22 @@ On launch, the configured terminal agent starts inside the terminal and **Yori**
 
 The first launch runs a health check for the selected agent, user data directory, safe mode state, packs, and startup report. The same report is available later from the "Status" section in Settings.
 
+### View modes
+
+Switch from the View Mode menu in the title bar, or press `Option+Command+0` through `4`.
+
+<p align="center">
+  <img src="docs/assets/view-modes.gif" alt="Switching between Terminal, Portrait, Call, Theater, and Immersive view modes" width="640" />
+</p>
+
+| Mode | Best for |
+|---|---|
+| **Terminal** | The full workspace, with the terminal and resident side by side |
+| **Portrait** | A narrow, always-on-top resident window beside your external terminal |
+| **Call** | A compact, face-centered window for conversation |
+| **Theater** | A full stage with the terminal and app chrome hidden |
+| **Immersive** | A transparent terminal layered over the resident and scene |
+
 ### Use from an external terminal
 
 If you prefer another terminal app for everyday work, you can keep using its

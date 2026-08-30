@@ -85,6 +85,22 @@ npm run tauri dev
 
 初回起動時には、選択中のagent、ユーザーデータディレクトリ、safe mode、pack、startup reportを確認するhealth checkが表示されます。同じ内容は後から設定画面の「Status」セクションでも確認できます。
 
+### ビューモード
+
+タイトルバーのビューモードメニュー、または `⌥⌘0`〜`4` で切り替えられます。
+
+<p align="center">
+  <img src="docs/assets/view-modes.gif" alt="Terminal、Portrait、Call、Theater、Immersiveのビューモード切り替え" width="640" />
+</p>
+
+| モード | 向いている使い方 |
+|---|---|
+| **Terminal** | ターミナルと住人を並べる標準ワークスペース |
+| **Portrait** | 外部ターミナルの隣に置く、細長い常時手前の住人ウィンドウ |
+| **Call** | 会話向けの、顔を中心にしたコンパクトウィンドウ |
+| **Theater** | ターミナルやタイトルバーを隠し、住人とシーンを全面表示 |
+| **Immersive** | 住人とシーンの上に透明なターミナルを重ねる表示 |
+
 ### 外部ターミナルで使う
 
 普段使っている別のterminal appがある場合は、慣れた操作環境をそのまま使いながらYorishiroのsessionへ接続できます。
