@@ -89,17 +89,13 @@ npm run tauri dev
 
 タイトルバーのビューモードメニュー、または `⌥⌘0`〜`4` で切り替えられます。
 
-<p align="center">
-  <img src="docs/assets/view-modes.gif" alt="Terminal、Portrait、Call、Theater、Immersiveのビューモード切り替え" width="640" />
-</p>
-
-| モード | 向いている使い方 |
-|---|---|
-| **Terminal** | ターミナルと住人を並べる標準ワークスペース |
-| **Portrait** | 外部ターミナルの隣に置く、細長い常時手前の住人ウィンドウ |
-| **Call** | 会話向けの、顔を中心にしたコンパクトウィンドウ |
-| **Theater** | ターミナルやタイトルバーを隠し、住人とシーンを全面表示 |
-| **Immersive** | 住人とシーンの上に透明なターミナルを重ねる表示 |
+| モード | プレビュー | 向いている使い方 |
+|---|---|---|
+| **Terminal** | <img src="docs/assets/view-mode-terminal.png" alt="Terminalビューモード" width="320" /> | ターミナルと住人を並べる標準ワークスペース |
+| **Portrait** | <img src="docs/assets/view-mode-portrait.png" alt="Portraitビューモード" width="320" /> | 外部ターミナルの隣に置く、細長い常時手前の住人ウィンドウ |
+| **Call** | <img src="docs/assets/view-mode-call.png" alt="Callビューモード" width="320" /> | 会話向けの、顔を中心にしたコンパクトウィンドウ |
+| **Theater** | <img src="docs/assets/view-mode-theater.png" alt="Theaterビューモード" width="320" /> | ターミナルやタイトルバーを隠し、住人とシーンを全面表示 |
+| **Immersive** | <img src="docs/assets/view-mode-immersive.png" alt="Immersiveビューモード" width="320" /> | 住人とシーンの上に透明なターミナルを重ねる表示 |
 
 ### 外部ターミナルで使う
 
