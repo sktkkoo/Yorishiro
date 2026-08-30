@@ -87,12 +87,15 @@ npm run tauri dev
 
 ### 外部ターミナルで使う
 
+普段使っている別のterminal appがある場合は、慣れた操作環境をそのまま使いながらYorishiroのsessionへ接続できます。
+
 ```sh
+yorishiro list
 yorishiro companion [session-id]
 yorishiro attach [session-id]
 ```
 
-`yorishiro companion`はYorishiroを起動して、そのまま外部ターミナルから接続します。`yorishiro attach`は、起動中のYorishiroへ接続します。接続先が1つなら`session-id`は省略できます。
+`yorishiro list`は、各terminal sessionのID、状態、作業ディレクトリを表示します。`yorishiro companion`は、起動中のYorishiroがあれば再利用し、なければ起動してから外部ターミナルを接続します。`yorishiro attach`は起動中のYorishiroだけを接続対象にし、見つからなければエラーを返します。複数のsessionがliveの場合は、接続したいIDを`companion`または`attach`へ渡してください。接続先が1つなら`session-id`は省略できます。
 
 <p align="center">
   <img src="docs/assets/external-terminal-companion.png" alt="Yorishiroと接続中の外部ターミナル" width="960" />

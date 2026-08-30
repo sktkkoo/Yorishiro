@@ -1,12 +1,13 @@
 #[cfg(any(target_os = "macos", test))]
 use serde::Deserialize;
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 #[cfg(any(target_os = "macos", test))]
 use std::fs;
 #[cfg(any(target_os = "macos", test))]
 use std::io;
+use std::path::Path;
 #[cfg(any(target_os = "macos", test))]
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 #[cfg(any(target_os = "macos", test))]
 use yorishiro_lib::attach::protocol::{
@@ -34,17 +35,67 @@ pub enum Dispatch {
     Cli(Result<i32, String>),
 }
 
-/// Only the exact CLI command names opt out of the GUI startup path.
-/// LaunchServices and Tauri are allowed to pass arbitrary arguments through.
-pub fn dispatch(args: impl IntoIterator<Item = OsString>) -> Dispatch {
-    match parse_dispatch(args) {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum InvocationOrigin {
+    AppBundle,
+    Cli,
+}
+
+const CLI_USAGE: &str =
+    "usage:\n  yorishiro list\n  yorishiro attach [session]\n  yorishiro companion [session]";
+
+/// Classify the lexical invocation path without resolving symlinks. Resolving a
+/// Homebrew or user-local link would incorrectly turn a CLI invocation into an
+/// app-bundle invocation.
+pub fn invocation_origin(executable: &OsStr) -> InvocationOrigin {
+    let executable = Path::new(executable);
+    let macos = executable.parent();
+    let contents = macos.and_then(Path::parent);
+    let app = contents.and_then(Path::parent);
+    let is_app_bundle = executable.file_name() == Some(OsStr::new("yorishiro"))
+        && macos.and_then(Path::file_name) == Some(OsStr::new("MacOS"))
+        && contents.and_then(Path::file_name) == Some(OsStr::new("Contents"))
+        && app.and_then(Path::extension) == Some(OsStr::new("app"));
+    if is_app_bundle {
+        InvocationOrigin::AppBundle
+    } else {
+        InvocationOrigin::Cli
+    }
+}
+
+fn is_launch_services_process_serial_number(argument: &OsStr) -> bool {
+    let Some(argument) = argument.to_str() else {
+        return false;
+    };
+    let Some(value) = argument.strip_prefix("-psn_") else {
+        return false;
+    };
+    let mut parts = value.split('_');
+    matches!(
+        (parts.next(), parts.next(), parts.next()),
+        (Some(high), Some(low), None)
+            if !high.is_empty()
+                && !low.is_empty()
+                && high.bytes().all(|byte| byte.is_ascii_digit())
+                && low.bytes().all(|byte| byte.is_ascii_digit())
+    )
+}
+
+/// An argument-free invocation starts the GUI. Recognized CLI commands run in
+/// the terminal. Unknown arguments from LaunchServices/Tauri continue to reach
+/// the GUI, while unknown commands entered through a CLI link fail with usage.
+pub fn dispatch(origin: InvocationOrigin, args: impl IntoIterator<Item = OsString>) -> Dispatch {
+    match parse_dispatch(origin, args) {
         ParsedDispatch::Gui => Dispatch::Gui,
         ParsedDispatch::Cli(Err(error)) => Dispatch::Cli(Err(error)),
         ParsedDispatch::Cli(Ok(command)) => Dispatch::Cli(run(command)),
     }
 }
 
-fn parse_dispatch(args: impl IntoIterator<Item = OsString>) -> ParsedDispatch {
+fn parse_dispatch(
+    origin: InvocationOrigin,
+    args: impl IntoIterator<Item = OsString>,
+) -> ParsedDispatch {
     let mut args = args.into_iter();
     let Some(first) = args.next() else {
         return ParsedDispatch::Gui;
@@ -94,7 +145,17 @@ fn parse_dispatch(args: impl IntoIterator<Item = OsString>) -> ParsedDispatch {
         return ParsedDispatch::Cli(Ok(Command::Companion(session)));
     }
 
-    ParsedDispatch::Gui
+    if is_launch_services_process_serial_number(&first) {
+        return ParsedDispatch::Gui;
+    }
+
+    match origin {
+        InvocationOrigin::AppBundle => ParsedDispatch::Gui,
+        InvocationOrigin::Cli => {
+            let command = first.to_str().unwrap_or("<non-UTF-8>");
+            ParsedDispatch::Cli(Err(format!("unknown command '{command}'\n{CLI_USAGE}")))
+        }
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -359,6 +420,14 @@ mod tests {
         values.iter().map(OsString::from).collect()
     }
 
+    fn parse_cli(values: &[&str]) -> ParsedDispatch {
+        parse_dispatch(InvocationOrigin::Cli, args(values))
+    }
+
+    fn parse_app(values: &[&str]) -> ParsedDispatch {
+        parse_dispatch(InvocationOrigin::AppBundle, args(values))
+    }
+
     fn session(id: &str, alive: bool) -> ListedSession {
         ListedSession {
             id: id.into(),
@@ -369,38 +438,97 @@ mod tests {
     }
 
     #[test]
-    fn dispatches_only_exact_known_first_arguments() {
-        assert_eq!(parse_dispatch(args(&[])), ParsedDispatch::Gui);
-        assert_eq!(parse_dispatch(args(&["--flag"])), ParsedDispatch::Gui);
-        assert_eq!(parse_dispatch(args(&["LIST"])), ParsedDispatch::Gui);
+    fn dispatches_gui_and_known_cli_commands() {
+        for parse in [parse_cli as fn(&[&str]) -> ParsedDispatch, parse_app] {
+            assert_eq!(parse(&[]), ParsedDispatch::Gui);
+            assert_eq!(parse(&["-psn_0_12345"]), ParsedDispatch::Gui);
+            assert_eq!(parse(&["list"]), ParsedDispatch::Cli(Ok(Command::List)));
+            assert_eq!(
+                parse(&["attach"]),
+                ParsedDispatch::Cli(Ok(Command::Attach(None)))
+            );
+            assert_eq!(
+                parse(&["attach", "main"]),
+                ParsedDispatch::Cli(Ok(Command::Attach(Some("main".into()))))
+            );
+            assert_eq!(
+                parse(&["companion"]),
+                ParsedDispatch::Cli(Ok(Command::Companion(None)))
+            );
+            assert_eq!(
+                parse(&["companion", "main"]),
+                ParsedDispatch::Cli(Ok(Command::Companion(Some("main".into()))))
+            );
+            assert!(matches!(
+                parse(&["attach", "one", "two"]),
+                ParsedDispatch::Cli(Err(_))
+            ));
+        }
+    }
+
+    #[test]
+    fn rejects_unknown_commands_instead_of_launching_the_gui() {
+        for command in [
+            "--help",
+            "--flag",
+            "-psn_bogus",
+            "attatch",
+            "LIST",
+            "list-sessions",
+        ] {
+            assert_eq!(
+                parse_cli(&[command]),
+                ParsedDispatch::Cli(Err(format!("unknown command '{command}'\n{CLI_USAGE}")))
+            );
+        }
+    }
+
+    #[test]
+    fn app_bundle_launch_passes_unknown_arguments_to_the_gui() {
+        for command in ["--help", "--flag", "attatch", "LIST", "list-sessions"] {
+            assert_eq!(parse_app(&[command]), ParsedDispatch::Gui);
+        }
+    }
+
+    #[test]
+    fn classifies_invocation_origin_without_resolving_links() {
         assert_eq!(
-            parse_dispatch(args(&["list-sessions"])),
-            ParsedDispatch::Gui
+            invocation_origin(OsStr::new(
+                "/Applications/Yorishiro.app/Contents/MacOS/yorishiro"
+            )),
+            InvocationOrigin::AppBundle
         );
         assert_eq!(
-            parse_dispatch(args(&["list"])),
-            ParsedDispatch::Cli(Ok(Command::List))
+            invocation_origin(OsStr::new(
+                "/Applications/Preview Build.app/Contents/MacOS/yorishiro"
+            )),
+            InvocationOrigin::AppBundle
         );
+        for executable in [
+            "yorishiro",
+            "/opt/homebrew/bin/yorishiro",
+            "/Users/test/.local/bin/yorishiro",
+            "target/debug/yorishiro",
+        ] {
+            assert_eq!(
+                invocation_origin(OsStr::new(executable)),
+                InvocationOrigin::Cli
+            );
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_non_utf8_unknown_cli_commands_without_panicking() {
+        use std::os::unix::ffi::OsStringExt;
+
         assert_eq!(
-            parse_dispatch(args(&["attach"])),
-            ParsedDispatch::Cli(Ok(Command::Attach(None)))
+            parse_dispatch(
+                InvocationOrigin::Cli,
+                vec![OsString::from_vec(vec![0xff, 0xfe])]
+            ),
+            ParsedDispatch::Cli(Err(format!("unknown command '<non-UTF-8>'\n{CLI_USAGE}")))
         );
-        assert_eq!(
-            parse_dispatch(args(&["attach", "main"])),
-            ParsedDispatch::Cli(Ok(Command::Attach(Some("main".into()))))
-        );
-        assert_eq!(
-            parse_dispatch(args(&["companion"])),
-            ParsedDispatch::Cli(Ok(Command::Companion(None)))
-        );
-        assert_eq!(
-            parse_dispatch(args(&["companion", "main"])),
-            ParsedDispatch::Cli(Ok(Command::Companion(Some("main".into()))))
-        );
-        assert!(matches!(
-            parse_dispatch(args(&["attach", "one", "two"])),
-            ParsedDispatch::Cli(Err(_))
-        ));
     }
 
     #[test]
