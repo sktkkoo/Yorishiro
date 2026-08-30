@@ -61,6 +61,18 @@ Or download the latest build below.
 
 Open the `.dmg` and drag `Yorishiro.app` to `/Applications`. The builds are signed and notarized with an Apple Developer ID, so they launch without any extra steps.
 
+Homebrew installs the bundled CLI as `yorishiro`. If you installed the `.dmg`
+directly, or your shell reports `command not found: yorishiro`, link the app's
+CLI into a user-local directory and add that directory to your PATH:
+
+```sh
+mkdir -p "$HOME/.local/bin"
+ln -s /Applications/Yorishiro.app/Contents/MacOS/yorishiro "$HOME/.local/bin/yorishiro"
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.zprofile"
+exec zsh -l
+command -v yorishiro
+```
+
 Updates after install are handled in-app: opening Settings checks for a new version, and a single click on "Update and restart" applies a signature-verified update.
 
 ### Launch (from source)
