@@ -61,18 +61,6 @@ Or download the latest build below.
 
 Open the `.dmg` and drag `Yorishiro.app` to `/Applications`. The builds are signed and notarized with an Apple Developer ID, so they launch without any extra steps.
 
-Homebrew installs the bundled CLI as `yorishiro`. If you installed the `.dmg`
-directly, or your shell reports `command not found: yorishiro`, link the app's
-CLI into a user-local directory and add that directory to your PATH:
-
-```sh
-mkdir -p "$HOME/.local/bin"
-ln -s /Applications/Yorishiro.app/Contents/MacOS/yorishiro "$HOME/.local/bin/yorishiro"
-echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.zprofile"
-exec zsh -l
-command -v yorishiro
-```
-
 Updates after install are handled in-app: opening Settings checks for a new version, and a single click on "Update and restart" applies a signature-verified update.
 
 ### Launch (from source)
@@ -90,7 +78,7 @@ The first launch runs a health check for the selected agent, user data directory
 
 Switch from the View Mode menu in the title bar, or press `Option+Command+0` through `4`.
 
-| Mode | Preview | Best for |
+| Mode | Preview | Description |
 |---|---|---|
 | **Terminal** | <img src="docs/assets/view-mode-terminal.png" alt="Terminal view mode" width="320" /> | The full workspace, with the terminal and resident side by side |
 | **Portrait** | <img src="docs/assets/view-mode-portrait.png" alt="Portrait view mode" width="320" /> | A narrow, always-on-top resident window beside your external terminal |
@@ -119,6 +107,19 @@ When multiple sessions are live, pass the desired ID to `companion` or
 <p align="center">
   <img src="docs/assets/external-terminal-companion.png" alt="Yorishiro beside an attached external terminal" width="960" />
 </p>
+
+Homebrew makes the bundled CLI available as `yorishiro` automatically. If you
+installed Yorishiro from the `.dmg` and your external terminal reports
+`command not found: yorishiro`, link the app's CLI into a user-local directory
+and add that directory to your PATH:
+
+```sh
+mkdir -p "$HOME/.local/bin"
+ln -s /Applications/Yorishiro.app/Contents/MacOS/yorishiro "$HOME/.local/bin/yorishiro"
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.zprofile"
+exec zsh -l
+command -v yorishiro
+```
 
 ### Yorishiro commands and skills
 

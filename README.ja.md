@@ -62,16 +62,6 @@ brew install --cask sktkkoo/yorishiro/yorishiro
 
 ダウンロードした`.dmg`を開き、`Yorishiro.app`を`/Applications`にドラッグしてください。署名・公証（notarize）済みのため、特別な操作なしに起動できます。
 
-Homebrewからインストールした場合は、同梱CLIが`yorishiro`コマンドとして自動的に使えるようになります。`.dmg`から直接インストールした場合や、シェルに`command not found: yorishiro`と表示された場合は、アプリ内のCLIをユーザー用ディレクトリへリンクし、そのディレクトリをPATHへ追加してください：
-
-```sh
-mkdir -p "$HOME/.local/bin"
-ln -s /Applications/Yorishiro.app/Contents/MacOS/yorishiro "$HOME/.local/bin/yorishiro"
-echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.zprofile"
-exec zsh -l
-command -v yorishiro
-```
-
 インストール後の更新はアプリ内で完結します。設定画面を開くと新しいバージョンを自動で確認し、「更新して再起動」を押すだけで署名検証つきの更新が適用されます。
 
 ### 起動（ソースから）
@@ -89,7 +79,7 @@ npm run tauri dev
 
 タイトルバーのビューモードメニュー、または `⌥⌘0`〜`4` で切り替えられます。
 
-| モード | プレビュー | 向いている使い方 |
+| モード | プレビュー | 説明 |
 |---|---|---|
 | **Terminal** | <img src="docs/assets/view-mode-terminal.png" alt="Terminalビューモード" width="320" /> | ターミナルと住人を並べる標準ワークスペース |
 | **Portrait** | <img src="docs/assets/view-mode-portrait.png" alt="Portraitビューモード" width="320" /> | 外部ターミナルの隣に置く、細長い常時手前の住人ウィンドウ |
@@ -112,6 +102,16 @@ yorishiro attach [session-id]
 <p align="center">
   <img src="docs/assets/external-terminal-companion.png" alt="Yorishiroと接続中の外部ターミナル" width="960" />
 </p>
+
+Homebrewからインストールした場合は、同梱CLIを`yorishiro`コマンドとしてそのまま使えます。`.dmg`からインストールし、外部ターミナルに`command not found: yorishiro`と表示された場合は、アプリ内のCLIをユーザー用ディレクトリへリンクし、そのディレクトリをPATHへ追加してください：
+
+```sh
+mkdir -p "$HOME/.local/bin"
+ln -s /Applications/Yorishiro.app/Contents/MacOS/yorishiro "$HOME/.local/bin/yorishiro"
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.zprofile"
+exec zsh -l
+command -v yorishiro
+```
 
 ### Yorishiroのコマンドとスキル
 
