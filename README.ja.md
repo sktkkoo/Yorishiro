@@ -62,6 +62,16 @@ brew install --cask sktkkoo/yorishiro/yorishiro
 
 ダウンロードした`.dmg`を開き、`Yorishiro.app`を`/Applications`にドラッグしてください。署名・公証（notarize）済みのため、特別な操作なしに起動できます。
 
+Homebrewからインストールした場合は、同梱CLIが`yorishiro`コマンドとして自動的に使えるようになります。`.dmg`から直接インストールした場合や、シェルに`command not found: yorishiro`と表示された場合は、アプリ内のCLIをユーザー用ディレクトリへリンクし、そのディレクトリをPATHへ追加してください：
+
+```sh
+mkdir -p "$HOME/.local/bin"
+ln -s /Applications/Yorishiro.app/Contents/MacOS/yorishiro "$HOME/.local/bin/yorishiro"
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.zprofile"
+exec zsh -l
+command -v yorishiro
+```
+
 インストール後の更新はアプリ内で完結します。設定画面を開くと新しいバージョンを自動で確認し、「更新して再起動」を押すだけで署名検証つきの更新が適用されます。
 
 ### 起動（ソースから）
