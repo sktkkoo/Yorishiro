@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.7.6 - 2026-08-31
+
+- Added five extensible presentation modes—Terminal, Portrait, Call, Theater, and Immersive—with title-bar controls, `Option+Command+0` through `4` shortcuts, mode-specific native window sizing and framing, UI-pack metadata, and README previews for each layout.
+- Fixed VRM head poses retaining a transient procedural gaze or tilt after an animation ends by restoring the neutral base rotation before animation playback.
+- Hardened the macOS CLI so unknown commands show usage and fail instead of unexpectedly launching the GUI, and documented command installation plus the `list`, `attach`, and `companion` external-terminal workflow.
+
 ## 0.7.5 - 2026-08-29
 
 - Fixed GPT Live local-work delegation after the first voice turn by keeping it attached to the durable workspace thread across automatic title generation and voice reconnection, preventing internal title threads from producing misleading completion reports.

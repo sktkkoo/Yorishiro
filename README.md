@@ -261,7 +261,7 @@ Three characteristics define this mechanism.
 
 ## Status
 
-**v0.7.5**
+**v0.7.6**
 
 Under active development. APIs, data shapes, and pack specs will change.
 
@@ -295,7 +295,7 @@ What works today:
 - `/yori:*` commands for interactive pack creation and editing
 - Guided tutorial via `/yori:tutorial`
 - Localization: Japanese / English auto-detection with per-language persona and prompts
-- UI packs: immersive and theater fullscreen layouts
+- Extensible View Modes: Terminal, Portrait, Call, Theater, and Immersive layouts, switchable from the title bar or with `Option+Command+0` through `4`
 - Pack diagnostics: health checks, repair handoff, and local pack validation
 - [Safe mode](docs/troubleshooting.md) (`YORISHIRO_SAFE_MODE=1`) to recover from broken packs
 - Signed macOS builds via GitHub Actions (code signing + notarization)

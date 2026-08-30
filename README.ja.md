@@ -254,7 +254,7 @@ packやinit.jsが変わるたびに、チェックポイントが自動で作ら
 
 ## Status
 
-**v0.7.5**
+**v0.7.6**
 
 実装フェーズの途中です。API・データ形状・pack仕様は今後変わります。
 
@@ -288,7 +288,7 @@ packやinit.jsが変わるたびに、チェックポイントが自動で作ら
 - `/yori:*`コマンドによるpackの対話的な作成・編集
 - `/yori:tutorial`によるチュートリアル
 - ローカライズ: 日本語/英語の自動検出、言語別persona・プロンプト
-- UI pack: immersive/theaterのフルスクリーンレイアウト
+- 拡張可能なView Mode: Terminal / Portrait / Call / Theater / Immersiveをtitle barまたは`Option+Command+0`〜`4`で切替
 - Pack診断: ヘルスチェック、修復ハンドオフ、ローカルpackの検証
 - [Safe mode](docs/troubleshooting.ja.md)（`YORISHIRO_SAFE_MODE=1`）で壊れたpackから復旧
 - GitHub Actionsによる署名済みmacOSビルド（コード署名 + 公証）
