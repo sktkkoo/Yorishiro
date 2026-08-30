@@ -88,12 +88,21 @@ The first launch runs a health check for the selected agent, user data directory
 
 ### Use from an external terminal
 
+If you prefer another terminal app for everyday work, you can keep using its
+familiar interface while connecting it to a Yorishiro session.
+
 ```sh
+yorishiro list
 yorishiro companion [session-id]
 yorishiro attach [session-id]
 ```
 
-`yorishiro companion` starts Yorishiro and connects from your external terminal in one step. `yorishiro attach` connects to a running Yorishiro. You may omit `session-id` when there is only one available session.
+`yorishiro list` shows the session ID, status, and working directory of each
+terminal session. `yorishiro companion` reuses a running Yorishiro, or starts
+one when needed, and connects from your external terminal. `yorishiro attach`
+connects only to a running Yorishiro and returns an error if none is available.
+When multiple sessions are live, pass the desired ID to `companion` or
+`attach`; you may omit it when only one session is available.
 
 <p align="center">
   <img src="docs/assets/external-terminal-companion.png" alt="Yorishiro beside an attached external terminal" width="960" />

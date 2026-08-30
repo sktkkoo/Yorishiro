@@ -4,10 +4,11 @@
 mod cli;
 
 fn main() {
-    // The app bundle is not added to PATH yet. Keep this dispatch in the main
-    // binary so a future installer can expose `yorishiro` without shipping a
-    // second executable.
-    match cli::dispatch(std::env::args_os().skip(1)) {
+    // Keep GUI and CLI dispatch in one executable. Preserve argv[0] long enough
+    // to distinguish a direct app-bundle launch from a Homebrew/user CLI link.
+    let mut args = std::env::args_os();
+    let executable = args.next().unwrap_or_default();
+    match cli::dispatch(cli::invocation_origin(&executable), args) {
         cli::Dispatch::Gui => yorishiro_lib::run(),
         cli::Dispatch::Cli(result) => match result {
             Ok(code) => std::process::exit(code),
