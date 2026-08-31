@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Added Animates-inspired conversation controls to Portrait, Call, and Theater: tap Command to open a Spotlight-like Quick Chat input, or hold Command to start GPT Live. While voice is connected, Command toggles microphone mute and a compact status pill provides explicit mute and end controls.
+- Added Animates-inspired conversation controls to Portrait, Call, and Theater: tap Command to open a Spotlight-like Quick Chat input, or hold Command to start GPT Live. Quick Chat replies fall back to the macOS Voice Summary path when the agent did not already speak its own summary. While voice is connected, Command toggles microphone mute and a compact status pill provides explicit mute and end controls.
 
 ## 0.7.6 - 2026-08-31
 

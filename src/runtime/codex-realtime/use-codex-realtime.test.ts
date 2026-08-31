@@ -100,11 +100,24 @@ function setup(
       | CodexRealtimePersonaSnapshot
       | Promise<CodexRealtimePersonaSnapshot>;
     readonly onPersonaApplication?: (application: CodexRealtimePersonaApplication) => void;
+    readonly onQuickChatResponse?: (response: {
+      requestId: string;
+      threadId: string;
+      turnId: string;
+      text: string;
+    }) => void;
   } = {},
 ) {
   const clients: FakeClient[] = [];
   let trackedThreadId: string | null = "thread-1";
   let notifyThreadChange: (threadId: string | null) => void = () => {};
+  let notifyQuickChatResponse: (response: {
+    requestId: string;
+    threadId: string;
+    turnId: string;
+    text: string;
+  }) => void = () => {};
+  const trackQuickChatPrompt = vi.fn(async (prompt: string) => `quick:${prompt}`);
   const createClient: CodexRealtimeClientFactory = (
     sessionId,
     onStateChange,
@@ -146,11 +159,14 @@ function setup(
         onVoiceFallback: options.onVoiceFallback,
         getPersonaSnapshot: options.getPersonaSnapshot,
         onPersonaApplication: options.onPersonaApplication,
+        onQuickChatResponse: options.onQuickChatResponse,
         createClient,
-        createThreadTracker: (_sessionId, onCurrentThreadChange) => {
+        createThreadTracker: (_sessionId, onCurrentThreadChange, onQuickChatResponse) => {
           notifyThreadChange = onCurrentThreadChange;
+          notifyQuickChatResponse = onQuickChatResponse;
           return {
             getCurrentThreadId: () => trackedThreadId,
+            trackQuickChatPrompt,
             start: async () => {},
             stop: () => {},
           };
@@ -164,6 +180,13 @@ function setup(
     fallback,
     applyLipSyncSource,
     setFallbackPlaybackEnabled,
+    trackQuickChatPrompt,
+    completeQuickChat: (response: {
+      requestId: string;
+      threadId: string;
+      turnId: string;
+      text: string;
+    }) => notifyQuickChatResponse(response),
     changeThread: (threadId: string | null) => {
       trackedThreadId = threadId;
       notifyThreadChange(threadId);
@@ -175,6 +198,30 @@ function setup(
 }
 
 describe("useCodexRealtime", () => {
+  it("tracks quick-chat prompts through the persistent thread tracker", async () => {
+    const { result, trackQuickChatPrompt } = setup([]);
+
+    await expect(result.current.trackQuickChatPrompt("こんにちは")).resolves.toBe(
+      "quick:こんにちは",
+    );
+    expect(trackQuickChatPrompt).toHaveBeenCalledWith("こんにちは");
+  });
+
+  it("forwards a tracked quick-chat response to the latest callback", () => {
+    const onQuickChatResponse = vi.fn();
+    const { completeQuickChat } = setup([], undefined, undefined, { onQuickChatResponse });
+    const response = {
+      requestId: "quick:1",
+      threadId: "thread-1",
+      turnId: "turn-1",
+      text: "聞こえてるよ。",
+    };
+
+    act(() => completeQuickChat(response));
+
+    expect(onQuickChatResponse).toHaveBeenCalledWith(response);
+  });
+
   it("mutes and unmutes the active client without stopping it", async () => {
     const { result, clients } = setup([Promise.resolve()]);
     await act(async () => result.current.toggle());

@@ -1088,6 +1088,11 @@ function App() {
   const [viewModeHudVisible, setViewModeHudVisible] = useState(false);
   const [quickChatOpen, setQuickChatOpen] = useState(false);
   const [quickChatDraft, setQuickChatDraft] = useState("");
+  const quickChatSpeechPendingRef = useRef<{
+    readonly requestId: string;
+    explicitSpeech: boolean;
+  } | null>(null);
+  const quickChatVoiceFrequencyRef = useRef<VoiceFrequency>("on");
   useEffect(() => {
     const subscription = getUiRegistry().subscribeActive(() => {
       setViewModeHudVisible(false);
@@ -1806,6 +1811,7 @@ function App() {
         getAttentionLightSettingsStore().setEnabled(config.attentionLightNotifications);
         getThreeRuntime().setMotionIntensity(config.motionIntensity);
         voiceFrequency = config.voiceFrequency;
+        quickChatVoiceFrequencyRef.current = config.voiceFrequency;
         setTabMetadataBadgesEnabled(config.tabMetadataBadges);
         configuredLanguage = config.language;
         resolvedLanguage = resolveLanguage(configuredLanguage, getBrowserLocales());
@@ -2477,6 +2483,11 @@ function App() {
           // ── Voice ─────────────────────────────────────────
           "voice.say": createVoiceSayHandler({
             speak: (text, _voice, mood) => {
+              // Quick Chat turn が自分で voice_say した場合は、その短い要約を正本にして
+              // turn completion 後の全文自動読み上げを重ねない。
+              if (quickChatSpeechPendingRef.current) {
+                quickChatSpeechPendingRef.current.explicitSpeech = true;
+              }
               const handle = voiceApi.say(text);
               const body = bodyRef.current;
               const generation = ++speechMoodGeneration;
@@ -4121,6 +4132,7 @@ function App() {
     stop: stopCodexRealtime,
     toggle: toggleCodexRealtime,
     setMicrophoneMuted: setCodexMicrophoneMuted,
+    trackQuickChatPrompt,
     getLipSyncSource: getCodexRealtimeLipSyncSource,
   } = useCodexRealtime({
     sessionId: tabState.mainSessionId,
@@ -4155,6 +4167,20 @@ function App() {
     },
     personaPromptMode: "supplemental",
     includeStartupContext: false,
+    onQuickChatResponse: ({ requestId, text }) => {
+      const pending = quickChatSpeechPendingRef.current;
+      if (!pending || pending.requestId !== requestId) return;
+      quickChatSpeechPendingRef.current = null;
+      if (
+        pending.explicitSpeech ||
+        text.length === 0 ||
+        quickChatVoiceFrequencyRef.current === "off" ||
+        !voicePlayer.isPlaybackEnabled()
+      ) {
+        return;
+      }
+      voicePlayer.createVoiceAPI().say(text);
+    },
     onPersonaApplication: ({
       personaId,
       status,
@@ -5578,10 +5604,15 @@ function App() {
     if (!quickChatEnabled || prompt.length === 0) return;
     const mainSessionId = tabManager.getState().mainSessionId;
     tabManager.switchTo(mainSessionId);
-    getTerminalRuntime(mainSessionId).submitUserText(prompt);
     setQuickChatDraft("");
     setQuickChatOpen(false);
-  }, [quickChatDraft, quickChatEnabled, tabManager]);
+    void trackQuickChatPrompt(prompt)
+      .catch(() => null)
+      .then((requestId) => {
+        quickChatSpeechPendingRef.current = requestId ? { requestId, explicitSpeech: false } : null;
+        getTerminalRuntime(mainSessionId).submitUserText(prompt);
+      });
+  }, [quickChatDraft, quickChatEnabled, tabManager, trackQuickChatPrompt]);
 
   // ── PTY exit → auto-respawn / tab close ────────────────────
   const ptyExitCleanupRef = useRef<(() => void) | null>(null);
