@@ -86,6 +86,8 @@ Switch from the View Mode menu in the title bar, or press `Option+Command+0` thr
 | **Theater** | <img src="docs/assets/view-mode-theater.png" alt="Theater view mode" width="320" /> | A full stage with the terminal and app chrome hidden |
 | **Immersive** | <img src="docs/assets/view-mode-immersive.png" alt="Immersive view mode" width="320" /> | A transparent terminal layered over the resident and scene |
 
+In Portrait, Call, and Theater, tap Command to open Quick Chat near the bottom-center of the view, or hold Command to start GPT Live. While voice is connected, tap Command to mute or unmute the microphone. Both continue the Main Agent conversation without returning to Terminal.
+
 ### Use from an external terminal
 
 If you prefer another terminal app for everyday work, you can keep using its

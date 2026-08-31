@@ -7,6 +7,19 @@ export interface UiStrings {
   readonly settings: string;
   readonly viewMode: string;
   readonly terminal: string;
+  readonly quickChatPlaceholder: string;
+  readonly quickChatInputLabel: string;
+  readonly quickChatSend: string;
+  readonly quickChatClose: string;
+  readonly quickVoiceConnecting: string;
+  readonly quickVoiceListening: string;
+  readonly quickVoiceMuted: string;
+  readonly quickVoiceUnavailable: string;
+  readonly quickVoiceMuteMicrophone: string;
+  readonly quickVoiceUnmuteMicrophone: string;
+  readonly quickVoiceShortcutMute: string;
+  readonly quickVoiceShortcutUnmute: string;
+  readonly quickVoiceEnd: string;
   readonly closeSettings: string;
   readonly language: string;
   readonly languageAuto: string;
@@ -236,6 +249,19 @@ const EN: UiStrings = {
   settings: "Settings",
   viewMode: "View Mode",
   terminal: "Terminal",
+  quickChatPlaceholder: "Message Yori…",
+  quickChatInputLabel: "Quick chat with Yori",
+  quickChatSend: "Send message",
+  quickChatClose: "Escape to close",
+  quickVoiceConnecting: "Connecting voice…",
+  quickVoiceListening: "Listening…",
+  quickVoiceMuted: "Microphone muted",
+  quickVoiceUnavailable: "Voice unavailable",
+  quickVoiceMuteMicrophone: "Mute microphone",
+  quickVoiceUnmuteMicrophone: "Unmute microphone",
+  quickVoiceShortcutMute: "Command to mute",
+  quickVoiceShortcutUnmute: "Command to unmute",
+  quickVoiceEnd: "End voice conversation",
   closeSettings: "Close settings",
   language: "Language",
   languageAuto: "Auto",
@@ -461,6 +487,19 @@ const JA: UiStrings = {
   settings: "設定",
   viewMode: "表示モード",
   terminal: "Terminal",
+  quickChatPlaceholder: "ヨリにメッセージ…",
+  quickChatInputLabel: "ヨリとのクイックチャット",
+  quickChatSend: "メッセージを送信",
+  quickChatClose: "Escで閉じる",
+  quickVoiceConnecting: "音声会話に接続中…",
+  quickVoiceListening: "聞いています…",
+  quickVoiceMuted: "マイクはミュート中",
+  quickVoiceUnavailable: "音声会話を利用できません",
+  quickVoiceMuteMicrophone: "マイクをミュート",
+  quickVoiceUnmuteMicrophone: "マイクのミュートを解除",
+  quickVoiceShortcutMute: "Commandでミュート",
+  quickVoiceShortcutUnmute: "Commandでミュート解除",
+  quickVoiceEnd: "音声会話を終了",
   closeSettings: "設定を閉じる",
   language: "言語",
   languageAuto: "自動",

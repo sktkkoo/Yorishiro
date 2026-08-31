@@ -1321,6 +1321,34 @@ describe("CodexRealtimeClient", () => {
     client.stop();
   });
 
+  it("toggles the local microphone without ending the realtime conversation", async () => {
+    const states: CodexRealtimeState[] = [];
+    const client = new CodexRealtimeClient("main-session", (state) => states.push(state));
+    await client.start();
+
+    client.setMicrophoneMuted(true);
+
+    expect(client.getStatus()).toBe("active");
+    expect(microphoneTrack.enabled).toBe(false);
+    expect(states[states.length - 1]).toEqual({
+      status: "active",
+      billing: "subscription",
+      microphoneActive: false,
+      microphoneMuted: true,
+    });
+    expect(microphoneTrack.stop).not.toHaveBeenCalled();
+
+    client.setMicrophoneMuted(false);
+
+    expect(microphoneTrack.enabled).toBe(true);
+    expect(states[states.length - 1]).toEqual({
+      status: "active",
+      billing: "subscription",
+      microphoneActive: true,
+    });
+    client.stop();
+  });
+
   it("tears down the live conversation when its last microphone track ends", async () => {
     const states: CodexRealtimeState[] = [];
     const client = new CodexRealtimeClient("main-session", (state) => states.push(state));

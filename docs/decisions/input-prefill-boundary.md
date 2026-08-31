@@ -43,6 +43,7 @@ pack/AI に「任意テキストを入力欄/PTY に書く」API は型ごと露
 ## この決定の implication / 制約
 
 - pack/AI 経路が任意テキストを PTY に書けないことが**型レベルで保証**される（SDK は enumerated verb / 固定 token のみ公開、`write(string)` を公開しない）。§1 はこの primitive 追加後も成立。
+- Host 本体が所有し、人間が明示的に入力・送信する UI（Terminal や Quick Chat）は通常の user-input pipeline を利用できる。この経路は SDK / MCP / pack context に公開せず、pack/AI の任意書込み禁止とは分離する。
 - (A) テーブルは bundled に閉じる。user pack 拡張は任意注入の再来なので別途厳密設計が前提。
 - (B) の resolve 内容は秘密を含みうる（画面に出ていた物）。**Tier 3（外部 client）では sensitive-read 扱い**で blanket default-open にしない。→ 2026-05-18 実施済み：`mcp-trust-tiers.md` に Sensitive-read 行を分離 + 不変条件（実装検証済み）+ 前向きガード（user-pointed selection 限定、AI 任意 region/scrollback を生やさない）を記録。
 - (B) の不変条件（mapping は host-private + user gesture のみ生成 / token は固定形 host 採番 / resolve は read-only）は 2026-05-18 にコードで検証済み。コード変更不要。詳細は `mcp-trust-tiers.md`「Terminal reference の不変条件」。

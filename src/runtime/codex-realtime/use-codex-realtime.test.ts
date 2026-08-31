@@ -34,6 +34,14 @@ function deferred(): {
 
 class FakeClient implements CodexRealtimeClientLike {
   readonly stop = vi.fn(() => this.emit({ status: "idle" }));
+  readonly setMicrophoneMuted = vi.fn((muted: boolean) =>
+    this.emit({
+      status: "active",
+      billing: "subscription",
+      microphoneActive: !muted,
+      ...(muted ? { microphoneMuted: true } : {}),
+    }),
+  );
   private status: CodexRealtimeState["status"] = "idle";
 
   constructor(
@@ -167,6 +175,21 @@ function setup(
 }
 
 describe("useCodexRealtime", () => {
+  it("mutes and unmutes the active client without stopping it", async () => {
+    const { result, clients } = setup([Promise.resolve()]);
+    await act(async () => result.current.toggle());
+    act(() => clients[0].emit({ status: "active", billing: "subscription" }));
+
+    act(() => result.current.setMicrophoneMuted(true));
+    expect(clients[0].setMicrophoneMuted).toHaveBeenLastCalledWith(true);
+    expect(result.current.state.microphoneMuted).toBe(true);
+    expect(clients[0].stop).not.toHaveBeenCalled();
+
+    act(() => result.current.setMicrophoneMuted(false));
+    expect(clients[0].setMicrophoneMuted).toHaveBeenLastCalledWith(false);
+    expect(result.current.state.microphoneMuted).toBeUndefined();
+  });
+
   it("reads the configured voice for each new realtime session", async () => {
     let voice = "juniper";
     const { result, clients } = setup(

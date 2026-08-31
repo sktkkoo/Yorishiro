@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added Animates-inspired conversation controls to Portrait, Call, and Theater: tap Command to open a Spotlight-like Quick Chat input, or hold Command to start GPT Live. While voice is connected, Command toggles microphone mute and a compact status pill provides explicit mute and end controls.
+
 ## 0.7.6 - 2026-08-31
 
 - Added five extensible presentation modes—Terminal, Portrait, Call, Theater, and Immersive—with title-bar controls, `Option+Command+0` through `4` shortcuts, mode-specific native window sizing and framing, UI-pack metadata, and README previews for each layout.

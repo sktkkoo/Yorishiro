@@ -16,6 +16,7 @@ export interface CodexRealtimeClientLike extends LipSyncSource {
   getStatus(): CodexRealtimeStatus;
   start(): Promise<void>;
   stop(): void;
+  setMicrophoneMuted(muted: boolean): void;
 }
 
 export type CodexRealtimeClientFactory = (
@@ -75,6 +76,7 @@ interface UseCodexRealtimeResult {
   readonly state: CodexRealtimeState;
   readonly stop: () => void;
   readonly toggle: () => Promise<void>;
+  readonly setMicrophoneMuted: (muted: boolean) => void;
   readonly getLipSyncSource: () => LipSyncSource;
 }
 
@@ -317,6 +319,10 @@ export function useCodexRealtime({
     await start();
   }, [start, stop]);
 
+  const setMicrophoneMuted = useCallback((muted: boolean) => {
+    clientRef.current?.setMicrophoneMuted(muted);
+  }, []);
+
   useEffect(() => {
     threadTrackerRef.current?.stop();
     threadTrackerRef.current = null;
@@ -369,5 +375,5 @@ export function useCodexRealtime({
     [],
   );
 
-  return { state, stop, toggle, getLipSyncSource };
+  return { state, stop, toggle, setMicrophoneMuted, getLipSyncSource };
 }

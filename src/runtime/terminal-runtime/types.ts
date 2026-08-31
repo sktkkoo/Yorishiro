@@ -338,6 +338,13 @@ export interface TerminalRuntime {
   /** xterm に直接テキストを書き込む（shell ヒントなど）。 */
   writePlainText(text: string): void;
 
+  /**
+   * Host が所有する入力 UI で人間が確定した単一行 prompt を送信する。
+   * 通常の xterm 入力と同じ perception / listener / PTY queue を通り、最後に Enter
+   * を送る。SDK / MCP / pack には公開しない。
+   */
+  submitUserText(text: string): void;
+
   /** xterm にキーボードフォーカスを移す。タブ切り替え時に使う。 */
   focus(): void;
 
