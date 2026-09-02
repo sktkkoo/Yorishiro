@@ -91,13 +91,13 @@ html[data-rounded-view] body {
   bottom: max(clamp(14px, 7vh, 64px), env(safe-area-inset-bottom));
   display: flex;
   align-items: center;
-  gap: 8px;
-  width: min(560px, calc(100vw - 24px));
+  gap: 4px;
+  width: min(340px, calc(100vw - 24px));
   min-width: 0;
-  min-height: 52px;
-  padding: 7px 8px 7px 16px;
+  min-height: 28px;
+  padding: 2px 4px 2px 8px;
   border: 1px solid color-mix(in srgb, var(--yorishiro-accent) 32%, transparent);
-  border-radius: 18px;
+  border-radius: 9px;
   background: color-mix(in srgb, var(--yorishiro-panel-bg) 88%, transparent);
   box-shadow:
     0 18px 48px rgba(0, 0, 0, 0.38),
@@ -123,12 +123,12 @@ html[data-rounded-view] body {
   bottom: max(clamp(14px, 7vh, 64px), env(safe-area-inset-bottom));
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 5px;
   max-width: calc(100vw - 24px);
-  min-height: 48px;
-  padding: 7px 13px 7px 9px;
+  min-height: 28px;
+  padding: 2px 6px 2px 4px;
   border: 1px solid color-mix(in srgb, var(--yorishiro-accent) 38%, transparent);
-  border-radius: 17px;
+  border-radius: 9px;
   background: color-mix(in srgb, var(--yorishiro-panel-bg) 90%, transparent);
   box-shadow:
     0 18px 48px rgba(0, 0, 0, 0.38),
@@ -142,12 +142,12 @@ html[data-rounded-view] body {
 .quick-voice-icon {
   position: relative;
   display: inline-flex;
-  flex: 0 0 34px;
+  flex: 0 0 22px;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 11px;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
   border: 0;
   background: var(--yorishiro-accent-soft);
   color: var(--yorishiro-accent);
@@ -171,7 +171,7 @@ html[data-rounded-view] body {
 .quick-voice-status {
   overflow: hidden;
   color: var(--yorishiro-fg);
-  font-size: 13px;
+  font-size: 10px;
   font-weight: 560;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -185,11 +185,11 @@ html[data-rounded-view] body {
 
 .quick-voice-stop {
   display: inline-flex;
-  flex: 0 0 28px;
+  flex: 0 0 20px;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 20px;
+  height: 22px;
   border: 1px solid var(--yorishiro-border);
   border-radius: 9px;
   background: rgba(255, 255, 255, 0.035);
@@ -205,14 +205,14 @@ html[data-rounded-view] body {
 .quick-chat-input {
   flex: 1 1 auto;
   min-width: 0;
-  height: 36px;
+  height: 20px;
   border: 0;
   outline: 0;
   background: transparent;
   color: var(--yorishiro-fg);
   font: inherit;
-  font-size: 15px;
-  line-height: 36px;
+  font-size: 11px;
+  line-height: 22px;
 }
 
 .quick-chat-input::placeholder {
@@ -221,13 +221,13 @@ html[data-rounded-view] body {
 
 .quick-chat-send {
   display: inline-flex;
-  flex: 0 0 36px;
+  flex: 0 0 22px;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
+  width: 22px;
+  height: 22px;
   border: 1px solid var(--yorishiro-accent-border);
-  border-radius: 12px;
+  border-radius: 7px;
   background: var(--yorishiro-accent);
   color: var(--yorishiro-bg);
   cursor: pointer;
