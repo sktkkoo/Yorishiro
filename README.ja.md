@@ -87,6 +87,8 @@ npm run tauri dev
 | **Theater** | <img src="docs/assets/view-mode-theater.png" alt="Theaterビューモード" width="320" /> | ターミナルやタイトルバーを隠し、住人とシーンを全面表示 |
 | **Immersive** | <img src="docs/assets/view-mode-immersive.png" alt="Immersiveビューモード" width="320" /> | 住人とシーンの上に透明なターミナルを重ねる表示 |
 
+Portrait・Call・Theaterでは、Commandキーを短く押すと画面中央下にクイックチャットが開き、長押しするとGPT Liveの音声会話が始まります。クイックチャットの返答は通常のmacOS Voice Summary経路で読み上げられるため、Terminalへ戻らず内容を確認できます。音声会話中はCommandキーの短押しでマイクのミュートを切り替えられます。どちらもそのままMain Agentとの会話を続けます。
+
 ### 外部ターミナルで使う
 
 普段使っている別のterminal appがある場合は、慣れた操作環境をそのまま使いながらYorishiroのsessionへ接続できます。

@@ -10,12 +10,13 @@ import {
   type CodexRealtimeVoiceFallback,
   DEFAULT_CODEX_REALTIME_VOICE,
 } from "./codex-realtime-client";
-import { CodexThreadTracker } from "./codex-thread-tracker";
+import { type CodexQuickChatResponse, CodexThreadTracker } from "./codex-thread-tracker";
 
 export interface CodexRealtimeClientLike extends LipSyncSource {
   getStatus(): CodexRealtimeStatus;
   start(): Promise<void>;
   stop(): void;
+  setMicrophoneMuted(muted: boolean): void;
 }
 
 export type CodexRealtimeClientFactory = (
@@ -34,6 +35,7 @@ export type CodexRealtimeClientFactory = (
 
 export interface CodexThreadTrackerLike {
   getCurrentThreadId(): string | null;
+  trackQuickChatPrompt(prompt: string): Promise<string | null>;
   start(): Promise<void>;
   stop(): void;
 }
@@ -64,10 +66,12 @@ interface UseCodexRealtimeOptions {
   /** Explicit backend-prompt replacement experiment; defaults to safe supplementation. */
   readonly personaPromptMode?: "supplemental" | "replace";
   readonly includeStartupContext?: boolean;
+  readonly onQuickChatResponse?: (response: CodexQuickChatResponse) => void;
   readonly createClient?: CodexRealtimeClientFactory;
   readonly createThreadTracker?: (
     sessionId: string,
     onCurrentThreadChange: (threadId: string | null) => void,
+    onQuickChatResponse: (response: CodexQuickChatResponse) => void,
   ) => CodexThreadTrackerLike;
 }
 
@@ -75,6 +79,8 @@ interface UseCodexRealtimeResult {
   readonly state: CodexRealtimeState;
   readonly stop: () => void;
   readonly toggle: () => Promise<void>;
+  readonly setMicrophoneMuted: (muted: boolean) => void;
+  readonly trackQuickChatPrompt: (prompt: string) => Promise<string | null>;
   readonly getLipSyncSource: () => LipSyncSource;
 }
 
@@ -106,7 +112,9 @@ const defaultCreateClient: CodexRealtimeClientFactory = (
 const defaultCreateThreadTracker = (
   sessionId: string,
   onCurrentThreadChange: (threadId: string | null) => void,
-): CodexThreadTrackerLike => new CodexThreadTracker(sessionId, onCurrentThreadChange);
+  onQuickChatResponse: (response: CodexQuickChatResponse) => void,
+): CodexThreadTrackerLike =>
+  new CodexThreadTracker(sessionId, onCurrentThreadChange, onQuickChatResponse);
 
 const FALLBACK_RESTORE_RETRY_DELAYS_MS = [50, 200] as const;
 
@@ -129,6 +137,7 @@ export function useCodexRealtime({
   onPersonaApplication,
   personaPromptMode = "supplemental",
   includeStartupContext = true,
+  onQuickChatResponse = () => {},
   createClient = defaultCreateClient,
   createThreadTracker = defaultCreateThreadTracker,
 }: UseCodexRealtimeOptions): UseCodexRealtimeResult {
@@ -143,6 +152,7 @@ export function useCodexRealtime({
   const onVoiceFallbackRef = useRef(onVoiceFallback);
   const getPersonaSnapshotRef = useRef(getPersonaSnapshot);
   const onPersonaApplicationRef = useRef(onPersonaApplication);
+  const onQuickChatResponseRef = useRef(onQuickChatResponse);
   const sessionIdRef = useRef(sessionId);
   const voiceIntentRef = useRef(false);
   const fallbackPlaybackTransitionRef = useRef(0);
@@ -158,6 +168,7 @@ export function useCodexRealtime({
   onVoiceFallbackRef.current = onVoiceFallback;
   getPersonaSnapshotRef.current = getPersonaSnapshot;
   onPersonaApplicationRef.current = onPersonaApplication;
+  onQuickChatResponseRef.current = onQuickChatResponse;
 
   const restoreFallback = useCallback(() => {
     applyLipSyncSourceRef.current(fallbackRef.current);
@@ -317,16 +328,27 @@ export function useCodexRealtime({
     await start();
   }, [start, stop]);
 
+  const setMicrophoneMuted = useCallback((muted: boolean) => {
+    clientRef.current?.setMicrophoneMuted(muted);
+  }, []);
+
   useEffect(() => {
     threadTrackerRef.current?.stop();
     threadTrackerRef.current = null;
     if (!available) return;
     let tracker: CodexThreadTrackerLike;
-    tracker = createThreadTracker(sessionId, (threadId) => {
-      if (threadTrackerRef.current !== tracker) return;
-      if (clientRef.current) stopClient(true);
-      if (threadId && voiceIntentRef.current) void start(true);
-    });
+    tracker = createThreadTracker(
+      sessionId,
+      (threadId) => {
+        if (threadTrackerRef.current !== tracker) return;
+        if (clientRef.current) stopClient(true);
+        if (threadId && voiceIntentRef.current) void start(true);
+      },
+      (response) => {
+        if (threadTrackerRef.current !== tracker) return;
+        onQuickChatResponseRef.current(response);
+      },
+    );
     threadTrackerRef.current = tracker;
     void tracker.start().catch((error) => {
       if (threadTrackerRef.current !== tracker) return;
@@ -369,5 +391,18 @@ export function useCodexRealtime({
     [],
   );
 
-  return { state, stop, toggle, getLipSyncSource };
+  const trackQuickChatPrompt = useCallback(
+    (prompt: string): Promise<string | null> =>
+      threadTrackerRef.current?.trackQuickChatPrompt(prompt) ?? Promise.resolve(null),
+    [],
+  );
+
+  return {
+    state,
+    stop,
+    toggle,
+    setMicrophoneMuted,
+    trackQuickChatPrompt,
+    getLipSyncSource,
+  };
 }

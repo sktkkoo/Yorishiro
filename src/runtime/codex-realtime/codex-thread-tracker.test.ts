@@ -17,9 +17,11 @@ const bridge = vi.hoisted(() => ({
   channel: null as FakeChannel<string> | null,
   sent: [] as SentMessage[],
   loadedThreads: ["thread-1"] as string[],
+  turns: {} as Record<string, Array<Record<string, unknown>>>,
   parents: {} as Record<string, string | null>,
   ephemeralThreads: new Set<string>(),
   pendingReads: false,
+  turnListFailuresRemaining: 0,
   selectedThread: null as string | null,
   connectFailuresRemaining: 0,
   readResponders: [] as Array<() => void>,
@@ -50,6 +52,12 @@ vi.mock("../../bindings/tauri-commands", () => ({
     if (request.id === undefined) return;
     const respond = (result: unknown) =>
       queueMicrotask(() => bridge.channel?.onmessage(JSON.stringify({ id: request.id, result })));
+    const reject = (message: string) =>
+      queueMicrotask(() =>
+        bridge.channel?.onmessage(
+          JSON.stringify({ id: request.id, error: { code: -32000, message } }),
+        ),
+      );
     if (request.method === "initialize") {
       respond({});
     } else if (request.method === "thread/loaded/list") {
@@ -67,6 +75,14 @@ vi.mock("../../bindings/tauri-commands", () => ({
         });
       if (bridge.pendingReads) bridge.readResponders.push(sendRead);
       else sendRead();
+    } else if (request.method === "thread/turns/list") {
+      if (bridge.turnListFailuresRemaining > 0) {
+        bridge.turnListFailuresRemaining -= 1;
+        reject("history is not materialized");
+        return;
+      }
+      const threadId = request.params?.threadId;
+      respond({ data: typeof threadId === "string" ? (bridge.turns[threadId] ?? []) : [] });
     }
   }),
 }));
@@ -76,9 +92,11 @@ describe("CodexThreadTracker", () => {
     bridge.channel = null;
     bridge.sent = [];
     bridge.loadedThreads = ["thread-1"];
+    bridge.turns = {};
     bridge.parents = {};
     bridge.ephemeralThreads = new Set();
     bridge.pendingReads = false;
+    bridge.turnListFailuresRemaining = 0;
     bridge.selectedThread = null;
     bridge.connectFailuresRemaining = 0;
     bridge.readResponders = [];
@@ -92,6 +110,139 @@ describe("CodexThreadTracker", () => {
     await tracker.start();
 
     expect(tracker.getCurrentThreadId()).toBe("thread-1");
+    tracker.stop();
+  });
+
+  it("polls the matched quick-chat turn and returns its final assistant reply", async () => {
+    const responses: Array<{ requestId: string; text: string }> = [];
+    const tracker = new CodexThreadTracker("main-session", undefined, (response) =>
+      responses.push({ requestId: response.requestId, text: response.text }),
+    );
+    await tracker.start();
+
+    const requestId = await tracker.trackQuickChatPrompt("こんにちは");
+    expect(requestId).not.toBeNull();
+    bridge.turns["thread-1"] = [
+      {
+        id: "turn-quick-chat",
+        status: "completed",
+        items: [
+          { type: "userMessage", content: [{ type: "text", text: "こんにちは" }] },
+          { type: "agentMessage", phase: "commentary", text: "確認するね。" },
+          { type: "agentMessage", phase: "final_answer", text: "こんにちは、聞こえてるよ。" },
+        ],
+      },
+    ];
+
+    await vi.waitFor(() =>
+      expect(responses).toEqual([{ requestId, text: "こんにちは、聞こえてるよ。" }]),
+    );
+    tracker.stop();
+  });
+
+  it("does not reuse an identical quick-chat turn that existed in the baseline", async () => {
+    const responses: string[] = [];
+    bridge.turns["thread-1"] = [
+      {
+        id: "old-turn",
+        status: "completed",
+        items: [
+          { type: "userMessage", content: [{ type: "text", text: "同じ質問" }] },
+          { type: "agentMessage", phase: "final_answer", text: "古い返答" },
+        ],
+      },
+    ];
+    const tracker = new CodexThreadTracker("main-session", undefined, (response) =>
+      responses.push(response.text),
+    );
+    await tracker.start();
+    await tracker.trackQuickChatPrompt("同じ質問");
+
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    expect(responses).toEqual([]);
+
+    bridge.turns["thread-1"] = [
+      {
+        id: "new-turn",
+        status: "completed",
+        items: [
+          { type: "userMessage", content: [{ type: "text", text: "同じ質問" }] },
+          { type: "agentMessage", phase: null, text: "新しい返答" },
+        ],
+      },
+      ...bridge.turns["thread-1"],
+    ];
+    await vi.waitFor(() => expect(responses).toEqual(["新しい返答"]));
+    tracker.stop();
+  });
+
+  it("tracks the first turn of a fresh thread when baseline history is not materialized", async () => {
+    const responses: string[] = [];
+    bridge.turnListFailuresRemaining = 1;
+    const tracker = new CodexThreadTracker("main-session", undefined, (response) =>
+      responses.push(response.text),
+    );
+    await tracker.start();
+    await tracker.trackQuickChatPrompt("最初の質問");
+
+    bridge.turns["thread-1"] = [
+      {
+        id: "first-turn",
+        startedAt: Date.now() / 1_000,
+        status: "completed",
+        items: [
+          { type: "userMessage", content: [{ type: "text", text: "最初の質問" }] },
+          { type: "agentMessage", phase: "final_answer", text: "最初の返答" },
+        ],
+      },
+    ];
+
+    await vi.waitFor(() => expect(responses).toEqual(["最初の返答"]));
+    tracker.stop();
+  });
+
+  it("tracks a quick-chat steer added to an already running turn", async () => {
+    const responses: string[] = [];
+    bridge.turns["thread-1"] = [
+      {
+        id: "running-turn",
+        status: "inProgress",
+        items: [
+          {
+            type: "userMessage",
+            id: "user-original",
+            content: [{ type: "text", text: "先に調べて" }],
+          },
+        ],
+      },
+    ];
+    const tracker = new CodexThreadTracker("main-session", undefined, (response) =>
+      responses.push(response.text),
+    );
+    await tracker.start();
+    await tracker.trackQuickChatPrompt("追加で短く答えて");
+
+    bridge.turns["thread-1"] = [
+      {
+        id: "running-turn",
+        status: "completed",
+        items: [
+          {
+            type: "userMessage",
+            id: "user-original",
+            content: [{ type: "text", text: "先に調べて" }],
+          },
+          {
+            type: "userMessage",
+            id: "user-steer",
+            content: [{ type: "text", text: "追加で短く答えて" }],
+          },
+          { type: "agentMessage", phase: "final_answer", text: "短い返答" },
+        ],
+      },
+    ];
+
+    await vi.waitFor(() => expect(responses).toEqual(["短い返答"]));
     tracker.stop();
   });
 

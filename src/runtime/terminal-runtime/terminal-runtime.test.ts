@@ -1113,6 +1113,27 @@ describe("TerminalRuntime", () => {
     expect(terminal.writes.join("")).not.toContain("Ctrl+C ignored");
   });
 
+  it("submits host-owned quick chat through the normal user-input pipeline", async () => {
+    const runtime = getTerminalRuntime("shell-1");
+    const received: string[] = [];
+    const sub = runtime.subscribeUserInput((data) => received.push(data));
+
+    runtime.submitUserText("  Yori, are you there?  ");
+    await flushMicrotasks();
+    await flushMicrotasks();
+
+    expect(received).toEqual(["Yori, are you there?", "\r"]);
+    expect(mockState.sessionWrite).toHaveBeenNthCalledWith(1, {
+      sessionId: "shell-1",
+      data: "Yori, are you there?",
+    });
+    expect(mockState.sessionWrite).toHaveBeenNthCalledWith(2, {
+      sessionId: "shell-1",
+      data: "\r",
+    });
+    sub.dispose();
+  });
+
   it("allows first Ctrl+C data and suppresses repeated Ctrl+C data in repeated mode", async () => {
     const runtime = getTerminalRuntime("shell-1");
     const terminal = mockState.terminals[0];

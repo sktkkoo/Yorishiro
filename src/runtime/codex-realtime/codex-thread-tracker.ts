@@ -23,8 +23,34 @@ interface JsonRpcMessage {
 const RPC_TIMEOUT_MS = 15_000;
 const RECONNECT_DELAY_MS = 250;
 const TUI_SELECTION_POLL_MS = 100;
+const QUICK_CHAT_POLL_MS = 200;
+const QUICK_CHAT_BASELINE_WAIT_MS = 500;
+const QUICK_CHAT_PROMPT_TTL_MS = 10 * 60 * 1_000;
+const MAX_PENDING_QUICK_CHAT_PROMPTS = 8;
 
 class TrackerRequestTimeoutError extends Error {}
+
+export interface CodexQuickChatResponse {
+  readonly requestId: string;
+  readonly threadId: string;
+  readonly turnId: string;
+  readonly text: string;
+}
+
+interface PendingQuickChatPrompt {
+  readonly requestId: string;
+  readonly prompt: string;
+  readonly threadId: string;
+  readonly submittedAt: number;
+  readonly baselineUserMessageTokens: ReadonlySet<string>;
+  readonly baselineKnown: boolean;
+}
+
+interface TrackedQuickChatTurn {
+  readonly requestId: string;
+  readonly threadId: string;
+  readonly submittedAt: number;
+}
 
 /**
  * TUI proxy が確認した選択 thread を voice が停止中も追跡する。
@@ -36,6 +62,7 @@ class TrackerRequestTimeoutError extends Error {}
 export class CodexThreadTracker {
   private readonly sessionId: string;
   private readonly onCurrentThreadChange: (threadId: string | null) => void;
+  private readonly onQuickChatResponse: (response: CodexQuickChatResponse) => void;
   private connectionId: string | null = null;
   private nextRequestId = 1;
   private pending = new Map<number, PendingRequest>();
@@ -49,17 +76,62 @@ export class CodexThreadTracker {
   private connecting = false;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private selectionPollTimer: ReturnType<typeof setInterval> | null = null;
+  private quickChatPollTimer: ReturnType<typeof setInterval> | null = null;
+  private quickChatPollInFlight = false;
+  private nextQuickChatRequestId = 1;
+  private pendingQuickChatPrompts: PendingQuickChatPrompt[] = [];
+  private readonly trackedQuickChatTurns = new Map<string, TrackedQuickChatTurn>();
 
   constructor(
     sessionId: string,
     onCurrentThreadChange: (threadId: string | null) => void = () => {},
+    onQuickChatResponse: (response: CodexQuickChatResponse) => void = () => {},
   ) {
     this.sessionId = sessionId;
     this.onCurrentThreadChange = onCurrentThreadChange;
+    this.onQuickChatResponse = onQuickChatResponse;
   }
 
   getCurrentThreadId(): string | null {
     return this.currentThreadId;
+  }
+
+  /**
+   * PTY から送る quick-chat prompt と app-server の userMessage を照合し、
+   * その turn の最終 assistant message だけを callback へ返す。
+   */
+  async trackQuickChatPrompt(prompt: string): Promise<string | null> {
+    const normalized = prompt.trim();
+    const threadId = this.currentThreadId;
+    if (!this.running || !threadId || normalized.length === 0) return null;
+    let baseline: ReadonlyArray<Record<string, unknown>> = [];
+    let baselineKnown = true;
+    try {
+      baseline = await this.readRecentTurns(threadId);
+    } catch {
+      // A fresh Codex thread has no materialized turn history yet. In that case
+      // app-server may reject the baseline read, so fall back to startedAt gating.
+      baselineKnown = false;
+    }
+    if (!this.running || this.currentThreadId !== threadId) return null;
+    this.pruneQuickChatTracking();
+    const requestId = `${this.sessionId}:${this.nextQuickChatRequestId++}`;
+    this.pendingQuickChatPrompts.push({
+      requestId,
+      prompt: normalized,
+      threadId,
+      submittedAt: Date.now(),
+      baselineUserMessageTokens: new Set(baseline.flatMap((turn) => userMessageTokens(turn))),
+      baselineKnown,
+    });
+    if (this.pendingQuickChatPrompts.length > MAX_PENDING_QUICK_CHAT_PROMPTS) {
+      this.pendingQuickChatPrompts.splice(
+        0,
+        this.pendingQuickChatPrompts.length - MAX_PENDING_QUICK_CHAT_PROMPTS,
+      );
+    }
+    this.ensureQuickChatPolling();
+    return requestId;
   }
 
   async start(): Promise<void> {
@@ -86,10 +158,17 @@ export class CodexThreadTracker {
       clearInterval(this.selectionPollTimer);
       this.selectionPollTimer = null;
     }
+    if (this.quickChatPollTimer !== null) {
+      clearInterval(this.quickChatPollTimer);
+      this.quickChatPollTimer = null;
+    }
+    this.quickChatPollInFlight = false;
     const connectionId = this.connectionId;
     this.connectionId = null;
     this.setCurrentThreadId(null);
     this.knownLoadedThreadIds.clear();
+    this.pendingQuickChatPrompts = [];
+    this.trackedQuickChatTurns.clear();
     this.rejectPending(new Error("Codex thread tracker stopped"));
     if (connectionId) void sessionRealtimeDisconnect({ connectionId }).catch(() => {});
   }
@@ -323,6 +402,16 @@ export class CodexThreadTracker {
       return;
     }
 
+    if (message.method === "item/completed") {
+      this.handleCompletedItem(message.params);
+      return;
+    }
+
+    if (message.method === "turn/completed") {
+      this.handleCompletedTurn(message.params);
+      return;
+    }
+
     if (message.method === "thread/status/changed") {
       const params = message.params;
       if (
@@ -355,6 +444,246 @@ export class CodexThreadTracker {
       }
     }
   }
+
+  private handleCompletedItem(value: unknown): void {
+    if (!isRecord(value)) return;
+    const threadId = typeof value.threadId === "string" ? value.threadId : null;
+    const turnId = typeof value.turnId === "string" ? value.turnId : null;
+    const item = value.item;
+    if (!threadId || !turnId || !isRecord(item) || item.type !== "userMessage") return;
+    const prompt = userMessageText(item);
+    if (prompt === null) return;
+
+    this.pruneQuickChatTracking();
+    const pendingIndex = this.pendingQuickChatPrompts.findIndex(
+      (pending) => pending.prompt === prompt && pending.threadId === threadId,
+    );
+    if (pendingIndex < 0) return;
+    const [pending] = this.pendingQuickChatPrompts.splice(pendingIndex, 1);
+    if (!pending) return;
+    this.trackedQuickChatTurns.set(turnTrackingKey(threadId, turnId), {
+      requestId: pending.requestId,
+      threadId,
+      submittedAt: pending.submittedAt,
+    });
+  }
+
+  private handleCompletedTurn(value: unknown): void {
+    if (!isRecord(value) || typeof value.threadId !== "string" || !isRecord(value.turn)) return;
+    const turnId = typeof value.turn.id === "string" ? value.turn.id : null;
+    if (!turnId) return;
+    const key = turnTrackingKey(value.threadId, turnId);
+    const tracking = this.trackedQuickChatTurns.get(key);
+    if (!tracking) return;
+    const text = assistantReplyText(value.turn.items);
+    if (text.length === 0 && value.turn.status === "completed") return;
+    this.trackedQuickChatTurns.delete(key);
+    this.onQuickChatResponse({
+      requestId: tracking.requestId,
+      threadId: tracking.threadId,
+      turnId,
+      text,
+    });
+  }
+
+  private pruneQuickChatTracking(now = Date.now()): void {
+    this.pendingQuickChatPrompts = this.pendingQuickChatPrompts.filter(
+      (pending) => now - pending.submittedAt <= QUICK_CHAT_PROMPT_TTL_MS,
+    );
+    for (const [key, tracked] of this.trackedQuickChatTurns) {
+      if (now - tracked.submittedAt > QUICK_CHAT_PROMPT_TTL_MS) {
+        this.trackedQuickChatTurns.delete(key);
+      }
+    }
+    if (this.pendingQuickChatPrompts.length === 0 && this.trackedQuickChatTurns.size === 0) {
+      this.stopQuickChatPolling();
+    }
+  }
+
+  private ensureQuickChatPolling(): void {
+    if (this.quickChatPollTimer !== null) return;
+    const poll = (): void => void this.pollQuickChatTurns();
+    this.quickChatPollTimer = setInterval(poll, QUICK_CHAT_POLL_MS);
+    poll();
+  }
+
+  private stopQuickChatPolling(): void {
+    if (this.quickChatPollTimer === null) return;
+    clearInterval(this.quickChatPollTimer);
+    this.quickChatPollTimer = null;
+  }
+
+  private async pollQuickChatTurns(): Promise<void> {
+    if (!this.running || this.quickChatPollInFlight) return;
+    this.pruneQuickChatTracking();
+    const threadIds = new Set<string>([
+      ...this.pendingQuickChatPrompts.map((pending) => pending.threadId),
+      ...[...this.trackedQuickChatTurns.values()].map((tracked) => tracked.threadId),
+    ]);
+    if (threadIds.size === 0) return;
+    this.quickChatPollInFlight = true;
+    try {
+      for (const threadId of threadIds) {
+        const turns = await this.readRecentTurns(threadId).catch(() => []);
+        this.ingestQuickChatTurns(threadId, turns);
+      }
+    } finally {
+      this.quickChatPollInFlight = false;
+      this.pruneQuickChatTracking();
+    }
+  }
+
+  private async readRecentTurns(threadId: string): Promise<ReadonlyArray<Record<string, unknown>>> {
+    const result = (await new Promise<unknown>((resolve, reject) => {
+      const timeoutId = setTimeout(
+        () => reject(new TrackerRequestTimeoutError("Quick-chat turn lookup timed out")),
+        QUICK_CHAT_BASELINE_WAIT_MS,
+      );
+      void this.request("thread/turns/list", {
+        threadId,
+        limit: 8,
+        sortDirection: "desc",
+        itemsView: "full",
+      }).then(
+        (value) => {
+          clearTimeout(timeoutId);
+          resolve(value);
+        },
+        (error) => {
+          clearTimeout(timeoutId);
+          reject(error);
+        },
+      );
+    })) as { readonly data?: unknown };
+    return Array.isArray(result.data) ? result.data.filter(isRecord) : [];
+  }
+
+  private ingestQuickChatTurns(
+    threadId: string,
+    turns: ReadonlyArray<Record<string, unknown>>,
+  ): void {
+    for (const pending of [...this.pendingQuickChatPrompts]) {
+      if (pending.threadId !== threadId) continue;
+      const turn = turns.find((candidate) => {
+        const turnId = turnIdOf(candidate);
+        if (!turnId) return false;
+        if (!pending.baselineKnown) {
+          const startedAt = candidate.startedAt;
+          if (
+            typeof startedAt !== "number" ||
+            startedAt * 1_000 < pending.submittedAt - QUICK_CHAT_POLL_MS
+          ) {
+            return false;
+          }
+        }
+        return turnHasNewUserMessage(candidate, pending.prompt, pending.baselineUserMessageTokens);
+      });
+      const turnId = turn ? turnIdOf(turn) : null;
+      if (!turn || !turnId) continue;
+      this.pendingQuickChatPrompts = this.pendingQuickChatPrompts.filter(
+        (candidate) => candidate.requestId !== pending.requestId,
+      );
+      this.trackedQuickChatTurns.set(turnTrackingKey(threadId, turnId), {
+        requestId: pending.requestId,
+        threadId,
+        submittedAt: pending.submittedAt,
+      });
+    }
+
+    for (const turn of turns) {
+      const turnId = turnIdOf(turn);
+      if (!turnId || turn.status === "inProgress") continue;
+      const key = turnTrackingKey(threadId, turnId);
+      const tracking = this.trackedQuickChatTurns.get(key);
+      if (!tracking) continue;
+      this.trackedQuickChatTurns.delete(key);
+      this.onQuickChatResponse({
+        requestId: tracking.requestId,
+        threadId,
+        turnId,
+        text: assistantReplyText(turn.items),
+      });
+    }
+  }
+}
+
+function turnTrackingKey(threadId: string, turnId: string): string {
+  return `${threadId}\u0000${turnId}`;
+}
+
+function userMessageText(item: Record<string, unknown>): string | null {
+  if (!Array.isArray(item.content)) return null;
+  const text = item.content
+    .filter(
+      (part): part is Record<string, unknown> =>
+        isRecord(part) && part.type === "text" && typeof part.text === "string",
+    )
+    .map((part) => part.text)
+    .join("")
+    .trim();
+  return text.length > 0 ? text : null;
+}
+
+function turnIdOf(turn: Record<string, unknown>): string | null {
+  return typeof turn.id === "string" && turn.id.length > 0 ? turn.id : null;
+}
+
+function userMessageTokens(turn: Record<string, unknown>): string[] {
+  if (!Array.isArray(turn.items)) return [];
+  const turnId = turnIdOf(turn);
+  return turn.items.flatMap((item, index) => {
+    if (!isRecord(item) || item.type !== "userMessage") return [];
+    const token = userMessageToken(turnId, item, index);
+    return token ? [token] : [];
+  });
+}
+
+function userMessageToken(
+  turnId: string | null,
+  item: Record<string, unknown>,
+  itemIndex: number,
+): string | null {
+  if (typeof item.id === "string" && item.id.length > 0) return `item:${item.id}`;
+  const text = userMessageText(item);
+  return turnId && text ? `turn:${turnId}:${itemIndex}:${text}` : null;
+}
+
+function turnHasNewUserMessage(
+  turn: Record<string, unknown>,
+  prompt: string,
+  baselineTokens: ReadonlySet<string>,
+): boolean {
+  if (!Array.isArray(turn.items)) return false;
+  const turnId = turnIdOf(turn);
+  for (const [index, item] of turn.items.entries()) {
+    if (!isRecord(item) || item.type !== "userMessage") continue;
+    const token = userMessageToken(turnId, item, index);
+    if (userMessageText(item) === prompt && token && !baselineTokens.has(token)) return true;
+  }
+  return false;
+}
+
+function assistantReplyText(value: unknown): string {
+  if (!Array.isArray(value)) return "";
+  let fallback = "";
+  for (let index = value.length - 1; index >= 0; index -= 1) {
+    const item = value[index];
+    if (isRecord(item) && item.type === "agentMessage" && typeof item.text === "string") {
+      const text = item.text.trim();
+      if (text.length === 0) continue;
+      if (item.phase === "final_answer") return text;
+      if (item.phase !== "commentary" && fallback.length === 0) fallback = text;
+    }
+  }
+  if (fallback.length > 0) return fallback;
+  for (let index = value.length - 1; index >= 0; index -= 1) {
+    const item = value[index];
+    if (isRecord(item) && item.type === "agentMessage" && typeof item.text === "string") {
+      const text = item.text.trim();
+      if (text.length > 0) return text;
+    }
+  }
+  return "";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

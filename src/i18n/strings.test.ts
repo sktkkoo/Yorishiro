@@ -80,6 +80,42 @@ describe("View Mode labels", () => {
   });
 });
 
+describe("Quick Chat strings", () => {
+  const quickChatKeys = [
+    "quickChatPlaceholder",
+    "quickChatInputLabel",
+    "quickChatSend",
+    "quickChatClose",
+    "quickVoiceConnecting",
+    "quickVoiceListening",
+    "quickVoiceMuted",
+    "quickVoiceUnavailable",
+    "quickVoiceMuteMicrophone",
+    "quickVoiceUnmuteMicrophone",
+    "quickVoiceShortcutMute",
+    "quickVoiceShortcutUnmute",
+    "quickVoiceEnd",
+  ] as const;
+
+  it("keeps every English Quick Chat label in English", () => {
+    const strings = getStrings("en");
+
+    expect(strings.quickChatPlaceholder).toBe("Message…");
+    expect(strings.quickChatInputLabel).toBe("Quick chat");
+    for (const key of quickChatKeys) {
+      expect(strings[key]).not.toMatch(/[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]/u);
+    }
+  });
+
+  it("keeps every Japanese Quick Chat label localized", () => {
+    const strings = getStrings("ja");
+
+    for (const key of quickChatKeys) {
+      expect(strings[key]).toMatch(/[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]/u);
+    }
+  });
+});
+
 describe("AGENT_COMMAND_SYNTAX", () => {
   // Rust 各 adapter の command_syntax() の mirror。ズレると prefill コマンドが
   // 間違った記法になる。Rust↔TS の drift は health-check で runtime 検知される。

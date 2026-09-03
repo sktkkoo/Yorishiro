@@ -938,6 +938,14 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     this.term.write(text);
   }
 
+  submitUserText(text: string): void {
+    if (this.disposed) return;
+    const prompt = text.trim();
+    if (prompt.length === 0 || this.containsControlData(prompt)) return;
+    this.acceptUserInputData(prompt);
+    this.acceptUserInputData("\r");
+  }
+
   focus(): void {
     if (this.disposed) return;
     this.term.focus();

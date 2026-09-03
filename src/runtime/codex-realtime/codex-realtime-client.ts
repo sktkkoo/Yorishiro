@@ -37,6 +37,8 @@ export interface CodexRealtimeState {
    * established while macOS temporarily interrupts or mutes the input device.
    */
   readonly microphoneActive?: boolean;
+  /** True only when Yorishiro deliberately disabled the local microphone track. */
+  readonly microphoneMuted?: boolean;
   readonly error?: string;
 }
 
@@ -166,6 +168,7 @@ export class CodexRealtimeClient implements LipSyncSource {
   private peer: RTCPeerConnection | null = null;
   private eventChannel: RTCDataChannel | null = null;
   private microphone: MediaStream | null = null;
+  private microphoneMuted = false;
   private microphoneLivenessCleanups: Array<() => void> = [];
   private remoteStream: MediaStream | null = null;
   private remoteSource: MediaStreamAudioSourceNode | null = null;
@@ -234,6 +237,14 @@ export class CodexRealtimeClient implements LipSyncSource {
     return this.state.status;
   }
 
+  setMicrophoneMuted(muted: boolean): void {
+    this.microphoneMuted = muted;
+    for (const track of this.microphone?.getAudioTracks() ?? []) {
+      if (track.readyState === "live") track.enabled = !muted;
+    }
+    this.publishMicrophoneActivity(this.startAttemptEpoch);
+  }
+
   isMouthActive(): boolean {
     return this.state.status === "active" && this.lipSync !== null;
   }
@@ -281,6 +292,7 @@ export class CodexRealtimeClient implements LipSyncSource {
           status: "active",
           billing: result.billing,
           microphoneActive: this.isMicrophoneCaptureActive(),
+          ...(this.microphoneMuted ? { microphoneMuted: true } : {}),
         });
         this.onPersonaApplication?.(result.personaApplication);
         return;
@@ -657,6 +669,7 @@ export class CodexRealtimeClient implements LipSyncSource {
     this.microphone = microphone;
     this.observeMicrophoneLiveness(microphone, attempt);
     for (const track of audioTracks) {
+      track.enabled = !this.microphoneMuted;
       peer.addTrack(track, microphone);
     }
     this.eventChannel = peer.createDataChannel("oai-events");
@@ -1021,8 +1034,19 @@ export class CodexRealtimeClient implements LipSyncSource {
   private publishMicrophoneActivity(attempt: number): void {
     if (!this.isAttemptOwner(attempt) || this.state.status !== "active") return;
     const microphoneActive = this.isMicrophoneCaptureActive();
-    if (this.state.microphoneActive === microphoneActive) return;
-    this.setState({ ...this.state, microphoneActive });
+    const microphoneMuted = this.microphoneMuted ? true : undefined;
+    if (
+      this.state.microphoneActive === microphoneActive &&
+      this.state.microphoneMuted === microphoneMuted
+    ) {
+      return;
+    }
+    const { microphoneMuted: _previousMicrophoneMuted, ...state } = this.state;
+    this.setState({
+      ...state,
+      microphoneActive,
+      ...(microphoneMuted ? { microphoneMuted } : {}),
+    });
   }
 
   private isMicrophoneCaptureActive(): boolean {

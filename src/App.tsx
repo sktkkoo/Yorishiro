@@ -93,6 +93,7 @@ import {
   yorishiroSettingsPack,
 } from "./bundled-packs";
 import CharacterSurface from "./character-surface";
+import { QuickChatInput, QuickVoiceIndicator } from "./components/QuickChatInput";
 import { RestoreConfirmDialog } from "./components/RestoreConfirmDialog";
 import {
   formatMainSessionTabLabel,
@@ -218,6 +219,10 @@ import {
   projectRootValue,
   resolveCurrentProjectRoot,
 } from "./runtime/project-context/project-context";
+import {
+  installQuickChatKeybinding,
+  supportsQuickChatForViewMode,
+} from "./runtime/quick-chat-input";
 import {
   getSceneRegistry,
   resolveSceneAssets,
@@ -1081,8 +1086,18 @@ function App() {
     [viewModeShortcuts],
   );
   const [viewModeHudVisible, setViewModeHudVisible] = useState(false);
+  const [quickChatOpen, setQuickChatOpen] = useState(false);
+  const [quickChatDraft, setQuickChatDraft] = useState("");
+  const quickChatSpeechPendingRef = useRef<{
+    readonly requestId: string;
+    explicitSpeech: boolean;
+  } | null>(null);
+  const quickChatVoiceFrequencyRef = useRef<VoiceFrequency>("on");
   useEffect(() => {
-    const subscription = getUiRegistry().subscribeActive(() => setViewModeHudVisible(false));
+    const subscription = getUiRegistry().subscribeActive(() => {
+      setViewModeHudVisible(false);
+      setQuickChatOpen(false);
+    });
     return () => subscription.dispose();
   }, []);
   useEffect(() => {
@@ -1796,6 +1811,7 @@ function App() {
         getAttentionLightSettingsStore().setEnabled(config.attentionLightNotifications);
         getThreeRuntime().setMotionIntensity(config.motionIntensity);
         voiceFrequency = config.voiceFrequency;
+        quickChatVoiceFrequencyRef.current = config.voiceFrequency;
         setTabMetadataBadgesEnabled(config.tabMetadataBadges);
         configuredLanguage = config.language;
         resolvedLanguage = resolveLanguage(configuredLanguage, getBrowserLocales());
@@ -2467,6 +2483,11 @@ function App() {
           // ── Voice ─────────────────────────────────────────
           "voice.say": createVoiceSayHandler({
             speak: (text, _voice, mood) => {
+              // Quick Chat turn が自分で voice_say した場合は、その短い要約を正本にして
+              // turn completion 後の全文自動読み上げを重ねない。
+              if (quickChatSpeechPendingRef.current) {
+                quickChatSpeechPendingRef.current.explicitSpeech = true;
+              }
               const handle = voiceApi.say(text);
               const body = bodyRef.current;
               const generation = ++speechMoodGeneration;
@@ -4110,6 +4131,8 @@ function App() {
     state: codexRealtimeState,
     stop: stopCodexRealtime,
     toggle: toggleCodexRealtime,
+    setMicrophoneMuted: setCodexMicrophoneMuted,
+    trackQuickChatPrompt,
     getLipSyncSource: getCodexRealtimeLipSyncSource,
   } = useCodexRealtime({
     sessionId: tabState.mainSessionId,
@@ -4144,6 +4167,20 @@ function App() {
     },
     personaPromptMode: "supplemental",
     includeStartupContext: false,
+    onQuickChatResponse: ({ requestId, text }) => {
+      const pending = quickChatSpeechPendingRef.current;
+      if (!pending || pending.requestId !== requestId) return;
+      quickChatSpeechPendingRef.current = null;
+      if (
+        pending.explicitSpeech ||
+        text.length === 0 ||
+        quickChatVoiceFrequencyRef.current === "off" ||
+        !voicePlayer.isPlaybackEnabled()
+      ) {
+        return;
+      }
+      voicePlayer.createVoiceAPI().say(text);
+    },
     onPersonaApplication: ({
       personaId,
       status,
@@ -5506,6 +5543,77 @@ function App() {
     return installTabKeybindings(tabManager, { getNewSessionCwd: () => cwd });
   }, [cwd, isUserLayerReady, tabManager]);
 
+  const conversationPaletteMode = supportsQuickChatForViewMode(activePresentationViewModeIdValue);
+  const conversationShortcutEnabled =
+    conversationPaletteMode &&
+    canMountTerminals &&
+    !mainSessionReplacing &&
+    firstRunHealth === null &&
+    restoreDialog === null &&
+    voiceEntryDialog === null &&
+    reloadCurtainPhase === "hidden";
+  const quickVoiceStatus = codexRealtimeState.status === "idle" ? null : codexRealtimeState.status;
+  const quickChatEnabled = conversationShortcutEnabled && quickVoiceStatus === null;
+
+  useEffect(() => {
+    if (!conversationShortcutEnabled) {
+      setQuickChatOpen(false);
+      return;
+    }
+    return installQuickChatKeybinding({
+      macos: isMac,
+      onInvoke: () => {
+        if (codexRealtimeState.status === "active") {
+          setCodexMicrophoneMuted(codexRealtimeState.microphoneMuted !== true);
+          return;
+        }
+        if (codexRealtimeState.status === "connecting") return;
+        if (codexRealtimeState.status === "error") {
+          void handleToggleVoice();
+          return;
+        }
+        if (!quickChatOpen) {
+          const mainSessionId = tabManager.getState().mainSessionId;
+          tabManager.switchTo(mainSessionId);
+        }
+        setQuickChatOpen(!quickChatOpen);
+      },
+      onHoldStart:
+        codexRealtimeState.status === "idle" || codexRealtimeState.status === "error"
+          ? () => {
+              const mainSessionId = tabManager.getState().mainSessionId;
+              tabManager.switchTo(mainSessionId);
+              setQuickChatOpen(false);
+              void handleToggleVoice();
+            }
+          : undefined,
+    });
+  }, [
+    codexRealtimeState.microphoneMuted,
+    codexRealtimeState.status,
+    conversationShortcutEnabled,
+    handleToggleVoice,
+    isMac,
+    quickChatOpen,
+    setCodexMicrophoneMuted,
+    tabManager,
+  ]);
+
+  const handleQuickChatSubmit = useCallback(() => {
+    const prompt = quickChatDraft.trim();
+    if (!quickChatEnabled || prompt.length === 0) return;
+    const mainSessionId = tabManager.getState().mainSessionId;
+    tabManager.switchTo(mainSessionId);
+    setQuickChatDraft("");
+    setQuickChatOpen(false);
+    void trackQuickChatPrompt(prompt)
+      .catch(() => null)
+      .then((requestId) => {
+        quickChatSpeechPendingRef.current = requestId ? { requestId, explicitSpeech: false } : null;
+        getTerminalRuntime(mainSessionId).submitUserText(prompt);
+      });
+  }, [quickChatDraft, quickChatEnabled, tabManager, trackQuickChatPrompt]);
+
   // ── PTY exit → auto-respawn / tab close ────────────────────
   const ptyExitCleanupRef = useRef<(() => void) | null>(null);
 
@@ -5611,6 +5719,18 @@ function App() {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (event.code === "Escape" && quickChatOpen) {
+        event.preventDefault();
+        event.stopPropagation();
+        setQuickChatOpen(false);
+        return;
+      }
+      if (event.code === "Escape" && quickVoiceStatus !== null && conversationPaletteMode) {
+        event.preventDefault();
+        event.stopPropagation();
+        stopCodexRealtime();
+        return;
+      }
       if (event.code === "KeyR" && (event.ctrlKey || event.metaKey)) {
         event.preventDefault();
         window.location.reload();
@@ -5639,7 +5759,17 @@ function App() {
     return () => {
       window.removeEventListener("keydown", onKeyDown, { capture: true });
     };
-  }, [handleOpenSettings, handleSelectViewMode, isMac, viewModeOwnsChrome, viewModeShortcuts]);
+  }, [
+    handleOpenSettings,
+    handleSelectViewMode,
+    isMac,
+    conversationPaletteMode,
+    quickChatOpen,
+    quickVoiceStatus,
+    stopCodexRealtime,
+    viewModeOwnsChrome,
+    viewModeShortcuts,
+  ]);
 
   // command run の keyboard 操作（active session）。
   // Cmd+Shift+F: 直近 failed run を reference 化。
@@ -5829,6 +5959,37 @@ function App() {
           />
         )}
       </div>
+      {quickChatOpen && quickChatEnabled ? (
+        <QuickChatInput
+          value={quickChatDraft}
+          strings={{
+            placeholder: strings.quickChatPlaceholder,
+            inputLabel: strings.quickChatInputLabel,
+            send: strings.quickChatSend,
+            close: strings.quickChatClose,
+          }}
+          onChange={setQuickChatDraft}
+          onSubmit={handleQuickChatSubmit}
+          onClose={() => setQuickChatOpen(false)}
+        />
+      ) : null}
+      {quickVoiceStatus !== null && conversationShortcutEnabled ? (
+        <QuickVoiceIndicator
+          status={quickVoiceStatus}
+          muted={codexRealtimeState.microphoneMuted === true}
+          connectingLabel={strings.quickVoiceConnecting}
+          activeLabel={strings.quickVoiceListening}
+          mutedLabel={strings.quickVoiceMuted}
+          errorLabel={strings.quickVoiceUnavailable}
+          muteLabel={strings.quickVoiceMuteMicrophone}
+          unmuteLabel={strings.quickVoiceUnmuteMicrophone}
+          shortcutMuteLabel={strings.quickVoiceShortcutMute}
+          shortcutUnmuteLabel={strings.quickVoiceShortcutUnmute}
+          stopLabel={strings.quickVoiceEnd}
+          onToggleMuted={() => setCodexMicrophoneMuted(codexRealtimeState.microphoneMuted !== true)}
+          onStop={stopCodexRealtime}
+        />
+      ) : null}
       {firstRunHealth && (
         <FirstRunHealthPanel
           report={firstRunHealth}
