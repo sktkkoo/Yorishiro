@@ -1,7 +1,11 @@
 // @vitest-environment jsdom
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { installQuickChatKeybinding, supportsQuickChatForViewMode } from "./quick-chat-input";
+import {
+  canUseQuickChat,
+  installQuickChatKeybinding,
+  supportsQuickChatForViewMode,
+} from "./quick-chat-input";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -20,6 +24,22 @@ describe("quick chat availability", () => {
     expect(supportsQuickChatForViewMode("immersive")).toBe(false);
     expect(supportsQuickChatForViewMode(null)).toBe(false);
     expect(supportsQuickChatForViewMode("custom-ui")).toBe(false);
+  });
+
+  it("keeps text Quick Chat available while GPT Live is idle", () => {
+    expect(canUseQuickChat(true, "idle")).toBe(true);
+  });
+
+  it.each([
+    "connecting",
+    "active",
+    "error",
+  ] as const)("disables text Quick Chat while GPT Live is %s", (status) => {
+    expect(canUseQuickChat(true, status)).toBe(false);
+  });
+
+  it("respects the surrounding conversation shortcut guard", () => {
+    expect(canUseQuickChat(false, "idle")).toBe(false);
   });
 });
 

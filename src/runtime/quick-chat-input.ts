@@ -1,8 +1,18 @@
+import type { CodexRealtimeStatus } from "./codex-realtime";
+
 const QUICK_CHAT_VIEW_MODE_IDS = new Set(["companion", "portrait", "theater"]);
 
 /** Host-owned quick chat is available only in the bundled character-first View Modes. */
 export function supportsQuickChatForViewMode(viewModeId: string | null): boolean {
   return viewModeId !== null && QUICK_CHAT_VIEW_MODE_IDS.has(viewModeId);
+}
+
+/** Text Quick Chat remains available only while GPT Live is fully idle. */
+export function canUseQuickChat(
+  conversationShortcutEnabled: boolean,
+  realtimeStatus: CodexRealtimeStatus,
+): boolean {
+  return conversationShortcutEnabled && realtimeStatus === "idle";
 }
 
 interface ModifierTapTarget {
