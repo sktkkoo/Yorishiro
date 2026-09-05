@@ -222,6 +222,7 @@ import {
   resolveCurrentProjectRoot,
 } from "./runtime/project-context/project-context";
 import {
+  canUseQuickChat,
   installQuickChatKeybinding,
   supportsQuickChatForViewMode,
 } from "./runtime/quick-chat-input";
@@ -5552,7 +5553,7 @@ function App() {
     voiceEntryDialog === null &&
     reloadCurtainPhase === "hidden";
   const quickVoiceStatus = codexRealtimeState.status === "idle" ? null : codexRealtimeState.status;
-  const quickChatEnabled = conversationShortcutEnabled && quickVoiceStatus === null;
+  const quickChatEnabled = canUseQuickChat(conversationShortcutEnabled, codexRealtimeState.status);
 
   useEffect(() => {
     if (!conversationShortcutEnabled) {
