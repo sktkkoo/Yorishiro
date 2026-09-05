@@ -5,6 +5,7 @@ import {
   sessionRealtimeSelectedThread,
   sessionRealtimeSend,
 } from "../../bindings/tauri-commands";
+import { type ScreenObservationFrame, ScreenObservationTransport } from "./screen-observation";
 
 interface PendingRequest {
   readonly resolve: (value: unknown) => void;
@@ -81,6 +82,10 @@ export class CodexThreadTracker {
   private nextQuickChatRequestId = 1;
   private pendingQuickChatPrompts: PendingQuickChatPrompt[] = [];
   private readonly trackedQuickChatTurns = new Map<string, TrackedQuickChatTurn>();
+  private readonly screenObservation = new ScreenObservationTransport({
+    request: (method, params) => this.request(method, params as Record<string, unknown>),
+    getThreadId: () => (this.running && this.connectionId ? this.currentThreadId : null),
+  });
 
   constructor(
     sessionId: string,
@@ -94,6 +99,14 @@ export class CodexThreadTracker {
 
   getCurrentThreadId(): string | null {
     return this.currentThreadId;
+  }
+
+  shareScreenObservation(frame: ScreenObservationFrame, signal?: AbortSignal) {
+    return this.screenObservation.observe(frame, signal);
+  }
+
+  cancelScreenObservation(): void {
+    this.screenObservation.cancel();
   }
 
   /**
@@ -147,6 +160,7 @@ export class CodexThreadTracker {
   }
 
   stop(): void {
+    this.screenObservation.cancel();
     this.epoch += 1;
     this.running = false;
     this.connecting = false;
@@ -265,6 +279,7 @@ export class CodexThreadTracker {
 
   private setCurrentThreadId(threadId: string | null): void {
     if (this.currentThreadId === threadId) return;
+    this.screenObservation.cancel();
     this.currentThreadId = threadId;
     this.onCurrentThreadChange(threadId);
   }

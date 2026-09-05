@@ -11,12 +11,14 @@ import {
   DEFAULT_CODEX_REALTIME_VOICE,
 } from "./codex-realtime-client";
 import { type CodexQuickChatResponse, CodexThreadTracker } from "./codex-thread-tracker";
+import type { ScreenObservationFrame, ScreenObservationResult } from "./screen-observation";
 
 export interface CodexRealtimeClientLike extends LipSyncSource {
   getStatus(): CodexRealtimeStatus;
   start(): Promise<void>;
   stop(): void;
   setMicrophoneMuted(muted: boolean): void;
+  notifyScreenContext?(capturedAt: string): Promise<void>;
 }
 
 export type CodexRealtimeClientFactory = (
@@ -38,6 +40,11 @@ export interface CodexThreadTrackerLike {
   trackQuickChatPrompt(prompt: string): Promise<string | null>;
   start(): Promise<void>;
   stop(): void;
+  shareScreenObservation?(
+    frame: ScreenObservationFrame,
+    signal?: AbortSignal,
+  ): Promise<ScreenObservationResult>;
+  cancelScreenObservation?(): void;
 }
 
 interface UseCodexRealtimeOptions {
@@ -76,6 +83,11 @@ interface UseCodexRealtimeOptions {
 }
 
 interface UseCodexRealtimeResult {
+  readonly screenThreadId: string | null;
+  readonly shareScreenObservation: (
+    frame: ScreenObservationFrame,
+    signal: AbortSignal,
+  ) => Promise<ScreenObservationResult>;
   readonly state: CodexRealtimeState;
   readonly stop: () => void;
   readonly toggle: () => Promise<void>;
@@ -158,6 +170,7 @@ export function useCodexRealtime({
   const fallbackPlaybackTransitionRef = useRef(0);
   const fallbackPlaybackQueueRef = useRef<Promise<void>>(Promise.resolve());
   const [state, setState] = useState<CodexRealtimeState>({ status: "idle" });
+  const [screenThreadId, setScreenThreadId] = useState<string | null>(null);
 
   fallbackRef.current = fallbackLipSyncSource;
   applyLipSyncSourceRef.current = applyLipSyncSource;
@@ -335,12 +348,14 @@ export function useCodexRealtime({
   useEffect(() => {
     threadTrackerRef.current?.stop();
     threadTrackerRef.current = null;
+    setScreenThreadId(null);
     if (!available) return;
     let tracker: CodexThreadTrackerLike;
     tracker = createThreadTracker(
       sessionId,
       (threadId) => {
         if (threadTrackerRef.current !== tracker) return;
+        setScreenThreadId(threadId);
         if (clientRef.current) stopClient(true);
         if (threadId && voiceIntentRef.current) void start(true);
       },
@@ -397,7 +412,41 @@ export function useCodexRealtime({
     [],
   );
 
+  const shareScreenObservation = useCallback(
+    async (
+      frame: ScreenObservationFrame,
+      signal: AbortSignal,
+    ): Promise<ScreenObservationResult> => {
+      const tracker = threadTrackerRef.current;
+      const threadId = tracker?.getCurrentThreadId();
+      if (!tracker?.shareScreenObservation || !threadId || signal.aborted) {
+        throw new Error("Main agent is not ready for screen sharing.");
+      }
+      const result = await tracker.shareScreenObservation(frame, signal);
+      if (
+        signal.aborted ||
+        threadTrackerRef.current !== tracker ||
+        tracker.getCurrentThreadId() !== threadId
+      ) {
+        throw new Error("Screen sharing stopped.");
+      }
+      if (result.status === "shared") {
+        // The image is already in main-agent context. A voice reconnect or failed
+        // metadata notification must not stop the independent sharing lease.
+        try {
+          await clientRef.current?.notifyScreenContext?.(frame.capturedAt);
+        } catch {
+          // Voice can learn about subsequent images after it reconnects.
+        }
+      }
+      return result;
+    },
+    [],
+  );
+
   return {
+    screenThreadId,
+    shareScreenObservation,
     state,
     stop,
     toggle,

@@ -10,6 +10,7 @@ import type {
   CodexRealtimeState,
   CodexRealtimeVoiceFallback,
 } from "./codex-realtime-client";
+import type { ScreenObservationFrame } from "./screen-observation";
 import {
   type CodexRealtimeClientFactory,
   type CodexRealtimeClientLike,
@@ -33,6 +34,7 @@ function deferred(): {
 }
 
 class FakeClient implements CodexRealtimeClientLike {
+  readonly notifyScreenContext = vi.fn(async (_capturedAt: string) => {});
   readonly stop = vi.fn(() => this.emit({ status: "idle" }));
   readonly setMicrophoneMuted = vi.fn((muted: boolean) =>
     this.emit({
@@ -118,6 +120,10 @@ function setup(
     text: string;
   }) => void = () => {};
   const trackQuickChatPrompt = vi.fn(async (prompt: string) => `quick:${prompt}`);
+  const shareScreenObservation = vi.fn(async (frame: ScreenObservationFrame) => ({
+    status: "shared" as const,
+    capturedAt: frame.capturedAt,
+  }));
   const createClient: CodexRealtimeClientFactory = (
     sessionId,
     onStateChange,
@@ -167,6 +173,7 @@ function setup(
           return {
             getCurrentThreadId: () => trackedThreadId,
             trackQuickChatPrompt,
+            shareScreenObservation,
             start: async () => {},
             stop: () => {},
           };
@@ -198,6 +205,28 @@ function setup(
 }
 
 describe("useCodexRealtime", () => {
+  it("keeps successfully shared images when the voice notification fails", async () => {
+    const { result, clients } = setup([Promise.resolve()]);
+    await act(async () => result.current.toggle());
+    act(() => clients[0].emit({ status: "active", billing: "subscription" }));
+    clients[0].notifyScreenContext.mockRejectedValueOnce(new Error("Voice disconnected"));
+    const frame = {
+      imageDataUrl: "data:image/jpeg;base64,YQ==",
+      capturedAt: "2026-09-05T13:00:00.000Z",
+      source: "Display 1",
+    };
+
+    await expect(
+      result.current.shareScreenObservation(frame, new AbortController().signal),
+    ).resolves.toEqual({ status: "shared", capturedAt: frame.capturedAt });
+    expect(clients[0].notifyScreenContext).toHaveBeenCalledWith(frame.capturedAt);
+
+    act(() => result.current.stop());
+    await expect(
+      result.current.shareScreenObservation(frame, new AbortController().signal),
+    ).resolves.toEqual({ status: "shared", capturedAt: frame.capturedAt });
+  });
+
   it("tracks quick-chat prompts through the persistent thread tracker", async () => {
     const { result, trackQuickChatPrompt } = setup([]);
 

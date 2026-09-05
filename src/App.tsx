@@ -166,6 +166,7 @@ import { registerBundledPomodoro } from "./runtime/bundled-pomodoro";
 import { registerBundledPomodoroUi } from "./runtime/bundled-pomodoro-ui";
 import { appendCodexRealtimePersonaDiagnostic } from "./runtime/codex-realtime/persona-diagnostics";
 import { useCodexRealtime } from "./runtime/codex-realtime/use-codex-realtime";
+import { useScreenSharing } from "./runtime/codex-realtime/use-screen-sharing";
 import {
   consumePendingRealtimeStart,
   isVoiceEntryAvailable,
@@ -377,6 +378,7 @@ import {
   startSessionAttentionProducer,
   startWorkspaceAttentionPresenceBridge,
 } from "./runtime/workspace-attention";
+import { ScreenSharingControl } from "./screen-sharing-control";
 import * as YorishiroAttentionCue from "./sdk/attention-cue";
 import * as YorishiroControls from "./sdk/controls";
 import type { PersonaDefinition } from "./sdk/persona";
@@ -4133,6 +4135,8 @@ function App() {
     toggle: toggleCodexRealtime,
     setMicrophoneMuted: setCodexMicrophoneMuted,
     trackQuickChatPrompt,
+    screenThreadId,
+    shareScreenObservation,
     getLipSyncSource: getCodexRealtimeLipSyncSource,
   } = useCodexRealtime({
     sessionId: tabState.mainSessionId,
@@ -4271,6 +4275,14 @@ function App() {
     toggleCodexRealtime,
     voiceReconnectPending,
   ]);
+
+  const screenSharingAvailable =
+    codexVoiceAvailable && screenThreadId !== null && /Mac/i.test(navigator.platform);
+  const screenSharing = useScreenSharing({
+    available: screenSharingAvailable,
+    ownerKey: `${tabState.mainSessionId}:${screenThreadId ?? ""}`,
+    share: shareScreenObservation,
+  });
 
   const handleBodyReady = useCallback(
     (body: Body | null) => {
@@ -5850,6 +5862,26 @@ function App() {
         }
         voiceError={codexRealtimeState.error}
         onToggleVoice={() => void handleToggleVoice()}
+        screenSharingControl={
+          codexVoiceAvailable ? (
+            <ScreenSharingControl
+              available={screenSharingAvailable}
+              active={screenSharing.active}
+              busy={screenSharing.busy}
+              intervalSeconds={screenSharing.intervalSeconds}
+              sources={screenSharing.sources}
+              sourceId={screenSharing.sourceId}
+              error={screenSharing.error}
+              lastObservedAt={screenSharing.lastObservedAt}
+              language={appLanguage.resolved}
+              onIntervalChange={screenSharing.setIntervalSeconds}
+              onSourceChange={screenSharing.setSourceId}
+              onStart={() => void screenSharing.start()}
+              onStop={screenSharing.stop}
+              onRefreshSources={() => void screenSharing.refreshSources()}
+            />
+          ) : null
+        }
         tabs={
           <TabIndicator
             state={tabState}
