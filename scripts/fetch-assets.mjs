@@ -50,6 +50,13 @@ const FILE_TARGETS = [
     from: join(externalRoot, "models", "Yori.vrm"),
     to: BUNDLED_YORI_TARGET,
   },
+  {
+    label: "Twilight Café BGM (Afterimage)",
+    from: join(externalRoot, "sounds", "twilight-cafe", "afterimage.mp3"),
+    to: join(REPO_ROOT, "bundled-packs", "scenes", "amber-window-room", "assets", "afterimage.mp3"),
+    // 音源本体はGitに含めない。不在時はsceneの既存resolverがBGMだけを省く。
+    optional: true,
+  },
 ];
 
 /**

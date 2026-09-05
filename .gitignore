@@ -32,6 +32,8 @@ $DATA/
 # Binary assets (rights unconfirmed / user-supplied)
 bundled-packs/shared/animations/*.vrma
 bundled-packs/shared/voices/
+# Twilight Café BGM は外部アセット置き場からビルド時に取り込む。
+bundled-packs/scenes/amber-window-room/assets/afterimage.mp3
 public/animations/
 public/models/
 public/voice/

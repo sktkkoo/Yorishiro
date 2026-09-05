@@ -1,0 +1,19 @@
+afterimage.mp3 (optional local audio asset, excluded from Git)
+  Title: "Lo-Fi Piano Loop A - Afterimage Amin 75 BPM"
+  Author: holizna
+  Source: https://freesound.org/people/holizna/sounds/866733/
+  License: CC0 1.0 Universal (Public Domain Dedication)
+  https://creativecommons.org/publicdomain/zero/1.0/
+  Legal code: https://creativecommons.org/publicdomain/zero/1.0/legalcode.en
+  Retrieved: 2026-09-05
+  Download: https://cdn.freesound.org/previews/866/866733_12574855-hq.mp3
+  Format: Official public HQ MP3 preview, 44.1 kHz stereo, 38.4 seconds
+  Original WAV requires a Freesound login and is not included.
+  Modifications: Filename only; audio bytes are unchanged.
+  SHA-256: 4c042c39c9fb2c94338cb51adc49f48dda2af9fefdaac49109202fef8e998c69
+
+  This record applies to the audio file only. It does not relicense the room
+  model, generated textures, or other visual assets in this directory.
+  The source link is retained for provenance even though CC0 does not require
+  attribution. The MP3 is copied from the local external asset store at build
+  time; it is not committed to the repository.
