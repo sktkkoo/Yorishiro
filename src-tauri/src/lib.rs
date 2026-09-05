@@ -5,6 +5,7 @@ mod journal;
 mod mcp;
 mod pty;
 mod realtime_bridge;
+mod screen_capture;
 mod sessions;
 mod tts;
 
@@ -3857,6 +3858,9 @@ pub fn run() {
         .manage(tts::TtsState::new())
         .manage(mcp::McpServerStatus::default())
         .invoke_handler(tauri::generate_handler![
+            screen_capture::screen_capture_list_sources,
+            screen_capture::screen_capture_request_permission,
+            screen_capture::screen_capture_frame,
             prepare_localized_plugin_dir,
             resolve_command_path,
             resolve_project_root,

@@ -23,6 +23,29 @@ import type { SnapshotEntry } from "../sdk/history";
 const call = <T>(cmd: string, args: object): Promise<T> =>
   invoke<T>(cmd, args as unknown as InvokeArgs);
 
+export interface ScreenCaptureSource {
+  readonly id: number;
+  readonly name: string;
+  readonly width: number;
+  readonly height: number;
+}
+
+export interface ScreenCaptureFrame {
+  readonly sourceId: number;
+  readonly sourceName: string;
+  readonly capturedAt: number;
+  readonly dataUrl: string;
+  readonly width: number;
+  readonly height: number;
+}
+
+export const screenCaptureListSources = (): Promise<ScreenCaptureSource[]> =>
+  call("screen_capture_list_sources", {});
+export const screenCaptureRequestPermission = (): Promise<boolean> =>
+  call("screen_capture_request_permission", {});
+export const screenCaptureFrame = (sourceId: number): Promise<ScreenCaptureFrame> =>
+  call("screen_capture_frame", { sourceId });
+
 // ─── Session ────────────────────────────────────────────────────
 
 /**
