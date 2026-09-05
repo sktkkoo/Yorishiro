@@ -2,15 +2,11 @@
 
 An amber-lit evening café with old window frames, jade walls, walnut furniture, paper lamps and seven flowering plants.
 
-![Twilight Café](../../../docs/assets/twilight-cafe.png)
-
-The saved preview uses Blender Eevee with the window glass hidden for the preview only. The shipped GLB retains its transparent glass; its appearance was verified separately in Yorishiro.
-
 ## Model and materials
 
-`assets/room-polished.glb` is the 0.4.1 room: **73,864 triangles, 31 meshes/primitives, 31 materials and 23 embedded images**, approximately 25.01 MiB. These counts exclude the avatar. The original 236,282-triangle model was reduced by 68.74%; matching materials are consolidated.
+`assets/room-polished.glb` is the 0.4.2 room: **73,864 triangles, 31 meshes/primitives, 31 materials and 23 embedded images**, approximately 25.01 MiB. These counts exclude the avatar. The original 236,282-triangle model was reduced by 68.74%; matching materials are consolidated.
 
-The model includes local contact AO, textured wood and fabric, generated leaf veins, glazed ceramic vessels and a blurred courtyard image. All 284 leaves remain: actual leaf/petal intersections were corrected by rotating affected leaves and petioles, preserving natural overlap. The menu sits in front of the window frame, 5 cm above the red notice and 5.5 cm below the speaker. The hidden floor crock remains removed.
+The model includes local contact AO, textured wood and fabric, generated leaf veins, glazed ceramic vessels and a blurred courtyard image. All 284 leaves remain: actual leaf/petal intersections were corrected by rotating affected leaves and petioles, preserving natural overlap. The menu sits in front of the window frame, 5 cm above the red notice and 5.5 cm below the speaker. The hidden floor crock remains removed. Right-hand ivy stems hang over the front edge of the sill and clear the adjacent flask; the pot sits 9 cm forward, preserving the leaves and the room’s rendering budget.
 
 The foliage adapter adds restrained reverse-side diffuse response to directional light after shadow attenuation. It uses no extra render pass and falls back to ordinary PBR if Three.js shader chunks change. Ceramic clearcoat is authored in the GLB. A 64px environment cube is captured from local Lightformers on setup and control-driven updates, without per-frame capture. No external textures or decoders are required. Window and bottle glass use front-face alpha blending instead of screen-space refraction, avoiding an extra opaque render and full-resolution multisampled transmission buffer each frame.
 
@@ -23,6 +19,14 @@ The room uses meters and Y up; the window is toward negative Z and the camera vi
 F2 → Scene exposes `room.distance` and the `lights` folder. Starting values are ambient 0.05, window 1.15, paper lamps 2 and resident fill 0.5. The parchment terminal background and dark foreground remain readable on light input/message blocks; surrounding UI stays dark jade.
 
 Scene Layers exposes only the foreground overlay. The room and courtyard are part of the 3D model, so there is no separate background media layer.
+
+## Background music
+
+The scene loops **“Lo-Fi Piano Loop A - Afterimage Amin 75 BPM” by holizna**, at a starting volume of 0.15. Settings → Ambient Sound controls its master volume and mute state. It follows the host's scene audio lifecycle, fading out when another scene is selected.
+
+Source: <https://freesound.org/people/holizna/sounds/866733/>. License: [CC0 1.0 Universal](https://creativecommons.org/publicdomain/zero/1.0/). See [the per-file license record](assets/LICENSE) and [CREDITS](../../../CREDITS.md).
+
+The MP3 stays outside Git. Keep a local copy at `../Yorishiro-assets/sounds/twilight-cafe/afterimage.mp3` (or the same path under `YORISHIRO_ASSETS_DIR`). `npm run fetch-assets`, also run before builds, copies it to the ignored `assets/afterimage.mp3`. A checkout without that optional audio file renders the room without BGM.
 
 ## Registration and earlier local copies
 

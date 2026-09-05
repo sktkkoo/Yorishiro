@@ -121,6 +121,7 @@ Bundled ambient audio, referenced by scene packs via `sound:<name>`. The per-fil
 
 - `calming-rain.mp3` — [Pixabay](https://pixabay.com/) — [Pixabay Content License](https://pixabay.com/service/license-summary/) (no attribution required, commercial use permitted)
 - `bundled-packs/scenes/abandoned-factory/assets/abandoned-factory_piano-loop.mp3` — "Piano Loops 208 Octave Up Short Loop 120 BPM" by josefpres — [freesound.org](https://freesound.org/people/josefpres/sounds/852739/) — [CC0 1.0 Universal](https://creativecommons.org/publicdomain/zero/1.0/) (public domain dedication). Per-file terms are also recorded in [`bundled-packs/scenes/abandoned-factory/assets/LICENSE`](bundled-packs/scenes/abandoned-factory/assets/LICENSE).
+- Optional `bundled-packs/scenes/amber-window-room/assets/afterimage.mp3` — "Lo-Fi Piano Loop A - Afterimage Amin 75 BPM" by holizna — [freesound.org](https://freesound.org/people/holizna/sounds/866733/) — [CC0 1.0 Universal](https://creativecommons.org/publicdomain/zero/1.0/) (public domain dedication). The audio stays outside Git at `../Yorishiro-assets/sounds/twilight-cafe/afterimage.mp3` and is copied into the local build by `fetch-assets`. See the [per-file license record](bundled-packs/scenes/amber-window-room/assets/LICENSE).
 
 Yori's pre-recorded voice clips are not bundled in this release.
 

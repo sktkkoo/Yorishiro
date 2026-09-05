@@ -163,7 +163,7 @@ export default {
           "radial-gradient(ellipse at 50% 50%, transparent 62%, rgba(12, 14, 10, 0.22) 100%)",
       },
     ],
-    ambient: [],
+    ambient: [{ src: "./assets/afterimage.mp3", volume: 0.15 }],
     terminal: {
       // シーン切替後もCLIが明るい入力欄を保持するため、紙色の背景と
       // 濃い文字を組み合わせ、既存の入力・返信を読める状態に保つ。
