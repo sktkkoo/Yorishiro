@@ -326,6 +326,72 @@ describe("createLoopAnnounceHandler", () => {
 });
 
 describe("list_packs handler", () => {
+  it("keeps manifest display names separate from IDs for bundled and discovered user packs", async () => {
+    const handler = createListPacksHandler({
+      readRegistry: () => [
+        { id: "custom-pack", kind: "scene" },
+        { id: "legacy-pack", kind: "effect" },
+      ],
+      readBundledPacks: () => [{ id: "amber-window-room", kind: "scene", name: "Twilight Café" }],
+      readUserPackEntries: async () => [
+        {
+          id: "custom-pack",
+          kind: "scene",
+          entryPath: "/packs/custom-pack/scene.tsx",
+          manifest: { id: "custom-pack", type: "scene", entry: "scene.tsx", name: "Custom Room" },
+        },
+        {
+          id: "custom-pack",
+          kind: "ui",
+          entryPath: "/packs/custom-pack/ui.tsx",
+          manifest: { id: "custom-pack", type: "ui", entry: "ui.tsx", name: "Other Kind" },
+        },
+        {
+          id: "disabled-pack",
+          kind: "ambient-ui",
+          entryPath: "/packs/disabled-pack/ambient-ui.tsx",
+          manifest: {
+            id: "disabled-pack",
+            type: "ambient-ui",
+            entry: "ambient-ui.tsx",
+            name: "Sleeping Overlay",
+          },
+        },
+      ],
+      readConfig: async () => ({ ...EMPTY_CONFIG, disabledPacks: ["disabled-pack"] }),
+      readLoadReport: async () => null,
+      getActiveIds: () => ({ scene: "amber-window-room", ui: null, persona: null }),
+    });
+    const { packs } = await handler({});
+    expect(packs).toEqual([
+      {
+        id: "amber-window-room",
+        name: "Twilight Café",
+        kind: "scene",
+        origin: "bundled",
+        status: "loaded",
+        isActive: true,
+      },
+      {
+        id: "custom-pack",
+        name: "Custom Room",
+        kind: "scene",
+        origin: "user",
+        status: "loaded",
+        isActive: false,
+      },
+      { id: "legacy-pack", kind: "effect", origin: "user", status: "loaded", isActive: false },
+      {
+        id: "disabled-pack",
+        name: "Sleeping Overlay",
+        kind: "ambient-ui",
+        origin: "user",
+        status: "disabled",
+        isActive: false,
+      },
+    ]);
+  });
+
   it("merges registry / disabledPacks / load-report.failed under their invariants", async () => {
     const registry = new UserPackRegistry();
     registry.register("a", "effect", { dispose: () => {} });

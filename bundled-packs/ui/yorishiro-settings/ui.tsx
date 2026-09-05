@@ -833,6 +833,10 @@ function NewSessionConfirmDialog({
   );
 }
 
+export function packDisplayName(pack: Pick<UiAppPackStatusEntry, "id" | "name">): string {
+  return pack.name?.trim() || pack.id;
+}
+
 export function packWorkbenchKey(pack: Pick<UiAppPackStatusEntry, "id" | "kind">): string {
   return `${pack.kind || "unknown"}:${pack.id}`;
 }
@@ -1097,7 +1101,7 @@ function PackToggle({
       type="button"
       role="switch"
       aria-checked={enabled}
-      aria-label={`${enabled ? "Disable" : "Enable"} pack ${pack.id}`}
+      aria-label={`${enabled ? "Disable" : "Enable"} pack ${packDisplayName(pack)}`}
       disabled={busy}
       onClick={(e) => {
         e.stopPropagation();
@@ -1593,7 +1597,7 @@ function SnapshotRestoreSection({
   );
 }
 
-function PackWorkbench({
+export function PackWorkbench({
   ctx,
   strings,
   onClose,
@@ -1827,6 +1831,7 @@ function PackWorkbench({
                 </div>
                 {group.packs.map((pack) => {
                   const key = packWorkbenchKey(pack);
+                  const displayName = packDisplayName(pack);
                   const selected = key === selectedKey;
                   const isDisabled = pack.status === "disabled";
                   return (
@@ -1853,6 +1858,7 @@ function PackWorkbench({
                       <button
                         type="button"
                         onClick={() => selectPack(key)}
+                        title={pack.id}
                         style={{
                           display: "flex",
                           alignItems: "center",
@@ -1888,7 +1894,7 @@ function PackWorkbench({
                             textDecoration: isDisabled ? "line-through" : "none",
                           }}
                         >
-                          {pack.id}
+                          {displayName}
                         </span>
                         {pack.origin === "user" && (
                           <span
@@ -1961,7 +1967,7 @@ function PackWorkbench({
                     minWidth: 0,
                   }}
                 >
-                  {selectedPack.id}
+                  {packDisplayName(selectedPack)}
                 </span>
                 <span
                   style={{
@@ -2013,6 +2019,18 @@ function PackWorkbench({
                   </div>
                 )}
               </div>
+              {packDisplayName(selectedPack) !== selectedPack.id && (
+                <div
+                  style={{
+                    fontSize: FONT.sizeXs,
+                    color: COLORS.fgDimmer,
+                    overflowWrap: "anywhere",
+                    marginBottom: SPACING.sm,
+                  }}
+                >
+                  {selectedPack.id}
+                </div>
+              )}
               <PackMetadata diagnosis={diagnosis} origin={selectedPack.origin} />
 
               {diagnosis === null ? (

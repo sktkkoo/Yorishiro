@@ -1248,6 +1248,8 @@ struct UserPackEntry {
 #[derive(serde::Deserialize, serde::Serialize)]
 struct UserPackManifestSummary {
     id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    name: Option<String>,
     #[serde(rename = "type")]
     kind: String,
     entry: String,
@@ -1570,6 +1572,7 @@ fn discover_user_pack_entries(packs_dir: &Path) -> Result<Vec<UserPackEntry>, St
                     source: "local",
                     manifest: manifest.as_ref().map(|m| UserPackManifestSummary {
                         id: m.id.clone(),
+                        name: m.name.clone(),
                         kind: m.kind.clone(),
                         entry: m.entry.clone(),
                         execution_class: m.execution_class.clone(),
@@ -4162,6 +4165,7 @@ mod user_pack_discovery_tests {
             pack_dir.join("manifest.json"),
             r#"{
               "id": "my-overlay",
+              "name": "Quiet Overlay",
               "type": "ambient-ui",
               "version": "0.1.0",
               "yorishiroVersion": "^0.1.0",
@@ -4180,6 +4184,11 @@ mod user_pack_discovery_tests {
             .entry_path
             .ends_with("/my-overlay/ambient-ui.tsx"));
         let manifest = entries[0].manifest.as_ref().expect("manifest summary");
+        assert_eq!(manifest.name.as_deref(), Some("Quiet Overlay"));
+        assert_eq!(
+            serde_json::to_value(manifest).expect("serialize summary")["name"],
+            "Quiet Overlay"
+        );
         assert_eq!(manifest.kind, "ambient-ui");
         assert_eq!(manifest.entry, "ambient-ui.tsx");
 

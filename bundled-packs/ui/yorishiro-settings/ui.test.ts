@@ -14,6 +14,7 @@ import {
   formatVrmMetaValue,
   formatVrmSpecVersion,
   type NewSessionChangeKind,
+  packDisplayName,
   packWorkbenchKey,
   resolveCloseTarget,
   resolveNewSessionConfirm,
@@ -594,6 +595,16 @@ describe("Pack Workbench helpers", () => {
       isActive: false,
     },
   ];
+
+  it("prefers the manifest display name but keeps unnamed pack IDs readable", () => {
+    expect(packDisplayName({ id: "amber-window-room", name: "Twilight Café" })).toBe(
+      "Twilight Café",
+    );
+    expect(packDisplayName({ id: "legacy-room" })).toBe("legacy-room");
+    expect(packDisplayName({ id: "legacy-room", name: "   " })).toBe("legacy-room");
+    const renamed = { ...packs[0], name: "Renamed Room" };
+    expect(packWorkbenchKey(renamed)).toBe("scene:ok-scene");
+  });
 
   it("builds stable row keys from kind and id", () => {
     expect(packWorkbenchKey(packs[0])).toBe("scene:ok-scene");

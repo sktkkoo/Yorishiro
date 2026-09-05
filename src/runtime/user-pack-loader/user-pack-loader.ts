@@ -53,6 +53,7 @@ export interface UserPackEntry {
   readonly source?: "local" | "community" | "curated" | "bundled";
   readonly manifest?: {
     readonly id: string;
+    readonly name?: string;
     readonly type: string;
     readonly entry: string;
     readonly executionClass?: string;

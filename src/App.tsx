@@ -2189,42 +2189,44 @@ function App() {
             createAmenityContext,
           });
         };
-        const readBundledPacks = (): Array<{ id: string; kind: string }> => [
+        const readBundledPacks = (): Array<{ id: string; kind: string; name?: string }> => [
           ...personaRegistry
             .listEntries()
             .filter((e) => e.origin === "bundled")
-            .map((e) => ({ id: e.id, kind: "persona" })),
+            .map((e) => ({ id: e.id, kind: "persona", name: e.manifest.name })),
           ...scenePackRegistry
             .listEntries()
             .filter((e) => e.origin === "bundled")
-            .map((e) => ({ id: e.id, kind: "scene" })),
+            .map((e) => ({ id: e.id, kind: "scene", name: e.manifest.name })),
           ...uiPackRegistry
             .listEntries()
             .filter((e) => e.origin === "bundled")
-            .map((e) => ({ id: e.id, kind: "ui" })),
+            .map((e) => ({ id: e.id, kind: "ui", name: e.manifest.name })),
           ...[
-            abandonedMonitorPack,
-            cameraMovePack,
-            desaturatePack,
-            fireworksPack,
-            fireworksVolleyPack,
-            screenShakePack,
-            textPhysicsPack,
-          ].map((p) => ({ id: p.id, kind: "effect" })),
+            abandonedMonitorManifest,
+            cameraMoveManifest,
+            desaturateManifest,
+            fireworksManifest,
+            fireworksVolleyManifest,
+            screenShakeManifest,
+            textPhysicsManifest,
+          ].map((p: { id: string; name?: string }) => ({ id: p.id, kind: "effect", name: p.name })),
           ...getAmbientUiPackRegistry()
             .listEntries()
             .filter((e) => e.origin === "bundled")
-            .map((e) => ({ id: e.id, kind: "ambient-ui" })),
+            .map((e) => ({ id: e.id, kind: "ambient-ui", name: e.manifest.name })),
           ...getAmenityPackRegistry()
             .listEntries()
             .filter((e) => e.origin === "bundled")
-            .map((e) => ({ id: e.id, kind: "amenity" })),
+            .map((e) => ({ id: e.id, kind: "amenity", name: e.manifest.name })),
         ];
 
         let speechMoodGeneration = 0;
         let speechMoodHandle: SpeechStateExpressionHandle | null = null;
         const handlers: ToolHandlerMap = {
           "list-packs": createListPacksHandler({
+            readUserPackEntries: async () =>
+              invoke<UserPackEntry[]>("list_user_packs").catch(() => []),
             readRegistry: () => packRegistry.listEntries(),
             readBundledPacks,
             readConfig,
@@ -3158,6 +3160,7 @@ function App() {
       return {
         id,
         kind,
+        name: m?.name as string | undefined,
         description: m?.description as string | undefined,
         author: m?.author as string | undefined,
       };
@@ -3197,7 +3200,9 @@ function App() {
 
   const listPacksForHealth = useCallback(async () => {
     const { createListPacksHandler } = await import("./runtime/yorishiro-mcp/tool-handlers");
-    const result = await createListPacksHandler({
+    type UserPackEntry = import("./runtime/user-pack-loader/user-pack-loader").UserPackEntry;
+    return createListPacksHandler({
+      readUserPackEntries: async () => invoke<UserPackEntry[]>("list_user_packs").catch(() => []),
       readRegistry: () => packRegistry.listEntries(),
       readBundledPacks,
       readConfig: async () => parseConfig(await readYorishiroConfigText()),
@@ -3218,16 +3223,6 @@ function App() {
         amenity: getAmenityPackRegistry().getActiveSet(),
       }),
     })({});
-    type UserPackEntry = import("./runtime/user-pack-loader/user-pack-loader").UserPackEntry;
-    const userEntries = await invoke<UserPackEntry[]>("list_user_packs").catch(() => []);
-    return {
-      packs: result.packs.flatMap((pack) => {
-        if (pack.status !== "disabled" || pack.kind !== "") return [pack];
-        const matchingEntries = userEntries.filter((entry) => entry.id === pack.id);
-        if (matchingEntries.length === 0) return [pack];
-        return matchingEntries.map((entry) => ({ ...pack, kind: entry.kind }));
-      }),
-    };
   }, [packRegistry, personaRegistry, scenePackRegistry, uiPackRegistry, readBundledPacks]);
 
   const collectAppHealthReport = useCallback(

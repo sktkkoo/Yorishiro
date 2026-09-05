@@ -161,6 +161,8 @@ export interface UiAppPackOption {
 
 export interface UiAppPackStatusEntry {
   readonly id: string;
+  /** manifest の表示名。未指定の場合は UI 側で id を表示する。 */
+  readonly name?: string;
   readonly kind: string;
   readonly origin: "bundled" | "user";
   readonly status: "loaded" | "disabled" | "failed";

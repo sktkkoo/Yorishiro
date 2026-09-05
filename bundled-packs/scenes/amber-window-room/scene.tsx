@@ -61,11 +61,11 @@ function Room({ url }: { url: string }) {
 
 function RoomLights() {
   const [controls, setControls] = useYorishiroControls("lights", () => ({
-    ambientIntensity: { value: 0.45, min: 0, max: 2, step: 0.01, label: "ambient" },
+    ambientIntensity: { value: 0.05, min: 0, max: 2, step: 0.01, label: "ambient" },
     ambientColor: { value: "#c4ccc1", label: "ambient color" },
     windowIntensity: { value: 1.15, min: 0, max: 4, step: 0.01, label: "window" },
     windowColor: { value: "#ffd39a", label: "window color" },
-    lampIntensity: { value: 1.3, min: 0, max: 5, step: 0.01, label: "paper lamps" },
+    lampIntensity: { value: 2, min: 0, max: 5, step: 0.01, label: "paper lamps" },
     lampColor: { value: "#ffb35b", label: "lamp color" },
     fillIntensity: { value: 0.5, min: 0, max: 2, step: 0.01, label: "resident fill" },
   }));
@@ -155,7 +155,6 @@ export default {
   scene: {
     id: ID,
     layers: [
-      { id: "room-backdrop", role: "background", backgroundColor: "#171b16" },
       { id: "vrm-slot", role: "character", blur: 0 },
       {
         id: "soft-vignette",

@@ -42,6 +42,7 @@ import type { ToolInvocationContext } from "./event-channel";
 
 export interface PackStatusEntry {
   readonly id: string;
+  readonly name?: string;
   readonly kind: string;
   readonly origin: "bundled" | "user";
   readonly status: "loaded" | "disabled" | "failed";
@@ -54,6 +55,7 @@ export interface ListPacksResponse {
 
 export interface BundledPackEntry {
   readonly id: string;
+  readonly name?: string;
   readonly kind: string;
   readonly description?: string;
   readonly author?: string;
@@ -64,6 +66,8 @@ export interface ListPacksDeps {
   readonly readBundledPacks: () => Array<BundledPackEntry>;
   readonly readConfig: () => Promise<YorishiroConfig>;
   readonly readLoadReport: () => Promise<LoadReport | null>;
+  /** 発見済みの manifest から表示名を補完する。読み込み・登録処理は行わない。 */
+  readonly readUserPackEntries?: () => Promise<ReadonlyArray<UserPackEntry>>;
   /**
    * 現 active id 群を返す。
    * scene / ui / persona は single-active、ambient-ui / amenity は multi-active。
@@ -79,19 +83,38 @@ export interface ListPacksDeps {
 
 export function createListPacksHandler(deps: ListPacksDeps) {
   return async (_request: unknown): Promise<ListPacksResponse> => {
-    return buildListPacksResponse({
+    const [config, loadReport, userEntries] = await Promise.all([
+      deps.readConfig(),
+      deps.readLoadReport(),
+      deps.readUserPackEntries?.() ?? Promise.resolve([]),
+    ]);
+    const result = buildListPacksResponse({
       registryEntries: deps.readRegistry(),
       bundledPacks: deps.readBundledPacks(),
-      config: await deps.readConfig(),
-      loadReport: await deps.readLoadReport(),
+      config,
+      loadReport,
       activeIds: deps.getActiveIds(),
     });
+    return {
+      packs: result.packs.flatMap((pack) => {
+        if (pack.origin === "bundled") return [pack];
+        const matches = userEntries.filter(
+          (entry) => entry.id === pack.id && (pack.kind === "" || entry.kind === pack.kind),
+        );
+        if (matches.length === 0) return [pack];
+        return matches.map((entry) => ({
+          ...pack,
+          kind: entry.kind,
+          ...(entry.manifest?.name ? { name: entry.manifest.name } : {}),
+        }));
+      }),
+    };
   };
 }
 
 interface BuildListPacksInput {
   readonly registryEntries: Array<{ id: string; kind: string }>;
-  readonly bundledPacks: Array<{ id: string; kind: string }>;
+  readonly bundledPacks: Array<BundledPackEntry>;
   readonly config: YorishiroConfig;
   readonly loadReport: LoadReport | null;
   readonly activeIds: {
@@ -118,6 +141,7 @@ function buildListPacksResponse(input: BuildListPacksInput): ListPacksResponse {
       id: e.id,
       kind: e.kind,
       origin: "bundled",
+      ...(e.name ? { name: e.name } : {}),
       status: "loaded" as const,
       isActive: isActiveFor(e.kind, e.id),
     }),
