@@ -24,6 +24,7 @@ bundled-packs/
 │   └── pomodoro/            — pomodoro timer
 ├── scenes/
 │   ├── simple-room/         — default scene (R3F component scene)
+│   ├── amber-window-room/  — Twilight Café
 │   ├── misty-grasslands/    — Three.js procedural meadow scene
 │   └── abandoned-factory/   — R3F-component 廃工場 scene
 ├── effects/
@@ -90,6 +91,14 @@ bundled-packs/
 - **Files**: `manifest.json`, `README.md`, `lib/lights.tsx`, `tsconfig.json`
 - **役割**: runtime 内蔵 Three.js procedural renderer を使う high-fidelity scene。朝の光・遠景の山並み・風になびく草・光粒子を外部画像 / 動画 asset なしで描く
 - 詳細：`bundled-packs/scenes/misty-grasslands/README.md`
+
+### scenes/amber-window-room — Twilight Café
+
+琥珀色に灯る夕暮れの喫茶店。葉脈のある植物、釉薬の器、ぼかした窓外を含むGLBシーン。部屋の距離と照明を調整できる。
+
+- `scene.tsx`, `lib/foliage-material.ts`, `assets/room-polished.glb`
+- 73,864 triangles; 31 materials; 23 embedded images
+- [Pack details](scenes/amber-window-room/README.md)
 
 ### scenes/abandoned-factory
 - **Entry**: `scene.tsx`

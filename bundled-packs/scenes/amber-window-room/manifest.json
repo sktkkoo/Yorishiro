@@ -1,0 +1,12 @@
+{
+  "$schema": "https://yorishiro.dev/schemas/pack-manifest.schema.json",
+  "id": "amber-window-room",
+  "name": "Twilight Café",
+  "type": "scene",
+  "version": "0.4.0",
+  "yorishiroVersion": "^0.1.0",
+  "executionClass": "trusted-main-thread-js",
+  "description": "An amber-lit evening café with jade walls, walnut furniture, flowering window plants and a softly blurred courtyard. Includes adjustable room placement and lighting.",
+  "author": "oogakitakashi",
+  "entry": "scene.tsx"
+}

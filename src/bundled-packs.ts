@@ -38,6 +38,8 @@ export { default as yoriJaPack } from "../bundled-packs/personas/yori-ja/persona
 // Scenes
 export { default as abandonedFactoryManifest } from "../bundled-packs/scenes/abandoned-factory/manifest.json";
 export { default as abandonedFactoryPack } from "../bundled-packs/scenes/abandoned-factory/scene";
+export { default as amberWindowManifest } from "../bundled-packs/scenes/amber-window-room/manifest.json";
+export { default as amberWindowPack } from "../bundled-packs/scenes/amber-window-room/scene";
 export { default as mistyGrasslandsManifest } from "../bundled-packs/scenes/misty-grasslands/manifest.json";
 export { default as mistyGrasslandsPack } from "../bundled-packs/scenes/misty-grasslands/scene";
 export { default as simpleRoomManifest } from "../bundled-packs/scenes/simple-room/manifest.json";

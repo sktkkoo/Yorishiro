@@ -52,6 +52,8 @@ import {
   abandonedFactoryPack,
   abandonedMonitorManifest,
   abandonedMonitorPack,
+  amberWindowManifest,
+  amberWindowPack,
   attentionAuraManifest,
   cameraMoveManifest,
   cameraMovePack,
@@ -1742,6 +1744,7 @@ function App() {
         { pack: simpleRoomPack, manifest: simpleRoomManifest as ScenePackManifest },
         { pack: mistyGrasslandsPack, manifest: mistyGrasslandsManifest as ScenePackManifest },
         { pack: abandonedFactoryPack, manifest: abandonedFactoryManifest as ScenePackManifest },
+        { pack: amberWindowPack, manifest: amberWindowManifest as ScenePackManifest },
       ];
       for (const { pack, manifest } of bundledScenes) {
         try {
@@ -3127,6 +3130,7 @@ function App() {
           yoriEnManifest,
           yoriJaManifest,
           abandonedFactoryManifest,
+          amberWindowManifest,
           mistyGrasslandsManifest,
           simpleRoomManifest,
           yorishiroSettingsManifest,
