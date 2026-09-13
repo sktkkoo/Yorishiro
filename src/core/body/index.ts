@@ -645,7 +645,6 @@ export class Body {
     ) {
       playback.setWeight(playback.automaticBaseWeight * Math.min(1, this.motionIntensity), 350);
     }
-    if (this.motionIntensity < 1) this.recordedBody.suspend(350, "reduced-intensity");
     if (this.motionIntensity === 0) {
       this.recordedIdleFoundation.suspend(350);
       this.ambientMotionHandle?.release(350);
@@ -1342,14 +1341,9 @@ export class Body {
 
   /** Establish a reviewed standing pose before ThreeRuntime displays this avatar. */
   async initializeRecordedBody(): Promise<void> {
-    if (
-      this.disposed ||
-      !this.motionLibraryEnabled ||
-      this.motionIntensity < 1 ||
-      this.claimState.isClaimed("animation")
-    )
+    if (this.disposed || !this.motionLibraryEnabled || this.claimState.isClaimed("animation"))
       return;
-    await this.recordedBody.initialize();
+    await this.recordedBody.initialize(this.motionIntensity);
   }
 
   getRecordedBodySnapshot() {
@@ -1411,16 +1405,14 @@ export class Body {
     const activePriority = this.motionScheduler.getActivePriority();
     this.recordedBody.update(
       delta * 1000,
-      this.motionLibraryEnabled &&
-        !claimed &&
-        this.motionIntensity >= 1 &&
-        !this.foundationBlockedByPerformance,
+      this.motionLibraryEnabled && !claimed && !this.foundationBlockedByPerformance,
       speaking ? "speech" : "idle",
       speaking ||
         (state === "idle" &&
           !["user-speaking", "assistant-responding", "interrupted"].includes(
             this.motionConversationPhase,
           )),
+      this.motionIntensity,
     );
     if (this.recordedBody.ownsUpperBody && this.ambientMotionHandle) {
       this.ambientMotionHandle.release(650);

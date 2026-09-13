@@ -142,10 +142,28 @@ describe("recorded motion Body integration", () => {
       })),
     );
     vi.spyOn(AnimationPlayer.prototype, "preloadRecordedBase").mockResolvedValue(true);
-    const base = { ...playback(), phaseSec: 2, held: false, setUpperWeight: vi.fn() };
+    const base = {
+      ...playback(),
+      phaseSec: 2,
+      held: false,
+      paused: false,
+      setPaused: vi.fn(),
+      setUpperWeight: vi.fn(),
+    };
     vi.spyOn(AnimationPlayer.prototype, "playRecordedBase").mockResolvedValue(base);
     const { body, claims } = createBody(sha);
+    body.setMotionIntensity(0.95);
     await body.initializeRecordedBody();
+    expect(body.getRecordedBodySnapshot().active?.id).toBe("standing");
+    expect(base.setUpperWeight).toHaveBeenLastCalledWith(0.95, 0);
+    for (const intensity of [0.5, 0, 0.95]) {
+      body.setMotionIntensity(intensity);
+      advance(body, 0.4);
+      expect(body.getRecordedBodySnapshot().active?.id).toBe("standing");
+      expect(base.stop).not.toHaveBeenCalled();
+      expect(base.cancel).not.toHaveBeenCalled();
+      expect(base.setPaused).toHaveBeenLastCalledWith(intensity === 0);
+    }
     vi.spyOn(AnimationPlayer.prototype, "play").mockResolvedValue(playback());
     body.createCharacterAPI().play("anim:VRMA_small_nod", { mask: "upper-body" });
     await flush();

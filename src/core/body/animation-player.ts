@@ -512,7 +512,7 @@ export class AnimationPlayer {
     return this.active.size + (this.recordedBase?.activeCount ?? 0);
   }
   hasActiveRecordedBase(): boolean {
-    return (this.recordedBase?.activeCount ?? 0) > 0;
+    return this.recordedBase?.hasMotion ?? false;
   }
   getTotalEffectiveWeight(): number {
     return Math.min(
