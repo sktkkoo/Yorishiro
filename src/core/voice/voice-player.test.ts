@@ -45,7 +45,12 @@ const { mockInvoke, mockAudioContext, mockFetch, mockEnsureAudioContextRunning, 
       resume: vi.fn(() => Promise.resolve()),
       createAnalyser: vi.fn(() => ({ ...mockAnalyserNode })),
       createGain: vi.fn(() => createMockGainNode()),
-      createBufferSource: vi.fn(() => ({ ...mockSource })),
+      createBufferSource: vi.fn(() => ({
+        ...mockSource,
+        connect: vi.fn(),
+        start: vi.fn(),
+        stop: vi.fn(),
+      })),
       createBuffer: vi.fn((numberOfChannels: number, length: number, sampleRate: number) => {
         const channels = Array.from({ length: numberOfChannels }, () => new Float32Array(length));
         return {
@@ -65,7 +70,7 @@ const { mockInvoke, mockAudioContext, mockFetch, mockEnsureAudioContextRunning, 
     };
     const mockEnsureAudioContextRunning = vi.fn(async () => mockAudioContext);
     return {
-      mockInvoke: vi.fn(() => Promise.resolve()),
+      mockInvoke: vi.fn((_command?: string, _args?: Record<string, unknown>) => Promise.resolve()),
       mockAudioContext,
       mockFetch: vi.fn(),
       mockEnsureAudioContextRunning,
@@ -73,7 +78,12 @@ const { mockInvoke, mockAudioContext, mockFetch, mockEnsureAudioContextRunning, 
     };
   });
 
-vi.mock("@tauri-apps/api/core", () => ({ invoke: mockInvoke }));
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: mockInvoke,
+  Channel: class {
+    onmessage: ((data: ArrayBuffer) => void) | null = null;
+  },
+}));
 vi.mock("./audio-context", () => ({
   ensureAudioContextRunning: mockEnsureAudioContextRunning,
   getAudioContext: () => mockAudioContext,
@@ -84,7 +94,7 @@ vi.stubGlobal("requestAnimationFrame", (cb: () => void) => setTimeout(cb, 0));
 vi.stubGlobal("cancelAnimationFrame", (id: number) => clearTimeout(id));
 vi.stubGlobal("fetch", mockFetch);
 
-import type { TtsEngine } from "./tts-engine";
+import { SayTtsEngine, type TtsEngine } from "./tts-engine";
 import { VoicePlayer } from "./voice-player";
 import { getVoiceVolumeStore } from "./voice-volume-store";
 
@@ -95,6 +105,10 @@ const flushPlaybackStart = async (): Promise<void> => {
   await Promise.resolve();
   await new Promise((resolve) => setTimeout(resolve, 0));
 };
+
+function speechLifecycle() {
+  return { onPrepared: vi.fn(), onStarted: vi.fn(), onEnded: vi.fn() };
+}
 
 afterEach(() => {
   getVoiceVolumeStore().set(1);
@@ -129,6 +143,16 @@ describe("VoicePlayer (engine なし — OS TTS フォールバック)", () => {
       text: "こんにちは",
       voice: null,
     });
+  });
+
+  it("does not invent semantic playback timing for the unclocked native fallback", async () => {
+    const lifecycle = speechLifecycle();
+    const player = new VoicePlayer("Kyoko", undefined, lifecycle);
+    await player.createVoiceAPI().say("はい。").completion;
+    expect(lifecycle.onPrepared).not.toHaveBeenCalled();
+    expect(lifecycle.onStarted).not.toHaveBeenCalled();
+    expect(lifecycle.onEnded).not.toHaveBeenCalled();
+    player.dispose();
   });
 
   it("say() はコンストラクタで指定した voice を渡す", () => {
@@ -333,6 +357,192 @@ describe("VoicePlayer (engine あり — Web Audio)", () => {
 
     expect(engine.synthesize).toHaveBeenCalledWith("テスト", "Kyoko");
     expect(mockInvoke).not.toHaveBeenCalledWith("tts_speak", expect.anything());
+  });
+
+  it("connects the real local SayTtsEngine text to semantic timing only after source.start", async () => {
+    const lifecycle = speechLifecycle();
+    let output: { onmessage: ((data: ArrayBuffer) => void) | null } | undefined;
+    mockInvoke.mockImplementationOnce(async (command, args) => {
+      expect(command).toBe("tts_synthesize");
+      expect(args?.text).toBe("はい。");
+      output = args?.onOutput as typeof output;
+    });
+    const player = new VoicePlayer("Kyoko", new SayTtsEngine(), lifecycle);
+    const handle = player.createVoiceAPI().say("はい。");
+    const utteranceId = lifecycle.onPrepared.mock.calls[0][0];
+    expect(lifecycle.onPrepared).toHaveBeenCalledWith(utteranceId, "はい。");
+    expect(lifecycle.onStarted).not.toHaveBeenCalled();
+    output?.onmessage?.(createMinimalWav());
+    await flushPlaybackStart();
+    const source = mockAudioContext.createBufferSource.mock.results[0].value;
+    expect(lifecycle.onStarted).toHaveBeenCalledWith(utteranceId, expect.any(Number));
+    expect(lifecycle.onStarted.mock.invocationCallOrder[0]).toBeGreaterThan(
+      source.start.mock.invocationCallOrder[0],
+    );
+    source.onended?.();
+    await handle.completion;
+    expect(lifecycle.onEnded).toHaveBeenCalledWith(utteranceId, "completed");
+    expect(mockInvoke).not.toHaveBeenCalledWith("tts_speak", expect.anything());
+    player.dispose();
+  });
+
+  it("supersedes pending synthesis so a late old result cannot start sound or gestures", async () => {
+    const lifecycle = speechLifecycle();
+    let resolveOld!: (data: ArrayBuffer) => void;
+    const engine: TtsEngine = {
+      name: "local",
+      synthesize: vi
+        .fn()
+        .mockImplementationOnce(
+          () =>
+            new Promise<ArrayBuffer>((resolve) => {
+              resolveOld = resolve;
+            }),
+        )
+        .mockResolvedValueOnce(createMinimalWav()),
+    };
+    const player = new VoicePlayer(undefined, engine, lifecycle);
+    const old = player.createVoiceAPI().say("old");
+    const oldId = lifecycle.onPrepared.mock.calls[0][0];
+    const next = player.createVoiceAPI().say("はい。");
+    const nextId = lifecycle.onPrepared.mock.calls[1][0];
+    await old.completion;
+    await flushPlaybackStart();
+    expect(old.cancellationReason).toBe("stopped");
+    expect(lifecycle.onEnded).toHaveBeenCalledWith(oldId, "stopped");
+    expect(lifecycle.onStarted).toHaveBeenCalledTimes(1);
+    expect(lifecycle.onStarted).toHaveBeenCalledWith(nextId, expect.any(Number));
+    resolveOld(createMinimalWav());
+    await flushPlaybackStart();
+    expect(mockAudioContext.createBufferSource).toHaveBeenCalledTimes(1);
+    await next.stop();
+    player.dispose();
+  });
+
+  it("keeps audible speech owned until the replacement audio is ready", async () => {
+    const lifecycle = speechLifecycle();
+    let resolveNext!: (data: ArrayBuffer) => void;
+    const engine: TtsEngine = {
+      name: "local",
+      synthesize: vi
+        .fn()
+        .mockResolvedValueOnce(createMinimalWav())
+        .mockImplementationOnce(
+          () =>
+            new Promise<ArrayBuffer>((resolve) => {
+              resolveNext = resolve;
+            }),
+        ),
+    };
+    const player = new VoicePlayer(undefined, engine, lifecycle);
+    const first = player.createVoiceAPI().say("first");
+    const firstId = lifecycle.onPrepared.mock.calls[0][0];
+    await flushPlaybackStart();
+    const firstSource = mockAudioContext.createBufferSource.mock.results[0].value;
+    const next = player.createVoiceAPI().say("next");
+    expect(firstSource.stop).not.toHaveBeenCalled();
+    expect(lifecycle.onEnded).not.toHaveBeenCalled();
+    resolveNext(createMinimalWav());
+    await flushPlaybackStart();
+    await first.completion;
+    expect(firstSource.stop).toHaveBeenCalledOnce();
+    expect(lifecycle.onEnded).toHaveBeenCalledWith(firstId, "stopped");
+    expect(lifecycle.onStarted).toHaveBeenCalledTimes(2);
+    firstSource.onended?.();
+    await flushPlaybackStart();
+    expect(lifecycle.onEnded.mock.calls.filter(([id]) => id === firstId)).toHaveLength(1);
+    await next.stop();
+    player.dispose();
+  });
+
+  it.each([
+    "stop",
+    "disable",
+    "dispose",
+  ] as const)("%s releases pending semantic cues and rejects a late synthesis result", async (action) => {
+    const lifecycle = speechLifecycle();
+    let resolveSynth!: (data: ArrayBuffer) => void;
+    const engine: TtsEngine = {
+      name: "local",
+      synthesize: () =>
+        new Promise<ArrayBuffer>((resolve) => {
+          resolveSynth = resolve;
+        }),
+    };
+    const player = new VoicePlayer(undefined, engine, lifecycle);
+    const handle = player.createVoiceAPI().say("はい。");
+    const id = lifecycle.onPrepared.mock.calls[0][0];
+    if (action === "stop") await handle.stop();
+    else if (action === "disable") player.setPlaybackEnabled(false);
+    else player.dispose();
+    await handle.completion;
+    expect(lifecycle.onEnded).toHaveBeenCalledWith(
+      id,
+      action === "stop" ? "stopped" : action === "disable" ? "playback-disabled" : "disposed",
+    );
+    resolveSynth(createMinimalWav());
+    await flushPlaybackStart();
+    expect(lifecycle.onStarted).not.toHaveBeenCalled();
+    expect(lifecycle.onEnded).toHaveBeenCalledOnce();
+    if (action !== "dispose") player.dispose();
+  });
+
+  it("drops semantic cues when local synthesis falls back to unclocked native speech", async () => {
+    const lifecycle = speechLifecycle();
+    const warning = vi.spyOn(console, "error").mockImplementation(() => {});
+    const player = new VoicePlayer(
+      "Kyoko",
+      {
+        name: "failed-local",
+        synthesize: async () => {
+          throw new Error("synthesis failed");
+        },
+      },
+      lifecycle,
+    );
+    try {
+      await player.createVoiceAPI().say("はい。").completion;
+      const id = lifecycle.onPrepared.mock.calls[0][0];
+      expect(lifecycle.onStarted).not.toHaveBeenCalled();
+      expect(lifecycle.onEnded).toHaveBeenCalledExactlyOnceWith(id, "unclocked");
+      expect(mockInvoke).toHaveBeenCalledWith("tts_speak", { text: "はい。", voice: "Kyoko" });
+    } finally {
+      warning.mockRestore();
+      player.dispose();
+    }
+  });
+
+  it("synchronously clears local speech ownership before realtime takeover and never clears it twice", async () => {
+    const lifecycle = speechLifecycle();
+    const player = new VoicePlayer(undefined, createMockEngine(), lifecycle);
+    const handle = player.createVoiceAPI().say("はい。");
+    await flushPlaybackStart();
+    const id = lifecycle.onPrepared.mock.calls[0][0];
+    player.setPlaybackEnabled(false);
+    // useCodexRealtime awaits this ownership claim before client.start().
+    expect(lifecycle.onEnded).toHaveBeenCalledExactlyOnceWith(id, "playback-disabled");
+    await handle.completion;
+    expect(lifecycle.onEnded).toHaveBeenCalledOnce();
+    player.dispose();
+  });
+
+  it("does not replay speech through OS fallback when the avatar callback throws", async () => {
+    const lifecycle = speechLifecycle();
+    lifecycle.onStarted.mockImplementation(() => {
+      throw new Error("avatar unavailable");
+    });
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const player = new VoicePlayer(undefined, createMockEngine(), lifecycle);
+    try {
+      const handle = player.createVoiceAPI().say("はい。");
+      await flushPlaybackStart();
+      expect(mockInvoke).not.toHaveBeenCalledWith("tts_speak", expect.anything());
+      mockAudioContext.createBufferSource.mock.results[0].value.onended?.();
+      await handle.completion;
+    } finally {
+      warning.mockRestore();
+      player.dispose();
+    }
   });
 
   it("再生無効中は新しい発話を合成しない", async () => {

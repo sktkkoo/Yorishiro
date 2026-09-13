@@ -19,6 +19,17 @@ const FADE_OUT_MS = 150;
 
 export type VoiceClipResolver = (clipRef: VoiceClipRef) => Promise<string | null> | string | null;
 
+export type VoiceSpeechEndReason = VoiceCancellationReason | "completed" | "errored" | "unclocked";
+
+/** Optional host integration; the audio core has no dependency on avatar/runtime code. */
+export interface VoiceSpeechLifecycleCallbacks {
+  readonly onPrepared: (utteranceId: string, text: string) => void;
+  readonly onStarted: (utteranceId: string, startedAtMs: number) => void;
+  readonly onEnded: (utteranceId: string, reason: VoiceSpeechEndReason) => void;
+}
+
+let nextSpeechUtteranceId = 1;
+
 export interface VoicePlaybackProvenanceStamp {
   readonly ownerId: string;
   readonly generation: number;
@@ -32,6 +43,7 @@ export interface VoicePlaybackOwnershipState {
 }
 
 interface VoicePlaybackOperation {
+  readonly playbackId: number;
   readonly generation: number;
   readonly abortController: AbortController;
   readonly cancellation: Promise<void>;
@@ -78,7 +90,11 @@ export class VoicePlayer {
   private osTtsGeneration = 0;
   private readonly unsubscribeVoiceVolume: () => void;
 
-  constructor(voice?: string, engine?: TtsEngine) {
+  constructor(
+    voice?: string,
+    engine?: TtsEngine,
+    private readonly speechLifecycle?: VoiceSpeechLifecycleCallbacks,
+  ) {
     this.voice = voice ?? null;
     this.engine = engine ?? null;
     this.unsubscribeVoiceVolume = getVoiceVolumeStore().subscribe((volume) => {
@@ -218,7 +234,25 @@ export class VoicePlayer {
   private sayViaWebAudio(text: string, options?: SayOptions): VoiceHandle {
     const startedAt = Date.now();
     const playbackId = this.createPlaybackId();
-    const operation = this.createOperation();
+    const operation = this.createOperation(playbackId);
+    const utteranceId = `tts-${nextSpeechUtteranceId++}`;
+    const prepared = this.isOperationCurrent(operation);
+    let ended = false;
+    const finishSpeech = (reason: VoiceSpeechEndReason): void => {
+      if (!prepared || ended) return;
+      ended = true;
+      this.notifySpeechLifecycle(() => this.speechLifecycle?.onEnded(utteranceId, reason));
+    };
+    if (prepared) {
+      // Ownership changes are synchronous. A later completion microtask must
+      // not reset the phase after a realtime audio owner has already taken over.
+      operation.abortController.signal.addEventListener(
+        "abort",
+        () => finishSpeech(operation.cancellationReason ?? "stopped"),
+        { once: true },
+      );
+      this.notifySpeechLifecycle(() => this.speechLifecycle?.onPrepared(utteranceId, text));
+    }
 
     const work = (async () => {
       if (!this.isOperationCurrent(operation)) return;
@@ -234,15 +268,38 @@ export class VoicePlayer {
         const audioBuffer = await decodeAudioData(ctx, audioData);
         if (!this.isOperationCurrent(operation)) return;
 
-        await this.playBuffer(playbackId, ctx, audioBuffer, normalizeVolume(options?.volume));
+        await this.playBuffer(
+          playbackId,
+          ctx,
+          audioBuffer,
+          normalizeVolume(options?.volume),
+          () => {
+            if (!this.isOperationCurrent(operation)) return;
+            this.notifySpeechLifecycle(() =>
+              this.speechLifecycle?.onStarted(utteranceId, performance.now()),
+            );
+          },
+        );
       } catch (error) {
         if (!this.isOperationCurrent(operation)) return;
-        this.stopPlayback(playbackId);
+        for (const previous of this.operations) {
+          if (previous !== operation && previous.playbackId === this.currentPlaybackId) {
+            previous.cancel("stopped");
+          }
+        }
+        this.stopPlayback();
         console.error("[voice] Web Audio TTS failed; lip sync cannot run.", error);
+        // Native fallback provides neither playout start nor completion timing.
+        // Cancel queued expressions instead of pretending its spawn is speech.
+        finishSpeech("unclocked");
         await this.speakViaOsTts(text);
       }
     })();
     const completion = this.completeOperation(operation, work);
+    void completion.then(
+      () => finishSpeech(operation.cancellationReason ?? "completed"),
+      () => finishSpeech(operation.cancellationReason ?? "errored"),
+    );
 
     return {
       startedAt,
@@ -287,7 +344,7 @@ export class VoicePlayer {
   ): VoiceHandle {
     let startedAt = 0;
     const playbackId = this.createPlaybackId();
-    const operation = this.createOperation();
+    const operation = this.createOperation(playbackId);
 
     const work = (async () => {
       if (!this.isOperationCurrent(operation)) return;
@@ -372,6 +429,11 @@ export class VoicePlayer {
     onStart?: () => void,
   ): Promise<void> {
     this.fadeResetGeneration += 1;
+    for (const operation of this.operations) {
+      if (operation.playbackId === this.currentPlaybackId && operation.playbackId !== playbackId) {
+        operation.cancel("stopped");
+      }
+    }
     this.stopSource();
 
     return new Promise((resolve) => {
@@ -496,7 +558,7 @@ export class VoicePlayer {
   // ---------------------------------------------------------------------------
 
   private sayViaOsTts(text: string): VoiceHandle {
-    const operation = this.createOperation();
+    const operation = this.createOperation(this.createPlaybackId());
     const work = this.isOperationCurrent(operation) ? this.speakViaOsTts(text) : Promise.resolve();
     const completion = this.completeOperation(operation, work);
 
@@ -540,8 +602,13 @@ export class VoicePlayer {
     gain.gain.setValueAtTime(volume, ctx.currentTime);
   }
 
-  private createOperation(): VoicePlaybackOperation {
-    const operation = createVoicePlaybackOperation(this.playbackGeneration);
+  private createOperation(playbackId: number): VoicePlaybackOperation {
+    // A newer request supersedes pending synthesis/decoding, while already
+    // audible speech continues until its replacement is ready to start.
+    for (const previous of this.operations) {
+      if (previous.playbackId !== this.currentPlaybackId) previous.cancel("stopped");
+    }
+    const operation = createVoicePlaybackOperation(this.playbackGeneration, playbackId);
     this.operations.add(operation);
     if (!this.playbackEnabled) operation.cancel("playback-disabled");
     return operation;
@@ -572,15 +639,28 @@ export class VoicePlayer {
       operation.generation === this.playbackGeneration
     );
   }
+
+  private notifySpeechLifecycle(notify: () => void): void {
+    try {
+      notify();
+    } catch (error) {
+      // Avatar-side failures must not replay audio through the OS fallback.
+      console.warn("[voice] speech expression callback failed", error);
+    }
+  }
 }
 
-function createVoicePlaybackOperation(generation: number): VoicePlaybackOperation {
+function createVoicePlaybackOperation(
+  generation: number,
+  playbackId: number,
+): VoicePlaybackOperation {
   const abortController = new AbortController();
   let resolveCancellation: () => void = () => {};
   const cancellation = new Promise<void>((resolve) => {
     resolveCancellation = resolve;
   });
   const operation: VoicePlaybackOperation = {
+    playbackId,
     generation,
     abortController,
     cancellation,
