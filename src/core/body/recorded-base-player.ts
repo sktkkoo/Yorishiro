@@ -19,15 +19,20 @@ export interface RecordedBaseOptions {
   readonly onCommit?: () => void;
   /** Only the owning AnimationPlayer may authorize a pose before its first update. */
   readonly initialPose?: boolean;
+  /** Evaluated at commit so pending loads inherit the latest intensity and upper ownership. */
+  readonly getInitialState?: () => { readonly paused: boolean; readonly upperWeight: number };
 }
 
 export interface RecordedBaseHandle {
   readonly id: number;
   readonly phaseSec: number;
   readonly held: boolean;
+  readonly paused: boolean;
   /** Resolves at the selected end, where both tracks hold instead of fading to rest. */
   readonly completion: Promise<void>;
   setUpperWeight(value: number, fadeMs?: number): void;
+  /** Freeze the source phase without releasing the supporting pose or fade deadlines. */
+  setPaused(paused: boolean): void;
   stop(fadeMs?: number): Promise<void>;
   cancel(): void;
 }
@@ -79,6 +84,7 @@ interface Group {
   phase: number;
   startedAt: number;
   held: boolean;
+  paused: boolean;
   blend: number;
   blendRamp?: Ramp;
   upperGain: number;
@@ -325,6 +331,7 @@ export class RecordedBasePlayer {
       track === prepared.positions ? shifted : track,
     );
     opts.onCommit?.();
+    const initialState = opts.getInitialState?.();
     const upper = this.action(
       new THREE.AnimationClip(`${clip.name}:recorded-upper`, clip.duration, prepared.upper),
       start,
@@ -343,9 +350,10 @@ export class RecordedBasePlayer {
       phase: start,
       startedAt: this.mixer.time,
       held: start === end,
+      paused: initialState?.paused ?? false,
       blend: fade ? 0 : 1,
       blendRamp: fade ? { from: 0, to: 1, start: this.mixer.time, duration: fade } : undefined,
-      upperGain: 1,
+      upperGain: clampWeight(initialState?.upperWeight ?? 1),
       offset,
       completion: deferred(),
       stopped: deferred(),
@@ -364,10 +372,16 @@ export class RecordedBasePlayer {
       get held() {
         return group.held;
       },
+      get paused() {
+        return group.paused;
+      },
       completion: group.completion.promise,
+      setPaused: (paused) => {
+        if (this.groups.has(group.id)) group.paused = paused;
+      },
       setUpperWeight: (value, fadeMs = 0) => {
         if (!this.groups.has(group.id)) return;
-        const to = Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
+        const to = clampWeight(value);
         const duration = Number.isFinite(fadeMs) ? Math.max(0, fadeMs / 1000) : 0;
         group.upperRamp = duration
           ? { from: group.upperGain, to, start: this.mixer.time, duration }
@@ -386,7 +400,8 @@ export class RecordedBasePlayer {
   beforeUpdate(nextTime: number, performanceWeight: number): void {
     const complement = 1 - Math.max(0, Math.min(1, performanceWeight));
     for (const group of this.groups.values()) {
-      if (!group.held && group.stopAt === undefined) {
+      if (group.paused) group.startedAt += Math.max(0, nextTime - this.mixer.time);
+      if (!group.paused && !group.held && group.stopAt === undefined) {
         group.phase = Math.min(group.end, group.start + Math.max(0, nextTime - group.startedAt));
         group.held = group.phase >= group.end - 1e-9;
         if (group.held) group.phase = group.end;
@@ -436,6 +451,19 @@ export class RecordedBasePlayer {
     return this.groups.size * 2;
   }
 
+  /** Paused supports still own their bindings, but do not need the animation frame cadence. */
+  get hasMotion(): boolean {
+    for (const group of this.groups.values())
+      if (
+        (!group.paused && !group.held && group.stopAt === undefined) ||
+        group.blendRamp ||
+        group.upperRamp ||
+        group.stopAt !== undefined
+      )
+        return true;
+    return false;
+  }
+
   hasUpperBinding(name: string): boolean {
     for (const group of this.groups.values())
       if (group.prepared.upperChannels.has(name)) return true;
@@ -459,7 +487,9 @@ export class RecordedBasePlayer {
         const contribution = group.blend * group.upperGain;
         if (!channel || contribution <= 0) continue;
         referenceMoving ||=
-          !group.held || group.blendRamp !== undefined || group.upperRamp !== undefined;
+          (!group.paused && !group.held) ||
+          group.blendRamp !== undefined ||
+          group.upperRamp !== undefined;
         rotation.fromArray(channel.evaluate(group.phase)).normalize();
         if (weight === 0) mixed.copy(rotation);
         else mixed.slerp(rotation, contribution / (weight + contribution));
@@ -568,6 +598,9 @@ function interpolant(track: THREE.KeyframeTrack): THREE.Interpolant {
   return (
     track as THREE.KeyframeTrack & { createInterpolant(result: Float32Array): THREE.Interpolant }
   ).createInterpolant(new Float32Array(track.getValueSize()));
+}
+function clampWeight(value: number): number {
+  return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
 }
 function smooth(value: number): number {
   return value * value * (3 - 2 * value);

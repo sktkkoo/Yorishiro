@@ -34,21 +34,33 @@ function deferred<T>() {
   return { promise, resolve };
 }
 function playback() {
-  return {
+  const result = {
     id: 1,
     phaseSec: 2,
     held: false as boolean,
+    paused: false as boolean,
     completion: new Promise<void>(() => {}),
     stop: vi.fn(async () => {}),
     cancel: vi.fn(),
     setUpperWeight: vi.fn(),
+    setPaused: vi.fn((paused: boolean) => {
+      result.paused = paused;
+    }),
   } satisfies RecordedBodyPlayback;
+  return result;
 }
 function setup(input: unknown = manifest) {
   const active = playback();
   const preloadRecordedBase = vi.fn(async () => true);
   const playRecordedBase = vi.fn(
-    async (_ref: string, _options: { isCurrent: () => boolean; onCommit?: () => void }) => active,
+    async (
+      _ref: string,
+      _options: {
+        isCurrent: () => boolean;
+        onCommit?: () => void;
+        getInitialState?: () => { paused: boolean; upperWeight: number };
+      },
+    ) => active,
   );
   const onCommit = vi.fn();
   const loadManifest = vi.fn(async () => input);
@@ -97,6 +109,105 @@ describe("recorded whole-body sequencing", () => {
     expect(sequencer.ownsUpperBody).toBe(true);
     await sequencer.initialize();
     expect(playRecordedBase).toHaveBeenCalledOnce();
+  });
+
+  it("keeps near-one and reduced positive intensities on the same supporting performance", async () => {
+    const { sequencer, active, playRecordedBase } = setup();
+    await sequencer.initialize(0.95);
+    expect(playRecordedBase.mock.calls[0][1].getInitialState?.()).toEqual({
+      paused: false,
+      upperWeight: 0.95,
+    });
+    expect(active.setUpperWeight).toHaveBeenLastCalledWith(0.95, 0);
+    sequencer.update(16, true, "idle", true, 0.5);
+    expect(active.setUpperWeight).toHaveBeenLastCalledWith(0.5, 350);
+    active.setUpperWeight.mockClear();
+    for (let frame = 0; frame < 60; frame++) sequencer.update(16, true, "idle", true, 0.5);
+    expect(active.setUpperWeight).not.toHaveBeenCalled();
+    expect(active.stop).not.toHaveBeenCalled();
+    expect(active.cancel).not.toHaveBeenCalled();
+    expect(playRecordedBase).toHaveBeenCalledOnce();
+    expect(sequencer.getSnapshot().active).toMatchObject({ paused: false, upperStrength: 0.5 });
+  });
+
+  it("pauses at zero without releasing support and resumes the current phase at positive strength", async () => {
+    const { sequencer, active, playRecordedBase } = setup();
+    await sequencer.initialize(0.95);
+    active.phaseSec = 4;
+    sequencer.update(16, true, "idle", true, 0);
+    expect(active.setPaused).toHaveBeenLastCalledWith(true);
+    expect(active.setUpperWeight).toHaveBeenLastCalledWith(0, 350);
+    expect(sequencer.ownsUpperBody).toBe(false);
+    for (let frame = 0; frame < 60; frame++) sequencer.update(16, true, "idle", true, 0);
+    expect(playRecordedBase).toHaveBeenCalledOnce();
+    sequencer.update(16, true, "idle", true, 0.95);
+    expect(active.setPaused).toHaveBeenLastCalledWith(false);
+    expect(active.setUpperWeight).toHaveBeenLastCalledWith(0.95, 350);
+    expect(sequencer.getSnapshot().active).toMatchObject({ phaseSec: 4, paused: false });
+    expect(active.stop).not.toHaveBeenCalled();
+    expect(active.cancel).not.toHaveBeenCalled();
+    expect(playRecordedBase).toHaveBeenCalledOnce();
+  });
+
+  it("bootstraps a paused source stance at zero and does not choose successors at a held exit", async () => {
+    const { sequencer, active, playRecordedBase } = setup();
+    await sequencer.initialize(0);
+    expect(playRecordedBase.mock.calls[0][1].getInitialState?.()).toEqual({
+      paused: true,
+      upperWeight: 0,
+    });
+    expect(active.setPaused).toHaveBeenLastCalledWith(true);
+    expect(active.setUpperWeight).toHaveBeenLastCalledWith(0, 0);
+    active.held = true;
+    for (let frame = 0; frame < 120; frame++) sequencer.update(100, true, "idle", true, 0);
+    expect(playRecordedBase).toHaveBeenCalledOnce();
+    expect(sequencer.active).toBe(true);
+    sequencer.update(16, true, "idle", true, 0.4);
+    await flush();
+    expect(playRecordedBase).toHaveBeenCalledTimes(2);
+    expect(active.setPaused).toHaveBeenLastCalledWith(false);
+  });
+
+  it("applies the latest zero intensity atomically when a selected clip finishes loading", async () => {
+    const { sequencer, active, playRecordedBase } = setup();
+    const pending = deferred<typeof active>();
+    playRecordedBase.mockReturnValueOnce(pending.promise);
+    await sequencer.prepare();
+    sequencer.update(16, true, "idle", true, 0.95);
+    const options = playRecordedBase.mock.calls[0][1];
+    sequencer.update(16, true, "idle", true, 0);
+    expect(options.isCurrent()).toBe(true);
+    expect(options.getInitialState?.()).toEqual({ paused: true, upperWeight: 0 });
+    pending.resolve(active);
+    await flush();
+    expect(active.setPaused).toHaveBeenLastCalledWith(true);
+    expect(active.setUpperWeight).toHaveBeenLastCalledWith(0, 0);
+    expect(active.cancel).not.toHaveBeenCalled();
+  });
+
+  it("does not let strength changes restore upper ownership during listening", async () => {
+    const { sequencer, active } = setup();
+    await sequencer.initialize(0.95);
+    sequencer.update(16, true, "idle", false, 0.95);
+    expect(active.setUpperWeight).toHaveBeenLastCalledWith(0, 650);
+    active.setUpperWeight.mockClear();
+    for (const intensity of [0.3, 0, 1, 0.95]) sequencer.update(16, true, "idle", false, intensity);
+    expect(active.setUpperWeight).not.toHaveBeenCalled();
+    expect(sequencer.ownsUpperBody).toBe(false);
+    sequencer.update(16, true, "idle", true, 0.95);
+    expect(active.setUpperWeight).toHaveBeenLastCalledWith(0.95, 650);
+  });
+
+  it.each([
+    [Number.NaN, 1],
+    [Number.POSITIVE_INFINITY, 1],
+    [-1, 0],
+    [2, 1],
+  ])("clamps intensity %s to %s consistently with Body", async (input, expected) => {
+    const { sequencer, active } = setup();
+    await sequencer.initialize(input);
+    expect(active.setUpperWeight).toHaveBeenLastCalledWith(expected, 0);
+    expect(active.paused).toBe(expected === 0);
   });
 
   it("does not start a new lower-body unit during the current authored performance", async () => {

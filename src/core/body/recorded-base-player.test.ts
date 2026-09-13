@@ -70,6 +70,118 @@ function fixture() {
 }
 
 describe("atomic recorded full-body base", () => {
+  it("scales the upper performance while preserving lower trajectories, then pauses and resumes in place", async () => {
+    const current = fixture();
+    const reference = fixture();
+    current.recording("base");
+    reference.recording("base");
+    const base = await current.player.playRecordedBase("base", {
+      ...current.opts,
+      initialPose: true,
+      getInitialState: () => ({ paused: false, upperWeight: 0.95 }),
+    });
+    await reference.player.playRecordedBase("base", { ...reference.opts, initialPose: true });
+    expect(current.node("head").rotation.x).toBeCloseTo(0.2 * 0.95, 6);
+    for (const weight of [0.5, 0.95, 1]) {
+      base.setUpperWeight(weight, 100);
+      for (let frame = 0; frame < 6; frame++) {
+        current.player.update(1 / 60);
+        reference.player.update(1 / 60);
+        for (const name of ["hips", "leftFoot", "leftToes", "rightFoot", "rightToes"] as const)
+          expect(
+            current
+              .node(name)
+              .getWorldPosition(new THREE.Vector3())
+              .distanceTo(reference.node(name).getWorldPosition(new THREE.Vector3())),
+          ).toBeLessThan(1e-10);
+        expect(current.player.getFoundationEffectiveWeight()).toBe(1);
+      }
+      expect(current.node("head").rotation.x).toBeCloseTo(
+        reference.node("head").rotation.x * weight,
+        6,
+      );
+    }
+    const phase = base.phaseSec;
+    const foot = current.node("leftFoot").getWorldPosition(new THREE.Vector3());
+    const completed = vi.fn();
+    void base.completion.then(completed);
+    base.setPaused(true);
+    base.setUpperWeight(0, 350);
+    expect(current.player.hasActiveRecordedBase()).toBe(true); // the fade still needs frames
+    current.player.update(5);
+    await Promise.resolve();
+    expect(base.phaseSec).toBe(phase);
+    expect(base.paused).toBe(true);
+    expect(base.held).toBe(false);
+    expect(completed).not.toHaveBeenCalled();
+    expect(current.player.activeCount).toBe(2);
+    expect(current.player.hasActiveRecordedBase()).toBe(false);
+    expect(current.player.getFoundationEffectiveWeight()).toBe(1);
+    expect(current.player.getTotalEffectiveWeight()).toBe(0);
+    expect(current.node("leftFoot").getWorldPosition(new THREE.Vector3()).distanceTo(foot)).toBe(0);
+    base.setPaused(false);
+    base.setUpperWeight(0.95, 100);
+    current.player.update(0.1);
+    reference.player.update(0.1);
+    expect(base.phaseSec).toBeCloseTo(phase + 0.1, 12);
+    expect(current.node("hips").position.distanceTo(reference.node("hips").position)).toBeLessThan(
+      1e-10,
+    );
+    expect(current.player.hasActiveRecordedBase()).toBe(true);
+  });
+
+  it("commits a cold zero-strength stance paused before its first mixer evaluation", async () => {
+    const { player, node, recording, opts } = fixture();
+    recording("base");
+    let strength = 0.95;
+    const base = await player.playRecordedBase("base", {
+      ...opts,
+      startTimeSec: 0.5,
+      initialPose: true,
+      onCommit: () => {
+        strength = 0;
+      },
+      getInitialState: () => ({ paused: strength === 0, upperWeight: strength }),
+    });
+    expect(base.paused).toBe(true);
+    expect(node("head").rotation.x).toBe(0);
+    expect(player.getFoundationEffectiveWeight()).toBe(1);
+    expect(player.hasActiveRecordedBase()).toBe(false);
+    const initial = node("hips").position.clone();
+    player.update(10);
+    expect(base.phaseSec).toBe(0.5);
+    expect(node("hips").position.distanceTo(initial)).toBe(0);
+    base.setPaused(false);
+    player.update(0.25);
+    expect(base.phaseSec).toBe(0.75);
+    expect(node("hips").position.x - initial.x).toBeCloseTo(0.00075, 7);
+  });
+
+  it("finishes common fades and cancellation while the incoming source clock is paused", async () => {
+    const { player, recording, opts } = fixture();
+    recording("base");
+    const first = await player.playRecordedBase("base", opts);
+    player.update(1.5);
+    await first.completion;
+    const next = await player.playRecordedBase("base", { ...opts, fadeInMs: 800 });
+    player.update(0.2);
+    const phase = next.phaseSec;
+    next.setPaused(true);
+    next.setUpperWeight(0, 350);
+    for (let frame = 0; frame < 40; frame++) {
+      player.update(1 / 60);
+      expect(player.getFoundationEffectiveWeight()).toBeCloseTo(1, 12);
+      expect(next.phaseSec).toBe(phase);
+    }
+    expect(player.activeCount).toBe(2);
+    expect(player.hasActiveRecordedBase()).toBe(false);
+    const stopped = next.stop(300);
+    expect(player.hasActiveRecordedBase()).toBe(true);
+    player.update(0.3);
+    await stopped;
+    expect(player.activeCount).toBe(0);
+  });
+
   it("validates the same leg slerp as the mixer when hips compensate a gradual knee bend", async () => {
     const { player, node, recording, opts } = fixture();
     const clip = recording("bent", 0, 0);

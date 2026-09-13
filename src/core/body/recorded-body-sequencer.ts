@@ -26,9 +26,11 @@ export interface RecordedBodyPlayback {
   readonly completion: Promise<void>;
   readonly phaseSec: number;
   readonly held: boolean;
+  readonly paused: boolean;
   stop(fadeMs?: number): Promise<void>;
   cancel(): void;
   setUpperWeight(value: number, fadeMs?: number): void;
+  setPaused(paused: boolean): void;
 }
 
 interface RecordedBodyPlayer {
@@ -43,6 +45,7 @@ interface RecordedBodyPlayer {
       isCurrent: () => boolean;
       onCommit?: () => void;
       initialPose?: boolean;
+      getInitialState?: () => { readonly paused: boolean; readonly upperWeight: number };
     },
   ): Promise<RecordedBodyPlayback>;
 }
@@ -64,6 +67,9 @@ export class RecordedBodySequencer {
   private context: MotionContext = "idle";
   private upperEnabled = true;
   private allowBaseUpper = true;
+  private intensity = 1;
+  private upperStrength = 1;
+  private paused = false;
   private readonly lastPlayed = new Map<string, number>();
   private lastRejection: string | null = null;
   private initialRejection: string | null = null;
@@ -85,7 +91,8 @@ export class RecordedBodySequencer {
   }
 
   /** Called only before the avatar enters the rendered scene. */
-  async initialize(): Promise<void> {
+  async initialize(intensity = 1): Promise<void> {
+    this.intensity = clampIntensity(intensity);
     await this.prepare();
     if (this.disposed || this.current || this.pending) return;
     const candidates = this.units.filter((unit) => unit.context === "idle");
@@ -117,7 +124,13 @@ export class RecordedBodySequencer {
     }
   }
 
-  update(deltaMs: number, enabled: boolean, context: MotionContext, allowBaseUpper = true): void {
+  update(
+    deltaMs: number,
+    enabled: boolean,
+    context: MotionContext,
+    allowBaseUpper = true,
+    intensity = 1,
+  ): void {
     if (this.disposed) return;
     if (Number.isFinite(deltaMs)) this.elapsedMs += Math.max(0, Math.min(1_000, deltaMs));
     if (!enabled) {
@@ -125,18 +138,28 @@ export class RecordedBodySequencer {
       return;
     }
     this.enabled = true;
+    const nextIntensity = clampIntensity(intensity);
+    const intensityChanged = nextIntensity !== this.intensity;
+    this.intensity = nextIntensity;
     if (this.context !== context && this.pending) {
       this.generation++;
       this.pending = false;
     }
     this.context = context;
     this.allowBaseUpper = allowBaseUpper;
-    const upperEnabled = allowBaseUpper && this.current?.unit.context === context;
-    if (upperEnabled !== this.upperEnabled) {
-      this.upperEnabled = upperEnabled;
-      this.current?.playback.setUpperWeight(upperEnabled ? 1 : 0, 650);
+    const upperEnabled =
+      this.intensity > 0 && allowBaseUpper && this.current?.unit.context === context;
+    const upperStrength = upperEnabled ? this.intensity : 0;
+    this.upperEnabled = upperEnabled;
+    if (upperStrength !== this.upperStrength) {
+      this.upperStrength = upperStrength;
+      this.current?.playback.setUpperWeight(upperStrength, intensityChanged ? 350 : 650);
     }
+    const paused = this.intensity === 0;
+    if (paused !== this.paused) this.current?.playback.setPaused(paused);
+    this.paused = paused;
     if (
+      paused ||
       this.pending ||
       (this.current && !this.current.playback.held) ||
       this.elapsedMs < this.retryAtMs
@@ -168,7 +191,7 @@ export class RecordedBodySequencer {
       return { unit, weight };
     });
     try {
-      while (pool.length > 0 && isCurrent()) {
+      while (pool.length > 0 && isCurrent() && (initialPose || this.intensity > 0)) {
         const contextual = pool.some((item) => item.unit.context === this.context)
           ? pool.filter((item) => item.unit.context === this.context)
           : pool;
@@ -198,17 +221,26 @@ export class RecordedBodySequencer {
             initialPose,
             isCurrent,
             onCommit: this.options.onCommit,
+            getInitialState: () => ({
+              paused: this.intensity === 0,
+              upperWeight:
+                this.allowBaseUpper && unit.context === this.context ? this.intensity : 0,
+            }),
           });
           if (!isCurrent()) {
             playback.cancel();
             return;
           }
           this.current = { unit, playback };
-          this.upperEnabled = this.allowBaseUpper && unit.context === this.context;
+          this.upperEnabled =
+            this.intensity > 0 && this.allowBaseUpper && unit.context === this.context;
+          this.upperStrength = this.upperEnabled ? this.intensity : 0;
+          this.paused = this.intensity === 0;
           // A new lower-body unit must inherit the current upper ownership at
           // once. Fading from its default gain of one would briefly bring idle
           // arms back during listening/speech on every lower-body transition.
-          playback.setUpperWeight(this.upperEnabled ? 1 : 0, this.upperEnabled ? 650 : 0);
+          playback.setUpperWeight(this.upperStrength, 0);
+          playback.setPaused(this.paused);
           this.lastPlayed.set(unit.id, this.elapsedMs);
           this.lastRejection = null;
           return;
@@ -232,7 +264,10 @@ export class RecordedBodySequencer {
   }
   get ownsUpperBody(): boolean {
     return (
-      this.allowBaseUpper && this.current !== null && this.current.unit.context === this.context
+      this.intensity > 0 &&
+      this.allowBaseUpper &&
+      this.current !== null &&
+      this.current.unit.context === this.context
     );
   }
 
@@ -255,7 +290,9 @@ export class RecordedBodySequencer {
             context: this.current.unit.context,
             phaseSec: this.current.playback.phaseSec,
             held: this.current.playback.held,
+            paused: this.current.playback.paused,
             upperEnabled: this.upperEnabled,
+            upperStrength: this.upperStrength,
           }
         : null,
     };
@@ -277,6 +314,10 @@ export class RecordedBodySequencer {
     this.disposed = true;
     this.suspend(0);
   }
+}
+
+function clampIntensity(value: number): number {
+  return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 1;
 }
 
 async function loadBundledManifest(): Promise<unknown> {
