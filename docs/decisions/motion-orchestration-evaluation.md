@@ -15,7 +15,7 @@ Animates を明確に上回るという達成条件は、実装や単体テス�
 
 公開情報だけでは、接地品質、遷移時の速度連続性、長時間 idle の反復率、会話割り込みへの反応を同条件で評価できない。公開ページ内のサンプルコードも、利用可能な SDK 仕様や実アプリの実装を証明するものではない。
 
-2026-09-13 に親タスクが `/Applications` 内の Animates 1.0.8 build 24 を確認した。CUA は `CUA_REPL_ENABLED_SURFACES is required` で利用できなかった。その後、native window に限定した静止画の取得には成功し、親タスクで app-scoped な連写を調査中。インストール・単発静止画の確認と、動作の比較評価は別々に扱う。
+2026-09-13 に親タスクが `/Applications` 内の Animates 1.0.8 build 24 を確認した。CUA は `CUA_REPL_ENABLED_SURFACES is required` で利用できなかった。その後、native window に限定した静止画 20 枚を取得し、以下の限定的な待機時観察を実施した。低頻度の連写による観察と、連続動作の比較評価は別々に扱う。
 
 ## Technical decision
 
@@ -81,6 +81,14 @@ Animates と同じ avatar や音声を使えない場合は外見と音声が交
 
 ## Evidence status
 
+### Animates window-only observations, 2026-09-13
+
+Animates 1.0.8 build 24 の対象ウィンドウだけを、約 1.5 秒おきに 20 枚、約 30 秒間取得した。元 PNG はすべて 670 × 1248 pixels。ローカルの `/private/tmp/yorishiro-animates-window-sequence/000.png` から `019.png` に保管し、5 列 × 4 行の montage にして左上から番号順に目視した。元画像や派生 montage は私有アプリの表示であるためリポジトリにはコピーしていない。入力や会話の同期記録はなく、ここでは表示上の待機姿勢の観察として扱う。
+
+20 枚とも腕を下ろした立位を維持している。頭、上体、腰には小さな位置・傾きの違いがあり、視線と眼の開きにも変化が見られる。`012` は閉眼を示し、`000` / `007` / `010` / `016` / `019` では眼の開きが小さい。手を大きく上げる、指差す、胴体を大きく回すといったポーズは、この標本中には見られない。複数画像で似た立位へ戻っているが、同じ clip のループと断定できる周期的反復は確認できない。
+
+足首と足は全画像で画角外のため、接地、足滑り、足の踏み替えは評価できない。1.5 秒間隔ではその間の短いジェスチャーや瞬きが欠落するため、連続速度、加速度、滑らかさ、遷移の不連続、瞬き回数、反復周期も測定できない。眼の開きの違いだけから疲労や感情を推定しない。この観察からは「この約 30 秒では、立位を保ちながら頭・上体・眼に変化がある」という範囲に限って記述する。Yorishiro の自然さ・実在感の優越は引き続き未判定。
+
 ### Recorded asset audit, 2026-09-13
 
 再現コマンドは `node scripts/analyze-motion-assets.mjs`。既定では sibling の `Yorishiro-assets/animations` にある 29 VRMA と `models/Yori.vrm` を読み、[motion-assets-analysis.json](motion-assets-analysis.json) を出力する。第 1 引数で asset root、第 2 引数で出力先を指定できる。資産そのものは変更しない。
@@ -114,6 +122,7 @@ HandOnHip は source の rest hip height が 0.87593 m あり、Yori への倍�
 | Public technical claims and primary-source research | Reviewed, 2026-09-13 |
 | Recorded VRMA asset inventory / numeric analysis | See generated asset report alongside this document |
 | Runtime implementation checks | Record separately with implementation results |
-| Animates real-app recording and controlled visual comparison | Pending |
+| Animates real-app observations | 20 window-only PNGs inspected; sparse idle observation only |
+| Animates continuous recording and controlled visual comparison | Pending |
 | Blinded human comparison | Pending |
 | Clear superiority to Animates | **Unverified** |
