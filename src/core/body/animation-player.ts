@@ -40,6 +40,8 @@ export interface AnimationPlayOptions {
   startTimeSec?: number;
   /** Upper bound on waiting for a quieter outgoing pose (default: 180 ms). */
   maxTransitionDelayMs?: number;
+  /** Cap long one-shots at a quiet exit within another 500 ms; looping recordings ignore this. */
+  maxDurationMs?: number;
   /** Checked after loading and after transition waits. False rejects with AbortError. */
   isCurrent?: () => boolean;
 }
@@ -62,6 +64,7 @@ interface ActiveAnimation {
   readonly stopped: ReturnType<typeof createDeferred>;
   ramp?: WeightRamp;
   stopAt?: number;
+  maxDurationAt?: number;
 }
 interface TransitionWait {
   readonly until: number;
@@ -126,6 +129,15 @@ export class AnimationPlayer {
     for (const anim of this.active.values()) this.updateWeight(anim, time);
     this.mixer.update(delta);
     for (const anim of this.active.values()) {
+      if (anim.maxDurationAt !== undefined && this.mixer.time >= anim.maxDurationAt) {
+        anim.maxDurationAt = undefined;
+        // Completion follows natural one-shots: release ownership as the final
+        // fade begins. An earlier replacement/stop already owns its deadline.
+        if (anim.stopAt === undefined) {
+          anim.completion.resolve();
+          this.fadeAndStop(anim, anim.autoFadeOutMs);
+        }
+      }
       if (anim.stopAt !== undefined && this.mixer.time >= anim.stopAt) this.disposeAnimation(anim);
     }
     for (const wait of this.transitionWaits) {
@@ -215,6 +227,13 @@ export class AnimationPlayer {
       completion: createDeferred(),
       stopped: createDeferred(),
     };
+    const capSec = finiteOr(opts.maxDurationMs, 0) / 1000;
+    const remainingSec = speed > 0 ? (clip.duration - action.time) / speed : Infinity;
+    if (!anim.loop && capSec > 0 && capSec < remainingSec) {
+      const capPhase = action.time + capSec * speed;
+      const exitDelay = findTransitionDelay(profile, capPhase, 0.5, speed, false);
+      anim.maxDurationAt = this.mixer.time + capSec + exitDelay;
+    }
     action.setEffectiveWeight(fadeSec > 0 ? 0 : weight);
     if (fadeSec > 0) anim.ramp = { from: 0, to: weight, start: this.mixer.time, duration: fadeSec };
     // Clear procedural offsets before Three captures its restoration pose.

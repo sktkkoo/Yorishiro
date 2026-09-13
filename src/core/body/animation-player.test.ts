@@ -502,3 +502,104 @@ describe("AnimationPlayer recorded foundation layer", () => {
     expect(leg.rotation.x).toBeCloseTo(0, 6);
   });
 });
+
+describe("AnimationPlayer bounded semantic one-shots", () => {
+  it("finishes a long recording at a low-velocity exit within 500 ms after its cap", async () => {
+    const { player, cache } = rig();
+    cache.set(
+      "long-gesture",
+      new THREE.AnimationClip("long-gesture", 10, [
+        new THREE.QuaternionKeyframeTrack(
+          "Head.quaternion",
+          [0, 5.9, 6.2, 10],
+          [0, 0, 0.6, 0.6].flatMap((angle) => [Math.sin(angle / 2), 0, 0, Math.cos(angle / 2)]),
+        ),
+      ]),
+    );
+    const gesture = await player.play("long-gesture", {
+      fadeInMs: 0,
+      fadeOutMs: 600,
+      weight: 1,
+      maxDurationMs: 6_000,
+    });
+    let completionTime: number | undefined;
+    let time = 5.99;
+    void gesture.completion.then(() => {
+      completionTime = time;
+    });
+    player.update(time);
+    await Promise.resolve();
+    expect(completionTime).toBeUndefined();
+    for (let step = 0; step < 24 && completionTime === undefined; step++) {
+      time += 0.025;
+      player.update(0.025);
+      await Promise.resolve();
+    }
+    expect(completionTime).toBeGreaterThan(6.1);
+    expect(completionTime).toBeLessThanOrEqual(6.525);
+    expect(player.activeCount).toBe(1);
+    player.update(0.3);
+    expect(player.getTotalEffectiveWeight()).toBeCloseTo(0.5, 4);
+    player.update(0.301);
+    expect(player.activeCount).toBe(0);
+  });
+
+  it.each([3, 5.6])("preserves natural completion for a %s second gesture", async (duration) => {
+    const { player, addClip } = rig();
+    addClip("short-gesture", [0, 0.5], duration);
+    const gesture = await player.play("short-gesture", {
+      fadeInMs: 0,
+      fadeOutMs: 600,
+      maxDurationMs: 6_000,
+    });
+    let completed = false;
+    void gesture.completion.then(() => {
+      completed = true;
+    });
+    player.update(duration - 0.01);
+    await Promise.resolve();
+    expect(completed).toBe(false);
+    player.update(0.02);
+    await gesture.completion;
+    expect(completed).toBe(true);
+    expect(player.activeCount).toBe(1);
+    player.update(0.601);
+    expect(player.activeCount).toBe(0);
+  });
+
+  it("never caps the persistent looping speech baseline or foundation", async () => {
+    const { player, addClip } = rig();
+    addClip("loop", [0.3, 0.3]);
+    const loop = await player.play("loop", {
+      loop: true,
+      maxDurationMs: 500,
+      fadeInMs: 0,
+    });
+    let completed = false;
+    void loop.completion.then(() => {
+      completed = true;
+    });
+    player.update(3);
+    await Promise.resolve();
+    expect(completed).toBe(false);
+    expect(actionFor(player, loop.id).isRunning()).toBe(true);
+    expect(player.activeCount).toBe(1);
+  });
+
+  it("does not let a retired recording's cap stop its replacement or extend a prior stop", async () => {
+    const { player, addClip } = rig();
+    addClip("gesture", [0.3, 0.3], 10);
+    const first = await player.play("gesture", { maxDurationMs: 1_000, fadeInMs: 0 });
+    player.update(0.8);
+    const second = await player.play("gesture", { maxDurationMs: 2_000, fadeInMs: 100 });
+    player.update(0.4);
+    await first.completion;
+    expect(player.activeCount).toBe(1);
+    expect(actionFor(player, second.id).isRunning()).toBe(true);
+    const stopped = second.stop(100);
+    player.update(0.101);
+    await stopped;
+    player.update(5);
+    expect(player.activeCount).toBe(0);
+  });
+});
