@@ -48,8 +48,9 @@ describe("local semantic motion catalog", () => {
       { intent: "emphasize", context: "speech" },
       { nowMs: 0 },
     );
-    expect(consider[0].id).toBe("speech-reflect");
-    expect(emphasize[0].id).toBe("speech-chat");
+    expect(consider[0].id).toBe("speech-conversation");
+    expect(consider.some((candidate) => candidate.id === "speech-animated")).toBe(false);
+    expect(emphasize[0].id).toBe("speech-animated");
     for (const candidates of [consider, emphasize]) {
       expect(candidates.length).toBeGreaterThan(1);
       expect(candidates.length).toBeLessThanOrEqual(5);
@@ -67,6 +68,7 @@ describe("local semantic motion catalog", () => {
     );
     expect(candidates.map((entry) => entry.animation).sort()).toEqual([
       "anim:Idle Chatting",
+      "anim:Idle Chatting 2",
       "anim:Idle Conversation",
     ]);
   });

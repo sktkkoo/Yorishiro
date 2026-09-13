@@ -19,6 +19,80 @@ function advance(
 }
 
 describe("MotionDirector", () => {
+  it("filters physical incompatibility before the final five and retains the evaluated entry", () => {
+    const catalog = Array.from({ length: 7 }, (_, index) => ({
+      ...DEFAULT_MOTION_CATALOG[0],
+      id: `candidate-${index}`,
+      animation: `anim:candidate-${index}`,
+    }));
+    const evaluated: string[] = [];
+    const director = new MotionDirector({
+      catalog,
+      initialDelayMs: 0,
+      random: () => 0,
+      evaluateTransition: (animation, options) => {
+        evaluated.push(animation);
+        expect(options).toMatchObject({ loop: true, weight: 0.9, speed: 0.9 });
+        return animation === "anim:candidate-6" ? { cost: 0.03, startTimeSec: 2.4 } : null;
+      },
+    });
+    const decision = director.update(0, idle);
+    expect(evaluated).toHaveLength(7);
+    expect(decision?.animation).toBe("anim:candidate-6");
+    expect(decision?.options.startTimeSec).toBe(2.4);
+    expect(decision?.candidates).toHaveLength(1);
+    expect(decision?.candidates[0].transition?.cost).toBe(0.03);
+  });
+
+  it("favours a compatible seam before drawing, using the actual playback strength", () => {
+    const first = DEFAULT_MOTION_CATALOG.find((entry) => entry.id === "speech-conversation");
+    if (!first) throw new Error("conversation fixture missing");
+    const director = new MotionDirector({
+      catalog: [first, { ...first, id: "second", animation: "anim:second" }],
+      initialDelayMs: 0,
+      random: () => 0,
+      evaluateTransition: (animation, options) => {
+        expect(options.weight).toBeCloseTo(0.85);
+        return { cost: animation === first.animation ? 0.4 : 0.02, startTimeSec: 1 };
+      },
+    });
+    const decision = director.update(0, speaking);
+    expect(decision?.animation).toBe("anim:second");
+    expect(decision?.candidates[0].weight).toBeGreaterThan(decision?.candidates[1].weight ?? 0);
+  });
+
+  it("keeps the current performance and preserves history and speech cooldown when every seam fails", () => {
+    let compatible = true;
+    const director = new MotionDirector({
+      initialDelayMs: 0,
+      random: () => 0,
+      evaluateTransition: () => (compatible ? { cost: 0, startTimeSec: 0 } : null),
+    });
+    const first = director.update(0, idle);
+    compatible = false;
+    expect(director.request({ context: "speech", intent: "agree" })).toBeNull();
+    expect(director.getSnapshot()).toMatchObject({
+      suppressedReason: "transition",
+      lastDecision: first,
+    });
+    expect(director.getSnapshot().history).toHaveLength(1);
+    compatible = true;
+    expect(director.request({ context: "speech", intent: "agree" })).not.toBeNull();
+  });
+
+  it("does not use non-finite seam evidence or enter a finite gesture halfway through", () => {
+    for (const transition of [
+      { cost: Number.NaN, startTimeSec: 0 },
+      { cost: -1, startTimeSec: 0 },
+      { cost: 0, startTimeSec: Infinity },
+      { cost: 0, startTimeSec: 2 },
+    ]) {
+      const director = new MotionDirector({ evaluateTransition: () => transition });
+      expect(director.request({ context: "speech", intent: "agree" })).toBeNull();
+      expect(director.getSnapshot().history).toHaveLength(0);
+    }
+  });
+
   it("produces five real ambient variations with dwell time, no repeats, and clip cooldowns", () => {
     const director = new MotionDirector({ random: createSeededMotionRandom(71) });
     const decisions = advance(director, 600_000);
@@ -124,7 +198,7 @@ describe("MotionDirector", () => {
         options: { loop: true, transition: "matched", mask: "upper-body" },
       });
       expect(decision.options.maxDurationMs).toBeUndefined();
-      expect(decision.options.weight).toBeLessThanOrEqual(0.48);
+      expect(decision.options.weight).toBeCloseTo(0.85);
       expect(decision.nextDueAtMs - decision.selectedAtMs).toBeGreaterThanOrEqual(10_000);
       expect(decision.nextDueAtMs - decision.selectedAtMs).toBeLessThanOrEqual(18_000);
       if (index > 0) expect(decision.animation).not.toBe(decisions[index - 1].animation);

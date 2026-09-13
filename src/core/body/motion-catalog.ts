@@ -135,7 +135,7 @@ export const DEFAULT_MOTION_CATALOG: readonly MotionCatalogEntry[] = [
     contexts: ["speech"],
     intents: CONVERSATION_INTENTS,
     features: [0.55, 0.9, 0.55, 0.8, 0.45, 0.38],
-    weight: 0.36,
+    weight: 0.85,
     speed: 1,
     cooldownMs: 6_000,
   },
@@ -146,18 +146,20 @@ export const DEFAULT_MOTION_CATALOG: readonly MotionCatalogEntry[] = [
     contexts: ["speech"],
     intents: CONVERSATION_INTENTS,
     features: [0.5, 0.8, 0.35, 0.85, 0.6, 0.42],
-    weight: 0.34,
+    weight: 0.85,
     speed: 1,
     cooldownMs: 6_000,
   },
   {
-    id: "speech-reflect",
+    id: "speech-animated",
     animation: "anim:Idle Chatting 2",
-    family: "reflect",
+    family: "animated-conversation",
     contexts: ["speech"],
-    intents: ["explain", "consider", "reassure", "agree"],
-    features: [0.75, 0.85, 1, 0.6, 0.25, 0.3],
-    weight: 0.32,
+    // The source raises both hands around the chest/shoulders. Lowering its
+    // blend weight does not turn that performance into quiet contemplation.
+    intents: ["explain", "emphasize"],
+    features: [0.35, 0.85, 0.25, 0.65, 0.9, 0.68],
+    weight: 0.85,
     speed: 1,
     cooldownMs: 6_000,
   },
@@ -182,6 +184,8 @@ export interface MotionRetrievalOptions {
   /** Restrict to installed/usable animations when that information is available. */
   readonly availableAnimations?: ReadonlySet<string>;
   readonly limit?: number;
+  /** Internal two-stage selection: let the physical gate run before truncating to five. */
+  readonly includeAllEligible?: boolean;
 }
 
 export function cosineMotionSimilarity(a: MotionFeatures, b: MotionFeatures): number {
@@ -232,13 +236,14 @@ export function retrieveMotionCandidates(
     });
   }
   const limit = Math.max(0, Math.min(5, Math.floor(options.limit ?? 5)));
-  return candidates.sort((a, b) => b.score - a.score || a.id.localeCompare(b.id)).slice(0, limit);
+  candidates.sort((a, b) => b.score - a.score || a.id.localeCompare(b.id));
+  return options.includeAllEligible ? candidates : candidates.slice(0, limit);
 }
 
-export function sampleMotionCandidate(
-  candidates: readonly MotionCandidate[],
+export function sampleMotionCandidate<T extends MotionCandidate>(
+  candidates: readonly T[],
   random: () => number,
-): MotionCandidate | null {
+): T | null {
   if (candidates.length === 0) return null;
   const total = candidates.reduce((sum, item) => sum + item.weight, 0);
   if (!(total > 0)) return null;

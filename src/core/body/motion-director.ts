@@ -18,6 +18,8 @@ export interface DirectedMotionOptions {
   readonly fadeOutMs: number;
   readonly transition: "matched" | "immediate";
   readonly mask: "upper-body";
+  /** Mechanically compatible entry chosen before the weighted draw. */
+  readonly startTimeSec?: number;
   /** Finite speech motifs may retire near a quiet exit before a long recording ends. */
   readonly maxDurationMs?: number;
 }
@@ -30,7 +32,16 @@ export interface MotionDecision {
   readonly selectedAtMs: number;
   readonly nextDueAtMs: number;
   readonly reason: "idle-dwell-elapsed" | "speech-dwell-elapsed" | "speech-intent";
-  readonly candidates: readonly MotionCandidate[];
+  readonly candidates: readonly DirectedMotionCandidate[];
+}
+
+export interface MotionTransitionEvaluation {
+  readonly cost: number;
+  readonly startTimeSec: number;
+}
+
+export interface DirectedMotionCandidate extends MotionCandidate {
+  readonly transition?: MotionTransitionEvaluation;
 }
 
 export interface MotionDirectorOptions {
@@ -38,6 +49,11 @@ export interface MotionDirectorOptions {
   readonly catalog?: readonly MotionCatalogEntry[];
   readonly availableAnimations?: ReadonlySet<string>;
   readonly initialDelayMs?: number;
+  /** Cache-only target-pose evaluation. Null keeps an incompatible/cold clip out of the draw. */
+  readonly evaluateTransition?: (
+    animation: string,
+    options: DirectedMotionOptions,
+  ) => MotionTransitionEvaluation | null;
 }
 
 export interface MotionDirectorContext {
@@ -55,7 +71,14 @@ export interface MotionDirectorSnapshot {
   readonly phase: "waiting" | "dwelling" | "quiet" | "blocked" | "disabled";
   readonly lastDecision: MotionDecision | null;
   readonly history: readonly MotionHistoryEntry[];
-  readonly suppressedReason: "disabled" | "priority" | "dwell" | "quiet" | "cooldown" | null;
+  readonly suppressedReason:
+    | "disabled"
+    | "priority"
+    | "dwell"
+    | "quiet"
+    | "cooldown"
+    | "transition"
+    | null;
 }
 
 /**
@@ -153,17 +176,47 @@ export class MotionDirector {
     query: SemanticMotionQuery,
     reason: MotionDecision["reason"],
   ): MotionDecision | null {
-    const candidates = retrieveMotionCandidates(query, {
+    const semanticCandidates = retrieveMotionCandidates(query, {
       nowMs: this.elapsedMs,
       history: this.history,
       catalog: (this.options.catalog ?? DEFAULT_MOTION_CATALOG).filter(
         (entry) => !this.excludedAnimations.has(entry.animation),
       ),
       availableAnimations: this.options.availableAnimations,
+      // Apply the physical gate before the final top five: a bad seam must not
+      // crowd a compatible, slightly lower semantic match out of consideration.
+      includeAllEligible: this.options.evaluateTransition !== undefined,
     });
+    const candidates: DirectedMotionCandidate[] = [];
+    for (const candidate of semanticCandidates) {
+      if (!this.options.evaluateTransition) {
+        candidates.push(candidate);
+        continue;
+      }
+      const playbackOptions = this.playbackOptions(candidate, query, reason);
+      const transition = this.options.evaluateTransition(candidate.animation, playbackOptions);
+      if (
+        !transition ||
+        !Number.isFinite(transition.cost) ||
+        transition.cost < 0 ||
+        !Number.isFinite(transition.startTimeSec) ||
+        transition.startTimeSec < 0 ||
+        (!playbackOptions.loop && transition.startTimeSec !== 0)
+      )
+        continue;
+      candidates.push({
+        ...candidate,
+        weight: candidate.weight * Math.exp(-4 * transition.cost),
+        transition,
+      });
+    }
+    if (this.options.evaluateTransition) {
+      candidates.sort((a, b) => b.weight - a.weight || a.id.localeCompare(b.id));
+    }
+    candidates.splice(5);
     const selected = sampleMotionCandidate(candidates, this.random);
     if (!selected) {
-      this.suppressedReason = "cooldown";
+      this.suppressedReason = semanticCandidates.length > 0 ? "transition" : "cooldown";
       this.nextDueAtMs = Math.max(this.nextDueAtMs, this.elapsedMs + 2_500);
       this.retryAtMs = this.nextDueAtMs;
       return null;
@@ -171,9 +224,6 @@ export class MotionDirector {
     const speech = query.context === "speech";
     const speechBaseline = reason === "speech-dwell-elapsed";
     const finiteGesture = speech && !speechBaseline;
-    const intensity = Number.isFinite(query.intensity)
-      ? Math.max(0, Math.min(1, query.intensity ?? 0.5))
-      : 0.5;
     // A short finite gesture must not leave the body without a recorded idle
     // for an entire 12–25 second ambient dwell after the utterance ends.
     // While a higher-priority gesture remains active, Body extends this handoff.
@@ -193,16 +243,8 @@ export class MotionDirector {
     const decision: MotionDecision = {
       animation: selected.animation,
       options: {
-        loop: !finiteGesture,
-        weight: speechBaseline
-          ? Math.min(0.48, selected.entry.weight * 1.2)
-          : Math.min(1, selected.entry.weight * (0.65 + intensity * 0.7)),
-        speed: selected.entry.speed,
-        fadeInMs: finiteGesture ? 420 : 1_200,
-        fadeOutMs: finiteGesture ? 600 : 1_200,
-        transition: finiteGesture ? "immediate" : "matched",
-        mask: "upper-body",
-        ...(finiteGesture ? { maxDurationMs: 6_000 } : {}),
+        ...this.playbackOptions(selected, query, reason),
+        ...(selected.transition ? { startTimeSec: selected.transition.startTimeSec } : {}),
       },
       intent: query.intent,
       context: query.context,
@@ -223,6 +265,30 @@ export class MotionDirector {
     this.phase = "dwelling";
     this.suppressedReason = null;
     return decision;
+  }
+
+  private playbackOptions(
+    candidate: MotionCandidate,
+    query: SemanticMotionQuery,
+    reason: MotionDecision["reason"],
+  ): DirectedMotionOptions {
+    const speechBaseline = reason === "speech-dwell-elapsed";
+    const finiteGesture = query.context === "speech" && !speechBaseline;
+    const intensity = Number.isFinite(query.intensity)
+      ? Math.max(0, Math.min(1, query.intensity ?? 0.5))
+      : 0.5;
+    return {
+      loop: !finiteGesture,
+      weight: speechBaseline
+        ? candidate.entry.weight
+        : Math.min(1, candidate.entry.weight * (0.65 + intensity * 0.7)),
+      speed: candidate.entry.speed,
+      fadeInMs: finiteGesture ? 420 : 1_200,
+      fadeOutMs: finiteGesture ? 600 : 1_200,
+      transition: finiteGesture ? "immediate" : "matched",
+      mask: "upper-body",
+      ...(finiteGesture ? { maxDurationMs: 6_000 } : {}),
+    };
   }
 
   private unitRandom(): number {
