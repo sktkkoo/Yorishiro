@@ -2,7 +2,11 @@ import { type VRM, type VRMHumanBones, VRMHumanoid } from "@pixiv/three-vrm";
 import * as THREE from "three";
 import { describe, expect, it } from "vitest";
 import { conditionMotionLoop } from "./motion-transition";
-import { calibrateStandingIdleClip, groundStandingIdleClip } from "./standing-idle-grounding";
+import {
+  calibrateQuietIdleUpperBodyClip,
+  calibrateStandingIdleClip,
+  groundStandingIdleClip,
+} from "./standing-idle-grounding";
 
 function required<T>(value: T | null | undefined): T {
   if (value == null) throw new Error("Missing test fixture value");
@@ -80,6 +84,99 @@ function measure(vrm: VRM, clip: THREE.AnimationClip, weight: number | "fade", p
   mixer.stopAllAction();
   return { maxDrift, maxRawDifference };
 }
+
+describe("reviewed quiet Idle upper-body calibration", () => {
+  const names = ["spine", "chest", "upperChest", "head", "leftUpperArm", "rightIndexProximal"];
+  const upperFixture = () => {
+    const rest = new Map<string, number[]>();
+    const tracks = names.map((name, index) => {
+      const first = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.1, index * 0.03, 0.2));
+      const reference = new THREE.Quaternion().setFromEuler(
+        new THREE.Euler(index * -0.02, 0.07, name === "rightIndexProximal" ? -0.25 : 0.01),
+      );
+      rest.set(`${name}.quaternion`, reference.toArray());
+      return new THREE.QuaternionKeyframeTrack(
+        `${name}.quaternion`,
+        [0, 0.5, 1],
+        [0, 0.04, -0.02].flatMap((angle) =>
+          first
+            .clone()
+            .multiply(
+              new THREE.Quaternion().setFromAxisAngle(
+                new THREE.Vector3(1, 2, 3).normalize(),
+                angle,
+              ),
+            )
+            .toArray(),
+        ),
+      );
+    });
+    return { clip: new THREE.AnimationClip("quiet", 1, tracks), rest };
+  };
+
+  it("uses the entire relaxed upper chain and preserves noncommuting local motion including fingers", () => {
+    const { clip, rest } = upperFixture();
+    const original = clip.tracks.map((track) => [...track.values]);
+    const calibrated = calibrateQuietIdleUpperBodyClip(clip, rest);
+    expect(calibrated).not.toBe(clip);
+    for (let bone = 0; bone < clip.tracks.length; bone++) {
+      const before = clip.tracks[bone];
+      const after = calibrated.tracks[bone];
+      const first = new THREE.Quaternion().fromArray(before.values).normalize();
+      const reference = new THREE.Quaternion()
+        .fromArray(required(rest.get(before.name)))
+        .normalize();
+      expect(
+        new THREE.Quaternion().fromArray(after.values).normalize().angleTo(reference),
+      ).toBeLessThan(1e-6);
+      for (let key = 0; key < before.values.length; key += 4) {
+        const sourceDelta = first
+          .clone()
+          .invert()
+          .multiply(new THREE.Quaternion().fromArray(before.values, key).normalize());
+        const targetDelta = reference
+          .clone()
+          .invert()
+          .multiply(new THREE.Quaternion().fromArray(after.values, key).normalize());
+        expect(targetDelta.angleTo(sourceDelta)).toBeLessThan(1e-6);
+      }
+      // Left-multiplying by a constant rotation also preserves angular speed.
+      const speed = (values: ArrayLike<number>) =>
+        new THREE.Quaternion()
+          .fromArray(values, 4)
+          .normalize()
+          .angleTo(new THREE.Quaternion().fromArray(values, 8).normalize()) / 0.5;
+      expect(speed(after.values)).toBeCloseTo(speed(before.values), 6);
+      expect([...after.times]).toEqual([...before.times]);
+    }
+    expect(clip.tracks.map((track) => [...track.values])).toEqual(original);
+  });
+
+  it("fails closed for unknown rest, invalid rotations or a non-quiet performance", () => {
+    const { clip, rest } = upperFixture();
+    expect(calibrateQuietIdleUpperBodyClip(clip, new Map())).toBe(clip);
+    for (const invalid of [0, Number.NaN, Number.POSITIVE_INFINITY]) {
+      const bad = clip.clone();
+      bad.tracks[0].values.fill(invalid, 0, 4);
+      expect(calibrateQuietIdleUpperBodyClip(bad, rest)).toBe(bad);
+      const invalidRest = new Map(rest).set(clip.tracks[0].name, [
+        invalid,
+        invalid,
+        invalid,
+        invalid,
+      ]);
+      expect(calibrateQuietIdleUpperBodyClip(clip, invalidRest)).toBe(clip);
+    }
+    const gesture = clip.clone();
+    new THREE.Quaternion()
+      .setFromEuler(new THREE.Euler(1, 0, 0))
+      .toArray(gesture.tracks[0].values, 4);
+    expect(calibrateQuietIdleUpperBodyClip(gesture, rest)).toBe(gesture);
+    const long = clip.clone();
+    long.duration = 60;
+    expect(calibrateQuietIdleUpperBodyClip(long, rest)).toBe(long);
+  });
+});
 
 describe("reviewed standing Idle grounding", () => {
   it("calibrates the source stance while retaining every recorded local rotation change", () => {

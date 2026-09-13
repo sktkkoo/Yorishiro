@@ -22,7 +22,11 @@ import {
   measureMotionEntry,
   UPPER_BODY_TRANSITION_LIMITS,
 } from "./motion-transition";
-import { calibrateStandingIdleClip, groundStandingIdleClip } from "./standing-idle-grounding";
+import {
+  calibrateQuietIdleUpperBodyClip,
+  calibrateStandingIdleClip,
+  groundStandingIdleClip,
+} from "./standing-idle-grounding";
 
 const ANIM_ALIAS: Record<string, string> = {
   VRMA_small_nod: "Thankful",
@@ -115,6 +119,8 @@ export class AnimationPlayer {
   >();
   private readonly loopClips = new WeakMap<THREE.AnimationClip, THREE.AnimationClip>();
   private readonly standingClips = new WeakMap<THREE.AnimationClip, THREE.AnimationClip>();
+  private readonly quietIdleClips = new WeakMap<THREE.AnimationClip, THREE.AnimationClip>();
+  private readonly standingUpperRest = new Map<string, Float32Array>();
   private readonly groundedClips = new WeakMap<THREE.AnimationClip, THREE.AnimationClip>();
   private readonly profiles = new WeakMap<THREE.AnimationClip, MotionTransitionProfile>();
   private readonly preparedProfiles = new Map<string, MotionTransitionProfile>();
@@ -151,6 +157,11 @@ export class AnimationPlayer {
         velocityValid: false,
       };
       this.poseBindings.push({ node, sample });
+      // Keep a separate immutable reference: transition restPose can be refreshed
+      // later as mixer bindings change, while quiet standing calibration cannot.
+      const standingRest = pose.slice();
+      if (node.name) this.standingUpperRest.set(`${node.name}.quaternion`, standingRest);
+      this.standingUpperRest.set(`${node.uuid}.quaternion`, standingRest);
       if (node.name) this.poseSnapshot.set(`${node.name}.quaternion`, sample);
       this.poseSnapshot.set(`${node.uuid}.quaternion`, sample);
     }
@@ -548,6 +559,16 @@ export class AnimationPlayer {
       }
     }
     let standingCalibrationApplied = false;
+    if (mask === "upper-body" && loop && ref === "anim:Idle") {
+      let calibrated = this.quietIdleClips.get(clip);
+      if (!calibrated) {
+        calibrated = calibrateQuietIdleUpperBodyClip(clip, this.standingUpperRest);
+        this.quietIdleClips.set(clip, calibrated);
+      }
+      if (calibrated === clip)
+        throw new Error("Unable to calibrate reviewed quiet Idle upper body");
+      clip = calibrated;
+    }
     if (mask === "lower-body" && ref === "anim:Idle") {
       let calibrated = this.standingClips.get(clip);
       if (!calibrated) {

@@ -1,0 +1,397 @@
+{
+  "purpose": "Isolate the static upper-body counter-lean in the reviewed quiet Idle. This does not identify the user's exact observed clip or establish superiority over Animates.",
+  "input": {
+    "model": "public/models/Yori.vrm",
+    "modelSha256": "739a1515cffe09c17a535eb52a11f88640fc7728b86b9e4c74f00c353437b7cd",
+    "source": "public/animations/Idle.vrma",
+    "sourceSha256": "5315fecbd472d5b3a11a3cb324db93a6c6538b41229feb5b6468356a1a7481b5",
+    "durationSec": 8.333333015441895
+  },
+  "methodology": {
+    "sampleHz": 60,
+    "units": "source phase seconds; roll degrees; foot drift millimetres",
+    "shoulderDefinition": "Angle of left/right upper-arm joint centers; positive means anatomical right shoulder lower. Head roll uses the world-space head up vector.",
+    "playback": "Actual AnimationPlayer, upper-body loop at source speed 1; same lower-body foundation at speed 0.9, weight 1. No procedural additions. Existing loop conditioning remains active in both lanes.",
+    "limitations": "This is a quiet-pose correction, not recovery of missing source hips motion, general asymmetry removal, foot contact inference, or validation of other full-body performances. Explicit full-body and other clip variants are unchanged."
+  },
+  "localMotion": {
+    "quaternionTracks": 43,
+    "quaternionSamples": 10793,
+    "maxSourceExcursionRad": 0.18426100944278184,
+    "maxDeltaErrorRad": 8.940696716308595e-8,
+    "sourceClipUnchanged": true
+  },
+  "cases": [
+    {
+      "mode": "before",
+      "upperWeight": 0.2,
+      "frames": 500,
+      "shoulderRollDeg": {
+        "min": 2.595362212742616,
+        "max": 3.153946271997156
+      },
+      "headUpRollDeg": {
+        "min": -1.0438221537269357,
+        "max": -0.5259450198653557
+      },
+      "maxFootDriftMm": [
+        1.2840434125645372,
+        1.0100827309508282,
+        1.2859497862768325,
+        0.9834130904226861
+      ],
+      "keyframes": [
+        {
+          "sourcePhaseSec": 0,
+          "shoulderRollDeg": 2.9677752319787523,
+          "headUpRollDeg": -0.9112539145908009
+        },
+        {
+          "sourcePhaseSec": 2,
+          "shoulderRollDeg": 2.6238441906994914,
+          "headUpRollDeg": -0.5757912143112407
+        },
+        {
+          "sourcePhaseSec": 4,
+          "shoulderRollDeg": 2.9263105674597183,
+          "headUpRollDeg": -0.8818442708918035
+        },
+        {
+          "sourcePhaseSec": 6,
+          "shoulderRollDeg": 2.845538199121361,
+          "headUpRollDeg": -0.7251293173054612
+        },
+        {
+          "sourcePhaseSec": 8,
+          "shoulderRollDeg": 3.0473918143317467,
+          "headUpRollDeg": -1.0430154105596898
+        }
+      ]
+    },
+    {
+      "mode": "calibrated",
+      "upperWeight": 0.2,
+      "frames": 500,
+      "shoulderRollDeg": {
+        "min": -0.38558091445988235,
+        "max": 0.17947257251990292
+      },
+      "headUpRollDeg": {
+        "min": -0.13283940787501075,
+        "max": 0.3848693230348158
+      },
+      "maxFootDriftMm": [
+        1.2840434125645372,
+        1.0100827309508282,
+        1.2859497862768325,
+        0.9834130904226861
+      ],
+      "keyframes": [
+        {
+          "sourcePhaseSec": 0,
+          "shoulderRollDeg": 0,
+          "headUpRollDeg": 0
+        },
+        {
+          "sourcePhaseSec": 2,
+          "shoulderRollDeg": -0.3581611739149469,
+          "headUpRollDeg": 0.33442986819523385
+        },
+        {
+          "sourcePhaseSec": 4,
+          "shoulderRollDeg": -0.03901150096139588,
+          "headUpRollDeg": 0.032353330118949086
+        },
+        {
+          "sourcePhaseSec": 6,
+          "shoulderRollDeg": -0.13399129888881173,
+          "headUpRollDeg": 0.18530205040571043
+        },
+        {
+          "sourcePhaseSec": 8,
+          "shoulderRollDeg": 0.08087725684969822,
+          "headUpRollDeg": -0.13219077436355792
+        }
+      ]
+    },
+    {
+      "mode": "before",
+      "upperWeight": 0.5,
+      "frames": 500,
+      "shoulderRollDeg": {
+        "min": 7.064136456409646,
+        "max": 7.610514273729399
+      },
+      "headUpRollDeg": {
+        "min": -2.4758862884687907,
+        "max": -1.916024561486713
+      },
+      "maxFootDriftMm": [
+        1.2840434125645372,
+        1.0100827309508282,
+        1.2859497862768325,
+        0.9834130904226861
+      ],
+      "keyframes": [
+        {
+          "sourcePhaseSec": 0,
+          "shoulderRollDeg": 7.3682738999426665,
+          "headUpRollDeg": -2.2846046216882896
+        },
+        {
+          "sourcePhaseSec": 2,
+          "shoulderRollDeg": 7.110599936854065,
+          "headUpRollDeg": -2.027413446166359
+        },
+        {
+          "sourcePhaseSec": 4,
+          "shoulderRollDeg": 7.321619736016707,
+          "headUpRollDeg": -2.268243901974218
+        },
+        {
+          "sourcePhaseSec": 6,
+          "shoulderRollDeg": 7.307413047528301,
+          "headUpRollDeg": -2.043403510252565
+        },
+        {
+          "sourcePhaseSec": 8,
+          "shoulderRollDeg": 7.418283507950229,
+          "headUpRollDeg": -2.4700322171362137
+        }
+      ]
+    },
+    {
+      "mode": "calibrated",
+      "upperWeight": 0.5,
+      "frames": 500,
+      "shoulderRollDeg": {
+        "min": -0.3513802889214496,
+        "max": 0.21862050415114642
+      },
+      "headUpRollDeg": {
+        "min": -0.19066432063632274,
+        "max": 0.37091220938190544
+      },
+      "maxFootDriftMm": [
+        1.2840434125645372,
+        1.0100827309508282,
+        1.2859497862768325,
+        0.9834130904226861
+      ],
+      "keyframes": [
+        {
+          "sourcePhaseSec": 0,
+          "shoulderRollDeg": 0,
+          "headUpRollDeg": 0
+        },
+        {
+          "sourcePhaseSec": 2,
+          "shoulderRollDeg": -0.3103262373983135,
+          "headUpRollDeg": 0.25321117053611053
+        },
+        {
+          "sourcePhaseSec": 4,
+          "shoulderRollDeg": -0.039875455619187976,
+          "headUpRollDeg": 0.023832818267391243
+        },
+        {
+          "sourcePhaseSec": 6,
+          "shoulderRollDeg": -0.10601713217362933,
+          "headUpRollDeg": 0.23704741439093474
+        },
+        {
+          "sourcePhaseSec": 8,
+          "shoulderRollDeg": 0.05608617400810644,
+          "headUpRollDeg": -0.18441170282189023
+        }
+      ]
+    },
+    {
+      "mode": "before",
+      "upperWeight": 0.9,
+      "frames": 500,
+      "shoulderRollDeg": {
+        "min": 12.915976491512286,
+        "max": 13.462013067261138
+      },
+      "headUpRollDeg": {
+        "min": -4.399341138242167,
+        "max": -3.616944126454016
+      },
+      "maxFootDriftMm": [
+        1.2840434125645372,
+        1.0100827309508282,
+        1.2859497862768325,
+        0.9834130904226861
+      ],
+      "keyframes": [
+        {
+          "sourcePhaseSec": 0,
+          "shoulderRollDeg": 13.132145636523084,
+          "headUpRollDeg": -4.125138717811121
+        },
+        {
+          "sourcePhaseSec": 2,
+          "shoulderRollDeg": 13.019205034414817,
+          "headUpRollDeg": -3.9679291673194035
+        },
+        {
+          "sourcePhaseSec": 4,
+          "shoulderRollDeg": 13.077090602272875,
+          "headUpRollDeg": -4.126496452915634
+        },
+        {
+          "sourcePhaseSec": 6,
+          "shoulderRollDeg": 13.1804635613325,
+          "headUpRollDeg": -3.80530974605478
+        },
+        {
+          "sourcePhaseSec": 8,
+          "shoulderRollDeg": 13.136386597211468,
+          "headUpRollDeg": -4.386182826947649
+        }
+      ]
+    },
+    {
+      "mode": "calibrated",
+      "upperWeight": 0.9,
+      "frames": 500,
+      "shoulderRollDeg": {
+        "min": -0.31446601462227824,
+        "max": 0.27126098044071584
+      },
+      "headUpRollDeg": {
+        "min": -0.2681088571009201,
+        "max": 0.49475038308934083
+      },
+      "maxFootDriftMm": [
+        1.2840434125645372,
+        1.0100827309508282,
+        1.2859497862768325,
+        0.9834130904226861
+      ],
+      "keyframes": [
+        {
+          "sourcePhaseSec": 0,
+          "shoulderRollDeg": 0,
+          "headUpRollDeg": 0
+        },
+        {
+          "sourcePhaseSec": 2,
+          "shoulderRollDeg": -0.2442824981326081,
+          "headUpRollDeg": 0.14660168465295956
+        },
+        {
+          "sourcePhaseSec": 4,
+          "shoulderRollDeg": -0.04102564549910896,
+          "headUpRollDeg": 0.012475498477652261
+        },
+        {
+          "sourcePhaseSec": 6,
+          "shoulderRollDeg": -0.06607614310094245,
+          "headUpRollDeg": 0.30839102216922143
+        },
+        {
+          "sourcePhaseSec": 8,
+          "shoulderRollDeg": 0.02299344167972821,
+          "headUpRollDeg": -0.2540455657964
+        }
+      ]
+    },
+    {
+      "mode": "before",
+      "upperWeight": 1,
+      "frames": 500,
+      "shoulderRollDeg": {
+        "min": 14.360813160614066,
+        "max": 14.906976494194195
+      },
+      "headUpRollDeg": {
+        "min": -4.882179604823734,
+        "max": -4.037631962866797
+      },
+      "maxFootDriftMm": [
+        1.2840434125645372,
+        1.0100827309508282,
+        1.2859497862768325,
+        0.9834130904226861
+      ],
+      "keyframes": [
+        {
+          "sourcePhaseSec": 0,
+          "shoulderRollDeg": 14.553100311524814,
+          "headUpRollDeg": -4.586532091223417
+        },
+        {
+          "sourcePhaseSec": 2,
+          "shoulderRollDeg": 14.481098082142847,
+          "headUpRollDeg": -4.453519743602614
+        },
+        {
+          "sourcePhaseSec": 4,
+          "shoulderRollDeg": 14.495638238325268,
+          "headUpRollDeg": -4.592391961250595
+        },
+        {
+          "sourcePhaseSec": 6,
+          "shoulderRollDeg": 14.632994890857034,
+          "headUpRollDeg": -4.246275506808918
+        },
+        {
+          "sourcePhaseSec": 8,
+          "shoulderRollDeg": 14.544646279983127,
+          "headUpRollDeg": -4.867219658764665
+        }
+      ]
+    },
+    {
+      "mode": "calibrated",
+      "upperWeight": 1,
+      "frames": 500,
+      "shoulderRollDeg": {
+        "min": -0.30850737383004895,
+        "max": 0.28448422322538625
+      },
+      "headUpRollDeg": {
+        "min": -0.2874776631932328,
+        "max": 0.5318036124631756
+      },
+      "maxFootDriftMm": [
+        1.2840434125645372,
+        1.0100827309508282,
+        1.2859497862768325,
+        0.9834130904226861
+      ],
+      "keyframes": [
+        {
+          "sourcePhaseSec": 0,
+          "shoulderRollDeg": 0,
+          "headUpRollDeg": 0
+        },
+        {
+          "sourcePhaseSec": 2,
+          "shoulderRollDeg": -0.22738942671029994,
+          "headUpRollDeg": 0.12024313206775161
+        },
+        {
+          "sourcePhaseSec": 4,
+          "shoulderRollDeg": -0.04131287921663693,
+          "headUpRollDeg": 0.00963676863155669
+        },
+        {
+          "sourcePhaseSec": 6,
+          "shoulderRollDeg": -0.05563612684840518,
+          "headUpRollDeg": 0.3266515660622359
+        },
+        {
+          "sourcePhaseSec": 8,
+          "shoulderRollDeg": 0.014713487415659277,
+          "headUpRollDeg": -0.2714549804029578
+        }
+      ]
+    }
+  ],
+  "warnings": [
+    "VRMAnimationLoaderPlugin: The loaded VRM Animation might violate the VRM T-pose (The y component of the rest hips position is approximately zero or below.)"
+  ]
+}

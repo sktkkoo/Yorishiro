@@ -19,6 +19,73 @@ const MAX_CORRECTION_METERS = 0.03;
 const MAX_CONTACT_RESIDUAL_METERS = 0.01;
 
 /**
+ * Rebase only the reviewed quiet Idle's upper-body recording onto the avatar's
+ * relaxed standing pose. Its fixed torso/head counter-lean belongs to the source
+ * hips stance, which the calibrated standing foundation no longer uses.
+ * Include the whole upper chain: correcting the torso alone leaves a head tilt.
+ * No axis conversion or mirroring is performed; q(0)^-1 * q(t) stays unchanged.
+ * Rest references must be captured before playback, never from a live posed frame.
+ * Unsupported clips return the original so callers can fail closed.
+ */
+export function calibrateQuietIdleUpperBodyClip(
+  clip: THREE.AnimationClip,
+  restRotations: ReadonlyMap<string, ArrayLike<number>>,
+): THREE.AnimationClip {
+  if (
+    !Number.isFinite(clip.duration) ||
+    clip.duration <= 0 ||
+    clip.duration > MAX_DURATION_SEC ||
+    clip.tracks.length === 0 ||
+    clip.tracks.length > 64
+  )
+    return clip;
+  const tracks: THREE.KeyframeTrack[] = [];
+  let count = 0;
+  for (const track of clip.tracks) {
+    if (track.ValueTypeName !== "quaternion") {
+      tracks.push(track);
+      continue;
+    }
+    const rest = restRotations.get(track.name);
+    if (
+      !rest ||
+      rest.length !== 4 ||
+      !Array.from(rest).every(Number.isFinite) ||
+      track.getValueSize() !== 4 ||
+      track.times.length < 2 ||
+      track.times.length > 10_000 ||
+      !track.validate() ||
+      !track.times.every(Number.isFinite) ||
+      !track.values.every(Number.isFinite)
+    )
+      return clip;
+    const first = new THREE.Quaternion().fromArray(track.values);
+    const reference = new THREE.Quaternion().fromArray(rest);
+    if (first.lengthSq() < 1e-10 || reference.lengthSq() < 1e-10) return clip;
+    first.normalize();
+    const transform = reference.normalize().multiply(first.clone().invert());
+    const rotation = new THREE.Quaternion();
+    const values = new Float32Array(track.values.length);
+    for (let index = 0; index < values.length; index += 4) {
+      rotation.fromArray(track.values, index);
+      if (rotation.lengthSq() < 1e-10) return clip;
+      rotation.normalize();
+      // This particular idle varies by at most 0.185 rad. Do not turn this
+      // posture correction into a generic gesture or whole-body retargeter.
+      if (rotation.angleTo(first) > 0.25) return clip;
+      rotation.premultiply(transform).normalize().toArray(values, index);
+    }
+    const calibrated = track.clone();
+    calibrated.values = values;
+    tracks.push(calibrated);
+    count++;
+  }
+  return count > 0
+    ? new THREE.AnimationClip(`${clip.name}:quiet-standing`, clip.duration, tracks, clip.blendMode)
+    : clip;
+}
+
+/**
  * Transfer only the reviewed Idle recording's small, correlated rotation
  * changes onto the target's standing rest pose. Its absolute source stance is
  * different enough to move Yori's feet 10–16 cm during a fade from rest. This

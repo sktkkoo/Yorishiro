@@ -825,3 +825,77 @@ describe("AnimationPlayer reviewed standing Idle preparation", () => {
     expect(actionFor(player, explicit.id).getClip().tracks).toBe(original.tracks);
   });
 });
+
+describe("AnimationPlayer quiet Idle upper-body preparation", () => {
+  function quietRig() {
+    const scene = new THREE.Object3D();
+    const head = new THREE.Object3D();
+    head.name = "Head";
+    head.rotation.x = 0.07;
+    scene.add(head);
+    const player = new AnimationPlayer({ scene } as VRM);
+    const original = new THREE.AnimationClip("quiet", 2, [
+      new THREE.QuaternionKeyframeTrack(
+        "Head.quaternion",
+        [0, 1, 2],
+        [0.3, 0.34, 0.3].flatMap((angle) => [Math.sin(angle / 2), 0, 0, Math.cos(angle / 2)]),
+      ),
+    ]);
+    const cache = (player as unknown as { clipCache: Map<string, THREE.AnimationClip> }).clipCache;
+    cache.set("anim:Idle", original);
+    cache.set("anim:OtherIdle", original);
+    return { player, head, original };
+  }
+
+  it("captures rest before posing, preserves the recorded delta, and reuses calibration without accumulating it", async () => {
+    const { player, head, original } = quietRig();
+    // Loading from a currently posed frame must not bake that pose into the clip.
+    head.rotation.x = -0.5;
+    expect(await player.preload("anim:Idle", { mask: "upper-body", loop: true })).toBe(true);
+    expect(head.rotation.x).toBeCloseTo(-0.5, 6);
+    const opts = { mask: "upper-body", loop: true, weight: 1, fadeInMs: 0 } as const;
+    const first = await player.play("anim:Idle", opts);
+    const preparedTracks = actionFor(player, first.id).getClip().tracks;
+    player.update(0);
+    expect(head.rotation.x).toBeCloseTo(0.07, 6);
+    player.update(1);
+    expect(head.rotation.x).toBeCloseTo(0.11, 6);
+    player.stopAll();
+    const second = await player.play("anim:Idle", opts);
+    expect(actionFor(player, second.id).getClip().tracks).toBe(preparedTracks);
+    player.update(1);
+    expect(head.rotation.x).toBeCloseTo(0.11, 6);
+    expect(
+      new THREE.Quaternion()
+        .fromArray(original.tracks[0].values)
+        .angleTo(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), 0.3)),
+    ).toBeLessThan(1e-3);
+  });
+
+  it("leaves explicit full-body, non-loop Idle, and other upper-body performances unchanged", async () => {
+    const { player, head } = quietRig();
+    for (const [ref, opts] of [
+      ["anim:Idle", { mask: "full-body", loop: true }],
+      ["anim:Idle", { mask: "upper-body", loop: false }],
+      ["anim:OtherIdle", { mask: "upper-body", loop: true }],
+    ] as const) {
+      await player.play(ref, { ...opts, fadeInMs: 0, weight: 1 });
+      player.update(0);
+      expect(head.rotation.x).toBeCloseTo(0.3, 6);
+      player.update(1);
+      expect(head.rotation.x).toBeCloseTo(0.34, 6);
+      player.stopAll();
+    }
+  });
+
+  it("rejects unsupported automatic calibration without changing the avatar", async () => {
+    const { player, head, original } = quietRig();
+    original.tracks[0].values.fill(0, 0, 4);
+    expect(await player.preload("anim:Idle", { mask: "upper-body", loop: true })).toBe(false);
+    await expect(player.play("anim:Idle", { mask: "upper-body", loop: true })).rejects.toThrow(
+      "Unable to calibrate reviewed quiet Idle upper body",
+    );
+    expect(player.activeCount).toBe(0);
+    expect(head.rotation.x).toBeCloseTo(0.07, 6);
+  });
+});
