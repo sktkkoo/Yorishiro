@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createBodyStateExpressionAdapter } from "../../runtime/agent-state-expression/body-adapter";
 import type { StateExpressionCue } from "../../runtime/agent-state-expression/types";
 import type { ClaimKind, ClaimState } from "../../runtime/ui-claim-state";
+import { ZERO_MOUTH } from "../voice/mouth-values";
 import { AnimationPlayer } from "./animation-player";
 import { Body } from "./index";
 import { DEFAULT_MOTION_CATALOG } from "./motion-catalog";
@@ -84,6 +85,14 @@ function advance(body: Body, seconds: number) {
   for (let frame = 0; frame < frames; frame++) body.update(1 / 60, frame / 60);
 }
 
+// Foreground ownership tests isolate the foundation, which has separate
+// real-mixer coverage below and its own cancellation/gain tests.
+function mockPerformanceLibrary() {
+  return vi
+    .spyOn(AnimationPlayer.prototype, "preload")
+    .mockImplementation(async (_ref, options) => options?.mask !== "lower-body");
+}
+
 const speechRequest = {
   source: "system",
   priority: "speech-expression",
@@ -105,6 +114,109 @@ function cue(overrides: Partial<StateExpressionCue> = {}): StateExpressionCue {
 }
 
 describe("recorded motion Body integration", () => {
+  it("retains recorded legs under upper-body speech and yields the whole body to explicit owners", async () => {
+    vi.spyOn(AnimationPlayer.prototype, "preload").mockImplementation(
+      async (ref) => ref === "anim:Idle",
+    );
+    const { body, vrm, claims } = createBody();
+    const leg = vrm.humanoid.getNormalizedBoneNode("leftUpperLeg");
+    const arm = vrm.humanoid.getNormalizedBoneNode("leftLowerArm");
+    if (!leg || !arm) throw new Error("test bones are required");
+    const player = (body as unknown as { animationPlayer: AnimationPlayer }).animationPlayer;
+    const cache = (player as unknown as { clipCache: Map<string, THREE.AnimationClip> }).clipCache;
+    const rotationTrack = (bone: THREE.Object3D, angle: number) =>
+      new THREE.QuaternionKeyframeTrack(
+        `${bone.name}.quaternion`,
+        [0, 4, 8],
+        [0, 0, 0, 1, Math.sin(angle / 2), 0, 0, Math.cos(angle / 2), 0, 0, 0, 1],
+      );
+    cache.set("anim:Idle", new THREE.AnimationClip("idle", 8, [rotationTrack(leg, 0.08)]));
+    cache.set("anim:upper", new THREE.AnimationClip("upper", 8, [rotationTrack(arm, 0.6)]));
+    cache.set("anim:whole", new THREE.AnimationClip("whole", 8, [rotationTrack(leg, 0.3)]));
+    await body.prepareMotionLibrary();
+    advance(body, 0.1);
+    await flush();
+    advance(body, 1.3);
+    await flush();
+    expect(player.getFoundationEffectiveWeight()).toBeCloseTo(1);
+    const beforeSpeech = leg.rotation.x;
+    body.acquireMotionSlot({
+      source: "system",
+      priority: "speech-expression",
+      animation: "anim:upper",
+      options: { mask: "upper-body", loop: true, weight: 1, fadeInMs: 200 },
+    });
+    await flush();
+    advance(body, 1);
+    expect(player.getFoundationEffectiveWeight()).toBeCloseTo(1);
+    expect(leg.rotation.x).toBeGreaterThan(beforeSpeech);
+    expect(arm.rotation.x).toBeGreaterThan(0.05);
+    body.acquireMotionSlot({
+      source: "persona",
+      priority: "persona-handler",
+      animation: "anim:whole",
+      options: { loop: true, weight: 1, fadeInMs: 200 },
+    });
+    await flush();
+    advance(body, 1);
+    expect(player.getFoundationEffectiveWeight()).toBe(0);
+    const claim = claims.claim("animation");
+    advance(body, 1);
+    expect(player.getFoundationEffectiveWeight()).toBe(0);
+    claim.dispose();
+  });
+
+  it("records neutral speech throughout a long utterance and returns to attentive idle when listening", async () => {
+    mockPerformanceLibrary();
+    const play = vi
+      .spyOn(AnimationPlayer.prototype, "play")
+      .mockImplementation(async () => playback());
+    const { body } = createBody();
+    await body.prepareMotionLibrary();
+    const expression = body.acquireSpeechStateExpression({ preset: "neutral" });
+    body.setLipSyncSource({
+      // Realtime clients keep the analyser active throughout the connection.
+      isMouthActive: () => true,
+      sampleMouth: () => ({ ...ZERO_MOUTH }),
+    });
+    body.setMotionConversationPhase("assistant-speaking");
+    for (let i = 0; i < 45; i++) {
+      advance(body, 1);
+      await flush();
+    }
+    expect(play.mock.calls.length).toBeGreaterThanOrEqual(3);
+    for (const [ref, options] of play.mock.calls) {
+      expect(["anim:Idle Conversation", "anim:Idle Chatting", "anim:Idle Chatting 2"]).toContain(
+        ref,
+      );
+      expect(options).toMatchObject({ loop: true, transition: "matched", mask: "upper-body" });
+    }
+    expression.release();
+    body.setMotionConversationPhase("user-speaking");
+    advance(body, 0.7);
+    await flush();
+    expect(body.getMotionDirectorSnapshot().lastDecision?.intent).toBe("attentive");
+    body.setMotionConversationPhase("idle");
+    advance(body, 0.7);
+    await flush();
+    expect(body.getMotionDirectorSnapshot().lastDecision?.context).toBe("idle");
+    expect(body.getMotionDirectorSnapshot().phase).not.toBe("blocked");
+  });
+
+  it("fades an active semantic gesture to a new nonzero motion intensity", async () => {
+    mockPerformanceLibrary();
+    const active = playback();
+    vi.spyOn(AnimationPlayer.prototype, "play").mockResolvedValue(active);
+    const { body } = createBody();
+    await body.prepareMotionLibrary();
+    body.acquireSemanticMotion(speechRequest);
+    await flush();
+    const baseWeight = body.getMotionDirectorSnapshot().lastDecision?.options.weight ?? 0;
+    expect(baseWeight).toBeGreaterThan(0);
+    body.setMotionIntensity(0.2);
+    expect(active.setWeight).toHaveBeenCalledExactlyOnceWith(baseWeight * 0.2, 350);
+  });
+
   it("preserves the real mixer's fade ramp through Body activation at unchanged motion gain", async () => {
     const { body, vrm } = createBody();
     body.setMotionLibraryEnabled(false);
@@ -188,7 +300,7 @@ describe("recorded motion Body integration", () => {
   });
 
   it("replaces ambient scanning with an attentive recording on user speech, then reconsiders thinking", async () => {
-    vi.spyOn(AnimationPlayer.prototype, "preload").mockResolvedValue(true);
+    mockPerformanceLibrary();
     const play = vi
       .spyOn(AnimationPlayer.prototype, "play")
       .mockImplementation(async () => playback());
@@ -212,18 +324,22 @@ describe("recorded motion Body integration", () => {
   });
 
   it("lets speaking own motion, releases it on interruption, and preserves explicit persona priority", async () => {
-    vi.spyOn(AnimationPlayer.prototype, "preload").mockResolvedValue(true);
+    mockPerformanceLibrary();
     const speechPlayback = playback();
     const personaPlayback = playback();
     const play = vi
       .spyOn(AnimationPlayer.prototype, "play")
+      .mockResolvedValueOnce(playback())
       .mockResolvedValueOnce(speechPlayback)
       .mockResolvedValueOnce(personaPlayback);
     const { body } = createBody();
     await body.prepareMotionLibrary();
     body.setMotionConversationPhase("assistant-speaking");
-    advance(body, 30);
-    expect(play).not.toHaveBeenCalled();
+    advance(body, 0.7);
+    await flush();
+    expect(play).toHaveBeenCalledOnce();
+    expect(body.getMotionDirectorSnapshot().lastDecision?.intent).toBe("explain");
+    expect(play.mock.calls[0][1]).toMatchObject({ loop: true, mask: "upper-body" });
     const speech = body.acquireSemanticMotion(speechRequest);
     await flush();
     body.setMotionConversationPhase("interrupted");
@@ -239,11 +355,11 @@ describe("recorded motion Body integration", () => {
     advance(body, 10);
     expect(personaPlayback.stop).not.toHaveBeenCalled();
     expect(persona.isActive()).toBe(true);
-    expect(play).toHaveBeenCalledTimes(2);
+    expect(play).toHaveBeenCalledTimes(3);
   });
 
   it("yields immediately to an animation claim and protects semantic selection history", async () => {
-    vi.spyOn(AnimationPlayer.prototype, "preload").mockResolvedValue(true);
+    mockPerformanceLibrary();
     const active = playback();
     const play = vi.spyOn(AnimationPlayer.prototype, "play").mockResolvedValue(active);
     const { body, claims } = createBody();
@@ -264,7 +380,7 @@ describe("recorded motion Body integration", () => {
   });
 
   it("does not consume semantic candidates while an explicit persona owns higher priority", async () => {
-    vi.spyOn(AnimationPlayer.prototype, "preload").mockResolvedValue(true);
+    mockPerformanceLibrary();
     const active = playback();
     const play = vi.spyOn(AnimationPlayer.prototype, "play").mockResolvedValue(active);
     const { body } = createBody();
@@ -283,7 +399,7 @@ describe("recorded motion Body integration", () => {
   });
 
   it("applies reduced motion to prepared idle clips and updates the current clip's gain", async () => {
-    vi.spyOn(AnimationPlayer.prototype, "preload").mockResolvedValue(true);
+    mockPerformanceLibrary();
     const active = playback();
     const play = vi.spyOn(AnimationPlayer.prototype, "play").mockResolvedValue(active);
     const { body } = createBody();
@@ -303,7 +419,7 @@ describe("recorded motion Body integration", () => {
   });
 
   it("fades to the latest reduced-motion gain when that setting changes during loading", async () => {
-    vi.spyOn(AnimationPlayer.prototype, "preload").mockResolvedValue(true);
+    mockPerformanceLibrary();
     const pending = deferred<Playback>();
     vi.spyOn(AnimationPlayer.prototype, "play").mockReturnValue(pending.promise);
     const { body } = createBody();
@@ -318,7 +434,7 @@ describe("recorded motion Body integration", () => {
   });
 
   it("immediately invalidates pending idle playback when reduced motion is set to zero", async () => {
-    vi.spyOn(AnimationPlayer.prototype, "preload").mockResolvedValue(true);
+    mockPerformanceLibrary();
     const pending = deferred<Playback>();
     const play = vi.spyOn(AnimationPlayer.prototype, "play").mockReturnValue(pending.promise);
     const { body } = createBody();
@@ -334,7 +450,7 @@ describe("recorded motion Body integration", () => {
   });
 
   it("disabling the library releases owned speech motion while leaving explicit persona motion alone", async () => {
-    vi.spyOn(AnimationPlayer.prototype, "preload").mockResolvedValue(true);
+    mockPerformanceLibrary();
     const speech = playback();
     const personaPlayback = playback();
     vi.spyOn(AnimationPlayer.prototype, "play")
@@ -360,7 +476,7 @@ describe("recorded motion Body integration", () => {
   });
 
   it("invalidates a pending semantic load when an external animation claim arrives", async () => {
-    vi.spyOn(AnimationPlayer.prototype, "preload").mockResolvedValue(true);
+    mockPerformanceLibrary();
     const pending = deferred<Playback>();
     const play = vi.spyOn(AnimationPlayer.prototype, "play").mockReturnValue(pending.promise);
     const { body, claims } = createBody();
@@ -429,7 +545,7 @@ describe("recorded motion Body integration", () => {
   });
 
   it("prevents ambient selection during speech-owned expression even with no body gesture", async () => {
-    vi.spyOn(AnimationPlayer.prototype, "preload").mockResolvedValue(true);
+    mockPerformanceLibrary();
     const play = vi.spyOn(AnimationPlayer.prototype, "play").mockResolvedValue(playback());
     const { body } = createBody();
     await body.prepareMotionLibrary();
@@ -442,7 +558,7 @@ describe("recorded motion Body integration", () => {
   });
 
   it("lets a late utterance release only its preempted gesture, preserving the newer owner", async () => {
-    vi.spyOn(AnimationPlayer.prototype, "preload").mockResolvedValue(true);
+    mockPerformanceLibrary();
     const first = playback();
     const second = playback();
     const play = vi
@@ -470,7 +586,7 @@ describe("recorded motion Body integration", () => {
   });
 
   it("updates a facial cue without aborting the current speech motif during director quiet time", async () => {
-    vi.spyOn(AnimationPlayer.prototype, "preload").mockResolvedValue(true);
+    mockPerformanceLibrary();
     const active = playback();
     const play = vi.spyOn(AnimationPlayer.prototype, "play").mockResolvedValue(active);
     const { body } = createBody();
@@ -492,7 +608,7 @@ describe("recorded motion Body integration", () => {
   });
 
   it("resumes a recorded idle shortly after a finite speech gesture is released", async () => {
-    vi.spyOn(AnimationPlayer.prototype, "preload").mockResolvedValue(true);
+    mockPerformanceLibrary();
     const play = vi
       .spyOn(AnimationPlayer.prototype, "play")
       .mockImplementation(async () => playback());
