@@ -1,0 +1,437 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-13T14:56:39.865Z",
+  "source": {
+    "file": "Idle.vrma",
+    "sha256": "5315fecbd472d5b3a11a3cb324db93a6c6538b41229feb5b6468356a1a7481b5",
+    "sourceRestHipsHeight": 0,
+    "durationSec": 8.333333015441895,
+    "maxRecordedLowerRotationDeltaDegrees": 1.1132932
+  },
+  "target": {
+    "file": "Yori.vrm",
+    "sha256": "739a1515cffe09c17a535eb52a11f88640fc7728b86b9e4c74f00c353437b7cd"
+  },
+  "method": {
+    "sampleHz": 120,
+    "duration": "two complete loops",
+    "feet": [
+      "leftFoot",
+      "leftToes",
+      "rightFoot",
+      "rightToes"
+    ],
+    "space": "target-world normalized and SDK-updated raw humanoid FK",
+    "driftReference": "first frame of each weight/scenario, after mixer application",
+    "fade": "actual AnimationMixer effective weights with 1.2-second smoothstep, progressing clip time",
+    "procedure": "lower-body recorded rotation deltas relative to frame 0 and target normalized rest, loop condition, then common four-contact hips translation sampled at 60 Hz",
+    "limitations": [
+      "Only reviewed quiet Idle; no contact inference, IK, floor collision, mesh skinning, or perceptual evaluation.",
+      "Static model transforms and no procedural layers; live head/body layers require visual validation.",
+      "Gain/fade measurements start at phases 0 and 2.1 seconds; transitions from arbitrary full-body leg stances are not guaranteed contact-preserving.",
+      "Source translation is not used: the converter source has zero rest hip height."
+    ]
+  },
+  "results": [
+    {
+      "variant": "stripped-absolute",
+      "scenario": 0,
+      "maxFootDriftMm": 0,
+      "footSpeedP95MmPerSec": 0,
+      "maxFootSpeedMmPerSec": 0,
+      "maxHipTranslationMm": 0,
+      "maxRawFootDriftMm": 0,
+      "maxRawNormalizedDifferenceMm": 0
+    },
+    {
+      "variant": "stripped-absolute",
+      "scenario": 0.2,
+      "maxFootDriftMm": 1.400617,
+      "footSpeedP95MmPerSec": 1.2971868,
+      "maxFootSpeedMmPerSec": 1.7243698,
+      "maxHipTranslationMm": 0,
+      "maxRawFootDriftMm": 1.400617,
+      "maxRawNormalizedDifferenceMm": 0
+    },
+    {
+      "variant": "stripped-absolute",
+      "scenario": 0.5,
+      "maxFootDriftMm": 3.5793737,
+      "footSpeedP95MmPerSec": 3.1608345,
+      "maxFootSpeedMmPerSec": 3.9371174,
+      "maxHipTranslationMm": 0,
+      "maxRawFootDriftMm": 3.5793737,
+      "maxRawNormalizedDifferenceMm": 0
+    },
+    {
+      "variant": "stripped-absolute",
+      "scenario": 1,
+      "maxFootDriftMm": 7.3789608,
+      "footSpeedP95MmPerSec": 6.3020416,
+      "maxFootSpeedMmPerSec": 8.1109328,
+      "maxHipTranslationMm": 0,
+      "maxRawFootDriftMm": 7.3789608,
+      "maxRawNormalizedDifferenceMm": 0
+    },
+    {
+      "variant": "stripped-absolute",
+      "scenario": "fade-in-1.2s",
+      "maxFootDriftMm": 161.3016298,
+      "footSpeedP95MmPerSec": 71.5492377,
+      "maxFootSpeedMmPerSec": 204.0926638,
+      "maxHipTranslationMm": 0,
+      "maxRawFootDriftMm": 161.3016298,
+      "maxRawNormalizedDifferenceMm": 0
+    },
+    {
+      "variant": "stripped-absolute",
+      "scenario": "fade-out-1.2s",
+      "maxFootDriftMm": 159.1513007,
+      "footSpeedP95MmPerSec": 75.6785431,
+      "maxFootSpeedMmPerSec": 206.0188925,
+      "maxHipTranslationMm": 0,
+      "maxRawFootDriftMm": 159.1513007,
+      "maxRawNormalizedDifferenceMm": 0
+    },
+    {
+      "variant": "stripped-absolute",
+      "scenario": "gain-1-to-0.2",
+      "maxFootDriftMm": 122.2591984,
+      "footSpeedP95MmPerSec": 60.4634822,
+      "maxFootSpeedMmPerSec": 155.8251694,
+      "maxHipTranslationMm": 0,
+      "maxRawFootDriftMm": 122.2591984,
+      "maxRawNormalizedDifferenceMm": 0
+    },
+    {
+      "variant": "stripped-absolute",
+      "scenario": "fade-in-phase-2.1s",
+      "maxFootDriftMm": 161.3016298,
+      "footSpeedP95MmPerSec": 75.5990665,
+      "maxFootSpeedMmPerSec": 202.3075809,
+      "maxHipTranslationMm": 0,
+      "maxRawFootDriftMm": 161.3016298,
+      "maxRawNormalizedDifferenceMm": 0
+    },
+    {
+      "variant": "stripped-absolute",
+      "scenario": "fade-out-phase-2.1s",
+      "maxFootDriftMm": 152.4924978,
+      "footSpeedP95MmPerSec": 71.6333735,
+      "maxFootSpeedMmPerSec": 201.2822035,
+      "maxHipTranslationMm": 0,
+      "maxRawFootDriftMm": 152.4924978,
+      "maxRawNormalizedDifferenceMm": 0
+    },
+    {
+      "variant": "stripped-absolute",
+      "scenario": "gain-phase-2.1s",
+      "maxFootDriftMm": 115.7190367,
+      "footSpeedP95MmPerSec": 56.0820137,
+      "maxFootSpeedMmPerSec": 150.2558126,
+      "maxHipTranslationMm": 0,
+      "maxRawFootDriftMm": 115.7190367,
+      "maxRawNormalizedDifferenceMm": 0
+    },
+    {
+      "variant": "grounded-absolute",
+      "scenario": 0,
+      "maxFootDriftMm": 0,
+      "footSpeedP95MmPerSec": 0,
+      "maxFootSpeedMmPerSec": 0,
+      "maxHipTranslationMm": 0,
+      "maxRawFootDriftMm": 0,
+      "maxRawNormalizedDifferenceMm": 0
+    },
+    {
+      "variant": "grounded-absolute",
+      "scenario": 0.2,
+      "maxFootDriftMm": 0.3492296,
+      "footSpeedP95MmPerSec": 0.4769089,
+      "maxFootSpeedMmPerSec": 0.8920371,
+      "maxHipTranslationMm": 1.4237489,
+      "maxRawFootDriftMm": 0.3492296,
+      "maxRawNormalizedDifferenceMm": 0
+    },
+    {
+      "variant": "grounded-absolute",
+      "scenario": 0.5,
+      "maxFootDriftMm": 0.5831944,
+      "footSpeedP95MmPerSec": 0.7698169,
+      "maxFootSpeedMmPerSec": 1.4333553,
+      "maxHipTranslationMm": 3.5593721,
+      "maxRawFootDriftMm": 0.5831944,
+      "maxRawNormalizedDifferenceMm": 0
+    },
+    {
+      "variant": "grounded-absolute",
+      "scenario": 1,
+      "maxFootDriftMm": 0.3508519,
+      "footSpeedP95MmPerSec": 0.6282123,
+      "maxFootSpeedMmPerSec": 1.2195118,
+      "maxHipTranslationMm": 7.1187443,
+      "maxRawFootDriftMm": 0.3508519,
+      "maxRawNormalizedDifferenceMm": 0
+    },
+    {
+      "variant": "grounded-absolute",
+      "scenario": "fade-in-1.2s",
+      "maxFootDriftMm": 159.2187337,
+      "footSpeedP95MmPerSec": 74.445823,
+      "maxFootSpeedMmPerSec": 208.2654501,
+      "maxHipTranslationMm": 7.1187443,
+      "maxRawFootDriftMm": 159.2187337,
+      "maxRawNormalizedDifferenceMm": 0
+    },
+    {
+      "variant": "grounded-absolute",
+      "scenario": "fade-out-1.2s",
+      "maxFootDriftMm": 159.1512977,
+      "footSpeedP95MmPerSec": 74.8397125,
+      "maxFootSpeedMmPerSec": 208.4059124,
+      "maxHipTranslationMm": 2.0311911,
+      "maxRawFootDriftMm": 159.1512977,
+      "maxRawNormalizedDifferenceMm": 0
+    },
+    {
+      "variant": "grounded-absolute",
+      "scenario": "gain-1-to-0.2",
+      "maxFootDriftMm": 121.2234101,
+      "footSpeedP95MmPerSec": 59.1194916,
+      "maxFootSpeedMmPerSec": 156.4808445,
+      "maxHipTranslationMm": 2.2009878,
+      "maxRawFootDriftMm": 121.2234101,
+      "maxRawNormalizedDifferenceMm": 0
+    },
+    {
+      "variant": "grounded-absolute",
+      "scenario": "fade-in-phase-2.1s",
+      "maxFootDriftMm": 159.2187337,
+      "footSpeedP95MmPerSec": 75.0183946,
+      "maxFootSpeedMmPerSec": 208.2528307,
+      "maxHipTranslationMm": 7.1187442,
+      "maxRawFootDriftMm": 159.2187337,
+      "maxRawNormalizedDifferenceMm": 0
+    },
+    {
+      "variant": "grounded-absolute",
+      "scenario": "fade-out-phase-2.1s",
+      "maxFootDriftMm": 158.979115,
+      "footSpeedP95MmPerSec": 74.691318,
+      "maxFootSpeedMmPerSec": 208.527252,
+      "maxHipTranslationMm": 6.9600565,
+      "maxRawFootDriftMm": 158.979115,
+      "maxRawNormalizedDifferenceMm": 0
+    },
+    {
+      "variant": "grounded-absolute",
+      "scenario": "gain-phase-2.1s",
+      "maxFootDriftMm": 121.054336,
+      "footSpeedP95MmPerSec": 59.0684719,
+      "maxFootSpeedMmPerSec": 156.4047204,
+      "maxHipTranslationMm": 6.9610465,
+      "maxRawFootDriftMm": 121.054336,
+      "maxRawNormalizedDifferenceMm": 0
+    },
+    {
+      "variant": "calibrated",
+      "scenario": 0,
+      "maxFootDriftMm": 0,
+      "footSpeedP95MmPerSec": 0,
+      "maxFootSpeedMmPerSec": 0,
+      "maxHipTranslationMm": 0,
+      "maxRawFootDriftMm": 0,
+      "maxRawNormalizedDifferenceMm": 0
+    },
+    {
+      "variant": "calibrated",
+      "scenario": 0.2,
+      "maxFootDriftMm": 1.4137639,
+      "footSpeedP95MmPerSec": 1.3641237,
+      "maxFootSpeedMmPerSec": 2.0739811,
+      "maxHipTranslationMm": 0,
+      "maxRawFootDriftMm": 1.4137639,
+      "maxRawNormalizedDifferenceMm": 0
+    },
+    {
+      "variant": "calibrated",
+      "scenario": 0.5,
+      "maxFootDriftMm": 3.5331166,
+      "footSpeedP95MmPerSec": 3.4104087,
+      "maxFootSpeedMmPerSec": 5.1863922,
+      "maxHipTranslationMm": 0,
+      "maxRawFootDriftMm": 3.5331166,
+      "maxRawNormalizedDifferenceMm": 0
+    },
+    {
+      "variant": "calibrated",
+      "scenario": 1,
+      "maxFootDriftMm": 7.0618716,
+      "footSpeedP95MmPerSec": 6.8262599,
+      "maxFootSpeedMmPerSec": 10.377559,
+      "maxHipTranslationMm": 0,
+      "maxRawFootDriftMm": 7.0618716,
+      "maxRawNormalizedDifferenceMm": 0
+    },
+    {
+      "variant": "calibrated",
+      "scenario": "fade-in-1.2s",
+      "maxFootDriftMm": 7.0618716,
+      "footSpeedP95MmPerSec": 7.1133582,
+      "maxFootSpeedMmPerSec": 10.377559,
+      "maxHipTranslationMm": 0,
+      "maxRawFootDriftMm": 7.0618716,
+      "maxRawNormalizedDifferenceMm": 0
+    },
+    {
+      "variant": "calibrated",
+      "scenario": "fade-out-1.2s",
+      "maxFootDriftMm": 1.8533789,
+      "footSpeedP95MmPerSec": 2.3411481,
+      "maxFootSpeedMmPerSec": 7.5108892,
+      "maxHipTranslationMm": 0,
+      "maxRawFootDriftMm": 1.8533789,
+      "maxRawNormalizedDifferenceMm": 0
+    },
+    {
+      "variant": "calibrated",
+      "scenario": "gain-1-to-0.2",
+      "maxFootDriftMm": 2.0512876,
+      "footSpeedP95MmPerSec": 1.8290992,
+      "maxFootSpeedMmPerSec": 7.5111055,
+      "maxHipTranslationMm": 0,
+      "maxRawFootDriftMm": 2.0512876,
+      "maxRawNormalizedDifferenceMm": 0
+    },
+    {
+      "variant": "calibrated",
+      "scenario": "fade-in-phase-2.1s",
+      "maxFootDriftMm": 7.0618715,
+      "footSpeedP95MmPerSec": 7.1403886,
+      "maxFootSpeedMmPerSec": 10.3775598,
+      "maxHipTranslationMm": 0,
+      "maxRawFootDriftMm": 7.0618715,
+      "maxRawNormalizedDifferenceMm": 0
+    },
+    {
+      "variant": "calibrated",
+      "scenario": "fade-out-phase-2.1s",
+      "maxFootDriftMm": 7.0618715,
+      "footSpeedP95MmPerSec": 4.2175103,
+      "maxFootSpeedMmPerSec": 9.631321,
+      "maxHipTranslationMm": 0,
+      "maxRawFootDriftMm": 7.0618715,
+      "maxRawNormalizedDifferenceMm": 0
+    },
+    {
+      "variant": "calibrated",
+      "scenario": "gain-phase-2.1s",
+      "maxFootDriftMm": 7.4570911,
+      "footSpeedP95MmPerSec": 3.9604316,
+      "maxFootSpeedMmPerSec": 8.3811851,
+      "maxHipTranslationMm": 0,
+      "maxRawFootDriftMm": 7.4570911,
+      "maxRawNormalizedDifferenceMm": 0
+    },
+    {
+      "variant": "calibrated-conditioned-grounded",
+      "scenario": 0,
+      "maxFootDriftMm": 0,
+      "footSpeedP95MmPerSec": 0,
+      "maxFootSpeedMmPerSec": 0,
+      "maxHipTranslationMm": 0,
+      "maxRawFootDriftMm": 0,
+      "maxRawNormalizedDifferenceMm": 0
+    },
+    {
+      "variant": "calibrated-conditioned-grounded",
+      "scenario": 0.2,
+      "maxFootDriftMm": 0.258508,
+      "footSpeedP95MmPerSec": 0.4517208,
+      "maxFootSpeedMmPerSec": 0.8964606,
+      "maxHipTranslationMm": 1.3465746,
+      "maxRawFootDriftMm": 0.258508,
+      "maxRawNormalizedDifferenceMm": 0
+    },
+    {
+      "variant": "calibrated-conditioned-grounded",
+      "scenario": 0.5,
+      "maxFootDriftMm": 0.6446164,
+      "footSpeedP95MmPerSec": 1.1306403,
+      "maxFootSpeedMmPerSec": 2.2433096,
+      "maxHipTranslationMm": 3.3664365,
+      "maxRawFootDriftMm": 0.6446164,
+      "maxRawNormalizedDifferenceMm": 0
+    },
+    {
+      "variant": "calibrated-conditioned-grounded",
+      "scenario": 1,
+      "maxFootDriftMm": 1.2863205,
+      "footSpeedP95MmPerSec": 2.2669955,
+      "maxFootSpeedMmPerSec": 4.494361,
+      "maxHipTranslationMm": 6.732873,
+      "maxRawFootDriftMm": 1.2863205,
+      "maxRawNormalizedDifferenceMm": 0
+    },
+    {
+      "variant": "calibrated-conditioned-grounded",
+      "scenario": "fade-in-1.2s",
+      "maxFootDriftMm": 1.2863136,
+      "footSpeedP95MmPerSec": 2.2136684,
+      "maxFootSpeedMmPerSec": 4.494361,
+      "maxHipTranslationMm": 6.732873,
+      "maxRawFootDriftMm": 1.2863136,
+      "maxRawNormalizedDifferenceMm": 0
+    },
+    {
+      "variant": "calibrated-conditioned-grounded",
+      "scenario": "fade-out-1.2s",
+      "maxFootDriftMm": 0.298562,
+      "footSpeedP95MmPerSec": 0.3434416,
+      "maxFootSpeedMmPerSec": 2.6868422,
+      "maxHipTranslationMm": 1.6775925,
+      "maxRawFootDriftMm": 0.298562,
+      "maxRawNormalizedDifferenceMm": 0
+    },
+    {
+      "variant": "calibrated-conditioned-grounded",
+      "scenario": "gain-1-to-0.2",
+      "maxFootDriftMm": 0.3283814,
+      "footSpeedP95MmPerSec": 0.5624579,
+      "maxFootSpeedMmPerSec": 3.0138209,
+      "maxHipTranslationMm": 1.868406,
+      "maxRawFootDriftMm": 0.3283814,
+      "maxRawNormalizedDifferenceMm": 0
+    },
+    {
+      "variant": "calibrated-conditioned-grounded",
+      "scenario": "fade-in-phase-2.1s",
+      "maxFootDriftMm": 1.2863136,
+      "footSpeedP95MmPerSec": 2.2711754,
+      "maxFootSpeedMmPerSec": 4.4943604,
+      "maxHipTranslationMm": 6.732873,
+      "maxRawFootDriftMm": 1.2863136,
+      "maxRawNormalizedDifferenceMm": 0
+    },
+    {
+      "variant": "calibrated-conditioned-grounded",
+      "scenario": "fade-out-phase-2.1s",
+      "maxFootDriftMm": 1.2710759,
+      "footSpeedP95MmPerSec": 0.8341816,
+      "maxFootSpeedMmPerSec": 2.4584769,
+      "maxHipTranslationMm": 6.3796783,
+      "maxRawFootDriftMm": 1.2710759,
+      "maxRawNormalizedDifferenceMm": 0
+    },
+    {
+      "variant": "calibrated-conditioned-grounded",
+      "scenario": "gain-phase-2.1s",
+      "maxFootDriftMm": 1.3370204,
+      "footSpeedP95MmPerSec": 0.7840959,
+      "maxFootSpeedMmPerSec": 2.4172596,
+      "maxHipTranslationMm": 6.3813187,
+      "maxRawFootDriftMm": 1.3370204,
+      "maxRawNormalizedDifferenceMm": 0
+    }
+  ]
+}
