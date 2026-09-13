@@ -1,6 +1,11 @@
 import * as THREE from "three";
 import { describe, expect, it } from "vitest";
-import { analyzeMotionClip, findMatchedEntry, findTransitionDelay } from "./motion-transition";
+import {
+  analyzeMotionClip,
+  conditionMotionLoop,
+  findMatchedEntry,
+  findTransitionDelay,
+} from "./motion-transition";
 
 function clip(times: number[], angles: number[], duration = times[times.length - 1]) {
   return new THREE.AnimationClip("motion", duration, [
@@ -68,5 +73,96 @@ describe("motion transition analysis", () => {
     const full = analyzeMotionClip(clip([0, 1], [0, 1]));
     expect(findMatchedEntry(empty, 0, full)).toBe(0);
     expect(findTransitionDelay(empty, 0, 0.3)).toBe(0);
+  });
+});
+
+describe("recorded motion loop conditioning", () => {
+  function sample(rotationClip: THREE.AnimationClip, time: number) {
+    const scene = new THREE.Object3D();
+    scene.name = "Head";
+    const mixer = new THREE.AnimationMixer(scene);
+    const action = mixer.clipAction(rotationClip);
+    action.setLoop(THREE.LoopOnce, 1);
+    action.clampWhenFinished = true;
+    action.play();
+    mixer.update(time);
+    return scene.quaternion.clone().normalize();
+  }
+
+  function angularVelocity(a: THREE.Quaternion, b: THREE.Quaternion, dt: number) {
+    const rotation = a.clone().invert().multiply(b);
+    if (rotation.w < 0) rotation.set(-rotation.x, -rotation.y, -rotation.z, -rotation.w);
+    return (2 * Math.atan2(rotation.x, rotation.w)) / dt;
+  }
+
+  it("closes an unmatched final pose while preserving its initial angular velocity", () => {
+    const original = clip([0, 0.5, 2], [0.2, 0.35, 1.1]);
+    const seamless = conditionMotionLoop(original);
+    const dt = 1 / 240;
+    const first = sample(seamless, 0);
+    const last = sample(seamless, 2);
+    expect(first.angleTo(last)).toBeLessThan(1e-6);
+    const incomingVelocity = angularVelocity(sample(seamless, 2 - dt), last, dt);
+    const outgoingVelocity = angularVelocity(first, sample(seamless, dt), dt);
+    expect(outgoingVelocity).toBeCloseTo(0.3, 4);
+    expect(Math.abs(incomingVelocity - outgoingVelocity)).toBeLessThan(0.02);
+    expect(sample(original, 0).angleTo(sample(original, 2))).toBeGreaterThan(0.8);
+  });
+
+  it("preserves authored prefix keys and samples without mutating the one-shot", () => {
+    const original = clip([0, 0.4, 1.2, 2], [0.2, -0.1, 0.8, 1.1]);
+    const originalValues = [...original.tracks[0].values];
+    const originalTimes = [...original.tracks[0].times];
+    const seamless = conditionMotionLoop(original);
+    expect([...original.tracks[0].values]).toEqual(originalValues);
+    expect([...original.tracks[0].times]).toEqual(originalTimes);
+    expect([...seamless.tracks[0].values.slice(0, 12)]).toEqual(originalValues.slice(0, 12));
+    for (const time of [0, 0.2, 0.9, 1.4]) {
+      expect(sample(original, time).angleTo(sample(seamless, time))).toBeLessThan(1e-6);
+    }
+    expect(seamless.tracks[0].times.length).toBeLessThanOrEqual(originalTimes.length + 65);
+  });
+
+  it("uses local quaternion angular velocity even when the initial pose is rotated", () => {
+    const initial = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.3, -0.6, 0.2));
+    const axis = new THREE.Vector3(0.4, 0.3, -0.2).normalize();
+    const orientations = [0, 0.2, 1.2].map((angle) =>
+      initial.clone().multiply(new THREE.Quaternion().setFromAxisAngle(axis, angle)),
+    );
+    const original = new THREE.AnimationClip("rotated", 2, [
+      new THREE.QuaternionKeyframeTrack(
+        "Head.quaternion",
+        [0, 0.5, 2],
+        orientations.flatMap((rotation) => rotation.toArray()),
+      ),
+    ]);
+    const seamless = conditionMotionLoop(original);
+    const dt = 1 / 240;
+    const before = sample(seamless, 2 - dt)
+      .invert()
+      .multiply(sample(seamless, 2));
+    const after = sample(seamless, 0).invert().multiply(sample(seamless, dt));
+    expect(before.angleTo(after) / dt).toBeLessThan(0.025);
+  });
+
+  it("skips tiny clips and rejects unbounded duration before allocating samples", () => {
+    const tiny = clip([0, 0.05], [0, 0.1]);
+    expect(conditionMotionLoop(tiny)).toBe(tiny);
+    const unbounded = clip([0, 1], [0, 1]);
+    unbounded.duration = Infinity;
+    expect(() => conditionMotionLoop(unbounded)).toThrow("duration must be finite");
+  });
+
+  it("repairs zero and non-finite rotation values instead of poisoning loop playback", () => {
+    const malformed = clip([0, 0.5, 1], [0, 0, 0]);
+    malformed.tracks[0].values.set([0, 0, 0, 0], 0);
+    malformed.tracks[0].values.set([Infinity, NaN, 0, 1], 4);
+    const seamless = conditionMotionLoop(malformed);
+    expect([...seamless.tracks[0].values].every(Number.isFinite)).toBe(true);
+    for (let i = 0; i <= 10; i++) {
+      expect(sample(seamless, i / 10).length()).toBeCloseTo(1, 5);
+    }
+    const profile = analyzeMotionClip(seamless);
+    expect([...profile.energy].every(Number.isFinite)).toBe(true);
   });
 });

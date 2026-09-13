@@ -1,0 +1,127 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-13T14:11:18.068Z",
+  "method": {
+    "coordinateSpace": "source humanoid local rotations; before VRM retargeting",
+    "bones": "all source humanoid rotation tracks except fingers",
+    "sampleHz": 120,
+    "velocityDifferenceIntervalSec": 0.008333333333333333,
+    "poseMetric": "p95 across bones of shortest quaternion angle from duration to time zero",
+    "velocityMetric": "p95 across bones of local angular-velocity vector difference at duration and time zero",
+    "units": {
+      "pose": "radians",
+      "angularVelocity": "radians per second",
+      "duration": "seconds"
+    },
+    "sourceFrameCount": "maximum authored quaternion key count among measured bones",
+    "limitations": [
+      "Boundary kinematics only; this does not measure perceived naturalness or presence.",
+      "Source rotations before retargeting; root translation and world-space feet are not evaluated.",
+      "This measures improvement over the same raw VRMA clips, not a comparison with Animates."
+    ]
+  },
+  "clips": [
+    {
+      "name": "Idle",
+      "sourceSha256": "5315fecbd472d5b3a11a3cb324db93a6c6538b41229feb5b6468356a1a7481b5",
+      "durationSec": 8.333333015441895,
+      "measuredBoneCount": 22,
+      "sourceFrameCount": 251,
+      "sourceQuaternionKeyCount": 5522,
+      "conditionedQuaternionKeyCount": 6402,
+      "original": {
+        "poseDisplacementP95Rad": 0.000005592284894037631,
+        "angularVelocityMismatchP95RadPerSec": 0.023648298847736643
+      },
+      "conditioned": {
+        "poseDisplacementP95Rad": 4.2146848510894035e-8,
+        "angularVelocityMismatchP95RadPerSec": 0.000001805853746994473
+      }
+    },
+    {
+      "name": "Idle Looking Around",
+      "sourceSha256": "40247c98b0cbcb95ed8eac967058f01e99349aedc8863aff3a988191bf1caf8d",
+      "durationSec": 33.68000030517578,
+      "measuredBoneCount": 22,
+      "sourceFrameCount": 422,
+      "sourceQuaternionKeyCount": 9284,
+      "conditionedQuaternionKeyCount": 10472,
+      "original": {
+        "poseDisplacementP95Rad": 0.13134652888322215,
+        "angularVelocityMismatchP95RadPerSec": 0.4458944766518646
+      },
+      "conditioned": {
+        "poseDisplacementP95Rad": 2.9802322387695312e-8,
+        "angularVelocityMismatchP95RadPerSec": 0.000375683512618322
+      }
+    },
+    {
+      "name": "Idle Looking Around 2",
+      "sourceSha256": "ee2087ae63feea5e80208bf4a91ee8da4b56a6271cecd092d7884598926230fd",
+      "durationSec": 33.279998779296875,
+      "measuredBoneCount": 22,
+      "sourceFrameCount": 417,
+      "sourceQuaternionKeyCount": 9174,
+      "conditionedQuaternionKeyCount": 10362,
+      "original": {
+        "poseDisplacementP95Rad": 0.22505495207291656,
+        "angularVelocityMismatchP95RadPerSec": 0.3014891191169972
+      },
+      "conditioned": {
+        "poseDisplacementP95Rad": 2.9802322387695312e-8,
+        "angularVelocityMismatchP95RadPerSec": 0.0006517579053573482
+      }
+    },
+    {
+      "name": "Idle Watching Something",
+      "sourceSha256": "9f52404a23e41caeeb40041062277df2e4250f6fbb137d325d58cbbdd11cf007",
+      "durationSec": 26.959999084472656,
+      "measuredBoneCount": 22,
+      "sourceFrameCount": 338,
+      "sourceQuaternionKeyCount": 7436,
+      "conditionedQuaternionKeyCount": 8624,
+      "original": {
+        "poseDisplacementP95Rad": 0.027063703255502464,
+        "angularVelocityMismatchP95RadPerSec": 0.1766479067762754
+      },
+      "conditioned": {
+        "poseDisplacementP95Rad": 4.2146848510894035e-8,
+        "angularVelocityMismatchP95RadPerSec": 0.00006947225201790023
+      }
+    },
+    {
+      "name": "Idle Conversation",
+      "sourceSha256": "d1f91d4ab36ed844e9815f2f168303d4a110d62f82348274350c52954f7ae49a",
+      "durationSec": 25.200000762939453,
+      "measuredBoneCount": 22,
+      "sourceFrameCount": 316,
+      "sourceQuaternionKeyCount": 6952,
+      "conditionedQuaternionKeyCount": 8162,
+      "original": {
+        "poseDisplacementP95Rad": 0.038511729865197734,
+        "angularVelocityMismatchP95RadPerSec": 0.28746090425610865
+      },
+      "conditioned": {
+        "poseDisplacementP95Rad": 4.2146848510894035e-8,
+        "angularVelocityMismatchP95RadPerSec": 0.00010943567625830247
+      }
+    },
+    {
+      "name": "Idle Chatting",
+      "sourceSha256": "af077b1dde763e6e8187c6bb6aac1c16e0b90cdd53e3a759d51a3aff08ea8d01",
+      "durationSec": 26.719999313354492,
+      "measuredBoneCount": 22,
+      "sourceFrameCount": 335,
+      "sourceQuaternionKeyCount": 7370,
+      "conditionedQuaternionKeyCount": 8558,
+      "original": {
+        "poseDisplacementP95Rad": 0.3137799539598608,
+        "angularVelocityMismatchP95RadPerSec": 0.22240508412360988
+      },
+      "conditioned": {
+        "poseDisplacementP95Rad": 4.2146848510894035e-8,
+        "angularVelocityMismatchP95RadPerSec": 0.0009361188778885335
+      }
+    }
+  ]
+}

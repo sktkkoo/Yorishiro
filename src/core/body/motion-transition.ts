@@ -21,6 +21,65 @@ export interface MotionTransitionProfile {
 const MAX_SAMPLES = 240;
 const MAX_CANDIDATES = 48;
 
+/**
+ * Close a non-cyclic recording without changing the original one-shot clip.
+ * The tail approaches the first pose with the first angular velocity. Quintic
+ * blending has zero first/second derivatives at its endpoints, so it does not
+ * introduce a velocity kick where correction starts or where the loop wraps.
+ * Only the tail is resampled (at most 64 intervals); the authored prefix stays.
+ */
+export function conditionMotionLoop(clip: THREE.AnimationClip): THREE.AnimationClip {
+  if (!Number.isFinite(clip.duration)) throw new RangeError("Motion loop duration must be finite");
+  // Very short clips cannot accommodate a useful transition window.
+  if (clip.duration < 0.12) return clip;
+  const duration = clip.duration;
+  const tailDuration = Math.min(0.8, Math.max(0.4, duration * 0.12), duration * 0.45);
+  const tailStart = duration - tailDuration;
+  const tailSamples = Math.min(64, Math.max(12, Math.ceil(tailDuration * 90)));
+  const derivativeDt = Math.min(1 / 120, duration / 100);
+  const first = new THREE.Quaternion();
+  const next = new THREE.Quaternion();
+  const delta = new THREE.Quaternion();
+  const original = new THREE.Quaternion();
+  const target = new THREE.Quaternion();
+  const axis = new THREE.Vector3();
+  const tracks = clip.tracks.map((track) => {
+    if (!track.name.endsWith(".quaternion") || track.getValueSize() !== 4) return track;
+    const interpolant = rotationInterpolant(track);
+    readFiniteQuaternion(first, interpolant.evaluate(0));
+    readFiniteQuaternion(next, interpolant.evaluate(derivativeDt));
+    delta.copy(first).invert().multiply(next).normalize();
+    if (delta.w < 0) delta.set(-delta.x, -delta.y, -delta.z, -delta.w);
+    const sinHalf = Math.hypot(delta.x, delta.y, delta.z);
+    const initialSpeed = (2 * Math.atan2(sinHalf, delta.w)) / derivativeDt;
+    if (sinHalf > 1e-8) axis.set(delta.x / sinHalf, delta.y / sinHalf, delta.z / sinHalf);
+    else axis.set(1, 0, 0);
+    const times: number[] = [];
+    const values: number[] = [];
+    for (let i = 0; i < track.times.length && track.times[i] < tailStart; i++) {
+      times.push(track.times[i]);
+      // Preserve valid prefix keys exactly; sanitize malformed rotations instead
+      // of allowing a zero/NaN quaternion to poison the entire mixer binding.
+      const offset = i * 4;
+      if (isFiniteQuaternion(track.values, offset)) {
+        for (let k = 0; k < 4; k++) values.push(track.values[offset + k]);
+      } else values.push(0, 0, 0, 1);
+    }
+    for (let i = 0; i <= tailSamples; i++) {
+      const t = i / tailSamples;
+      const time = tailStart + t * tailDuration;
+      readFiniteQuaternion(original, interpolant.evaluate(time));
+      target.setFromAxisAngle(axis, initialSpeed * (time - duration)).premultiply(first);
+      const blend = t * t * t * (t * (t * 6 - 15) + 10);
+      original.slerp(target, blend).normalize();
+      times.push(time);
+      values.push(original.x, original.y, original.z, original.w);
+    }
+    return new THREE.QuaternionKeyframeTrack(track.name, times, values);
+  });
+  return new THREE.AnimationClip(`${clip.name}:seamless`, duration, tracks, clip.blendMode);
+}
+
 /** Analyze the already-retargeted clip, so every comparison uses the same avatar's local bones. */
 export function analyzeMotionClip(
   clip: THREE.AnimationClip,
@@ -38,21 +97,13 @@ export function analyzeMotionClip(
 
   for (const track of clip.tracks) {
     if (!track.name.endsWith(".quaternion") || track.getValueSize() !== 4) continue;
-    // Three defines this factory at runtime, but @types/three omits the member.
-    const interpolant = (
-      track as THREE.KeyframeTrack & {
-        createInterpolant: (result: Float32Array) => THREE.Interpolant;
-      }
-    ).createInterpolant(new Float32Array(4));
+    const interpolant = rotationInterpolant(track);
     const poses = new Float32Array(sampleCount * 4);
     const velocities = new Float32Array(sampleCount * 3);
     const weight = jointWeights.get(track.name) ?? 1;
     for (let i = 0; i < sampleCount; i++) {
       const sample = interpolant.evaluate(i * sampleInterval);
-      previous
-        .fromArray(sample)
-        .normalize()
-        .toArray(poses, i * 4);
+      readFiniteQuaternion(previous, sample).toArray(poses, i * 4);
     }
     for (let i = 0; i < sampleCount; i++) {
       const before = Math.max(0, i - 1);
@@ -188,4 +239,30 @@ export function findTransitionDelay(
 function sampleIndex(profile: MotionTransitionProfile, time: number): number {
   if (profile.sampleInterval <= 0) return 0;
   return Math.max(0, Math.min(profile.sampleCount - 1, Math.round(time / profile.sampleInterval)));
+}
+
+function rotationInterpolant(track: THREE.KeyframeTrack): THREE.Interpolant {
+  // Three defines this factory at runtime, but @types/three omits the member.
+  return (
+    track as THREE.KeyframeTrack & {
+      createInterpolant: (result: Float32Array) => THREE.Interpolant;
+    }
+  ).createInterpolant(new Float32Array(4));
+}
+
+function isFiniteQuaternion(values: ArrayLike<number>, offset = 0): boolean {
+  let lengthSq = 0;
+  for (let i = 0; i < 4; i++) {
+    const value = values[offset + i];
+    if (!Number.isFinite(value)) return false;
+    lengthSq += value * value;
+  }
+  return lengthSq > 1e-12 && Number.isFinite(lengthSq);
+}
+
+function readFiniteQuaternion(
+  target: THREE.Quaternion,
+  values: ArrayLike<number>,
+): THREE.Quaternion {
+  return isFiniteQuaternion(values) ? target.fromArray(values).normalize() : target.identity();
 }

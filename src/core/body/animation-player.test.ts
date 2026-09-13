@@ -82,6 +82,32 @@ function deferred<T>() {
 }
 
 describe("AnimationPlayer real mixer transitions", () => {
+  it("crosses repeated recording seams with continuous pose and velocity", async () => {
+    const { player, head, addClip } = rig();
+    const raw = addClip("recording", [0.2, 0.8], 2);
+    expect(await player.preload("recording", { loop: true })).toBe(true);
+    const playback = await player.play("recording", { loop: true, fadeInMs: 0, weight: 1 });
+    const loopTrack = actionFor(player, playback.id).getClip().tracks[0];
+    const dt = 1 / 240;
+    player.update(2 - dt);
+    const before = head.rotation.x;
+    player.update(dt);
+    const atSeam = head.rotation.x;
+    player.update(dt);
+    const after = head.rotation.x;
+    expect(Math.abs(atSeam - before)).toBeLessThan(0.002);
+    expect(Math.abs((atSeam - before) / dt - (after - atSeam) / dt)).toBeLessThan(0.02);
+    expect((after - atSeam) / dt).toBeCloseTo(0.3, 4);
+    player.update(6);
+    expect(head.rotation.x).toBeCloseTo(after, 4);
+    player.stopAll();
+    const repeated = await player.play("recording", { loop: true });
+    expect(actionFor(player, repeated.id).getClip().tracks[0]).toBe(loopTrack);
+    player.stopAll();
+    const oneShot = await player.play("recording", { loop: false });
+    expect(actionFor(player, oneShot.id).getClip().tracks[0]).toBe(raw.tracks[0]);
+  });
+
   it("preserves authored speed when crossfading clips of different durations", async () => {
     const { player, addClip } = rig();
     addClip("short", [0, 0.2], 1);
@@ -198,6 +224,26 @@ describe("AnimationPlayer real mixer transitions", () => {
 });
 
 describe("AnimationPlayer action ownership", () => {
+  it.each([
+    false,
+    true,
+  ])("retires outgoing fades before freezing without resurrecting them (current cancelled: %s)", async (cancelCurrent) => {
+    const { player, addClip } = rig();
+    addClip("outgoing", [0.5, 0.5]);
+    addClip("current", [0.8, 0.8]);
+    const outgoing = await player.play("outgoing", { loop: true, fadeInMs: 0 });
+    player.update(0.1);
+    const current = await player.play("current", { loop: true, fadeInMs: 400 });
+    const currentAction = actionFor(player, current.id);
+    if (cancelCurrent) current.cancel();
+    player.retireFadingActions();
+    await outgoing.completion;
+    expect(player.activeCount).toBe(cancelCurrent ? 0 : 1);
+    player.update(1);
+    expect(player.activeCount).toBe(cancelCurrent ? 0 : 1);
+    expect(currentAction.isRunning()).toBe(!cancelCurrent);
+  });
+
   it("tracks stopAll fades through cleanup and restores the base pose", async () => {
     const { player, head, addClip } = rig();
     addClip("motion", [0.7, 0.7]);

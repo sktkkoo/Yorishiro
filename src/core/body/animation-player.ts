@@ -10,6 +10,7 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import type { SubsystemLog } from "../dev-log";
 import {
   analyzeMotionClip,
+  conditionMotionLoop,
   findMatchedEntry,
   findTransitionDelay,
   type MotionTransitionProfile,
@@ -86,6 +87,7 @@ export class AnimationPlayer {
   private readonly clipCache = new Map<string, THREE.AnimationClip>();
   private readonly pendingLoads = new Map<string, Promise<THREE.AnimationClip | null>>();
   private readonly maskedClips = new WeakMap<THREE.AnimationClip, THREE.AnimationClip>();
+  private readonly loopClips = new WeakMap<THREE.AnimationClip, THREE.AnimationClip>();
   private readonly profiles = new WeakMap<THREE.AnimationClip, MotionTransitionProfile>();
   private readonly active = new Map<number, ActiveAnimation>();
   private readonly transitionWaits = new Set<TransitionWait>();
@@ -131,12 +133,12 @@ export class AnimationPlayer {
   /** Load, retarget, mask and analyze before a scheduler commits to a replacement. */
   async preload(
     ref: string,
-    opts: Pick<AnimationPlayOptions, "mask" | "isCurrent"> = {},
+    opts: Pick<AnimationPlayOptions, "mask" | "loop" | "isCurrent"> = {},
   ): Promise<boolean> {
     const clip = await this.loadClip(ref);
     if (opts.isCurrent && !opts.isCurrent()) return false;
     if (!clip) return false;
-    this.prepareClip(clip, opts.mask);
+    this.prepareClip(clip, opts.mask, opts.loop);
     return true;
   }
 
@@ -146,7 +148,7 @@ export class AnimationPlayer {
     const loadedClip = await this.loadClip(ref);
     this.assertCurrent(isCurrent);
     if (!loadedClip) throw new Error(`animation not found: ${ref}`);
-    const { clip, profile } = this.prepareClip(loadedClip, opts.mask);
+    const { clip, profile } = this.prepareClip(loadedClip, opts.mask, opts.loop);
     let previous = this.latestAnimation();
     if (previous && opts.transition === "matched" && opts.startTimeSec === undefined) {
       const delay = findTransitionDelay(
@@ -257,6 +259,14 @@ export class AnimationPlayer {
     this.transitionWaits.clear();
     for (const anim of this.active.values()) this.fadeAndStop(anim, fadeMs);
   }
+
+  /** Discard outgoing tails before a pose owner freezes the mixer clock. */
+  retireFadingActions(): void {
+    for (const anim of this.active.values()) {
+      if (anim.stopAt !== undefined) this.disposeAnimation(anim);
+    }
+  }
+
   get activeCount(): number {
     return this.active.size;
   }
@@ -307,7 +317,11 @@ export class AnimationPlayer {
   private assertCurrent(isCurrent: () => boolean): void {
     if (!isCurrent()) throw new DOMException("Animation request was superseded", "AbortError");
   }
-  private prepareClip(loaded: THREE.AnimationClip, mask: AnimationPlayOptions["mask"]) {
+  private prepareClip(
+    loaded: THREE.AnimationClip,
+    mask: AnimationPlayOptions["mask"],
+    loop = false,
+  ) {
     let clip = loaded;
     if (mask === "upper-body") {
       const cached = this.maskedClips.get(loaded);
@@ -332,6 +346,15 @@ export class AnimationPlayer {
           loaded.blendMode,
         );
         this.maskedClips.set(loaded, clip);
+      }
+    }
+    if (loop) {
+      const cached = this.loopClips.get(clip);
+      if (cached) clip = cached;
+      else {
+        const conditioned = conditionMotionLoop(clip);
+        this.loopClips.set(clip, conditioned);
+        clip = conditioned;
       }
     }
     let profile = this.profiles.get(clip);
