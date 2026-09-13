@@ -23,6 +23,11 @@ import {
   UPPER_BODY_TRANSITION_LIMITS,
 } from "./motion-transition";
 import {
+  type RecordedBaseHandle,
+  type RecordedBaseOptions,
+  RecordedBasePlayer,
+} from "./recorded-base-player";
+import {
   calibrateQuietIdleUpperBodyClip,
   calibrateStandingIdleClip,
   groundStandingIdleClip,
@@ -135,6 +140,9 @@ export class AnimationPlayer {
   private readonly devLog?: SubsystemLog;
   private readonly beforeActionPlay?: () => void;
   private generation = 0;
+  private recordedBaseGeneration = 0;
+  private recordedBase?: RecordedBasePlayer;
+  private canInitializeRecordedBase = true;
 
   constructor(vrm: VRM, devLog?: SubsystemLog, beforeActionPlay?: () => void) {
     this.vrm = vrm;
@@ -182,9 +190,12 @@ export class AnimationPlayer {
   /** Fade deadlines use animation time; pausing rendering cannot leave ghost actions. */
   update(delta: number): void {
     if (!Number.isFinite(delta) || delta < 0) return;
+    this.canInitializeRecordedBase = false;
     const time = this.mixer.time + delta;
     for (const anim of this.active.values()) this.updateWeight(anim, time);
+    this.recordedBase?.beforeUpdate(time, this.getLayerEffectiveWeight("performance"));
     this.mixer.update(delta);
+    this.recordedBase?.afterUpdate();
     this.captureMixedPose(delta);
     for (const anim of this.active.values()) {
       if (anim.maxDurationAt !== undefined && this.mixer.time >= anim.maxDurationAt) {
@@ -228,6 +239,84 @@ export class AnimationPlayer {
     }
   }
 
+  /** Dedicated reviewed full-body preparation; public preserve restrictions remain unchanged. */
+  async preloadRecordedBase(ref: string): Promise<boolean> {
+    try {
+      const clip = await this.loadClip(ref, "preserve");
+      if (!clip) return false;
+      this.getRecordedBase().prepare(clip);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async playRecordedBase(ref: string, opts: RecordedBaseOptions): Promise<RecordedBaseHandle> {
+    const generation = this.generation;
+    const request = ++this.recordedBaseGeneration;
+    const current = () =>
+      generation === this.generation &&
+      request === this.recordedBaseGeneration &&
+      (opts.isCurrent?.() ?? true);
+    const clip = await this.loadClip(ref, "preserve");
+    this.assertCurrent(current);
+    if (!clip) throw new Error(`animation not found: ${ref}`);
+    if (
+      opts.initialPose &&
+      (!this.canInitializeRecordedBase || this.activeCount !== 0 || (opts.fadeInMs ?? 800) !== 0)
+    )
+      throw new Error(
+        "Recorded base initial pose is only allowed before the player's first playback or update",
+      );
+    const handle = this.getRecordedBase().play(clip, {
+      ...opts,
+      onCommit: () => {
+        this.assertCurrent(current);
+        opts.onCommit?.();
+        this.assertCurrent(current);
+        // Only retire a legacy lower owner after the entire incoming gate passes.
+        // Leaving one active would normalize both layers and change foot paths.
+        for (const anim of this.active.values()) {
+          if (
+            anim.layer === "foundation" ||
+            anim.action.getClip().tracks.some((track) => {
+              const binding = THREE.PropertyBinding.parseTrackName(track.name);
+              return [...LOWER_BODY_BONES].some((name) => {
+                const node = this.vrm.humanoid?.getNormalizedBoneNode(name as VRMHumanBoneName);
+                return node && (binding.nodeName === node.name || binding.nodeName === node.uuid);
+              });
+            })
+          )
+            throw new Error("Recorded base requires exclusive lower-body ownership");
+        }
+        this.beforeActionPlay?.();
+        this.assertCurrent(current);
+      },
+    });
+    this.canInitializeRecordedBase = false;
+    if (opts.initialPose) {
+      this.recordedBase?.beforeUpdate(this.mixer.time, 0);
+      this.mixer.update(0);
+      this.recordedBase?.afterUpdate();
+      this.captureMixedPose(0);
+    }
+    this.devLog?.write({
+      phase: "transition",
+      note: `recorded base ${ref}`,
+      data: {
+        startTimeSec: opts.startTimeSec,
+        endTimeSec: opts.endTimeSec,
+        fadeInMs: opts.fadeInMs ?? 800,
+      },
+    });
+    return handle;
+  }
+
+  private getRecordedBase(): RecordedBasePlayer {
+    this.recordedBase ??= new RecordedBasePlayer(this.mixer, this.vrm);
+    return this.recordedBase;
+  }
+
   /** No loading, preparation or live pose mutation on the director's decision path. */
   evaluateTransition(
     ref: string,
@@ -237,7 +326,7 @@ export class AnimationPlayer {
     const profile = this.preparedProfiles.get(this.profileKey(ref, opts.mask, opts.loop));
     if (!profile) return null;
     const result = measureMotionEntry(
-      this.poseSnapshot,
+      this.recordedBase?.transitionPose(this.poseSnapshot) ?? this.poseSnapshot,
       profile,
       {
         weight: opts.weight ?? 0.7,
@@ -343,9 +432,11 @@ export class AnimationPlayer {
     for (const joint of profile.joints) {
       const sample = this.poseSnapshot.get(joint.name);
       if (!sample) continue;
-      const alreadyBound = [...this.active.values()].some((outgoing) =>
-        outgoing.profile.joints.some((other) => this.poseSnapshot.get(other.name) === sample),
-      );
+      const alreadyBound =
+        this.recordedBase?.hasUpperBinding(joint.name) ||
+        [...this.active.values()].some((outgoing) =>
+          outgoing.profile.joints.some((other) => this.poseSnapshot.get(other.name) === sample),
+        );
       if (!alreadyBound) {
         const binding = this.poseBindings.find((item) => item.sample === sample);
         binding?.node.quaternion.toArray(sample.restPose);
@@ -353,6 +444,7 @@ export class AnimationPlayer {
     }
     // Activate incoming bindings before retiring a zero-fade action.
     action.play();
+    this.canInitializeRecordedBase = false;
     for (const outgoing of this.active.values()) {
       if (outgoing.layer === layer) this.fadeAndStop(outgoing, fadeSec * 1000);
     }
@@ -401,6 +493,8 @@ export class AnimationPlayer {
   /** Invalidate pending plays; keep fading actions tracked until they really stop. */
   stopAll(fadeMs = 0): void {
     this.generation++;
+    this.recordedBaseGeneration++;
+    this.recordedBase?.stopAll(fadeMs);
     for (const wait of this.transitionWaits) wait.resolve();
     this.transitionWaits.clear();
     for (const anim of this.active.values()) this.fadeAndStop(anim, fadeMs);
@@ -408,21 +502,31 @@ export class AnimationPlayer {
 
   /** Discard outgoing tails before a pose owner freezes the mixer clock. */
   retireFadingActions(): void {
+    this.recordedBase?.retireFadingActions();
     for (const anim of this.active.values()) {
       if (anim.stopAt !== undefined) this.disposeAnimation(anim);
     }
   }
 
   get activeCount(): number {
-    return this.active.size;
+    return this.active.size + (this.recordedBase?.activeCount ?? 0);
+  }
+  hasActiveRecordedBase(): boolean {
+    return (this.recordedBase?.activeCount ?? 0) > 0;
   }
   getTotalEffectiveWeight(): number {
-    return this.getLayerEffectiveWeight("performance");
+    return Math.min(
+      1,
+      this.getLayerEffectiveWeight("performance") + (this.recordedBase?.upperWeight ?? 0),
+    );
   }
 
   /** Lower-body contribution, separate from upper-body procedural attenuation. */
   getFoundationEffectiveWeight(): number {
-    return this.getLayerEffectiveWeight("foundation");
+    return Math.min(
+      1,
+      this.getLayerEffectiveWeight("foundation") + (this.recordedBase?.lowerWeight ?? 0),
+    );
   }
 
   private getLayerEffectiveWeight(layer: "foundation" | "performance"): number {
