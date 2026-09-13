@@ -33,7 +33,9 @@ export interface AnimationPlayOptions {
   speed?: number;
   /** Only matched idle motifs may enter in the middle of a clip. */
   transition?: "matched" | "immediate";
-  mask?: "upper-body" | "full-body";
+  mask?: "upper-body" | "lower-body" | "full-body";
+  /** Internal mixer ownership. Public motion requests remain on the performance layer. */
+  layer?: "foundation" | "performance";
   /** Explicit phase override for deterministic visual comparisons. */
   startTimeSec?: number;
   /** Upper bound on waiting for a quieter outgoing pose (default: 180 ms). */
@@ -52,6 +54,7 @@ interface ActiveAnimation {
   readonly id: number;
   readonly ref: string;
   readonly action: THREE.AnimationAction;
+  readonly layer: "foundation" | "performance";
   readonly profile: MotionTransitionProfile;
   readonly loop: boolean;
   readonly autoFadeOutMs: number;
@@ -86,7 +89,10 @@ export class AnimationPlayer {
   private readonly loader: GLTFLoader;
   private readonly clipCache = new Map<string, THREE.AnimationClip>();
   private readonly pendingLoads = new Map<string, Promise<THREE.AnimationClip | null>>();
-  private readonly maskedClips = new WeakMap<THREE.AnimationClip, THREE.AnimationClip>();
+  private readonly maskedClips = new WeakMap<
+    THREE.AnimationClip,
+    Map<NonNullable<AnimationPlayOptions["mask"]>, THREE.AnimationClip>
+  >();
   private readonly loopClips = new WeakMap<THREE.AnimationClip, THREE.AnimationClip>();
   private readonly profiles = new WeakMap<THREE.AnimationClip, MotionTransitionProfile>();
   private readonly active = new Map<number, ActiveAnimation>();
@@ -149,7 +155,8 @@ export class AnimationPlayer {
     this.assertCurrent(isCurrent);
     if (!loadedClip) throw new Error(`animation not found: ${ref}`);
     const { clip, profile } = this.prepareClip(loadedClip, opts.mask, opts.loop);
-    let previous = this.latestAnimation();
+    const layer = opts.layer ?? "performance";
+    let previous = this.latestAnimation(layer);
     if (previous && opts.transition === "matched" && opts.startTimeSec === undefined) {
       const delay = findTransitionDelay(
         previous.profile,
@@ -163,7 +170,7 @@ export class AnimationPlayer {
           this.transitionWaits.add({ until: this.mixer.time + delay, isCurrent, resolve });
         });
         this.assertCurrent(isCurrent);
-        previous = this.latestAnimation();
+        previous = this.latestAnimation(layer);
       }
     }
     // A fresh action identity lets the same clip replay while its old action fades.
@@ -201,6 +208,7 @@ export class AnimationPlayer {
       id,
       ref,
       action,
+      layer,
       profile,
       loop: opts.loop ?? false,
       autoFadeOutMs: Math.max(0, finiteOr(opts.fadeOutMs, DEFAULT_AUTO_FADE_OUT_MS)),
@@ -213,7 +221,9 @@ export class AnimationPlayer {
     this.beforeActionPlay?.();
     // Activate incoming bindings before retiring a zero-fade action.
     action.play();
-    for (const outgoing of this.active.values()) this.fadeAndStop(outgoing, fadeSec * 1000);
+    for (const outgoing of this.active.values()) {
+      if (outgoing.layer === layer) this.fadeAndStop(outgoing, fadeSec * 1000);
+    }
     this.active.set(id, anim);
     this.devLog?.write({
       phase: "transition",
@@ -223,6 +233,7 @@ export class AnimationPlayer {
         entrySec: action.time,
         transition: opts.transition ?? "immediate",
         mask: opts.mask ?? "full-body",
+        layer,
         fadeSec,
       },
     });
@@ -271,16 +282,28 @@ export class AnimationPlayer {
     return this.active.size;
   }
   getTotalEffectiveWeight(): number {
+    return this.getLayerEffectiveWeight("performance");
+  }
+
+  /** Lower-body contribution, separate from upper-body procedural attenuation. */
+  getFoundationEffectiveWeight(): number {
+    return this.getLayerEffectiveWeight("foundation");
+  }
+
+  private getLayerEffectiveWeight(layer: "foundation" | "performance"): number {
     let total = 0;
     for (const anim of this.active.values()) {
+      if (anim.layer !== layer) continue;
       total += anim.action.getEffectiveWeight();
       if (total >= 1) return 1;
     }
     return total;
   }
-  private latestAnimation(): ActiveAnimation | undefined {
+  private latestAnimation(layer: "foundation" | "performance"): ActiveAnimation | undefined {
     let latest: ActiveAnimation | undefined;
-    for (const anim of this.active.values()) if (!latest || anim.id > latest.id) latest = anim;
+    for (const anim of this.active.values()) {
+      if (anim.layer === layer && (!latest || anim.id > latest.id)) latest = anim;
+    }
     return latest;
   }
   private updateWeight(anim: ActiveAnimation, time: number): void {
@@ -323,29 +346,35 @@ export class AnimationPlayer {
     loop = false,
   ) {
     let clip = loaded;
-    if (mask === "upper-body") {
-      const cached = this.maskedClips.get(loaded);
+    if (mask === "upper-body" || mask === "lower-body") {
+      const cache = this.maskedClips.get(loaded);
+      const cached = cache?.get(mask);
       if (cached) clip = cached;
       else {
-        const excluded = new Set<string>();
+        const lowerBodyNodes = new Set<string>();
         for (const boneName of Object.values(VRMHumanBoneName)) {
           if (!LOWER_BODY_BONES.has(boneName)) continue;
           const node = this.vrm.humanoid?.getNormalizedBoneNode(boneName);
           if (node) {
-            excluded.add(node.name);
-            excluded.add(node.uuid);
+            lowerBodyNodes.add(node.name);
+            lowerBodyNodes.add(node.uuid);
           }
         }
         clip = new THREE.AnimationClip(
-          `${loaded.name}:upper-body`,
+          `${loaded.name}:${mask}`,
           loaded.duration,
           loaded.tracks.filter((track) => {
             const binding = THREE.PropertyBinding.parseTrackName(track.name);
-            return !excluded.has(binding.nodeName) && !excluded.has(binding.objectIndex ?? "");
+            const lowerBody =
+              lowerBodyNodes.has(binding.nodeName) || lowerBodyNodes.has(binding.objectIndex ?? "");
+            return mask === "lower-body"
+              ? lowerBody && track.name.endsWith(".quaternion")
+              : !lowerBody;
           }),
           loaded.blendMode,
         );
-        this.maskedClips.set(loaded, clip);
+        if (cache) cache.set(mask, clip);
+        else this.maskedClips.set(loaded, new Map([[mask, clip]]));
       }
     }
     if (loop) {

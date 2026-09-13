@@ -360,3 +360,145 @@ describe("AnimationPlayer action ownership", () => {
     expect(await player.preload("motion", { isCurrent: () => false })).toBe(false);
   });
 });
+
+function foundationRig() {
+  const scene = new THREE.Object3D();
+  const head = new THREE.Object3D();
+  head.name = "Head";
+  const hips = new THREE.Object3D();
+  hips.name = "RetargetedPelvis";
+  const leg = new THREE.Object3D();
+  leg.name = "RetargetedLeg";
+  scene.add(head, hips, leg);
+  const bones: Partial<Record<string, THREE.Object3D>> = { head, hips, leftUpperLeg: leg };
+  const vrm = {
+    scene,
+    humanoid: { getNormalizedBoneNode: (name: string) => bones[name] ?? null },
+  } as unknown as VRM;
+  const player = new AnimationPlayer(vrm);
+  const cache = (player as unknown as { clipCache: Map<string, THREE.AnimationClip> }).clipCache;
+  const addClip = (ref: string, headAngles = [0.2, 0.2], duration = 2) => {
+    const rotationTrack = (name: string, angles: number[]) =>
+      new THREE.QuaternionKeyframeTrack(
+        `${name}.quaternion`,
+        angles.map((_, index) => (index * duration) / (angles.length - 1)),
+        angles.flatMap((angle) => [Math.sin(angle / 2), 0, 0, Math.cos(angle / 2)]),
+      );
+    cache.set(
+      ref,
+      new THREE.AnimationClip(ref, duration, [
+        rotationTrack(head.name, headAngles),
+        rotationTrack(hips.name, [0.4, 0.4]),
+        rotationTrack(leg.uuid, [-0.3, -0.3]),
+        new THREE.VectorKeyframeTrack(`${hips.name}.position`, [0, duration], [0, 0, 0, 1, 2, 3]),
+      ]),
+    );
+  };
+  addClip("recording");
+  return { player, head, hips, leg, addClip };
+}
+
+describe("AnimationPlayer recorded foundation layer", () => {
+  it("mixes disjoint recorded lower and upper bones with independent effective weights", async () => {
+    const { player, head, hips, leg } = foundationRig();
+    expect(await player.preload("recording", { mask: "lower-body", loop: true })).toBe(true);
+    await player.play("recording", {
+      layer: "foundation",
+      mask: "lower-body",
+      loop: true,
+      weight: 0.6,
+      fadeInMs: 0,
+    });
+    await player.play("recording", { mask: "upper-body", loop: true, weight: 0.8, fadeInMs: 0 });
+    player.update(0.25);
+    expect(player.activeCount).toBe(2);
+    expect(player.getTotalEffectiveWeight()).toBeCloseTo(0.8, 6);
+    expect(player.getFoundationEffectiveWeight()).toBeCloseTo(0.6, 6);
+    expect(head.rotation.x).toBeCloseTo(0.16, 5);
+    expect(hips.rotation.x).toBeCloseTo(0.24, 5);
+    expect(leg.rotation.x).toBeCloseTo(-0.18, 5);
+    expect(hips.position.length()).toBe(0);
+  });
+
+  it("replaces an upper-body performance while the same foundation action keeps playing", async () => {
+    const { player, addClip } = foundationRig();
+    addClip("next", [0.6, 0.6]);
+    const foundation = await player.play("recording", {
+      layer: "foundation",
+      mask: "lower-body",
+      loop: true,
+      weight: 1,
+      fadeInMs: 0,
+    });
+    const foundationAction = actionFor(player, foundation.id);
+    const outgoing = await player.play("recording", {
+      mask: "upper-body",
+      loop: true,
+      fadeInMs: 0,
+    });
+    player.update(0.2);
+    const incoming = await player.play("next", { mask: "upper-body", loop: true, fadeInMs: 400 });
+    player.update(0.401);
+    await outgoing.completion;
+    expect(player.activeCount).toBe(2);
+    expect(actionFor(player, foundation.id)).toBe(foundationAction);
+    expect(foundationAction.time).toBeCloseTo(0.601, 6);
+    expect(foundationAction.isRunning()).toBe(true);
+    expect(player.getFoundationEffectiveWeight()).toBeCloseTo(1, 6);
+    expect(actionFor(player, incoming.id).isRunning()).toBe(true);
+  });
+
+  it("matches an incoming performance against its own layer even when foundation started last", async () => {
+    const { player, addClip } = foundationRig();
+    addClip("pose", [0.5, 0.5], 3);
+    addClip("target", [0, 0.5, 0.5, 0], 3);
+    await player.play("pose", { mask: "upper-body", loop: true, weight: 1, fadeInMs: 0 });
+    player.update(0.2);
+    const foundation = await player.play("recording", {
+      layer: "foundation",
+      mask: "lower-body",
+      loop: true,
+      fadeInMs: 0,
+    });
+    const incoming = await player.play("target", {
+      mask: "upper-body",
+      loop: true,
+      transition: "matched",
+      maxTransitionDelayMs: 0,
+      fadeInMs: 0,
+    });
+    expect(actionFor(player, incoming.id).time).toBeGreaterThan(1);
+    expect(actionFor(player, foundation.id).isRunning()).toBe(true);
+    expect(player.activeCount).toBe(2);
+  });
+
+  it("stops and restores both layers through a single stopAll fade", async () => {
+    const { player, head, hips, leg } = foundationRig();
+    const foundation = await player.play("recording", {
+      layer: "foundation",
+      mask: "lower-body",
+      loop: true,
+      weight: 1,
+      fadeInMs: 0,
+    });
+    const performance = await player.play("recording", {
+      mask: "upper-body",
+      loop: true,
+      weight: 1,
+      fadeInMs: 0,
+    });
+    player.update(0.1);
+    player.stopAll(200);
+    player.update(0.1);
+    expect(player.getFoundationEffectiveWeight()).toBeCloseTo(0.5, 6);
+    expect(player.getTotalEffectiveWeight()).toBeCloseTo(0.5, 6);
+    player.update(0.101);
+    await Promise.all([foundation.completion, performance.completion]);
+    expect(player.activeCount).toBe(0);
+    expect(player.getFoundationEffectiveWeight()).toBe(0);
+    expect(player.getTotalEffectiveWeight()).toBe(0);
+    expect(head.rotation.x).toBeCloseTo(0, 6);
+    expect(hips.rotation.x).toBeCloseTo(0, 6);
+    expect(leg.rotation.x).toBeCloseTo(0, 6);
+  });
+});
