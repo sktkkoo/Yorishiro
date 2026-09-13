@@ -15,6 +15,7 @@ import {
   findTransitionDelay,
   type MotionTransitionProfile,
 } from "./motion-transition";
+import { calibrateStandingIdleClip, groundStandingIdleClip } from "./standing-idle-grounding";
 
 const ANIM_ALIAS: Record<string, string> = {
   VRMA_small_nod: "Thankful",
@@ -97,6 +98,8 @@ export class AnimationPlayer {
     Map<NonNullable<AnimationPlayOptions["mask"]>, THREE.AnimationClip>
   >();
   private readonly loopClips = new WeakMap<THREE.AnimationClip, THREE.AnimationClip>();
+  private readonly standingClips = new WeakMap<THREE.AnimationClip, THREE.AnimationClip>();
+  private readonly groundedClips = new WeakMap<THREE.AnimationClip, THREE.AnimationClip>();
   private readonly profiles = new WeakMap<THREE.AnimationClip, MotionTransitionProfile>();
   private readonly active = new Map<number, ActiveAnimation>();
   private readonly transitionWaits = new Set<TransitionWait>();
@@ -156,8 +159,14 @@ export class AnimationPlayer {
     const clip = await this.loadClip(ref);
     if (opts.isCurrent && !opts.isCurrent()) return false;
     if (!clip) return false;
-    this.prepareClip(clip, opts.mask, opts.loop);
-    return true;
+    try {
+      this.prepareClip(clip, opts.mask, opts.loop, ref);
+      return true;
+    } catch {
+      // An unsupported standing foundation must never become an absolute-stance
+      // fallback. The controller can retain procedural rest when preparation fails.
+      return false;
+    }
   }
 
   async play(ref: string, opts: AnimationPlayOptions = {}) {
@@ -166,7 +175,7 @@ export class AnimationPlayer {
     const loadedClip = await this.loadClip(ref);
     this.assertCurrent(isCurrent);
     if (!loadedClip) throw new Error(`animation not found: ${ref}`);
-    const { clip, profile } = this.prepareClip(loadedClip, opts.mask, opts.loop);
+    const { clip, profile } = this.prepareClip(loadedClip, opts.mask, opts.loop, ref);
     const layer = opts.layer ?? "performance";
     let previous = this.latestAnimation(layer);
     if (previous && opts.transition === "matched" && opts.startTimeSec === undefined) {
@@ -253,6 +262,8 @@ export class AnimationPlayer {
         transition: opts.transition ?? "immediate",
         mask: opts.mask ?? "full-body",
         layer,
+        grounded:
+          layer === "foundation" && clip.tracks.some((track) => track.name.endsWith(".position")),
         fadeSec,
       },
     });
@@ -363,6 +374,7 @@ export class AnimationPlayer {
     loaded: THREE.AnimationClip,
     mask: AnimationPlayOptions["mask"],
     loop = false,
+    ref?: string,
   ) {
     let clip = loaded;
     if (mask === "upper-body" || mask === "lower-body") {
@@ -396,6 +408,17 @@ export class AnimationPlayer {
         else this.maskedClips.set(loaded, new Map([[mask, clip]]));
       }
     }
+    let standingCalibrationApplied = false;
+    if (mask === "lower-body" && ref === "anim:Idle") {
+      let calibrated = this.standingClips.get(clip);
+      if (!calibrated) {
+        calibrated = calibrateStandingIdleClip(clip, this.vrm);
+        this.standingClips.set(clip, calibrated);
+      }
+      if (calibrated === clip) throw new Error("Unable to calibrate reviewed standing Idle");
+      standingCalibrationApplied = calibrated !== clip;
+      clip = calibrated;
+    }
     if (loop) {
       const cached = this.loopClips.get(clip);
       if (cached) clip = cached;
@@ -404,6 +427,27 @@ export class AnimationPlayer {
         this.loopClips.set(clip, conditioned);
         clip = conditioned;
       }
+    }
+    if (standingCalibrationApplied) {
+      let grounded = this.groundedClips.get(clip);
+      if (!grounded) {
+        // Compute compensation after quaternion seam conditioning so the last
+        // fraction of the loop uses the same measured foot trajectory too.
+        grounded = groundStandingIdleClip(clip, this.vrm);
+        this.groundedClips.set(clip, grounded);
+      }
+      const hips = this.vrm.humanoid.getNormalizedBoneNode("hips");
+      const groundingTrack = hips && `${hips.name || hips.uuid}.position`;
+      if (
+        grounded === clip ||
+        !groundingTrack ||
+        !grounded.tracks.some(
+          (track) => track.name === groundingTrack && track.getValueSize() === 3,
+        )
+      ) {
+        throw new Error("Unable to ground reviewed standing Idle");
+      }
+      clip = grounded;
     }
     let profile = this.profiles.get(clip);
     if (!profile) {
@@ -445,7 +489,7 @@ export class AnimationPlayer {
       clip.tracks = clip.tracks.filter(
         (track) => !track.name.endsWith(".position") && !track.name.endsWith(".scale"),
       );
-      this.prepareClip(clip, "full-body");
+      this.prepareClip(clip, "full-body", false, ref);
       this.clipCache.set(ref, clip);
       this.devLog?.write({
         phase: "load",

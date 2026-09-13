@@ -1,4 +1,4 @@
-import type { VRM } from "@pixiv/three-vrm";
+import { type VRM, type VRMHumanBoneName, VRMHumanoid } from "@pixiv/three-vrm";
 import * as THREE from "three";
 import { describe, expect, it, vi } from "vitest";
 import { AnimationPlayer } from "./animation-player";
@@ -601,5 +601,152 @@ describe("AnimationPlayer bounded semantic one-shots", () => {
     await stopped;
     player.update(5);
     expect(player.activeCount).toBe(0);
+  });
+});
+
+function standingRig() {
+  const scene = new THREE.Object3D();
+  const hips = new THREE.Object3D();
+  hips.name = "hips";
+  hips.position.set(0, 0.9, 0);
+  scene.add(hips);
+  const rawBones = new Map<VRMHumanBoneName, THREE.Object3D>([["hips", hips]]);
+  for (const side of ["left", "right"] as const) {
+    let parent = hips;
+    for (const part of ["UpperLeg", "LowerLeg", "Foot", "Toes"] as const) {
+      const name = `${side}${part}` as VRMHumanBoneName;
+      const bone = new THREE.Object3D();
+      bone.name = name;
+      if (part === "UpperLeg") bone.position.x = side === "left" ? 0.09 : -0.09;
+      else if (part === "Toes") bone.position.set(0, -0.05, 0.12);
+      else bone.position.y = -0.4;
+      parent.add(bone);
+      rawBones.set(name, bone);
+      parent = bone;
+    }
+  }
+  scene.updateMatrixWorld(true);
+  const humanoid = new VRMHumanoid(
+    // The mixer fixture deliberately contains only the normalized lower body.
+    Object.fromEntries(
+      [...rawBones].map(([name, node]) => [name, { node }]),
+    ) as unknown as ConstructorParameters<typeof VRMHumanoid>[0],
+  );
+  scene.add(humanoid.normalizedHumanBonesRoot);
+  const vrm = { scene, humanoid } as unknown as VRM;
+  const tracks = [...rawBones.keys()].map((name) => {
+    const bone = humanoid.getNormalizedBoneNode(name);
+    if (!bone) throw new Error(`missing standing bone ${name}`);
+    const angles = name === "hips" ? [0.12, 0.13, 0.12] : [0, 0, 0];
+    return new THREE.QuaternionKeyframeTrack(
+      `${bone.uuid}.quaternion`,
+      [0, 1, 2],
+      angles.flatMap((angle) => [Math.sin(angle / 2), 0, 0, Math.cos(angle / 2)]),
+    );
+  });
+  const original = new THREE.AnimationClip("reviewed-idle", 2, tracks);
+  const player = new AnimationPlayer(vrm);
+  const cache = (player as unknown as { clipCache: Map<string, THREE.AnimationClip> }).clipCache;
+  cache.set("anim:Idle", original);
+  cache.set("anim:OtherIdle", original);
+  return { player, vrm, original };
+}
+
+describe("AnimationPlayer reviewed standing Idle preparation", () => {
+  it("fails closed for an avatar missing a required support bone", async () => {
+    const { player, vrm } = standingRig();
+    const getBone = vrm.humanoid.getNormalizedBoneNode.bind(vrm.humanoid);
+    vi.spyOn(vrm.humanoid, "getNormalizedBoneNode").mockImplementation((name) =>
+      name === "rightToes" ? null : getBone(name),
+    );
+    expect(await player.preload("anim:Idle", { mask: "lower-body", loop: true })).toBe(false);
+    await expect(
+      player.play("anim:Idle", {
+        layer: "foundation",
+        mask: "lower-body",
+        loop: true,
+      }),
+    ).rejects.toThrow("Unable to calibrate");
+    expect(player.activeCount).toBe(0);
+    expect(player.getFoundationEffectiveWeight()).toBe(0);
+  });
+
+  it.each([
+    { delta: 0.3, error: "Unable to calibrate" },
+    { delta: 0.09, error: "Unable to ground" },
+  ])("rejects an unsuitable foundation rather than playing an unsafe stance: $error", async ({
+    delta,
+    error,
+  }) => {
+    const { player, original } = standingRig();
+    const angle = 0.12 + delta;
+    original.tracks[0].values.set([Math.sin(angle / 2), 0, 0, Math.cos(angle / 2)], 4);
+    expect(await player.preload("anim:Idle", { mask: "lower-body", loop: true })).toBe(false);
+    await expect(
+      player.play("anim:Idle", {
+        layer: "foundation",
+        mask: "lower-body",
+        loop: true,
+      }),
+    ).rejects.toThrow(error);
+    expect(player.activeCount).toBe(0);
+    // Explicit full-body playback remains available to its own caller.
+    const explicit = await player.play("anim:Idle", { loop: false });
+    expect(actionFor(player, explicit.id).getClip().tracks).toBe(original.tracks);
+  });
+
+  it("calibrates, closes and grounds only the reviewed lower-body variant, and reuses its cache", async () => {
+    const { player, vrm, original } = standingRig();
+    const hips = vrm.humanoid.getNormalizedBoneNode("hips");
+    const foot = vrm.humanoid.getNormalizedBoneNode("leftFoot");
+    if (!hips || !foot) throw new Error("standing fixture must contain hips and feet");
+    const originalValues = [...original.tracks[0].values];
+    await player.preload("anim:Idle", { mask: "lower-body", loop: true });
+    expect(hips.rotation.x).toBeCloseTo(0, 6);
+    expect(player.activeCount).toBe(0);
+    const foundation = await player.play("anim:Idle", {
+      layer: "foundation",
+      mask: "lower-body",
+      loop: true,
+      weight: 1,
+      fadeInMs: 0,
+    });
+    const preparedTracks = actionFor(player, foundation.id).getClip().tracks;
+    expect(preparedTracks.filter((track) => track.name.endsWith(".position"))).toHaveLength(1);
+    player.update(0);
+    const initialFoot = foot.getWorldPosition(new THREE.Vector3());
+    expect(hips.rotation.x).toBeCloseTo(0, 6);
+    player.update(1);
+    expect(hips.rotation.x).toBeCloseTo(0.01, 5);
+    expect(foot.getWorldPosition(new THREE.Vector3()).distanceTo(initialFoot)).toBeLessThan(0.0015);
+    expect([...original.tracks[0].values]).toEqual(originalValues);
+    player.stopAll();
+
+    const unreviewed = await player.play("anim:OtherIdle", {
+      layer: "foundation",
+      mask: "lower-body",
+      loop: true,
+      weight: 1,
+      fadeInMs: 0,
+    });
+    expect(
+      actionFor(player, unreviewed.id)
+        .getClip()
+        .tracks.some((track) => track.name.endsWith(".position")),
+    ).toBe(false);
+    player.update(0);
+    expect(hips.rotation.x).toBeCloseTo(0.12, 5);
+    player.stopAll();
+
+    const replay = await player.play("anim:Idle", {
+      layer: "foundation",
+      mask: "lower-body",
+      loop: true,
+      fadeInMs: 0,
+    });
+    expect(actionFor(player, replay.id).getClip().tracks).toBe(preparedTracks);
+    player.stopAll();
+    const explicit = await player.play("anim:Idle", { loop: false, fadeInMs: 0 });
+    expect(actionFor(player, explicit.id).getClip().tracks).toBe(original.tracks);
   });
 });
