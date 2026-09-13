@@ -41,6 +41,12 @@ try {
   }
   await page.evaluate(() => window.motionLab.step(120));
   await capture("03-long-idle");
+  await page.evaluate(() => window.motionLab.speaking());
+  await page.evaluate(() => window.motionLab.step(45));
+  await capture("04-long-explanation");
+  await page.evaluate(() => window.motionLab.listening());
+  await page.evaluate(() => window.motionLab.step(2));
+  await capture("05-listening-after-speech");
   const observations = await page.evaluate(() => window.motionLab.observations());
   await writeFile(
     resolve(output, "observations.json"),
@@ -57,9 +63,9 @@ try {
     await mkdir(frames, { recursive: true });
     const fps = 24;
     for (let frame = 0; frame < 30 * fps; frame++) {
-      if (frame === 6 * fps) await page.evaluate(() => window.motionLab.gesture("consider"));
+      if (frame === 6 * fps) await page.evaluate(() => window.motionLab.speaking());
       if (frame === 14 * fps) await page.evaluate(() => window.motionLab.gesture("emphasize"));
-      if (frame === 22 * fps) await page.evaluate(() => window.motionLab.gesture("reassure"));
+      if (frame === 22 * fps) await page.evaluate(() => window.motionLab.listening());
       await page.evaluate((delta) => window.motionLab.step(delta), 1 / fps);
       await page.screenshot({
         path: resolve(frames, `${String(frame).padStart(4, "0")}.jpg`),

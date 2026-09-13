@@ -27,6 +27,11 @@ interface Lane {
     head: number[];
     leftHand: number[];
     rightHand: number[];
+    hips: number[];
+    leftFoot: number[];
+    rightFoot: number[];
+    leftToes: number[];
+    rightToes: number[];
   }[];
 }
 
@@ -104,7 +109,17 @@ function advance(delta: number): void {
     nextSample = elapsed + 0.1;
     for (const lane of lanes) {
       lane.vrm.scene.updateMatrixWorld(true);
-      const position = (name: "head" | "leftHand" | "rightHand") => {
+      const position = (
+        name:
+          | "head"
+          | "leftHand"
+          | "rightHand"
+          | "hips"
+          | "leftFoot"
+          | "rightFoot"
+          | "leftToes"
+          | "rightToes",
+      ) => {
         const bone = lane.vrm.humanoid.getNormalizedBoneNode(name);
         if (!bone) return [];
         return bone.getWorldPosition(point).toArray();
@@ -115,6 +130,11 @@ function advance(delta: number): void {
         head: position("head"),
         leftHand: position("leftHand"),
         rightHand: position("rightHand"),
+        hips: position("hips"),
+        leftFoot: position("leftFoot"),
+        rightFoot: position("rightFoot"),
+        leftToes: position("leftToes"),
+        rightToes: position("rightToes"),
       });
       if (lane.samples.length > 6_000) lane.samples.shift();
     }
@@ -133,6 +153,20 @@ function gesture(intent: MotionIntent): void {
     intent,
     intensity: 0.6,
   });
+}
+
+function speaking(): void {
+  for (const lane of lanes) {
+    lane.body.setState("idle");
+    lane.body.setMotionConversationPhase("assistant-speaking");
+  }
+}
+
+function listening(): void {
+  for (const lane of lanes) {
+    lane.body.setState("idle");
+    lane.body.setMotionConversationPhase("user-speaking");
+  }
 }
 
 async function step(seconds: number): Promise<void> {
@@ -180,6 +214,8 @@ Object.assign(window, {
     ready: false,
     step,
     gesture,
+    speaking,
+    listening,
     playClip,
     observations,
     pause: () => {
@@ -208,12 +244,8 @@ async function start(): Promise<void> {
       lane.body.setMotionConversationPhase("idle");
     }
   };
-  element("listening").onclick = () => {
-    for (const lane of lanes) {
-      lane.body.setState("idle");
-      lane.body.setMotionConversationPhase("user-speaking");
-    }
-  };
+  element("listening").onclick = listening;
+  element("speaking").onclick = speaking;
   element("thinking").onclick = () => {
     for (const lane of lanes) {
       lane.body.setState("thinking");

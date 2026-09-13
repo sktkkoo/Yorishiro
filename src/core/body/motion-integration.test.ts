@@ -121,7 +121,39 @@ describe("recorded motion Body integration", () => {
     const { body, vrm, claims } = createBody();
     const leg = vrm.humanoid.getNormalizedBoneNode("leftUpperLeg");
     const arm = vrm.humanoid.getNormalizedBoneNode("leftLowerArm");
-    if (!leg || !arm) throw new Error("test bones are required");
+    const hips = vrm.humanoid.getNormalizedBoneNode("hips");
+    if (!leg || !arm || !hips) throw new Error("test bones are required");
+    hips.position.y = 0.9;
+    const lowerBones = ["hips"];
+    for (const side of ["left", "right"] as const) {
+      let parent = hips;
+      for (const [suffix, y, z] of [
+        ["UpperLeg", -0.04, 0],
+        ["LowerLeg", -0.4, 0],
+        ["Foot", -0.4, 0],
+        ["Toes", -0.03, 0.1],
+      ] as const) {
+        const name = `${side}${suffix}` as VRMHumanBoneName;
+        const bone = vrm.humanoid.getNormalizedBoneNode(name);
+        if (!bone) throw new Error(`Missing ${name}`);
+        parent.add(bone);
+        bone.position.set(suffix === "UpperLeg" ? (side === "left" ? 0.08 : -0.08) : 0, y, z);
+        parent = bone;
+        lowerBones.push(name);
+      }
+    }
+    Object.assign(vrm.humanoid, {
+      normalizedHumanBonesRoot: vrm.scene,
+      normalizedRestPose: Object.fromEntries(
+        lowerBones.map((name) => {
+          const bone = vrm.humanoid.getNormalizedBoneNode(name as VRMHumanBoneName);
+          return [
+            name,
+            { position: bone?.position.toArray(), rotation: bone?.quaternion.toArray() },
+          ];
+        }),
+      ),
+    });
     const player = (body as unknown as { animationPlayer: AnimationPlayer }).animationPlayer;
     const cache = (player as unknown as { clipCache: Map<string, THREE.AnimationClip> }).clipCache;
     const rotationTrack = (bone: THREE.Object3D, angle: number) =>
@@ -130,7 +162,10 @@ describe("recorded motion Body integration", () => {
         [0, 4, 8],
         [0, 0, 0, 1, Math.sin(angle / 2), 0, 0, Math.cos(angle / 2), 0, 0, 0, 1],
       );
-    cache.set("anim:Idle", new THREE.AnimationClip("idle", 8, [rotationTrack(leg, 0.08)]));
+    cache.set(
+      "anim:Idle",
+      new THREE.AnimationClip("idle", 8, [rotationTrack(hips, 0), rotationTrack(leg, 0.008)]),
+    );
     cache.set("anim:upper", new THREE.AnimationClip("upper", 8, [rotationTrack(arm, 0.6)]));
     cache.set("anim:whole", new THREE.AnimationClip("whole", 8, [rotationTrack(leg, 0.3)]));
     await body.prepareMotionLibrary();
