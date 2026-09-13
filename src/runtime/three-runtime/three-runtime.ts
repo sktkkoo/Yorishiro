@@ -178,82 +178,84 @@ class ThreeRuntimeImpl implements ThreeRuntime {
       try {
         const buffer = await getVrmCache().getBytes(url);
         if (myToken !== this.loadToken) return;
+        // Contact-prepared recordings are qualified against the exact target,
+        // including its shoes. Other avatars retain the generic motion library.
+        const modelSha256 = globalThis.crypto?.subtle
+          ? Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", buffer)), (byte) =>
+              byte.toString(16).padStart(2, "0"),
+            ).join("")
+          : undefined;
+        if (myToken !== this.loadToken) return;
 
-        await new Promise<void>((resolve, reject) => {
-          this.loader.parse(
-            buffer,
-            "",
-            (gltf) => {
-              if (myToken !== this.loadToken) {
-                resolve();
-                return;
-              }
-              const vrm = gltf.userData.vrm as VRM;
-              if (!vrm) {
-                console.warn("[three-runtime] GLTF did not contain VRM payload:", url);
-                resolve();
-                return;
-              }
+        const gltf = await this.loader.parseAsync(buffer, "");
+        if (myToken !== this.loadToken) {
+          return;
+        }
+        const vrm = gltf.userData.vrm as VRM;
+        if (!vrm) {
+          console.warn("[three-runtime] GLTF did not contain VRM payload:", url);
+          return;
+        }
 
-              VRMUtils.rotateVRM0(vrm);
-              applyVrmRestPose(vrm);
-              vrm.humanoid?.update();
+        VRMUtils.rotateVRM0(vrm);
+        applyVrmRestPose(vrm);
+        vrm.humanoid?.update();
 
-              // BlendShapeMaster に wired されていない orphan morph (Hana Tool /
-              // Perfect Sync 系) を synthetic VRMExpression として登録し、
-              // expressionManager.setValue(<morph名>, w) で駆動可能にする。
-              // Body 構築前に必ず終わらせる（slot mixer が name を resolve する前提のため）。
-              const orphans = registerOrphanMorphs(vrm);
-              if (orphans.registered.length > 0) {
-                console.debug(
-                  `[three-runtime] registered ${orphans.registered.length} orphan morphs as synthetic expressions`,
-                );
-              }
-
-              this.scene.add(vrm.scene);
-              this.currentVrm = vrm;
-              this.currentBody = new Body(
-                vrm,
-                this.devLogRef.current ?? undefined,
-                this.claimState,
-              );
-              this.currentBody.setMotionIntensity(this.motionIntensity);
-
-              vrm.scene.updateWorldMatrix(true, true);
-              vrm.update(0);
-
-              const headBone = vrm.humanoid?.getNormalizedBoneNode("head");
-              this.trackHead = headBone ?? null;
-
-              const headPos = this.characterAnchorWorldPos;
-              if (headBone) headBone.getWorldPosition(headPos);
-              else headPos.set(0, 1.6, 0);
-
-              const targetY = headPos.y - 0.05;
-              if (!this.fixedCamera) {
-                this.cameraBase.x = 0;
-                this.cameraBase.y = targetY;
-                this.cameraBase.z = 1.1;
-                this.camera.position.set(0, targetY, 1.1);
-                this.camera.lookAt(0, targetY, 0);
-              }
-              // 新しい姿は背丈が違う。切替経路（お別れの暗転中 / 設定画面の
-              // live 差し替え）を問わず、ロード時は追従を ON に戻して頭位置の
-              // 構図から始める。ここは即時スナップなので、暗転中なら
-              // カーテンが明けた瞬間から構図が決まっている。
-              if (!this.fixedCamera) this.cameraTrackingEnabled = true;
-
-              this.bodyListenerRef.current?.(this.currentBody);
-              this.updatePlaceholderRect();
-              this.handleResize();
-              this.clock.getDelta();
-              this.renderCadence.reset();
-              this.startRenderLoop();
-              resolve();
-            },
-            (err) => reject(err),
+        // BlendShapeMaster に wired されていない orphan morph (Hana Tool /
+        // Perfect Sync 系) を synthetic VRMExpression として登録し、
+        // expressionManager.setValue(<morph名>, w) で駆動可能にする。
+        // Body 構築前に必ず終わらせる（slot mixer が name を resolve する前提のため）。
+        const orphans = registerOrphanMorphs(vrm);
+        if (orphans.registered.length > 0) {
+          console.debug(
+            `[three-runtime] registered ${orphans.registered.length} orphan morphs as synthetic expressions`,
           );
+        }
+
+        const body = new Body(vrm, this.devLogRef.current ?? undefined, this.claimState, {
+          modelSha256,
         });
+        body.setMotionIntensity(this.motionIntensity);
+        await body.initializeRecordedBody();
+        if (myToken !== this.loadToken) {
+          body.dispose();
+          VRMUtils.deepDispose(vrm.scene);
+          return;
+        }
+        this.scene.add(vrm.scene);
+        this.currentVrm = vrm;
+        this.currentBody = body;
+
+        vrm.scene.updateWorldMatrix(true, true);
+        vrm.update(0);
+
+        const headBone = vrm.humanoid?.getNormalizedBoneNode("head");
+        this.trackHead = headBone ?? null;
+
+        const headPos = this.characterAnchorWorldPos;
+        if (headBone) headBone.getWorldPosition(headPos);
+        else headPos.set(0, 1.6, 0);
+
+        const targetY = headPos.y - 0.05;
+        if (!this.fixedCamera) {
+          this.cameraBase.x = 0;
+          this.cameraBase.y = targetY;
+          this.cameraBase.z = 1.1;
+          this.camera.position.set(0, targetY, 1.1);
+          this.camera.lookAt(0, targetY, 0);
+        }
+        // 新しい姿は背丈が違う。切替経路（お別れの暗転中 / 設定画面の
+        // live 差し替え）を問わず、ロード時は追従を ON に戻して頭位置の
+        // 構図から始める。ここは即時スナップなので、暗転中なら
+        // カーテンが明けた瞬間から構図が決まっている。
+        if (!this.fixedCamera) this.cameraTrackingEnabled = true;
+
+        this.bodyListenerRef.current?.(this.currentBody);
+        this.updatePlaceholderRect();
+        this.handleResize();
+        this.clock.getDelta();
+        this.renderCadence.reset();
+        this.startRenderLoop();
       } catch (err) {
         if (myToken !== this.loadToken) return;
         console.error("[three-runtime] VRM load failed:", err);

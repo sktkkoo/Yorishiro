@@ -93,6 +93,7 @@ import {
   type MotionSource,
 } from "./motion-scheduler";
 import { ProceduralBones } from "./procedural-bones";
+import { RecordedBodySequencer } from "./recorded-body-sequencer";
 import { RecordedIdleFoundation } from "./recorded-idle-foundation";
 import {
   DEFAULT_SPEECH_MICROEXPRESSION_PARAMS,
@@ -233,6 +234,7 @@ export class Body {
   private readonly cursorAttention: CursorAttentionSystem;
   private readonly animationPlayer: AnimationPlayer;
   private readonly recordedIdleFoundation: RecordedIdleFoundation;
+  private readonly recordedBody: RecordedBodySequencer;
   private foundationBlockedByPerformance = false;
   private readonly proceduralBones: ProceduralBones;
   private readonly beatScheduler: IdleBeatScheduler;
@@ -366,7 +368,12 @@ export class Body {
   private viewportWidth = 0;
   private viewportHeight = 0;
 
-  constructor(vrm: VRM, devLog?: SubsystemLog, claimState?: ClaimState) {
+  constructor(
+    vrm: VRM,
+    devLog?: SubsystemLog,
+    claimState?: ClaimState,
+    motionAssets: { modelSha256?: string } = {},
+  ) {
     this.vrm = vrm;
     this.devLog = devLog;
     this.claimState = claimState ?? getClaimState();
@@ -457,6 +464,10 @@ export class Body {
       this.proceduralBones.restoreBaseRotations(),
     );
     this.recordedIdleFoundation = new RecordedIdleFoundation(this.animationPlayer);
+    this.recordedBody = new RecordedBodySequencer(this.animationPlayer, {
+      modelSha256: motionAssets.modelSha256,
+      onCommit: () => this.recordedIdleFoundation.suspend(0),
+    });
     this.beatTarget = this.createBeatTarget();
     this.beatScheduler = new IdleBeatScheduler(defaultProfiles);
 
@@ -467,6 +478,7 @@ export class Body {
           req.options?.mask !== "upper-body" ||
           !["idle-fidget", "speech-expression"].includes(req.priority);
         if (this.foundationBlockedByPerformance) {
+          this.recordedBody.suspend(req.options?.fadeInMs ?? 200);
           this.recordedIdleFoundation.suspend(req.options?.fadeInMs ?? 200);
         }
         // AnimationPlayer.play() を呼んで clip を mixer に載せる。返値の handle
@@ -628,6 +640,7 @@ export class Body {
     ) {
       playback.setWeight(playback.automaticBaseWeight * Math.min(1, this.motionIntensity), 350);
     }
+    if (this.motionIntensity < 1) this.recordedBody.suspend(350);
     if (this.motionIntensity === 0) {
       this.recordedIdleFoundation.suspend(350);
       this.ambientMotionHandle?.release(350);
@@ -932,6 +945,7 @@ export class Body {
     this.disposeAttention();
     this.motionScheduler.cancelAll(0);
     this.motionActivationGeneration++;
+    this.recordedBody.dispose();
     this.recordedIdleFoundation.dispose();
     this.animationPlayer.stopAll();
     for (const handle of [...this.activeExprHandles]) handle.releaseInternal();
@@ -1197,6 +1211,7 @@ export class Body {
   prepareMotionLibrary(): Promise<void> {
     if (this.motionLibraryLoad) return this.motionLibraryLoad;
     this.motionLibraryLoad = (async () => {
+      const bodyPreparation = this.recordedBody.prepare();
       for (const entry of DEFAULT_MOTION_CATALOG) {
         if (this.disposed) return;
         if (
@@ -1225,6 +1240,7 @@ export class Body {
           this.motionDirector.excludeAnimation(entry.animation);
         }
       }
+      await bodyPreparation;
     })();
     return this.motionLibraryLoad;
   }
@@ -1233,6 +1249,7 @@ export class Body {
   setMotionLibraryEnabled(enabled: boolean): void {
     this.motionLibraryEnabled = enabled;
     if (!enabled) {
+      this.recordedBody.suspend(500);
       this.recordedIdleFoundation.suspend(500);
       this.ambientMotionHandle?.release(500);
       this.ambientMotionHandle = null;
@@ -1294,6 +1311,22 @@ export class Body {
     return handle;
   }
 
+  /** Establish a reviewed standing pose before ThreeRuntime displays this avatar. */
+  async initializeRecordedBody(): Promise<void> {
+    if (
+      this.disposed ||
+      !this.motionLibraryEnabled ||
+      this.motionIntensity < 1 ||
+      this.claimState.isClaimed("animation")
+    )
+      return;
+    await this.recordedBody.initialize();
+  }
+
+  getRecordedBodySnapshot() {
+    return this.recordedBody.getSnapshot();
+  }
+
   getMotionDirectorSnapshot(): MotionDirectorSnapshot {
     return this.motionDirector.getSnapshot();
   }
@@ -1325,6 +1358,7 @@ export class Body {
 
   private updateAmbientMotion(delta: number, claimed: boolean): void {
     if (claimed) {
+      this.recordedBody.suspend(0);
       this.recordedIdleFoundation.suspend(0);
       for (const handle of this.semanticMotionHandles) handle.cancel();
       this.animationPlayer.retireFadingActions();
@@ -1340,9 +1374,31 @@ export class Body {
       this.ambientMotionHandle = null;
     }
     const activePriority = this.motionScheduler.getActivePriority();
+    this.recordedBody.update(
+      delta * 1000,
+      allowed &&
+        !claimed &&
+        this.motionIntensity >= 1 &&
+        !this.foundationBlockedByPerformance &&
+        (activePriority === null ||
+          activePriority === "idle-fidget" ||
+          activePriority === "speech-expression"),
+      speaking ? "speech" : "idle",
+      speaking ||
+        (state === "idle" &&
+          !["user-speaking", "assistant-responding", "interrupted"].includes(
+            this.motionConversationPhase,
+          )),
+    );
+    if (this.recordedBody.ownsUpperBody && this.ambientMotionHandle) {
+      this.ambientMotionHandle.release(650);
+      this.ambientMotionHandle = null;
+      this.ambientMotionPlaybackContext = null;
+    }
     this.recordedIdleFoundation.update(
       allowed &&
         !claimed &&
+        !this.recordedBody.active &&
         !this.foundationBlockedByPerformance &&
         (activePriority === null ||
           activePriority === "idle-fidget" ||
@@ -1350,6 +1406,7 @@ export class Body {
       this.motionIntensity,
     );
     const blocked =
+      this.recordedBody.ownsUpperBody ||
       claimed ||
       (activePriority !== null && activePriority !== "idle-fidget") ||
       (!this.hasGroundedConversationPhase &&
@@ -1399,7 +1456,10 @@ export class Body {
 
   /** Render cadence can include fading recordings without allocating a scheduler snapshot. */
   hasActiveRecordedPerformance(): boolean {
-    return this.animationPlayer.getTotalEffectiveWeight() > 0;
+    return (
+      this.animationPlayer.getTotalEffectiveWeight() > 0 ||
+      this.animationPlayer.hasActiveRecordedBase()
+    );
   }
 
   private topSpeechStateExpressionLayer(): SpeechStateExpressionLayer | null {
