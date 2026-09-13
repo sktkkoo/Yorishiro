@@ -9,6 +9,7 @@ export type MotionIntent =
   | "attentive"
   | "relaxed"
   | "thinking"
+  | "explain"
   | "agree"
   | "consider"
   | "reassure"
@@ -53,7 +54,7 @@ export interface MotionCandidate {
 }
 
 const IDLE_INTENTS = ["neutral", "attentive", "relaxed", "thinking"] as const;
-const CONVERSATION_INTENTS = ["agree", "consider", "reassure", "emphasize"] as const;
+const CONVERSATION_INTENTS = ["explain", "agree", "consider", "reassure", "emphasize"] as const;
 
 /** Only prop-free, standing clips belong in the ambient pool. */
 export const DEFAULT_MOTION_CATALOG: readonly MotionCatalogEntry[] = [
@@ -150,7 +151,7 @@ export const DEFAULT_MOTION_CATALOG: readonly MotionCatalogEntry[] = [
     animation: "anim:Idle Chatting 2",
     family: "reflect",
     contexts: ["speech"],
-    intents: ["consider", "reassure", "agree"],
+    intents: ["explain", "consider", "reassure", "agree"],
     features: [0.75, 0.85, 1, 0.6, 0.25, 0.3],
     weight: 0.32,
     speed: 1,
@@ -174,6 +175,7 @@ const INTENT_FEATURES: Readonly<Record<MotionIntent, MotionFeatures>> = {
   attentive: [0.75, 1, 0.65, 0.3, 0, 0.2],
   relaxed: [1, 0.25, 0.2, 0.4, 0, 0.1],
   thinking: [0.85, 0.8, 1, 0.1, 0, 0.15],
+  explain: [0.75, 0.9, 0.6, 0.65, 0.2, 0.3],
   agree: [0.55, 0.7, 0.15, 1, 0.3, 0.35],
   consider: [0.8, 0.8, 1, 0.45, 0.2, 0.3],
   reassure: [1, 0.65, 0.5, 1, 0.1, 0.2],

@@ -3,6 +3,7 @@ import { createSeededMotionRandom, DEFAULT_MOTION_CATALOG } from "./motion-catal
 import { type MotionDecision, MotionDirector, type MotionDirectorContext } from "./motion-director";
 
 const idle: MotionDirectorContext = { enabled: true, context: "idle", intent: "neutral" };
+const speaking: MotionDirectorContext = { enabled: true, context: "speech", intent: "explain" };
 
 function advance(
   director: MotionDirector,
@@ -93,7 +94,13 @@ describe("MotionDirector", () => {
     expect(first).toMatchObject({
       reason: "speech-intent",
       intent: "agree",
-      options: { loop: false, transition: "immediate", mask: "upper-body", speed: 1 },
+      options: {
+        loop: false,
+        transition: "immediate",
+        mask: "upper-body",
+        speed: 1,
+        maxDurationMs: 6_000,
+      },
     });
     expect(director.request({ intent: "emphasize", context: "speech" })).toBeNull();
     advance(director, 2_400, { ...idle, context: "speech" });
@@ -101,6 +108,39 @@ describe("MotionDirector", () => {
     expect(second).not.toBeNull();
     expect(second?.animation).not.toBe(first?.animation);
     expect(advance(director, 2_400)).toEqual([]);
+  });
+
+  it("varies a long explanation with restrained matched recordings independently of emotion cues", () => {
+    const director = new MotionDirector({ random: createSeededMotionRandom(73) });
+    const decisions = advance(director, 180_000, speaking);
+    expect(decisions.length).toBeGreaterThanOrEqual(9);
+    expect(decisions.length).toBeLessThanOrEqual(18);
+    expect(new Set(decisions.map((entry) => entry.animation)).size).toBe(3);
+    for (const [index, decision] of decisions.entries()) {
+      expect(decision).toMatchObject({
+        context: "speech",
+        intent: "explain",
+        reason: "speech-dwell-elapsed",
+        options: { loop: true, transition: "matched", mask: "upper-body" },
+      });
+      expect(decision.options.maxDurationMs).toBeUndefined();
+      expect(decision.options.weight).toBeLessThanOrEqual(0.48);
+      expect(decision.nextDueAtMs - decision.selectedAtMs).toBeGreaterThanOrEqual(10_000);
+      expect(decision.nextDueAtMs - decision.selectedAtMs).toBeLessThanOrEqual(18_000);
+      if (index > 0) expect(decision.animation).not.toBe(decisions[index - 1].animation);
+    }
+  });
+
+  it("allows a grounded cue immediately after speech background starts, then settles back into explanation", () => {
+    const director = new MotionDirector({ initialDelayMs: 0, random: () => 0.5 });
+    expect(director.update(0, speaking)?.intent).toBe("explain");
+    expect(director.request({ intent: "emphasize", context: "speech" })?.intent).toBe("emphasize");
+    expect(advance(director, 6_000, { ...speaking, blocked: true })).toEqual([]);
+    expect(advance(director, 2_400, speaking)).toEqual([]);
+    expect(advance(director, 100, speaking)[0]?.intent).toBe("explain");
+    director.requestNextIdle(600);
+    expect(advance(director, 500, idle)).toEqual([]);
+    expect(advance(director, 100, idle)[0]?.context).toBe("idle");
   });
 
   it("returns to a recorded idle after speech settles instead of waiting an entire ambient dwell", () => {

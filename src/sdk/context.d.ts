@@ -438,6 +438,8 @@ export interface MotionOptions {
   /** Upper-body leaves hips and legs available to the standing base pose. */
   readonly mask?: "upper-body" | "full-body";
   readonly maxTransitionDelayMs?: number;
+  /** Bound a non-looping performance at a nearby quiet exit; shorter clips keep their ending. */
+  readonly maxDurationMs?: number;
 }
 
 /** Scheduler への motion 依頼。priority と animation 識別子を含む。 */

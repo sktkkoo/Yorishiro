@@ -74,6 +74,17 @@ describe("resolveAssistantTranscriptDelta", () => {
     ]);
   });
 
+  it("leaves ordinary Japanese explanation emotion-free for the audio-grounded conversation baseline", () => {
+    const result = resolveAssistantTranscriptDelta(createStateExpressionResolverState(), {
+      utteranceId: "explanation",
+      delta:
+        "設定画面には三つの項目があります。左側の一覧から対象を選択できます。保存すると変更が反映されます。",
+      phase: "assistant-speaking",
+    });
+    expect(result.cues).toEqual([]);
+    expect(result.state.elapsedSpeechMs).toBe(4_500);
+  });
+
   it("transcript done で句点のない末尾を flush する", () => {
     const pending = resolveAssistantTranscriptDelta(createStateExpressionResolverState(), {
       utteranceId: "utterance-1",

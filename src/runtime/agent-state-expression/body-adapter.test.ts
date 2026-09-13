@@ -181,7 +181,7 @@ describe("createBodyStateExpressionAdapter", () => {
     );
   });
 
-  it("releases the current speech state without acquiring a neutral preset", () => {
+  it("updates the face without truncating a recorded gesture when no additional gesture is requested", () => {
     const firstMotion = motionHandle();
     const firstState = stateHandle();
     const secondState = stateHandle();
@@ -204,11 +204,13 @@ describe("createBodyStateExpressionAdapter", () => {
 
     expect(firstState.release).toHaveBeenCalledTimes(1);
     expect(secondState.release).not.toHaveBeenCalled();
-    expect(firstMotion.release).toHaveBeenCalledWith(180);
+    expect(firstMotion.release).not.toHaveBeenCalled();
     expect(body.acquireSpeechStateExpression).toHaveBeenLastCalledWith(
       expect.objectContaining({ preset: "neutral" }),
     );
     expect(body.acquireSemanticMotion).toHaveBeenCalledTimes(1);
+    adapter.onRelease("u1", "cancelled");
+    expect(firstMotion.release).toHaveBeenCalledWith(180);
   });
 
   it("releases owned state once when duration and utterance completion overlap", () => {
@@ -228,10 +230,43 @@ describe("createBodyStateExpressionAdapter", () => {
     });
 
     vi.advanceTimersByTime(500);
+    expect(state.release).toHaveBeenCalledOnce();
+    expect(motion.release).not.toHaveBeenCalled();
     adapter.onRelease("u1", "completed");
 
     expect(state.release).toHaveBeenCalledTimes(1);
     expect(motion.release).toHaveBeenCalledTimes(1);
+  });
+
+  it("lets a bounded authored motif finish after its facial expression expires", async () => {
+    vi.useFakeTimers();
+    let finish!: (result: { reason: "completed" }) => void;
+    const motion = {
+      ...motionHandle(),
+      completion: new Promise<{ reason: "completed" }>((resolve) => {
+        finish = resolve;
+      }),
+    };
+    const state = stateHandle();
+    const body = {
+      setMotionConversationPhase: vi.fn(),
+      acquireSemanticMotion: vi.fn(() => motion),
+      acquireSpeechStateExpression: vi.fn(() => state),
+    };
+    const adapter = createBodyStateExpressionAdapter(() => body);
+    adapter.onCue(cue({ durationMs: 2_200 }), {
+      scheduledForMs: 0,
+      firedAtMs: 0,
+      lateByMs: 0,
+    });
+    vi.advanceTimersByTime(4_000);
+    expect(state.release).toHaveBeenCalledOnce();
+    expect(motion.release).not.toHaveBeenCalled();
+    finish({ reason: "completed" });
+    await motion.completion;
+    adapter.onRelease("u1", "completed");
+    expect(state.release).toHaveBeenCalledOnce();
+    expect(motion.release).not.toHaveBeenCalled();
   });
 
   it("keeps a grounded low-salience profile even without a mood or gesture", () => {

@@ -41,6 +41,23 @@ function setup() {
 }
 
 describe("local TTS state expression bridge", () => {
+  it("grounds neutral explanatory motion in real audio ownership for the entire spoken paragraph", () => {
+    const { clock, callbacks, bridge } = setup();
+    bridge.onPrepared(
+      "explanation",
+      "設定画面には三つの項目があります。左側の一覧から対象を選択できます。保存すると変更が反映されます。",
+    );
+    clock.advance(10_000);
+    expect(callbacks.onConversationPhaseChange).not.toHaveBeenCalledWith("assistant-speaking");
+    bridge.onStarted("explanation", clock.now());
+    clock.advance(30_000);
+    expect(callbacks.onCue).not.toHaveBeenCalled();
+    expect(callbacks.onRelease).not.toHaveBeenCalled();
+    expect(callbacks.onConversationPhaseChange).toHaveBeenLastCalledWith("assistant-speaking");
+    bridge.onEnded("explanation", "completed");
+    expect(callbacks.onConversationPhaseChange).toHaveBeenLastCalledWith("idle");
+  });
+
   it("anchors unchanged text to actual audio start even after a long local synthesis delay", () => {
     const { clock, callbacks, bridge } = setup();
     const text = "はい。";

@@ -11,7 +11,7 @@ type StateExpressionBody = Pick<
 
 interface OwnedStateExpression {
   readonly body: StateExpressionBody;
-  readonly state: SpeechStateExpressionHandle;
+  state: SpeechStateExpressionHandle | null;
   motion: MotionHandle | null;
   releaseTimer: ReturnType<typeof globalThis.setTimeout> | null;
 }
@@ -41,7 +41,7 @@ export function createBodyStateExpressionAdapter(
     if (!owned) return;
     ownedByUtterance.delete(utteranceId);
     if (owned.releaseTimer !== null) globalThis.clearTimeout(owned.releaseTimer);
-    owned.state.release();
+    owned.state?.release();
     owned.motion?.release(180);
   };
 
@@ -66,22 +66,32 @@ export function createBodyStateExpressionAdapter(
         microexpressionParams: MICROEXPRESSION_PROFILES[cue.state],
       });
       const replacement = acquireGesture(body, cue);
-      // The director may deliberately decline a closely spaced or repeated cue.
-      // Preserve the current finite gesture in that case; an explicit `none`,
-      // completed gesture, or replaced Body must still release the old owner.
-      const canContinue =
-        previous?.body === body &&
-        previous.motion?.isActive() &&
-        cue.gestureIntent &&
-        cue.gestureIntent !== "none";
+      // Facial updates and gesture cooldowns do not cancel an authored motion.
+      // `none` means no additional gesture; audio end remains the cancellation
+      // boundary. The player bounds long recordings separately from face expiry.
+      const canContinue = previous?.body === body && previous.motion?.isActive();
       const motion = replacement ?? (canContinue ? previous.motion : null);
-      previous?.state.release();
+      previous?.state?.release();
       if (previous?.motion !== motion) previous?.motion?.release(180);
 
       const owned: OwnedStateExpression = { body, state, motion, releaseTimer: null };
       ownedByUtterance.set(cue.utteranceId, owned);
+      if (motion && motion !== previous?.motion) {
+        void motion.completion.then(() => {
+          const current = ownedByUtterance.get(cue.utteranceId);
+          if (current?.motion !== motion) return;
+          current.motion = null;
+          if (current.state === null) ownedByUtterance.delete(cue.utteranceId);
+        });
+      }
       if (cue.durationMs && cue.durationMs > 0) {
-        owned.releaseTimer = globalThis.setTimeout(() => release(cue.utteranceId), cue.durationMs);
+        owned.releaseTimer = globalThis.setTimeout(() => {
+          if (ownedByUtterance.get(cue.utteranceId) !== owned) return;
+          owned.releaseTimer = null;
+          owned.state?.release();
+          owned.state = null;
+          if (!owned.motion?.isActive()) ownedByUtterance.delete(cue.utteranceId);
+        }, cue.durationMs);
       }
     },
     onRelease: (utteranceId) => release(utteranceId),

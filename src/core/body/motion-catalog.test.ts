@@ -59,6 +59,21 @@ describe("local semantic motion catalog", () => {
     }
   });
 
+  it("gives ordinary explanation a conversational pool without assigning emotion or emphasis", () => {
+    const candidates = retrieveMotionCandidates(
+      { intent: "explain", context: "speech" },
+      { nowMs: 0 },
+    );
+    expect(candidates.map((entry) => entry.animation).sort()).toEqual([
+      "anim:Idle Chatting",
+      "anim:Idle Chatting 2",
+      "anim:Idle Conversation",
+    ]);
+    expect(retrieveMotionCandidates({ intent: "explain", context: "idle" }, { nowMs: 0 })).toEqual(
+      [],
+    );
+  });
+
   it("never repeats the last motif and enforces per-clip cooldown across intervening choices", () => {
     const history: MotionHistoryEntry[] = [
       { id: "idle-balance", family: "balance", context: "idle", selectedAtMs: 1_000 },
