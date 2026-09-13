@@ -1397,6 +1397,11 @@ export class Body {
     return this.motionScheduler.getSnapshot() as SdkMotionSnapshot;
   }
 
+  /** Render cadence can include fading recordings without allocating a scheduler snapshot. */
+  hasActiveRecordedPerformance(): boolean {
+    return this.animationPlayer.getTotalEffectiveWeight() > 0;
+  }
+
   private topSpeechStateExpressionLayer(): SpeechStateExpressionLayer | null {
     let top: SpeechStateExpressionLayer | null = null;
     for (const layer of this.speechStateExpressionLayers.values()) {

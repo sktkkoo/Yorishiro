@@ -15,10 +15,8 @@ import { getVrmCache } from "../vrm-cache";
 import { CameraModulationRegistry } from "./camera-modulation";
 import { R3fHost } from "./r3f-host";
 import { R3fRuntimeRoot } from "./r3f-runtime-root";
+import { RenderCadence } from "./render-cadence";
 import type { FixedCameraHandle, ThreeRuntime } from "./types";
-
-const DEFAULT_RENDER_FPS = 30;
-const MIN_RENDER_FRAME_INTERVAL_MS = 1000 / DEFAULT_RENDER_FPS;
 
 /**
  * ThreeRuntime implementation. See types.ts for the contract.
@@ -80,7 +78,7 @@ class ThreeRuntimeImpl implements ThreeRuntime {
   private renderPaused = false;
   private rafId: number | null = null;
   private layoutRefreshFramesRemaining = 0;
-  private lastRenderAtMs = -Infinity;
+  private readonly renderCadence = new RenderCadence();
 
   constructor() {
     this.claimState = getClaimState();
@@ -147,7 +145,7 @@ class ThreeRuntimeImpl implements ThreeRuntime {
     this.updatePlaceholderRect();
     this.handleResize();
     this.clock.getDelta();
-    this.lastRenderAtMs = -Infinity;
+    this.renderCadence.reset();
     this.startRenderLoop();
   }
 
@@ -249,7 +247,7 @@ class ThreeRuntimeImpl implements ThreeRuntime {
               this.updatePlaceholderRect();
               this.handleResize();
               this.clock.getDelta();
-              this.lastRenderAtMs = -Infinity;
+              this.renderCadence.reset();
               this.startRenderLoop();
               resolve();
             },
@@ -414,7 +412,7 @@ class ThreeRuntimeImpl implements ThreeRuntime {
       this.stopRenderLoop();
     } else {
       this.clock.getDelta();
-      this.lastRenderAtMs = -Infinity;
+      this.renderCadence.reset();
       this.startRenderLoop();
     }
   }
@@ -450,7 +448,7 @@ class ThreeRuntimeImpl implements ThreeRuntime {
     this.rafId = null;
   }
 
-  private readonly tick = (): void => {
+  private readonly tick = (frameTimeMs: number): void => {
     this.rafId = null;
 
     // pause / detach / document hidden 中は必要な処理だけ残し、不要な次フレームを予約しない。
@@ -481,7 +479,14 @@ class ThreeRuntimeImpl implements ThreeRuntime {
     // これが「UI を動かすとシーンが消える」class のバグの根本対処。
     const resizedThisFrame = this.handleResize();
     const shouldRenderThisFrame =
-      this.shouldRenderScene() && (this.shouldRenderAt(now) || resizedThisFrame);
+      this.shouldRenderScene() &&
+      this.renderCadence.takeFrame(
+        // Use the display timestamp for cadence, not variable callback-arrival
+        // latency. Body and tweens below still consume actual elapsed time.
+        frameTimeMs,
+        this.currentBody?.hasActiveRecordedPerformance() ?? false,
+        resizedThisFrame,
+      );
 
     if (shouldRenderThisFrame) {
       const delta = this.clock.getDelta();
@@ -527,7 +532,6 @@ class ThreeRuntimeImpl implements ThreeRuntime {
         }
       }
 
-      this.lastRenderAtMs = now;
       if (!this.r3fHost.advance(now)) {
         this.renderer.render(this.scene, this.camera);
       }
@@ -547,10 +551,6 @@ class ThreeRuntimeImpl implements ThreeRuntime {
     return !document.hidden;
   }
 
-  private shouldRenderAt(nowMs: number): boolean {
-    return nowMs - this.lastRenderAtMs >= MIN_RENDER_FRAME_INTERVAL_MS - 0.5;
-  }
-
   private readonly handleVisibilityChange = (): void => {
     if (document.hidden) {
       this.stopRenderLoop();
@@ -559,7 +559,7 @@ class ThreeRuntimeImpl implements ThreeRuntime {
     }
     this.updatePlaceholderRect();
     this.clock.getDelta();
-    this.lastRenderAtMs = -Infinity;
+    this.renderCadence.reset();
     this.startRenderLoop();
   };
 
