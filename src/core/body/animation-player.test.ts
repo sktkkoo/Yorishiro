@@ -81,6 +81,81 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
+describe("cached physical candidate evaluation", () => {
+  const opts = {
+    mask: "upper-body",
+    loop: false,
+    weight: 1,
+    speed: 1,
+    transition: "immediate",
+  } as const;
+
+  it("uses the requested contribution and the mixer's captured rest pose", async () => {
+    const { player, head, addClip } = rig();
+    addClip("pose", [1, 1]);
+    await player.preload("pose", opts);
+    head.rotation.x = 0.2;
+    await player.play("pose", { ...opts, weight: 0.4, fadeInMs: 0 });
+    player.update(1 / 60);
+    player.update(1 / 60);
+    expect(head.rotation.x).toBeCloseTo(0.52, 6);
+    const weighted = player.evaluateTransition("pose", { ...opts, weight: 0.4 });
+    const unweighted = player.evaluateTransition("pose", opts);
+    expect(weighted?.cost).toBeLessThan(1e-10);
+    expect(unweighted?.cost).toBeCloseTo(0.48 ** 2, 5);
+    // Procedural offsets added after the mixer cannot change this decision.
+    head.rotation.x = 2.5;
+    expect(player.evaluateTransition("pose", { ...opts, weight: 0.4 })).toEqual(weighted);
+  });
+
+  it("evaluates the actual overlapping fade instead of the latest clip alone", async () => {
+    const { player, head, addClip } = rig();
+    addClip("left", [-0.6, -0.6]);
+    addClip("right", [0.6, 0.6]);
+    addClip("center", [0, 0]);
+    for (const ref of ["left", "right", "center"]) await player.preload(ref, opts);
+    await player.play("left", { ...opts, fadeInMs: 0 });
+    player.update(1 / 60);
+    await player.play("right", { ...opts, fadeInMs: 1200 });
+    for (let i = 0; i < 36; i++) player.update(1 / 60);
+    expect(player.activeCount).toBe(2);
+    expect(head.rotation.x).toBeCloseTo(0, 6);
+    const centered = player.evaluateTransition("center", opts);
+    const latest = player.evaluateTransition("right", opts);
+    expect(centered).not.toBeNull();
+    expect(latest).not.toBeNull();
+    if (!centered || !latest) throw new Error("Expected compatible candidates");
+    expect(latest.cost - centered.cost).toBeCloseTo(0.36, 5);
+    // A large pause invalidates velocity instead of fabricating a sudden kick.
+    player.update(0.3);
+    const snapshot = (
+      player as unknown as { poseSnapshot: Map<string, { velocityValid: boolean }> }
+    ).poseSnapshot;
+    expect(snapshot.get("Head.quaternion")?.velocityValid).toBe(false);
+  });
+
+  it("fails closed for cold variants, incompatible poses, and unsupported full-body requests", async () => {
+    const { player, addClip } = rig();
+    addClip("remote-pose", [2, 2]);
+    addClip("near-pose", [0.1, 0.1]);
+    const load = vi.spyOn(
+      player as unknown as { loadClip: (ref: string) => Promise<unknown> },
+      "loadClip",
+    );
+    expect(player.evaluateTransition("near-pose", opts)).toBeNull();
+    expect(load).not.toHaveBeenCalled();
+    await player.preload("near-pose", opts);
+    await player.preload("remote-pose", opts);
+    load.mockClear();
+    expect(player.evaluateTransition("near-pose", opts)).not.toBeNull();
+    expect(player.evaluateTransition("near-pose", { ...opts, loop: true })).toBeNull();
+    expect(player.evaluateTransition("remote-pose", opts)).toBeNull();
+    expect(player.evaluateTransition("near-pose", { ...opts, mask: "full-body" })).toBeNull();
+    expect(load).not.toHaveBeenCalled();
+    expect(player.activeCount).toBe(0);
+  });
+});
+
 describe("AnimationPlayer real mixer transitions", () => {
   it("crosses repeated recording seams with continuous pose and velocity", async () => {
     const { player, head, addClip } = rig();

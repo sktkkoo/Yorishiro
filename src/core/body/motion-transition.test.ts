@@ -5,6 +5,8 @@ import {
   conditionMotionLoop,
   findMatchedEntry,
   findTransitionDelay,
+  type MotionPoseJoint,
+  measureMotionEntry,
 } from "./motion-transition";
 
 function clip(times: number[], angles: number[], duration = times[times.length - 1]) {
@@ -18,6 +20,111 @@ function clip(times: number[], angles: number[], duration = times[times.length -
 }
 
 describe("motion transition analysis", () => {
+  it("compares angular axes in a shared parent frame even from a rotated local pose", () => {
+    const start = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), Math.PI / 2);
+    const end = start
+      .clone()
+      .multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), 1));
+    const recording = new THREE.AnimationClip("rotated", 1, [
+      new THREE.QuaternionKeyframeTrack(
+        "Head.quaternion",
+        [0, 1],
+        [...start.toArray(), ...end.toArray()],
+      ),
+    ]);
+    const current = new Map<string, MotionPoseJoint>([
+      [
+        "Head.quaternion",
+        {
+          pose: new Float32Array(start.toArray()),
+          restPose: new Float32Array([0, 0, 0, 1]),
+          velocity: new Float32Array([0, 1, 0]),
+          velocityValid: true,
+        },
+      ],
+    ]);
+    const result = measureMotionEntry(current, analyzeMotionClip(recording), {
+      weight: 1,
+      speed: 1,
+      matched: false,
+      loop: false,
+    });
+    expect(result?.velocityRmsRadSec).toBeLessThan(1e-5);
+  });
+
+  it("can choose a safe phase when the globally cheapest phase violates a per-joint limit", () => {
+    const recording = clip([0, 1], [0, 2]);
+    recording.tracks.push(
+      new THREE.QuaternionKeyframeTrack(
+        "Shoulder.quaternion",
+        [0, 1],
+        [Math.sin(0.65), 0, 0, Math.cos(0.65), Math.sin(0.55), 0, 0, Math.cos(0.55)],
+      ),
+    );
+    const pose = (): MotionPoseJoint => ({
+      pose: new Float32Array([0, 0, 0, 1]),
+      restPose: new Float32Array([0, 0, 0, 1]),
+      velocity: new Float32Array(3),
+      velocityValid: false,
+    });
+    const current = new Map([
+      ["Head.quaternion", pose()],
+      ["Shoulder.quaternion", pose()],
+    ]);
+    const target = analyzeMotionClip(recording);
+    const options = { weight: 1, speed: 1, matched: true, loop: true };
+    const unconstrained = measureMotionEntry(current, target, options);
+    const constrained = measureMotionEntry(current, target, options, {
+      poseRmsRad: 2,
+      maxBodyAngleRad: 1.21,
+      velocityRmsRadSec: 10,
+      cost: 10,
+    });
+    expect(unconstrained?.maxBodyAngleRad).toBeGreaterThan(1.21);
+    expect(constrained?.maxBodyAngleRad).toBeLessThanOrEqual(1.21);
+    expect(constrained?.startTimeSec).toBeGreaterThan(0.4);
+  });
+
+  it("keeps axis direction and applies candidate weight to angular velocity", () => {
+    const pose: MotionPoseJoint = {
+      pose: new Float32Array([0, 0, 0, 1]),
+      restPose: new Float32Array([0, 0, 0, 1]),
+      velocity: new Float32Array([0.4, 0, 0]),
+      velocityValid: true,
+    };
+    const current = new Map([["Head.quaternion", pose]]);
+    const options = { weight: 0.4, speed: 1, matched: false, loop: false };
+    const forward = measureMotionEntry(current, analyzeMotionClip(clip([0, 1], [0, 1])), options);
+    const reverse = measureMotionEntry(current, analyzeMotionClip(clip([0, 1], [0, -1])), options);
+    expect(forward?.cost).toBeLessThan(1e-10);
+    expect(reverse?.cost).toBeCloseTo(0.08 * 0.8 ** 2, 5);
+    expect(
+      measureMotionEntry(new Map(), analyzeMotionClip(clip([0, 1], [0, 1])), options),
+    ).toBeNull();
+  });
+
+  it("does not turn a low-velocity mid-gesture pose into an immediate semantic start", () => {
+    const current = new Map<string, MotionPoseJoint>([
+      [
+        "Head.quaternion",
+        {
+          pose: new Float32Array([Math.sin(0.2), 0, 0, Math.cos(0.2)]),
+          restPose: new Float32Array([0, 0, 0, 1]),
+          velocity: new Float32Array(3),
+          velocityValid: true,
+        },
+      ],
+    ]);
+    const target = analyzeMotionClip(clip([0, 0.5, 1.5, 2], [0, 0.4, 0.4, 0]));
+    const options = { weight: 1, speed: 1, matched: false, loop: false };
+    const immediate = measureMotionEntry(current, target, options);
+    const matched = measureMotionEntry(current, target, { ...options, matched: true });
+    expect(immediate?.startTimeSec).toBe(0);
+    expect(matched?.startTimeSec).toBeGreaterThan(0.5);
+    if (!matched || !immediate) throw new Error("Expected measurable entries");
+    expect(matched.cost).toBeLessThan(immediate.cost);
+  });
+
   it("extracts signed angular velocity in radians per second", () => {
     const profile = analyzeMotionClip(clip([0, 1], [0, -0.4]));
     const joint = profile.joints[0];

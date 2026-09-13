@@ -18,6 +18,136 @@ export interface MotionTransitionProfile {
   readonly entryCandidates: readonly number[];
 }
 
+/** A post-mixer local pose, before gaze/breathing overlays. Buffers are reused. */
+export interface MotionPoseJoint {
+  readonly pose: Float32Array;
+  readonly restPose: Float32Array;
+  /** Angular velocity in the bone parent's axes, shared by both compared poses. */
+  readonly velocity: Float32Array;
+  velocityValid: boolean;
+}
+
+export interface MotionEntryMeasurement {
+  readonly cost: number;
+  readonly startTimeSec: number;
+  readonly poseRmsRad: number;
+  readonly maxBodyAngleRad: number;
+  readonly velocityRmsRadSec: number;
+}
+
+/** Gross local discontinuity guards; see the reproducible catalog audit. */
+export const UPPER_BODY_TRANSITION_LIMITS = {
+  poseRmsRad: 0.65,
+  maxBodyAngleRad: 1.2,
+  velocityRmsRadSec: 2.5,
+  cost: 0.75,
+} as const;
+
+/**
+ * Compare the actual mixed pose with the candidate at its requested contribution.
+ * This measures local rotation continuity only: neither foot contact nor an
+ * authored preparation/recovery boundary can be inferred from these samples.
+ * Missing tracks fail closed instead of silently comparing a smaller skeleton.
+ */
+export function measureMotionEntry(
+  current: ReadonlyMap<string, MotionPoseJoint>,
+  target: MotionTransitionProfile,
+  opts: { weight: number; speed: number; matched: boolean; loop: boolean },
+  limits?: Readonly<Omit<MotionEntryMeasurement, "startTimeSec">>,
+): MotionEntryMeasurement | null {
+  if (
+    !target.joints.length ||
+    !(target.duration > 0) ||
+    !Number.isFinite(opts.weight) ||
+    opts.weight <= 0 ||
+    opts.weight > 1 ||
+    !Number.isFinite(opts.speed) ||
+    opts.speed <= 0
+  )
+    return null;
+  for (const joint of target.joints) {
+    const pose = current.get(joint.name);
+    if (!pose || !isFiniteQuaternion(pose.pose) || !isFiniteQuaternion(pose.restPose)) return null;
+  }
+  const rest = new THREE.Quaternion();
+  const source = new THREE.Quaternion();
+  const destination = new THREE.Quaternion();
+  const before = new THREE.Quaternion();
+  const after = new THREE.Quaternion();
+  const rotation = new THREE.Quaternion();
+  let best: MotionEntryMeasurement | null = null;
+  const lastEntry = opts.loop
+    ? target.duration - target.sampleInterval
+    : Math.max(0, target.duration - 0.4);
+  for (const index of opts.matched ? target.entryCandidates : [0]) {
+    const startTimeSec = index * target.sampleInterval;
+    if (startTimeSec > lastEntry) continue;
+    let poseSquared = 0;
+    let velocitySquared = 0;
+    let totalWeight = 0;
+    let velocityWeight = 0;
+    let maxBodyAngleRad = 0;
+    for (const joint of target.joints) {
+      const snapshot = current.get(joint.name);
+      if (!snapshot) return null;
+      rest.fromArray(snapshot.restPose).normalize();
+      source.fromArray(snapshot.pose).normalize();
+      destination.fromArray(joint.poses, index * 4).normalize();
+      destination.slerp(rest, 1 - opts.weight);
+      const angle = source.angleTo(destination);
+      poseSquared += joint.weight * angle * angle;
+      totalWeight += joint.weight;
+      // Fingers contribute collectively, without any one finger imposing the
+      // same hard pose limit as a shoulder, wrist or torso joint.
+      if (joint.weight >= 0.5) maxBodyAngleRad = Math.max(maxBodyAngleRad, angle);
+      if (snapshot.velocityValid) {
+        const beforeIndex = Math.max(0, index - 1);
+        const afterIndex = Math.min(target.sampleCount - 1, index + 1);
+        before.fromArray(joint.poses, beforeIndex * 4).normalize();
+        before.slerp(rest, 1 - opts.weight);
+        after.fromArray(joint.poses, afterIndex * 4).normalize();
+        after.slerp(rest, 1 - opts.weight);
+        rotation.copy(before).invert().premultiply(after).normalize();
+        if (rotation.w < 0) rotation.set(-rotation.x, -rotation.y, -rotation.z, -rotation.w);
+        const sinHalf = Math.hypot(rotation.x, rotation.y, rotation.z);
+        const dt = (afterIndex - beforeIndex) * target.sampleInterval;
+        const factor =
+          sinHalf > 1e-7 && dt > 0
+            ? (2 * Math.atan2(sinHalf, rotation.w) * opts.speed) / (sinHalf * dt)
+            : 0;
+        const dx = snapshot.velocity[0] - rotation.x * factor;
+        const dy = snapshot.velocity[1] - rotation.y * factor;
+        const dz = snapshot.velocity[2] - rotation.z * factor;
+        velocitySquared += joint.weight * (dx * dx + dy * dy + dz * dz);
+        velocityWeight += joint.weight;
+      }
+    }
+    const poseMean = poseSquared / totalWeight;
+    const velocityMean = velocityWeight > 0 ? velocitySquared / velocityWeight : 0;
+    const cost = poseMean + 0.08 * velocityMean;
+    if (!Number.isFinite(cost)) continue;
+    if (!best || cost < best.cost) {
+      const measurement = {
+        cost,
+        startTimeSec,
+        poseRmsRad: Math.sqrt(poseMean),
+        maxBodyAngleRad,
+        velocityRmsRadSec: Math.sqrt(velocityMean),
+      };
+      if (
+        limits &&
+        (measurement.poseRmsRad > limits.poseRmsRad ||
+          measurement.maxBodyAngleRad > limits.maxBodyAngleRad ||
+          measurement.velocityRmsRadSec > limits.velocityRmsRadSec ||
+          measurement.cost > limits.cost)
+      )
+        continue;
+      best = measurement;
+    }
+  }
+  return best;
+}
+
 const MAX_SAMPLES = 240;
 const MAX_CANDIDATES = 48;
 

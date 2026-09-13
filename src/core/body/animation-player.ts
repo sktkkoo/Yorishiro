@@ -13,7 +13,10 @@ import {
   conditionMotionLoop,
   findMatchedEntry,
   findTransitionDelay,
+  type MotionPoseJoint,
   type MotionTransitionProfile,
+  measureMotionEntry,
+  UPPER_BODY_TRANSITION_LIMITS,
 } from "./motion-transition";
 import { calibrateStandingIdleClip, groundStandingIdleClip } from "./standing-idle-grounding";
 
@@ -73,6 +76,11 @@ interface TransitionWait {
   readonly resolve: () => void;
 }
 
+interface PoseSnapshotBinding {
+  readonly node: THREE.Object3D;
+  readonly sample: MotionPoseJoint;
+}
+
 const DEFAULT_AUTO_FADE_OUT_MS = 400;
 const LOWER_BODY_BONES: ReadonlySet<string> = new Set([
   "hips",
@@ -101,6 +109,13 @@ export class AnimationPlayer {
   private readonly standingClips = new WeakMap<THREE.AnimationClip, THREE.AnimationClip>();
   private readonly groundedClips = new WeakMap<THREE.AnimationClip, THREE.AnimationClip>();
   private readonly profiles = new WeakMap<THREE.AnimationClip, MotionTransitionProfile>();
+  private readonly preparedProfiles = new Map<string, MotionTransitionProfile>();
+  private readonly poseSnapshot = new Map<string, MotionPoseJoint>();
+  private readonly poseBindings: PoseSnapshotBinding[] = [];
+  private readonly snapshotPrevious = new THREE.Quaternion();
+  private readonly snapshotCurrent = new THREE.Quaternion();
+  private readonly snapshotDelta = new THREE.Quaternion();
+  private hasPoseSample = false;
   private readonly active = new Map<number, ActiveAnimation>();
   private readonly transitionWaits = new Set<TransitionWait>();
   private readonly devLog?: SubsystemLog;
@@ -111,6 +126,26 @@ export class AnimationPlayer {
     this.vrm = vrm;
     this.devLog = devLog;
     this.beforeActionPlay = beforeActionPlay;
+    const nodes = new Set<THREE.Object3D>();
+    if (vrm.humanoid) {
+      for (const name of Object.values(VRMHumanBoneName)) {
+        if (LOWER_BODY_BONES.has(name)) continue;
+        const node = vrm.humanoid.getNormalizedBoneNode(name);
+        if (node) nodes.add(node);
+      }
+    } else vrm.scene.traverse((node) => nodes.add(node));
+    for (const node of nodes) {
+      const pose = new Float32Array(node.quaternion.toArray());
+      const sample: MotionPoseJoint = {
+        pose,
+        restPose: pose.slice(),
+        velocity: new Float32Array(3),
+        velocityValid: false,
+      };
+      this.poseBindings.push({ node, sample });
+      if (node.name) this.poseSnapshot.set(`${node.name}.quaternion`, sample);
+      this.poseSnapshot.set(`${node.uuid}.quaternion`, sample);
+    }
     this.mixer = new THREE.AnimationMixer(vrm.scene);
     this.loader = new GLTFLoader();
     this.loader.register((parser) => new VRMAnimationLoaderPlugin(parser));
@@ -131,6 +166,7 @@ export class AnimationPlayer {
     const time = this.mixer.time + delta;
     for (const anim of this.active.values()) this.updateWeight(anim, time);
     this.mixer.update(delta);
+    this.captureMixedPose(delta);
     for (const anim of this.active.values()) {
       if (anim.maxDurationAt !== undefined && this.mixer.time >= anim.maxDurationAt) {
         anim.maxDurationAt = undefined;
@@ -167,6 +203,31 @@ export class AnimationPlayer {
       // fallback. The controller can retain procedural rest when preparation fails.
       return false;
     }
+  }
+
+  /** No loading, preparation or live pose mutation on the director's decision path. */
+  evaluateTransition(
+    ref: string,
+    opts: Pick<AnimationPlayOptions, "mask" | "loop" | "weight" | "speed" | "transition">,
+  ): { cost: number; startTimeSec: number } | null {
+    if (opts.mask !== "upper-body") return null;
+    const profile = this.preparedProfiles.get(this.profileKey(ref, opts.mask, opts.loop));
+    if (!profile) return null;
+    const result = measureMotionEntry(
+      this.poseSnapshot,
+      profile,
+      {
+        weight: opts.weight ?? 0.7,
+        speed: opts.speed ?? 1,
+        matched: opts.transition === "matched",
+        loop: opts.loop ?? false,
+      },
+      UPPER_BODY_TRANSITION_LIMITS,
+    );
+    // Local continuity rejection limits, calibrated against the installed Yori
+    // catalog. They are not a perceptual score or a full-body contact guarantee.
+    if (!result) return null;
+    return { cost: result.cost, startTimeSec: result.startTimeSec };
   }
 
   async play(ref: string, opts: AnimationPlayOptions = {}) {
@@ -247,6 +308,19 @@ export class AnimationPlayer {
     if (fadeSec > 0) anim.ramp = { from: 0, to: weight, start: this.mixer.time, duration: fadeSec };
     // Clear procedural offsets before Three captures its restoration pose.
     this.beforeActionPlay?.();
+    // Three captures its original binding value only when the first action
+    // activates it. Keep the same rest reference for weighted pose comparison.
+    for (const joint of profile.joints) {
+      const sample = this.poseSnapshot.get(joint.name);
+      if (!sample) continue;
+      const alreadyBound = [...this.active.values()].some((outgoing) =>
+        outgoing.profile.joints.some((other) => this.poseSnapshot.get(other.name) === sample),
+      );
+      if (!alreadyBound) {
+        const binding = this.poseBindings.find((item) => item.sample === sample);
+        binding?.node.quaternion.toArray(sample.restPose);
+      }
+    }
     // Activate incoming bindings before retiring a zero-fade action.
     action.play();
     for (const outgoing of this.active.values()) {
@@ -335,6 +409,45 @@ export class AnimationPlayer {
       if (anim.layer === layer && (!latest || anim.id > latest.id)) latest = anim;
     }
     return latest;
+  }
+  private captureMixedPose(delta: number): void {
+    const reliableDelta = this.hasPoseSample && delta >= 1 / 240 && delta <= 0.1;
+    for (const { node, sample } of this.poseBindings) {
+      this.snapshotPrevious.fromArray(sample.pose).normalize();
+      this.snapshotCurrent.copy(node.quaternion).normalize();
+      sample.velocityValid = reliableDelta;
+      if (reliableDelta) {
+        this.snapshotDelta
+          .copy(this.snapshotPrevious)
+          .invert()
+          .premultiply(this.snapshotCurrent)
+          .normalize();
+        if (this.snapshotDelta.w < 0) {
+          this.snapshotDelta.set(
+            -this.snapshotDelta.x,
+            -this.snapshotDelta.y,
+            -this.snapshotDelta.z,
+            -this.snapshotDelta.w,
+          );
+        }
+        const sinHalf = Math.hypot(
+          this.snapshotDelta.x,
+          this.snapshotDelta.y,
+          this.snapshotDelta.z,
+        );
+        const factor =
+          sinHalf > 1e-7 ? (2 * Math.atan2(sinHalf, this.snapshotDelta.w)) / (sinHalf * delta) : 0;
+        sample.velocity[0] = this.snapshotDelta.x * factor;
+        sample.velocity[1] = this.snapshotDelta.y * factor;
+        sample.velocity[2] = this.snapshotDelta.z * factor;
+      } else sample.velocity.fill(0);
+      this.snapshotCurrent.toArray(sample.pose);
+    }
+    this.hasPoseSample = true;
+  }
+
+  private profileKey(ref: string, mask: AnimationPlayOptions["mask"], loop = false): string {
+    return JSON.stringify([ref, mask ?? "full-body", loop]);
   }
   private updateWeight(anim: ActiveAnimation, time: number): void {
     const ramp = anim.ramp;
@@ -462,6 +575,7 @@ export class AnimationPlayer {
       profile = analyzeMotionClip(clip, weights);
       this.profiles.set(clip, profile);
     }
+    if (ref) this.preparedProfiles.set(this.profileKey(ref, mask, loop), profile);
     return { clip, profile };
   }
   private async loadClip(ref: string): Promise<THREE.AnimationClip | null> {
