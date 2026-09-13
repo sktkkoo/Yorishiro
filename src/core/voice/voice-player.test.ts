@@ -1,4 +1,9 @@
+import type { VRM, VRMHumanBoneName } from "@pixiv/three-vrm";
+import * as THREE from "three";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createBodyStateExpressionAdapter } from "../../runtime/agent-state-expression/body-adapter";
+import { createVoiceStateExpressionBridge } from "../../runtime/agent-state-expression/voice-state-expression-bridge";
+import { AnimationPlayer, Body } from "../body";
 
 const { mockInvoke, mockAudioContext, mockFetch, mockEnsureAudioContextRunning, detachAudioData } =
   vi.hoisted(() => {
@@ -108,6 +113,25 @@ const flushPlaybackStart = async (): Promise<void> => {
 
 function speechLifecycle() {
   return { onPrepared: vi.fn(), onStarted: vi.fn(), onEnded: vi.fn() };
+}
+
+function groundedSpeechLifecycle() {
+  const phases: string[] = [];
+  const release = vi.fn();
+  const bridge = createVoiceStateExpressionBridge({
+    onCue: vi.fn(),
+    onRelease: release,
+    onConversationPhaseChange: (phase) => phases.push(phase),
+  });
+  return {
+    phases,
+    release,
+    lifecycle: {
+      onPrepared: vi.fn(bridge.onPrepared),
+      onStarted: vi.fn(bridge.onStarted),
+      onEnded: vi.fn(bridge.onEnded),
+    },
+  };
 }
 
 afterEach(() => {
@@ -417,6 +441,197 @@ describe("VoicePlayer (engine あり — Web Audio)", () => {
     expect(mockAudioContext.createBufferSource).toHaveBeenCalledTimes(1);
     await next.stop();
     player.dispose();
+  });
+
+  it("keeps the same Body conversation motion across an immediate audio replacement", async () => {
+    const bones = new Map<VRMHumanBoneName, THREE.Object3D>();
+    const scene = new THREE.Object3D();
+    const vrm = {
+      scene,
+      meta: { metaVersion: "1" },
+      humanoid: {
+        resetNormalizedPose: () => {},
+        getNormalizedBoneNode: (name: VRMHumanBoneName) => {
+          let bone = bones.get(name);
+          if (!bone) {
+            bone = new THREE.Object3D();
+            bone.name = name;
+            scene.add(bone);
+            bones.set(name, bone);
+          }
+          return bone;
+        },
+      },
+      expressionManager: { getExpression: () => null, setValue: () => {}, update: () => {} },
+      lookAt: { yaw: 0, pitch: 0, applier: { applyYawPitch: () => {} } },
+      update: () => {},
+    } as unknown as VRM;
+    let completeMotion = () => {};
+    const motion = {
+      id: 1,
+      completion: new Promise<void>((resolve) => {
+        completeMotion = resolve;
+      }),
+      setWeight: vi.fn(),
+      stop: vi.fn(async () => completeMotion()),
+      cancel: vi.fn(() => completeMotion()),
+    };
+    const preload = vi
+      .spyOn(AnimationPlayer.prototype, "preload")
+      .mockImplementation(async (_ref, opts) => opts?.mask !== "lower-body");
+    const evaluate = vi
+      .spyOn(AnimationPlayer.prototype, "evaluateTransition")
+      .mockReturnValue({ cost: 0, startTimeSec: 0 });
+    const play = vi.spyOn(AnimationPlayer.prototype, "play").mockResolvedValue(motion);
+    const body = new Body(vrm, undefined, {
+      isClaimed: () => false,
+      claim: () => ({ dispose() {} }),
+      releaseAll() {},
+    });
+    const phases: string[] = [];
+    const adapter = createBodyStateExpressionAdapter(() => body);
+    const bridge = createVoiceStateExpressionBridge({
+      ...adapter,
+      onConversationPhaseChange: (phase) => {
+        phases.push(phase);
+        adapter.onConversationPhaseChange?.(phase);
+      },
+    });
+    const player = new VoicePlayer(undefined, createMockEngine(), bridge);
+    try {
+      await body.prepareMotionLibrary();
+      const api = player.createVoiceAPI();
+      api.say("設定画面には三つの項目があります。");
+      await flushPlaybackStart();
+      for (let frame = 0; frame < 80; frame++) body.update(1 / 60, frame / 60);
+      await flushPlaybackStart();
+      expect(play).toHaveBeenCalledOnce();
+      expect(play.mock.calls[0][1]?.loop).toBe(true);
+      const source = mockAudioContext.createBufferSource.mock.results[0].value;
+      phases.length = 0;
+
+      api.say("左側の一覧から対象を選択できます。");
+      await flushPlaybackStart();
+
+      expect(source.stop).toHaveBeenCalledOnce();
+      expect(phases).toEqual(["assistant-speaking"]);
+      expect(motion.stop).not.toHaveBeenCalled();
+      expect(play).toHaveBeenCalledOnce();
+      expect(body.getMotionSnapshot().active?.priority).toBe("idle-fidget");
+
+      const nextSource = mockAudioContext.createBufferSource.mock.results[1].value;
+      nextSource.onended?.();
+      await flushPlaybackStart();
+      expect(phases).toEqual(["assistant-speaking", "idle"]);
+      expect(motion.stop).toHaveBeenCalledExactlyOnceWith(650);
+    } finally {
+      player.dispose();
+      body.dispose();
+      play.mockRestore();
+      evaluate.mockRestore();
+      preload.mockRestore();
+    }
+  });
+
+  it("releases old speech ownership when its replacement is a non-speech voice clip", async () => {
+    const { lifecycle, phases, release } = groundedSpeechLifecycle();
+    const player = new VoicePlayer(undefined, createMockEngine(), lifecycle);
+    try {
+      const api = player.createVoiceAPI({ resolveClip: () => "/non-speech.wav" });
+      api.say("設定画面には三つの項目があります。");
+      await flushPlaybackStart();
+      const oldId = lifecycle.onPrepared.mock.calls[0][0];
+      phases.length = 0;
+      mockFetch.mockResolvedValueOnce({ ok: true, arrayBuffer: async () => createMinimalWav() });
+      const clip = api.play("clip:notification");
+      await flushPlaybackStart();
+
+      expect(
+        mockAudioContext.createBufferSource.mock.results[1].value.start,
+      ).toHaveBeenCalledOnce();
+      expect(phases).toEqual(["idle"]);
+      expect(release).toHaveBeenCalledExactlyOnceWith(oldId, "cancelled");
+      expect(lifecycle.onStarted).toHaveBeenCalledOnce();
+      await clip.stop();
+    } finally {
+      player.dispose();
+    }
+  });
+
+  it("preserves a genuine speech gap while the replacement is still synthesizing", async () => {
+    const { lifecycle, phases, release } = groundedSpeechLifecycle();
+    let resolveNext = (_audio: ArrayBuffer) => {};
+    const engine: TtsEngine = {
+      name: "deferred replacement",
+      synthesize: vi
+        .fn()
+        .mockResolvedValueOnce(createMinimalWav())
+        .mockImplementationOnce(
+          () =>
+            new Promise<ArrayBuffer>((resolve) => {
+              resolveNext = resolve;
+            }),
+        ),
+    };
+    const player = new VoicePlayer(undefined, engine, lifecycle);
+    try {
+      const api = player.createVoiceAPI();
+      api.say("設定画面には三つの項目があります。");
+      await flushPlaybackStart();
+      const oldId = lifecycle.onPrepared.mock.calls[0][0];
+      const next = api.say("左側の一覧から対象を選択できます。");
+      phases.length = 0;
+      mockAudioContext.createBufferSource.mock.results[0].value.onended?.();
+      await flushPlaybackStart();
+
+      expect(phases).toEqual(["assistant-responding"]);
+      expect(release).toHaveBeenCalledExactlyOnceWith(oldId, "completed");
+      expect(lifecycle.onStarted).toHaveBeenCalledOnce();
+      resolveNext(createMinimalWav());
+      await flushPlaybackStart();
+      expect(phases).toEqual(["assistant-responding", "assistant-speaking"]);
+      await next.stop();
+      expect(phases[phases.length - 1]).toBe("idle");
+    } finally {
+      player.dispose();
+    }
+  });
+
+  it("ends both speech owners without a false started event when replacement source.start fails", async () => {
+    const { lifecycle, phases, release } = groundedSpeechLifecycle();
+    const player = new VoicePlayer(undefined, createMockEngine(), lifecycle);
+    const warning = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const api = player.createVoiceAPI();
+      const old = api.say("設定画面には三つの項目があります。");
+      await flushPlaybackStart();
+      const oldId = lifecycle.onPrepared.mock.calls[0][0];
+      const createSource = mockAudioContext.createBufferSource.getMockImplementation();
+      if (!createSource) throw new Error("missing audio source fixture");
+      mockAudioContext.createBufferSource.mockImplementationOnce(() => ({
+        ...createSource(),
+        start: vi.fn(() => {
+          throw new Error("source start failed");
+        }),
+      }));
+      phases.length = 0;
+      const next = api.say("左側の一覧から対象を選択できます。");
+      await next.completion;
+      await old.completion;
+
+      expect(lifecycle.onStarted).toHaveBeenCalledOnce();
+      expect(lifecycle.onEnded).toHaveBeenCalledWith(oldId, "stopped");
+      expect(lifecycle.onEnded).toHaveBeenCalledWith(
+        lifecycle.onPrepared.mock.calls[1][0],
+        "unclocked",
+      );
+      expect(release).toHaveBeenCalledExactlyOnceWith(oldId, "cancelled");
+      expect(phases).toEqual(["assistant-responding", "idle"]);
+      expect(old.cancellationReason).toBe("stopped");
+    } finally {
+      player.dispose();
+      warning.mockRestore();
+    }
   });
 
   it("keeps audible speech owned until the replacement audio is ready", async () => {

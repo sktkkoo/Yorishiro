@@ -429,38 +429,46 @@ export class VoicePlayer {
     onStart?: () => void,
   ): Promise<void> {
     this.fadeResetGeneration += 1;
-    for (const operation of this.operations) {
-      if (operation.playbackId === this.currentPlaybackId && operation.playbackId !== playbackId) {
-        operation.cancel("stopped");
-      }
-    }
+    const previousPlaybackId = this.currentPlaybackId;
     this.stopSource();
 
     return new Promise((resolve) => {
-      const source = ctx.createBufferSource();
-      source.buffer = buffer;
-      source.connect(this.analyserNode as AnalyserNode);
-      source.connect(this.gainNode as GainNode);
-      this.currentSource = source;
-      this.currentPlaybackId = playbackId;
-      this.gainNode?.gain.cancelScheduledValues(ctx.currentTime);
-      this.gainNode?.gain.setValueAtTime(volume, ctx.currentTime);
+      try {
+        const source = ctx.createBufferSource();
+        source.buffer = buffer;
+        source.connect(this.analyserNode as AnalyserNode);
+        source.connect(this.gainNode as GainNode);
+        this.currentSource = source;
+        this.currentPlaybackId = playbackId;
+        this.gainNode?.gain.cancelScheduledValues(ctx.currentTime);
+        this.gainNode?.gain.setValueAtTime(volume, ctx.currentTime);
 
-      this.lipSync?.reset();
-      if (this.onMouthValues !== null) this.startLipSyncLoop();
+        this.lipSync?.reset();
+        if (this.onMouthValues !== null) this.startLipSyncLoop();
 
-      source.onended = () => {
-        if (this.currentSource === source && this.currentPlaybackId === playbackId) {
-          this.currentSource = null;
-          this.currentPlaybackId = null;
-          this.stopLipSyncLoop();
-          this.onMouthValues?.(clearMouthValues(this.mouthCallbackScratch));
+        source.onended = () => {
+          if (this.currentSource === source && this.currentPlaybackId === playbackId) {
+            this.currentSource = null;
+            this.currentPlaybackId = null;
+            this.stopLipSyncLoop();
+            this.onMouthValues?.(clearMouthValues(this.mouthCallbackScratch));
+          }
+          resolve();
+        };
+
+        source.start();
+        onStart?.();
+      } finally {
+        // Publish the successfully started replacement before ending its old
+        // speech owner. Otherwise a same-task handoff emits a false silent
+        // phase and Body retires its continuous conversation motion. Always
+        // retire the old operation, including non-speech clips and start errors.
+        for (const operation of this.operations) {
+          if (operation.playbackId === previousPlaybackId && operation.playbackId !== playbackId) {
+            operation.cancel("stopped");
+          }
         }
-        resolve();
-      };
-
-      source.start();
-      onStart?.();
+      }
     });
   }
 
