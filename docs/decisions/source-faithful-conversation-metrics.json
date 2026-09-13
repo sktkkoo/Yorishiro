@@ -1,0 +1,179 @@
+{
+  "schemaVersion": 1,
+  "sourceFile": "Idle_Conversation_Loop_MIXAMO_769_segment-2.fbx",
+  "sourceSha256": "67892a332df013461020b839c165a04bdc8e20552344d098962e587826dcd556",
+  "outputFile": "Idle Conversation.vrma",
+  "outputSha256": "0376d3e416975f7d25aadd817828b77cf53a2f84ec5bc3cc3053fe1bc631dcf1",
+  "outputBytes": 661128,
+  "preparation": {
+    "inPointSec": 0.1,
+    "outPointSec": 25.266624450683594,
+    "durationSec": 25.166624450683592,
+    "sampleHz": 30,
+    "frameCount": 756,
+    "sourceMetresPerUnit": 0.01,
+    "initialXZOffsetRemovedMetres": [
+      0.031294964253902435,
+      0,
+      -0.10106678307056427
+    ],
+    "sourceRestHipsMetres": [
+      0,
+      0.8902914428710937,
+      3.5283130728203104e-9
+    ],
+    "rotationBoneCount": 52,
+    "fingerRotationBoneCount": 30,
+    "translation": "all authored hips XYZ variation; only a constant initial XZ offset removed",
+    "staticNonHipsTranslationsBakedIntoReference": [
+      {
+        "node": "mixamorigLeftLeg",
+        "displacementMetres": 0.0000020693393412741267
+      },
+      {
+        "node": "mixamorigLeftFoot",
+        "displacementMetres": 0.0000017450353716988146
+      },
+      {
+        "node": "mixamorigLeftToeBase",
+        "displacementMetres": 0.0008441482948657466
+      },
+      {
+        "node": "mixamorigRightToeBase",
+        "displacementMetres": 0.000844333642989137
+      },
+      {
+        "node": "mixamorigSpine",
+        "displacementMetres": 0.03739500113404482
+      },
+      {
+        "node": "mixamorigSpine1",
+        "displacementMetres": 0.0009531284408620683
+      },
+      {
+        "node": "mixamorigSpine2",
+        "displacementMetres": 0.0008047002877069573
+      },
+      {
+        "node": "mixamorigLeftShoulder",
+        "displacementMetres": 0.018485983573982796
+      },
+      {
+        "node": "mixamorigLeftArm",
+        "displacementMetres": 0.03367044905326658
+      },
+      {
+        "node": "mixamorigLeftHandIndex1",
+        "displacementMetres": 0.00008677140646442592
+      },
+      {
+        "node": "mixamorigLeftHandMiddle1",
+        "displacementMetres": 0.000621823836797461
+      },
+      {
+        "node": "mixamorigLeftHandPinky1",
+        "displacementMetres": 0.00013253097999070383
+      },
+      {
+        "node": "mixamorigLeftHandRing1",
+        "displacementMetres": 0.00017254132845058722
+      },
+      {
+        "node": "mixamorigLeftHandThumb1",
+        "displacementMetres": 0.010641643817627978
+      },
+      {
+        "node": "mixamorigLeftHandThumb2",
+        "displacementMetres": 0.010798096293995115
+      },
+      {
+        "node": "mixamorigNeck",
+        "displacementMetres": 0.0015627073993556668
+      },
+      {
+        "node": "mixamorigRightShoulder",
+        "displacementMetres": 0.018444605399048037
+      },
+      {
+        "node": "mixamorigRightArm",
+        "displacementMetres": 0.03367045020588722
+      },
+      {
+        "node": "mixamorigRightHandIndex1",
+        "displacementMetres": 0.00008637547580157862
+      },
+      {
+        "node": "mixamorigRightHandMiddle1",
+        "displacementMetres": 0.0006219179219186835
+      },
+      {
+        "node": "mixamorigRightHandPinky1",
+        "displacementMetres": 0.0001325199438836086
+      },
+      {
+        "node": "mixamorigRightHandRing1",
+        "displacementMetres": 0.0001724724786715873
+      },
+      {
+        "node": "mixamorigRightHandThumb1",
+        "displacementMetres": 0.0002653155684263517
+      }
+    ],
+    "modifications": "Constant non-hips animation translations become reference bone offsets. No speed change, smoothing, loop conditioning, masking, or contact correction."
+  },
+  "validation": {
+    "officialLoaderRestHipsMetres": [
+      0,
+      0.8902914428710937,
+      3.5283130728203104e-9
+    ],
+    "officialRetargetAllValuesFinite": true,
+    "rotationTracks": 52,
+    "hipsTranslationTracks": 1,
+    "outputKeyTimes": {
+      "frameCount": 756,
+      "boneCount": 52,
+      "maxWorldPositionErrorMetres": 1.155344608149431e-7,
+      "maxWorldRotationErrorDegrees": 0.00001438804923141365,
+      "maxHipsPositionErrorMetres": 2.999495168265527e-8,
+      "maxFootPositionErrorMetres": {
+        "leftFoot": 9.401994268193003e-8,
+        "leftToes": 1.0054699954382631e-7,
+        "rightFoot": 7.0580551283516e-8,
+        "rightToes": 7.660116236408114e-8
+      }
+    },
+    "betweenOutputKeys": {
+      "frameCount": 755,
+      "boneCount": 52,
+      "maxWorldPositionErrorMetres": 0.000020868444054350234,
+      "maxWorldRotationErrorDegrees": 0.009449009605634615,
+      "maxHipsPositionErrorMetres": 0.0000011301387148045981,
+      "maxFootPositionErrorMetres": {
+        "leftFoot": 0.000001459241870441282,
+        "leftToes": 0.000001411786568980983,
+        "rightFoot": 0.0000015592172436403825,
+        "rightToes": 0.0000015454059647349757
+      }
+    }
+  },
+  "method": {
+    "sourcePage": "https://www.rokoko.com/resources/rokoko-mocap-10-free-everyday-idle-animations",
+    "sourceArchive": "https://media.rokoko.com/EVERYDAY-IDLES-MOCAP.zip",
+    "loader": "Three.js r183 FBXLoader + official VRMAnimationLoaderPlugin/createVRMAnimationClip",
+    "unitDefinition": "https://help.autodesk.com/cloudhelp/2020/ENU/FBX-API-Reference/cpp_ref/class_fbx_system_unit.html",
+    "reference": "Original FBX poses sampled on its own skeleton in metres, compared to official VRMA replay retargeted back onto a second identical source skeleton. Account for the one constant XZ offset before comparing all 52 bone world positions/orientations.",
+    "thresholds": {
+      "outputKeyPositionMetres": 0.0001,
+      "outputKeyRotationDegrees": 0.02,
+      "midpointPositionMetres": 0.005,
+      "midpointRotationDegrees": 1
+    },
+    "limitations": [
+      "Source-fidelity gate only; Yori retargeting, perceived acting quality, contacts on a differently proportioned avatar, and cross-clip transitions require separate review.",
+      "The explicit 0.1-second in-point excludes the measured reference-pose prefix. It is not a semantic segmentation or approved looping boundary.",
+      "Foot metrics measure error relative to the authored source feet, not absolute foot sliding against the floor.",
+      "Prepared binary is a private review artifact; no existing catalog, original asset, or distribution asset is replaced."
+    ]
+  }
+}
