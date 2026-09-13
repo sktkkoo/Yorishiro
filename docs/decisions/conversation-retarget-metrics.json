@@ -1,0 +1,780 @@
+{
+  "schemaVersion": 1,
+  "inputs": {
+    "model": {
+      "file": "public/models/Yori.vrm",
+      "sha256": "739a1515cffe09c17a535eb52a11f88640fc7728b86b9e4c74f00c353437b7cd"
+    },
+    "current": {
+      "file": "public/animations/Idle Conversation.vrma",
+      "sha256": "d1f91d4ab36ed844e9815f2f168303d4a110d62f82348274350c52954f7ae49a"
+    },
+    "faithful": {
+      "file": ".motion-review/source-assets/prepared/Idle Conversation.vrma",
+      "sha256": "0376d3e416975f7d25aadd817828b77cf53a2f84ec5bc3cc3053fe1bc631dcf1"
+    }
+  },
+  "method": {
+    "sampleHz": 60,
+    "durationSec": 25.16662407,
+    "source": "Prepared source-normalized skeleton and unchanged full-body recording; previous same-source FK roundtrip verified it against original FBX.",
+    "target": "Original Yori glTF geometry, skin, inverse binds and humanoid rest hierarchy. Textures/materials omitted only in memory. Official createVRMAnimationClip + AnimationMixer, weight1, speed1, VRM0 rotation, no body/procedural/masking/conditioning/IK.",
+    "sourceToTargetHipHeightScale": 1.03249515,
+    "comparisonTiming": "Same clip-local time. Faithful clip0 is source0.1s; older clip0 best diagnostic offset was source0.0966667s, so up to one source-frame timing mismatch remains.",
+    "contactProxy": "Intervals >=0.4s where both source ankle/toe speeds <0.04m/s and source toe Y is within0.015m of its clip minimum. Same source-derived intervals measure all lanes; these are inferred quiet support intervals, not authored contact labels.",
+    "shoeVertices": "Rest-world Y <=0.15m and >=50% skin influence from the same-side Foot/Toes bones. Minimum Y of actual skinned vertices compared to that shoe's unanimated rest minimum; no guessed ankle floor.",
+    "limitations": [
+      "Fidelity/grounding diagnostics, not perceptual superiority over Animates.",
+      "Source foot motion may contain capture drift; low-speed contact inference is not ground truth.",
+      "Per-shoe rest minima diagnose shoe sinking/hover relative to the model's own floor. The lab grid remains at worldY0.",
+      "No retargeting correction or source asset replacement is performed."
+    ]
+  },
+  "source": {
+    "frameCount": 1511,
+    "restWorldPositionsMetres": {
+      "hips": [
+        0,
+        0.89029144,
+        0
+      ],
+      "leftFoot": [
+        0.07730811,
+        0.07103433,
+        4.7e-7
+      ],
+      "leftToes": [
+        0.07730803,
+        0.0120174,
+        0.12456648
+      ],
+      "rightFoot": [
+        -0.07730899,
+        0.07103445,
+        2.6e-7
+      ],
+      "rightToes": [
+        -0.07730895,
+        0.01201721,
+        0.12456625
+      ]
+    },
+    "referenceSegmentLengthsMetres": {
+      "leftLowerLeg": 0.40915513,
+      "leftFoot": 0.41010241,
+      "leftToes": 0.13783935,
+      "rightLowerLeg": 0.40915519,
+      "rightFoot": 0.41010223,
+      "rightToes": 0.13783947
+    },
+    "maxRawNormalizedDifferenceMetres": 0,
+    "trajectories": {
+      "hips": {
+        "initialWorldPositionMetres": [
+          0,
+          0.88368368,
+          0
+        ],
+        "initialDisplacementFromRestMetres": 0.00660776,
+        "rangeMetres": [
+          0.09485001,
+          0.01224029,
+          0.04333104
+        ],
+        "minWorldYMetres": 0.87523741,
+        "maxHorizontalDisplacementFromStartMetres": 0.09520652,
+        "speedP95MetresPerSec": 0.07586191,
+        "maxSpeedMetresPerSec": 0.18698243
+      },
+      "leftFoot": {
+        "initialWorldPositionMetres": [
+          0.06103048,
+          0.07202194,
+          -0.06489776
+        ],
+        "initialDisplacementFromRestMetres": 0.06691575,
+        "rangeMetres": [
+          0.02191445,
+          0.00288719,
+          0.02022308
+        ],
+        "minWorldYMetres": 0.07202194,
+        "maxHorizontalDisplacementFromStartMetres": 0.02981973,
+        "speedP95MetresPerSec": 0.00664085,
+        "maxSpeedMetresPerSec": 0.12000787
+      },
+      "leftToes": {
+        "initialWorldPositionMetres": [
+          0.08990769,
+          0.01382684,
+          0.05667166
+        ],
+        "initialDisplacementFromRestMetres": 0.06907772,
+        "rangeMetres": [
+          0.0222053,
+          0.00587917,
+          0.02046759
+        ],
+        "minWorldYMetres": 0.01363845,
+        "maxHorizontalDisplacementFromStartMetres": 0.0301993,
+        "speedP95MetresPerSec": 0.00475467,
+        "maxSpeedMetresPerSec": 0.11646252
+      },
+      "rightFoot": {
+        "initialWorldPositionMetres": [
+          -0.15242692,
+          0.07636511,
+          -0.11884524
+        ],
+        "initialDisplacementFromRestMetres": 0.14069602,
+        "rangeMetres": [
+          0.02109216,
+          0.00614096,
+          0.02035853
+        ],
+        "minWorldYMetres": 0.07290879,
+        "maxHorizontalDisplacementFromStartMetres": 0.02931466,
+        "speedP95MetresPerSec": 0.00707514,
+        "maxSpeedMetresPerSec": 0.126831
+      },
+      "rightToes": {
+        "initialWorldPositionMetres": [
+          -0.18204221,
+          0.01414124,
+          0.00053167
+        ],
+        "initialDisplacementFromRestMetres": 0.16235191,
+        "rangeMetres": [
+          0.02125366,
+          0.00352887,
+          0.02022836
+        ],
+        "minWorldYMetres": 0.01301258,
+        "maxHorizontalDisplacementFromStartMetres": 0.02934118,
+        "speedP95MetresPerSec": 0.00420821,
+        "maxSpeedMetresPerSec": 0.12727947
+      }
+    },
+    "shoes": {
+      "left": null,
+      "right": null
+    }
+  },
+  "currentYori": {
+    "frameCount": 1511,
+    "restWorldPositionsMetres": {
+      "hips": [
+        0,
+        0.9192216,
+        0.00420418
+      ],
+      "leftFoot": [
+        0.06922062,
+        0.11570624,
+        -0.03150504
+      ],
+      "leftToes": [
+        0.06922062,
+        0.05938283,
+        0.06736722
+      ],
+      "rightFoot": [
+        -0.06922062,
+        0.11570624,
+        -0.03150504
+      ],
+      "rightToes": [
+        -0.06922062,
+        0.05938283,
+        0.06736722
+      ]
+    },
+    "referenceSegmentLengthsMetres": {
+      "leftLowerLeg": 0.35698454,
+      "leftFoot": 0.41163764,
+      "leftToes": 0.1137895,
+      "rightLowerLeg": 0.35698454,
+      "rightFoot": 0.41163764,
+      "rightToes": 0.1137895
+    },
+    "maxRawNormalizedDifferenceMetres": 0,
+    "trajectories": {
+      "hips": {
+        "initialWorldPositionMetres": [
+          0,
+          0.9192216,
+          0.00420418
+        ],
+        "initialDisplacementFromRestMetres": 0,
+        "rangeMetres": [
+          0,
+          0,
+          0
+        ],
+        "minWorldYMetres": 0.9192216,
+        "maxHorizontalDisplacementFromStartMetres": 0,
+        "speedP95MetresPerSec": 0,
+        "maxSpeedMetresPerSec": 0
+      },
+      "leftFoot": {
+        "initialWorldPositionMetres": [
+          0.04942728,
+          0.12754534,
+          -0.09422054
+        ],
+        "initialDisplacementFromRestMetres": 0.06682196,
+        "rangeMetres": [
+          0.08348241,
+          0.01336707,
+          0.03885836
+        ],
+        "minWorldYMetres": 0.12451966,
+        "maxHorizontalDisplacementFromStartMetres": 0.07717329,
+        "speedP95MetresPerSec": 0.06354835,
+        "maxSpeedMetresPerSec": 0.20626489
+      },
+      "leftToes": {
+        "initialWorldPositionMetres": [
+          0.07279413,
+          0.07188482,
+          0.00223643
+        ],
+        "initialDisplacementFromRestMetres": 0.06641604,
+        "rangeMetres": [
+          0.08805739,
+          0.01239484,
+          0.03948271
+        ],
+        "minWorldYMetres": 0.07005276,
+        "maxHorizontalDisplacementFromStartMetres": 0.08086929,
+        "speedP95MetresPerSec": 0.06535392,
+        "maxSpeedMetresPerSec": 0.21431189
+      },
+      "rightFoot": {
+        "initialWorldPositionMetres": [
+          -0.13266117,
+          0.1317621,
+          -0.14157016
+        ],
+        "initialDisplacementFromRestMetres": 0.12805009,
+        "rangeMetres": [
+          0.07710823,
+          0.02107067,
+          0.04273609
+        ],
+        "minWorldYMetres": 0.1255484,
+        "maxHorizontalDisplacementFromStartMetres": 0.07325689,
+        "speedP95MetresPerSec": 0.06805733,
+        "maxSpeedMetresPerSec": 0.17298838
+      },
+      "rightToes": {
+        "initialWorldPositionMetres": [
+          -0.15690482,
+          0.07293141,
+          -0.04723435
+        ],
+        "initialDisplacementFromRestMetres": 0.1449331,
+        "rangeMetres": [
+          0.08141772,
+          0.0188108,
+          0.04266524
+        ],
+        "minWorldYMetres": 0.06849876,
+        "maxHorizontalDisplacementFromStartMetres": 0.07607239,
+        "speedP95MetresPerSec": 0.06867895,
+        "maxSpeedMetresPerSec": 0.1823238
+      }
+    },
+    "shoes": {
+      "left": {
+        "measuredVertexCount": 348,
+        "restMinimumYMetres": 2.4e-7,
+        "minMinimumYMetres": 0.0076223,
+        "maxMinimumYMetres": 0.02076975,
+        "maxBelowRestFloorMetres": 0,
+        "maxAboveRestFloorMetres": 0.0207695
+      },
+      "right": {
+        "measuredVertexCount": 348,
+        "restMinimumYMetres": 2.4e-7,
+        "minMinimumYMetres": 0.00910331,
+        "maxMinimumYMetres": 0.02607017,
+        "maxBelowRestFloorMetres": 0,
+        "maxAboveRestFloorMetres": 0.02606992
+      }
+    }
+  },
+  "faithfulYori": {
+    "frameCount": 1511,
+    "restWorldPositionsMetres": {
+      "hips": [
+        0,
+        0.9192216,
+        0.00420418
+      ],
+      "leftFoot": [
+        0.06922062,
+        0.11570624,
+        -0.03150504
+      ],
+      "leftToes": [
+        0.06922062,
+        0.05938283,
+        0.06736722
+      ],
+      "rightFoot": [
+        -0.06922062,
+        0.11570624,
+        -0.03150504
+      ],
+      "rightToes": [
+        -0.06922062,
+        0.05938283,
+        0.06736722
+      ]
+    },
+    "referenceSegmentLengthsMetres": {
+      "leftLowerLeg": 0.35698454,
+      "leftFoot": 0.41163764,
+      "leftToes": 0.1137895,
+      "rightLowerLeg": 0.35698454,
+      "rightFoot": 0.41163764,
+      "rightToes": 0.1137895
+    },
+    "maxRawNormalizedDifferenceMetres": 0,
+    "trajectories": {
+      "hips": {
+        "initialWorldPositionMetres": [
+          0,
+          0.91239911,
+          0
+        ],
+        "initialDisplacementFromRestMetres": 0.00801383,
+        "rangeMetres": [
+          0.09793217,
+          0.01263809,
+          0.04473909
+        ],
+        "minWorldYMetres": 0.90367836,
+        "maxHorizontalDisplacementFromStartMetres": 0.09830026,
+        "speedP95MetresPerSec": 0.07832669,
+        "maxSpeedMetresPerSec": 0.19305863
+      },
+      "leftFoot": {
+        "initialWorldPositionMetres": [
+          0.04942728,
+          0.12072286,
+          -0.09842472
+        ],
+        "initialDisplacementFromRestMetres": 0.0699656,
+        "rangeMetres": [
+          0.0232942,
+          0.00377175,
+          0.02118929
+        ],
+        "minWorldYMetres": 0.12070648,
+        "maxHorizontalDisplacementFromStartMetres": 0.03068713,
+        "speedP95MetresPerSec": 0.0194369,
+        "maxSpeedMetresPerSec": 0.12306048
+      },
+      "leftToes": {
+        "initialWorldPositionMetres": [
+          0.07279413,
+          0.06506233,
+          -0.00196775
+        ],
+        "initialDisplacementFromRestMetres": 0.06965891,
+        "rangeMetres": [
+          0.02235836,
+          0.00553469,
+          0.02139849
+        ],
+        "minWorldYMetres": 0.06466706,
+        "maxHorizontalDisplacementFromStartMetres": 0.03094821,
+        "speedP95MetresPerSec": 0.0161345,
+        "maxSpeedMetresPerSec": 0.12089621
+      },
+      "rightFoot": {
+        "initialWorldPositionMetres": [
+          -0.13266118,
+          0.12493962,
+          -0.14577434
+        ],
+        "initialDisplacementFromRestMetres": 0.13102455,
+        "rangeMetres": [
+          0.0250594,
+          0.0105512,
+          0.02016422
+        ],
+        "minWorldYMetres": 0.12056208,
+        "maxHorizontalDisplacementFromStartMetres": 0.02982194,
+        "speedP95MetresPerSec": 0.02378692,
+        "maxSpeedMetresPerSec": 0.12938062
+      },
+      "rightToes": {
+        "initialWorldPositionMetres": [
+          -0.15690484,
+          0.06610893,
+          -0.05143852
+        ],
+        "initialDisplacementFromRestMetres": 0.14781261,
+        "rangeMetres": [
+          0.02212632,
+          0.00826116,
+          0.02004076
+        ],
+        "minWorldYMetres": 0.06353907,
+        "maxHorizontalDisplacementFromStartMetres": 0.02985308,
+        "speedP95MetresPerSec": 0.02193412,
+        "maxSpeedMetresPerSec": 0.12813245
+      }
+    },
+    "shoes": {
+      "left": {
+        "measuredVertexCount": 348,
+        "restMinimumYMetres": 2.4e-7,
+        "minMinimumYMetres": 0.00403536,
+        "maxMinimumYMetres": 0.00694938,
+        "maxBelowRestFloorMetres": 0,
+        "maxAboveRestFloorMetres": 0.00694913
+      },
+      "right": {
+        "measuredVertexCount": 348,
+        "restMinimumYMetres": 2.4e-7,
+        "minMinimumYMetres": 0.00439106,
+        "maxMinimumYMetres": 0.01059753,
+        "maxBelowRestFloorMetres": 0,
+        "maxAboveRestFloorMetres": 0.01059729
+      }
+    }
+  },
+  "browserCheckpoints": [
+    {
+      "time": 0,
+      "currentYori": {
+        "hips": [
+          0,
+          0.9192216,
+          0.00420418
+        ],
+        "leftFoot": [
+          0.04942728,
+          0.12754534,
+          -0.09422054
+        ],
+        "leftToes": [
+          0.07279413,
+          0.07188482,
+          0.00223643
+        ],
+        "rightFoot": [
+          -0.13266117,
+          0.1317621,
+          -0.14157016
+        ],
+        "rightToes": [
+          -0.15690482,
+          0.07293141,
+          -0.04723435
+        ]
+      },
+      "faithfulYori": {
+        "hips": [
+          0,
+          0.91239911,
+          0
+        ],
+        "leftFoot": [
+          0.04942728,
+          0.12072286,
+          -0.09842472
+        ],
+        "leftToes": [
+          0.07279413,
+          0.06506233,
+          -0.00196775
+        ],
+        "rightFoot": [
+          -0.13266118,
+          0.12493962,
+          -0.14577434
+        ],
+        "rightToes": [
+          -0.15690484,
+          0.06610893,
+          -0.05143852
+        ]
+      }
+    },
+    {
+      "time": 3,
+      "currentYori": {
+        "hips": [
+          0,
+          0.9192216,
+          0.00420418
+        ],
+        "leftFoot": [
+          0.06686069,
+          0.12580829,
+          -0.08391485
+        ],
+        "leftToes": [
+          0.09012409,
+          0.07093496,
+          0.013017
+        ],
+        "rightFoot": [
+          -0.11550012,
+          0.12952659,
+          -0.13315455
+        ],
+        "rightToes": [
+          -0.13902889,
+          0.07157322,
+          -0.03809744
+        ]
+      },
+      "faithfulYori": {
+        "hips": [
+          -0.03229211,
+          0.91448253,
+          -0.00267987
+        ],
+        "leftFoot": [
+          0.03459112,
+          0.12106527,
+          -0.09071983
+        ],
+        "leftToes": [
+          0.05786119,
+          0.06619773,
+          0.00621369
+        ],
+        "rightFoot": [
+          -0.14776335,
+          0.12477732,
+          -0.13997729
+        ],
+        "rightToes": [
+          -0.17129284,
+          0.06683438,
+          -0.044914
+        ]
+      }
+    },
+    {
+      "time": 8,
+      "currentYori": {
+        "hips": [
+          0,
+          0.9192216,
+          0.00420418
+        ],
+        "leftFoot": [
+          0.06933693,
+          0.12682244,
+          -0.09150486
+        ],
+        "leftToes": [
+          0.09288349,
+          0.07241324,
+          0.00562005
+        ],
+        "rightFoot": [
+          -0.1133486,
+          0.12879272,
+          -0.13739223
+        ],
+        "rightToes": [
+          -0.13672111,
+          0.07061184,
+          -0.0424356
+        ]
+      },
+      "faithfulYori": {
+        "hips": [
+          -0.03591048,
+          0.91428924,
+          0.00490772
+        ],
+        "leftFoot": [
+          0.03342643,
+          0.12189007,
+          -0.0908013
+        ],
+        "leftToes": [
+          0.05697299,
+          0.06748086,
+          0.00632361
+        ],
+        "rightFoot": [
+          -0.14925909,
+          0.12386037,
+          -0.13668867
+        ],
+        "rightToes": [
+          -0.1726316,
+          0.06567949,
+          -0.04173204
+        ]
+      }
+    },
+    {
+      "time": 15,
+      "currentYori": {
+        "hips": [
+          0,
+          0.9192216,
+          0.00420418
+        ],
+        "leftFoot": [
+          0.07464888,
+          0.12549103,
+          -0.08152702
+        ],
+        "leftToes": [
+          0.0982783,
+          0.07116233,
+          0.01562283
+        ],
+        "rightFoot": [
+          -0.10795737,
+          0.12746512,
+          -0.13035947
+        ],
+        "rightToes": [
+          -0.13087099,
+          0.07007793,
+          -0.03480986
+        ]
+      },
+      "faithfulYori": {
+        "hips": [
+          -0.04122586,
+          0.91509593,
+          -0.00508871
+        ],
+        "leftFoot": [
+          0.03341872,
+          0.12136084,
+          -0.09082823
+        ],
+        "leftToes": [
+          0.05704184,
+          0.06703096,
+          0.00632249
+        ],
+        "rightFoot": [
+          -0.14917692,
+          0.12334233,
+          -0.13964717
+        ],
+        "rightToes": [
+          -0.1720906,
+          0.06594872,
+          -0.04410143
+        ]
+      }
+    },
+    {
+      "time": 25,
+      "currentYori": {
+        "hips": [
+          0,
+          0.9192216,
+          0.00420418
+        ],
+        "leftFoot": [
+          0.05878761,
+          0.13373401,
+          -0.11343863
+        ],
+        "leftToes": [
+          0.08189545,
+          0.07899851,
+          -0.01639172
+        ],
+        "rightFoot": [
+          -0.12248311,
+          0.13999372,
+          -0.16366841
+        ],
+        "rightToes": [
+          -0.14719953,
+          0.08101773,
+          -0.06954624
+        ]
+      },
+      "faithfulYori": {
+        "hips": [
+          -0.02162375,
+          0.90795207,
+          0.03062253
+        ],
+        "leftFoot": [
+          0.03805352,
+          0.1227232,
+          -0.08853649
+        ],
+        "leftToes": [
+          0.06115846,
+          0.06805376,
+          0.00854834
+        ],
+        "rightFoot": [
+          -0.14327996,
+          0.12897657,
+          -0.13877262
+        ],
+        "rightToes": [
+          -0.16800546,
+          0.07002069,
+          -0.04464025
+        ]
+      }
+    }
+  ],
+  "quietSourceSupportEpisodes": [
+    {
+      "side": "left",
+      "startSec": 0.15,
+      "endSec": 25,
+      "source": {
+        "maxFootHorizontalDisplacementMetres": 0.00708815,
+        "minSoleHeightMetres": null,
+        "maxSoleHeightMetres": null
+      },
+      "currentYori": {
+        "maxFootHorizontalDisplacementMetres": 0.08225321,
+        "minSoleHeightMetres": 0.0076223,
+        "maxSoleHeightMetres": 0.02076975
+      },
+      "faithfulYori": {
+        "maxFootHorizontalDisplacementMetres": 0.0126472,
+        "minSoleHeightMetres": 0.00403536,
+        "maxSoleHeightMetres": 0.00694938
+      }
+    },
+    {
+      "side": "right",
+      "startSec": 0.15,
+      "endSec": 25,
+      "source": {
+        "maxFootHorizontalDisplacementMetres": 0.00481176,
+        "minSoleHeightMetres": null,
+        "maxSoleHeightMetres": null
+      },
+      "currentYori": {
+        "maxFootHorizontalDisplacementMetres": 0.07787019,
+        "minSoleHeightMetres": 0.00910331,
+        "maxSoleHeightMetres": 0.02607017
+      },
+      "faithfulYori": {
+        "maxFootHorizontalDisplacementMetres": 0.01442793,
+        "minSoleHeightMetres": 0.00439106,
+        "maxSoleHeightMetres": 0.01059753
+      }
+    }
+  ]
+}
