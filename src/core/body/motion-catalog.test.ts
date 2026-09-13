@@ -49,7 +49,7 @@ describe("local semantic motion catalog", () => {
       { nowMs: 0 },
     );
     expect(consider[0].id).toBe("speech-reflect");
-    expect(emphasize[0].id).toBe("speech-emphasize");
+    expect(emphasize[0].id).toBe("speech-chat");
     for (const candidates of [consider, emphasize]) {
       expect(candidates.length).toBeGreaterThan(1);
       expect(candidates.length).toBeLessThanOrEqual(5);
@@ -57,6 +57,18 @@ describe("local semantic motion catalog", () => {
         candidates.map((entry) => entry.score).sort((a, b) => b - a),
       );
     }
+  });
+
+  it("keeps unreviewed prototypes out of automatic selection while retaining recorded emphasis candidates", () => {
+    expect(DEFAULT_MOTION_CATALOG.some((entry) => /Prototype/i.test(entry.animation))).toBe(false);
+    const candidates = retrieveMotionCandidates(
+      { intent: "emphasize", context: "speech" },
+      { nowMs: 0 },
+    );
+    expect(candidates.map((entry) => entry.animation).sort()).toEqual([
+      "anim:Idle Chatting",
+      "anim:Idle Conversation",
+    ]);
   });
 
   it("gives ordinary explanation a conversational pool without assigning emotion or emphasis", () => {

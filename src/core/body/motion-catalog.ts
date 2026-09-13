@@ -56,7 +56,11 @@ export interface MotionCandidate {
 const IDLE_INTENTS = ["neutral", "attentive", "relaxed", "thinking"] as const;
 const CONVERSATION_INTENTS = ["explain", "agree", "consider", "reassure", "emphasize"] as const;
 
-/** Only prop-free, standing clips belong in the ambient pool. */
+/**
+ * Documented source assets only. Local extraction/generation prototypes remain
+ * available for explicit playback, but are not automatic production candidates.
+ * See CREDITS.md and docs/decisions/motion-source-eligibility.md.
+ */
 export const DEFAULT_MOTION_CATALOG: readonly MotionCatalogEntry[] = [
   {
     id: "idle-balance",
@@ -156,17 +160,6 @@ export const DEFAULT_MOTION_CATALOG: readonly MotionCatalogEntry[] = [
     weight: 0.32,
     speed: 1,
     cooldownMs: 6_000,
-  },
-  {
-    id: "speech-emphasize",
-    animation: "anim:Conversational Emphasis Planted Prototype",
-    family: "emphasize",
-    contexts: ["speech"],
-    intents: ["emphasize"],
-    features: [0.3, 0.9, 0.2, 0.55, 1, 0.65],
-    weight: 0.44,
-    speed: 1,
-    cooldownMs: 8_000,
   },
 ];
 
