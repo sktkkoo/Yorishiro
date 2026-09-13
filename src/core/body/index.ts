@@ -251,10 +251,16 @@ export class Body {
   private readonly availableMotions = new Set<string>();
   private readonly motionDirector = new MotionDirector({
     availableAnimations: this.availableMotions,
+    evaluateTransition: (animation, options) =>
+      this.animationPlayer.evaluateTransition(animation, {
+        ...options,
+        weight: options.weight * Math.min(1, this.motionIntensity),
+      }),
   });
   private motionLibraryEnabled = true;
   private motionLibraryLoad: Promise<void> | null = null;
   private ambientMotionHandle: InternalMotionHandle | null = null;
+  private ambientMotionPlaybackContext: MotionContext | null = null;
   private readonly semanticMotionHandles = new Set<SdkMotionHandle>();
   private disposed = false;
   private motionIntensity = 1;
@@ -1199,6 +1205,18 @@ export class Body {
           })
         ) {
           this.availableMotions.add(entry.animation);
+          if (
+            entry.contexts.includes("speech") &&
+            entry.intents.includes("explain") &&
+            !this.disposed
+          ) {
+            // Neutral conversation loops and finite semantic performances use
+            // different immutable variants; both must be ready before scoring.
+            await this.animationPlayer.preload(entry.animation, {
+              mask: "upper-body",
+              loop: true,
+            });
+          }
           if (entry.animation === "anim:Idle" && !this.disposed) {
             await this.recordedIdleFoundation.prepare();
           }
@@ -1270,11 +1288,18 @@ export class Body {
     // Once audio boundaries are supplied, those phases also govern silent idle.
     this.hasGroundedConversationPhase = true;
     if (phase === this.motionConversationPhase) return;
+    const leavingSpeech = this.motionConversationPhase === "assistant-speaking";
     this.motionConversationPhase = phase;
     this.motionDirector.requestNextIdle(phase === "interrupted" ? 1_200 : 600);
-    if (phase === "interrupted") {
+    if (
+      phase === "interrupted" ||
+      (leavingSpeech && this.ambientMotionPlaybackContext === "speech")
+    ) {
+      // A talking loop cannot outlive audible speech merely because every
+      // attentive replacement is cooling down, missing, or physically rejected.
       this.ambientMotionHandle?.release(650);
       this.ambientMotionHandle = null;
+      this.ambientMotionPlaybackContext = null;
     }
     if (phase === "interrupted" || phase === "disconnected" || phase === "user-speaking") {
       for (const handle of this.semanticMotionHandles) handle.release(250);
@@ -1288,10 +1313,11 @@ export class Body {
       this.animationPlayer.retireFadingActions();
     }
     const state = this.eyeSystem.state;
+    const speaking = this.motionConversationPhase === "assistant-speaking";
     const allowed =
       this.motionLibraryEnabled &&
       this.motionIntensity > 0 &&
-      (state === "idle" || state === "thinking");
+      (state === "idle" || state === "thinking" || speaking);
     if ((!allowed || claimed) && this.ambientMotionHandle?.isActive()) {
       this.ambientMotionHandle.release(claimed ? 0 : 650);
       this.ambientMotionHandle = null;
@@ -1306,7 +1332,6 @@ export class Body {
           activePriority === "speech-expression"),
       this.motionIntensity,
     );
-    const speaking = this.motionConversationPhase === "assistant-speaking";
     const blocked =
       claimed ||
       (activePriority !== null && activePriority !== "idle-fidget") ||
@@ -1337,9 +1362,13 @@ export class Body {
       },
     });
     this.ambientMotionHandle = handle;
+    this.ambientMotionPlaybackContext = decision.context;
     void handle.completion.then(({ reason }) => {
       if (reason === "errored") this.motionDirector.excludeAnimation(decision.animation);
-      if (this.ambientMotionHandle === handle) this.ambientMotionHandle = null;
+      if (this.ambientMotionHandle === handle) {
+        this.ambientMotionHandle = null;
+        this.ambientMotionPlaybackContext = null;
+      }
     });
   }
 

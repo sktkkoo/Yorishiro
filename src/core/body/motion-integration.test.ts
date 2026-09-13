@@ -88,6 +88,10 @@ function advance(body: Body, seconds: number) {
 // Foreground ownership tests isolate the foundation, which has separate
 // real-mixer coverage below and its own cancellation/gain tests.
 function mockPerformanceLibrary() {
+  vi.spyOn(AnimationPlayer.prototype, "evaluateTransition").mockReturnValue({
+    cost: 0,
+    startTimeSec: 0,
+  });
   return vi
     .spyOn(AnimationPlayer.prototype, "preload")
     .mockImplementation(async (_ref, options) => options?.mask !== "lower-body");
@@ -114,6 +118,73 @@ function cue(overrides: Partial<StateExpressionCue> = {}): StateExpressionCue {
 }
 
 describe("recorded motion Body integration", () => {
+  it.each([
+    "user-speaking",
+    "idle",
+    "disconnected",
+  ] as const)("retires the speech baseline on %s even when every next seam is rejected", async (phase) => {
+    mockPerformanceLibrary();
+    const active = playback();
+    const play = vi.spyOn(AnimationPlayer.prototype, "play").mockResolvedValue(active);
+    const { body } = createBody();
+    await body.prepareMotionLibrary();
+    body.setMotionConversationPhase("assistant-speaking");
+    advance(body, 1.3);
+    await flush();
+    expect(play).toHaveBeenCalledOnce();
+    expect(play.mock.calls[0][1]?.loop).toBe(true);
+    vi.mocked(AnimationPlayer.prototype.evaluateTransition).mockReturnValue(null);
+    body.setMotionConversationPhase(phase);
+    await flush();
+    expect(active.stop).toHaveBeenCalledWith(650);
+    advance(body, 10);
+    await flush();
+    expect(play).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    "reading",
+    "writing",
+    "running",
+  ] as const)("sustains audible neutral speech during concurrent %s activity", async (state) => {
+    mockPerformanceLibrary();
+    const play = vi.spyOn(AnimationPlayer.prototype, "play").mockResolvedValue(playback());
+    const { body, claims } = createBody();
+    await body.prepareMotionLibrary();
+    body.setState(state);
+    body.setMotionConversationPhase("assistant-speaking");
+    advance(body, 1.3);
+    await flush();
+    expect(play).toHaveBeenCalledOnce();
+    expect(body.getMotionDirectorSnapshot().lastDecision).toMatchObject({
+      intent: "explain",
+      context: "speech",
+    });
+    claims.claim("animation");
+    advance(body, 20);
+    await flush();
+    expect(play).toHaveBeenCalledOnce();
+  });
+
+  it("scores the actual reduced-motion gain and passes the selected phase into playback", async () => {
+    mockPerformanceLibrary();
+    const evaluate = vi.mocked(AnimationPlayer.prototype.evaluateTransition);
+    evaluate.mockReturnValue({ cost: 0.02, startTimeSec: 1.7 });
+    const play = vi.spyOn(AnimationPlayer.prototype, "play").mockResolvedValue(playback());
+    const { body } = createBody();
+    await body.prepareMotionLibrary();
+    body.setMotionIntensity(0.3);
+    advance(body, 1.3);
+    await flush();
+    expect(play).toHaveBeenCalledOnce();
+    const [ref, options] = play.mock.calls[0];
+    expect(options?.startTimeSec).toBe(1.7);
+    expect(evaluate).toHaveBeenCalledWith(
+      ref,
+      expect.objectContaining({ weight: options?.weight }),
+    );
+  });
+
   it("retains recorded legs under upper-body speech and yields the whole body to explicit owners", async () => {
     vi.spyOn(AnimationPlayer.prototype, "preload").mockImplementation(
       async (ref) => ref === "anim:Idle",
@@ -291,6 +362,10 @@ describe("recorded motion Body integration", () => {
   });
 
   it("prepares the local catalog once, tolerates absent assets, and plays only prepared candidates", async () => {
+    vi.spyOn(AnimationPlayer.prototype, "evaluateTransition").mockReturnValue({
+      cost: 0,
+      startTimeSec: 0,
+    });
     const preload = vi
       .spyOn(AnimationPlayer.prototype, "preload")
       .mockImplementation(async (animation) => animation !== "anim:Idle");
@@ -300,7 +375,10 @@ describe("recorded motion Body integration", () => {
     const first = body.prepareMotionLibrary();
     expect(body.prepareMotionLibrary()).toBe(first);
     await first;
-    expect(preload).toHaveBeenCalledTimes(DEFAULT_MOTION_CATALOG.length);
+    expect(preload).toHaveBeenCalledTimes(
+      DEFAULT_MOTION_CATALOG.length +
+        DEFAULT_MOTION_CATALOG.filter((entry) => entry.intents.includes("explain")).length,
+    );
     expect(preload).toHaveBeenCalledWith("anim:Idle", { mask: "upper-body", loop: true });
     advance(body, 1.3);
     await flush();
