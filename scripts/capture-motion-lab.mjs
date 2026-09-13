@@ -1,10 +1,12 @@
 #!/usr/bin/env node
+import { execFile } from "node:child_process";
 // Optional visual QA driver. Uses a locally installed Playwright and browser.
 import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { promisify } from "node:util";
 
 const { chromium } = await import(process.env.YORISHIRO_PLAYWRIGHT_MODULE || "playwright");
-const output = resolve(process.env.YORISHIRO_MOTION_QA_DIR || "/private/tmp/yorishiro-motion-qa");
+const output = resolve(process.env.YORISHIRO_MOTION_QA_DIR || ".motion-review");
 await mkdir(output, { recursive: true });
 const browser = await chromium.launch({
   headless: true,
@@ -48,6 +50,50 @@ try {
   console.log(
     `Motion QA captured to ${output} (${observations.elapsedSeconds.toFixed(1)} simulated seconds)`,
   );
+  if (process.argv.includes("--film")) {
+    await page.reload();
+    await page.waitForFunction(() => window.motionLab?.ready === true, null, { timeout: 90_000 });
+    const frames = resolve(output, "frames");
+    await mkdir(frames, { recursive: true });
+    const fps = 24;
+    for (let frame = 0; frame < 30 * fps; frame++) {
+      if (frame === 6 * fps) await page.evaluate(() => window.motionLab.gesture("consider"));
+      if (frame === 14 * fps) await page.evaluate(() => window.motionLab.gesture("emphasize"));
+      if (frame === 22 * fps) await page.evaluate(() => window.motionLab.gesture("reassure"));
+      await page.evaluate((delta) => window.motionLab.step(delta), 1 / fps);
+      await page.screenshot({
+        path: resolve(frames, `${String(frame).padStart(4, "0")}.jpg`),
+        type: "jpeg",
+        quality: 88,
+      });
+      if (frame % (5 * fps) === 0) console.log(`Rendered comparison: ${frame / fps}/30 s`);
+    }
+    const simulatedSeconds = await page.evaluate(
+      () => window.motionLab.observations().elapsedSeconds,
+    );
+    if (Math.abs(simulatedSeconds - 30) > 1 / 60) {
+      throw new Error(
+        `Comparison timing drift: ${simulatedSeconds} simulated seconds for 30-second video`,
+      );
+    }
+    await promisify(execFile)("ffmpeg", [
+      "-y",
+      "-loglevel",
+      "error",
+      "-framerate",
+      String(fps),
+      "-i",
+      resolve(frames, "%04d.jpg"),
+      "-c:v",
+      "libx264",
+      "-pix_fmt",
+      "yuv420p",
+      "-movflags",
+      "+faststart",
+      resolve(output, "motion-comparison.mp4"),
+    ]);
+    console.log(`Comparison film: ${resolve(output, "motion-comparison.mp4")}`);
+  }
 } finally {
   await browser.close();
 }

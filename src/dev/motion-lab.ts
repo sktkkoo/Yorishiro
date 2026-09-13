@@ -99,7 +99,6 @@ function advance(delta: number): void {
   elapsed += delta;
   for (const lane of lanes) {
     lane.body.update(delta, elapsed);
-    lane.vrm.update(delta);
   }
   if (elapsed >= nextSample) {
     nextSample = elapsed + 0.1;
@@ -139,9 +138,10 @@ function gesture(intent: MotionIntent): void {
 async function step(seconds: number): Promise<void> {
   manual = true;
   paused = true;
-  const frames = Math.ceil(Math.max(0, Math.min(600, seconds)) * 60);
+  const duration = Math.max(0, Math.min(600, seconds));
+  const frames = Math.ceil(duration * 60);
   for (let frame = 0; frame < frames; frame++) {
-    advance(1 / 60);
+    advance(Math.min(1 / 60, duration - frame / 60));
     await Promise.resolve();
   }
   render();
@@ -203,10 +203,22 @@ async function start(): Promise<void> {
     manual = false;
   };
   element("idle").onclick = () => {
-    for (const lane of lanes) lane.body.setState("idle");
+    for (const lane of lanes) {
+      lane.body.setState("idle");
+      lane.body.setMotionConversationPhase("idle");
+    }
+  };
+  element("listening").onclick = () => {
+    for (const lane of lanes) {
+      lane.body.setState("idle");
+      lane.body.setMotionConversationPhase("user-speaking");
+    }
   };
   element("thinking").onclick = () => {
-    for (const lane of lanes) lane.body.setState("thinking");
+    for (const lane of lanes) {
+      lane.body.setState("thinking");
+      lane.body.setMotionConversationPhase("assistant-responding");
+    }
   };
   element("interrupt").onclick = () => {
     for (const lane of lanes) lane.body.createCharacterAPI().interrupt("motion-lab");

@@ -123,6 +123,15 @@ HandOnHip は source の rest hip height が 0.87593 m あり、Yori への倍�
 | Recorded VRMA asset inventory / numeric analysis | See generated asset report alongside this document |
 | Runtime implementation checks | Record separately with implementation results |
 | Animates real-app observations | 20 window-only PNGs inspected; sparse idle observation only |
-| Animates continuous recording and controlled visual comparison | Pending |
+| Animates continuous recording | Captured with a window-only ScreenCaptureKit filter; see below |
+| Controlled visual comparison | Pending |
 | Blinded human comparison | Pending |
 | Clear superiority to Animates | **Unverified** |
+
+## Continuous installed-app reference capture
+
+A later reference was captured on 2026-09-13 at 14:13:39 UTC using macOS ScreenCaptureKit. The capture selected the single window with application name/title `Animates` and bundle identifier `inc.animation.AniClaw`, then used `SCContentFilter(desktopIndependentWindow:)`. Child windows, cursor, microphone and audio capture were disabled. It did not record a display region.
+
+The resulting local-only movie contains 579 frames at 578 × 1156 pixels over 20.183 seconds (about 28.7 frames/s), with no audio track. Maximum written-frame interval was 81.6 ms and writer backpressure dropped zero frames. These are capture diagnostics; they do not isolate Animates renderer performance. Dimensions, stream metadata and a montage were checked to confirm only the selected avatar window was present. The avatar remained in its standing idle presentation, with small body/eye changes and feet outside the view. This adds a continuous visual reference to the earlier sparse stills but supplies no same-avatar controlled comparison or human preference result.
+
+The movie, acquisition metadata and Swift capture utility remain local review artifacts outside Git. A 30-second Yorishiro diagnostic video was also rendered at 24 frames/s using the same Yori model, light and camera for the procedural baseline and the new recorded-motion system. That video demonstrates the implemented behavior; comparing its motion variety with the short Animates idle sample cannot establish overall superiority.
