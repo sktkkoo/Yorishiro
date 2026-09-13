@@ -93,8 +93,15 @@ describe("MotionDirector", () => {
     }
   });
 
-  it("produces five real ambient variations with dwell time, no repeats, and clip cooldowns", () => {
-    const director = new MotionDirector({ random: createSeededMotionRandom(71) });
+  it("varies a supplied five-clip library with dwell time, no repeats, and clip cooldowns", () => {
+    const catalog = Array.from({ length: 5 }, (_, index) => ({
+      ...DEFAULT_MOTION_CATALOG[0],
+      id: `reviewed-fixture-${index}`,
+      animation: `anim:reviewed-fixture-${index}`,
+      family: `family-${index % 3}`,
+      cooldownMs: 30_000 + index * 5_000,
+    }));
+    const director = new MotionDirector({ catalog, random: createSeededMotionRandom(71) });
     const decisions = advance(director, 600_000);
     expect(decisions.length).toBeGreaterThan(20);
     expect(decisions.length).toBeLessThan(45);
@@ -118,7 +125,7 @@ describe("MotionDirector", () => {
       }
       const previous = previousByAnimation.get(decision.animation);
       if (previous !== undefined) {
-        const clip = DEFAULT_MOTION_CATALOG.find((item) => item.animation === decision.animation);
+        const clip = catalog.find((item) => item.animation === decision.animation);
         expect(decision.selectedAtMs - previous).toBeGreaterThanOrEqual(
           clip?.cooldownMs ?? Infinity,
         );
@@ -227,16 +234,34 @@ describe("MotionDirector", () => {
   });
 
   it("reconsiders changed listening context promptly while preserving no-repeat and priority gates", () => {
-    const director = new MotionDirector({ random: createSeededMotionRandom(7), initialDelayMs: 0 });
+    const availableAnimations = new Set(["anim:VRMA_06_HandOnHip"]);
+    const director = new MotionDirector({
+      availableAnimations,
+      random: createSeededMotionRandom(7),
+      initialDelayMs: 0,
+    });
     const first = director.update(0, idle);
+    expect(first?.animation).toBe("anim:VRMA_06_HandOnHip");
+    availableAnimations.add("anim:Idle");
     director.requestNextIdle(600);
     expect(advance(director, 500, { ...idle, intent: "attentive" })).toEqual([]);
     const listening = advance(director, 100, { ...idle, intent: "attentive" });
     expect(listening).toHaveLength(1);
     expect(listening[0].animation).not.toBe(first?.animation);
-    expect(["anim:Idle", "anim:Idle Watching Something"]).toContain(listening[0].animation);
+    expect(listening[0].animation).toBe("anim:Idle");
     director.requestNextIdle(0);
     expect(advance(director, 5_000, { ...idle, blocked: true })).toEqual([]);
+  });
+
+  it("retains the current quiet listening recording when no safe replacement is eligible", () => {
+    const director = new MotionDirector({ initialDelayMs: 0 });
+    const listening = { ...idle, intent: "attentive" } as const;
+    const first = director.update(0, listening);
+    expect(first?.animation).toBe("anim:Idle");
+    director.requestNextIdle(0);
+    expect(advance(director, 120_000, listening)).toEqual([]);
+    expect(director.getSnapshot().lastDecision).toBe(first);
+    expect(director.getSnapshot().history).toHaveLength(1);
   });
 
   it("omits unavailable or failed assets and backs off when the safe pool is exhausted", () => {
@@ -247,8 +272,13 @@ describe("MotionDirector", () => {
     expect(advance(director, 30_000)).toEqual([]);
     expect(director.getSnapshot().suppressedReason).toBe("cooldown");
     availableAnimations.add("anim:Idle Looking Around");
+    availableAnimations.add("anim:Idle Looking Around 2");
+    availableAnimations.add("anim:Idle Watching Something");
+    availableAnimations.add("/animations/recorded-idle/survey.vrma");
+    expect(advance(director, 30_000)).toEqual([]);
+    availableAnimations.add("anim:VRMA_06_HandOnHip");
     expect(advance(director, 3_000).map((decision) => decision.animation)).toEqual([
-      "anim:Idle Looking Around",
+      "anim:VRMA_06_HandOnHip",
     ]);
   });
 

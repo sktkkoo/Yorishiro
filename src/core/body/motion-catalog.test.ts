@@ -10,12 +10,12 @@ import {
 } from "./motion-catalog";
 
 describe("local semantic motion catalog", () => {
-  it("indexes five distinct standing ambient assets, without prop or performance motions", () => {
+  it("limits automatic idle to the reviewed quiet recordings, keeping the rare survey separate", () => {
     const idle = DEFAULT_MOTION_CATALOG.filter((entry) => entry.contexts.includes("idle"));
-    expect(new Set(idle.map((entry) => entry.animation)).size).toBe(5);
-    expect(idle.map((entry) => entry.animation).join(" ")).not.toMatch(
-      /Gun|Dance|Music|Phone|Wall|Arguing|Pointing|TurnMotion/,
-    );
+    expect(idle.map((entry) => entry.animation).sort()).toEqual([
+      "anim:Idle",
+      "anim:VRMA_06_HandOnHip",
+    ]);
     expect(idle.every((entry) => entry.weight >= 0.85)).toBe(true);
   });
 
@@ -31,7 +31,7 @@ describe("local semantic motion catalog", () => {
       { intent: "neutral", context: "idle" },
       { nowMs: 0, catalog: [...DEFAULT_MOTION_CATALOG, unsafe] },
     );
-    expect(idle).toHaveLength(5);
+    expect(idle).toHaveLength(2);
     expect(idle.every((item) => item.entry.contexts.includes("idle"))).toBe(true);
     expect(idle.some((item) => item.id === "speech-only")).toBe(false);
     expect(
@@ -91,34 +91,43 @@ describe("local semantic motion catalog", () => {
   it("never repeats the last motif and enforces per-clip cooldown across intervening choices", () => {
     const history: MotionHistoryEntry[] = [
       { id: "idle-balance", family: "balance", context: "idle", selectedAtMs: 1_000 },
-      { id: "idle-orient", family: "orient", context: "idle", selectedAtMs: 20_000 },
+      { id: "idle-rest-hand", family: "rest", context: "idle", selectedAtMs: 20_000 },
     ];
     const early = retrieveMotionCandidates(
       { intent: "neutral", context: "idle" },
       { nowMs: 25_000, history },
     );
     expect(early.some((item) => item.id === "idle-balance")).toBe(false);
-    expect(early.some((item) => item.id === "idle-orient")).toBe(false);
+    expect(early.some((item) => item.id === "idle-rest-hand")).toBe(false);
     const later = retrieveMotionCandidates(
       { intent: "neutral", context: "idle" },
-      { nowMs: 61_000, history },
+      { nowMs: 100_000, history },
     );
     expect(later.some((item) => item.id === "idle-balance")).toBe(true);
-    expect(later.some((item) => item.id === "idle-orient")).toBe(false);
+    expect(later.some((item) => item.id === "idle-rest-hand")).toBe(false);
   });
 
   it("reduces same-family sampling weight while preserving semantic ranking", () => {
     const query = { intent: "neutral", context: "idle" } as const;
-    const first = retrieveMotionCandidates(query, { nowMs: 50_000 });
+    const catalog: MotionCatalogEntry[] = [
+      { ...DEFAULT_MOTION_CATALOG[0], id: "first", family: "shared" },
+      { ...DEFAULT_MOTION_CATALOG[0], id: "sibling", family: "shared" },
+      { ...DEFAULT_MOTION_CATALOG[0], id: "other", family: "distinct" },
+    ];
+    const first = retrieveMotionCandidates(query, { nowMs: 50_000, catalog });
     const following = retrieveMotionCandidates(query, {
       nowMs: 50_000,
-      history: [{ id: "idle-orient", family: "orient", context: "idle", selectedAtMs: 40_000 }],
+      catalog,
+      history: [{ id: "first", family: "shared", context: "idle", selectedAtMs: 40_000 }],
     });
-    const original = first.find((item) => item.id === "idle-survey");
-    const penalized = following.find((item) => item.id === "idle-survey");
+    const original = first.find((item) => item.id === "sibling");
+    const penalized = following.find((item) => item.id === "sibling");
     expect(original).toBeDefined();
     expect(penalized?.score).toBe(original?.score);
     expect(penalized?.weight).toBeCloseTo((original?.weight ?? 0) * 0.35);
+    expect(following.find((item) => item.id === "other")?.weight).toBe(
+      first.find((item) => item.id === "other")?.weight,
+    );
   });
 
   it("keeps listening in a quiet attentive pool without scanning or hand-on-hip poses", () => {
@@ -126,11 +135,23 @@ describe("local semantic motion catalog", () => {
       { intent: "attentive", context: "idle" },
       { nowMs: 0 },
     );
-    expect(candidates.map((entry) => entry.animation).sort()).toEqual([
-      "anim:Idle",
-      "anim:Idle Watching Something",
-    ]);
+    expect(candidates.map((entry) => entry.animation)).toEqual(["anim:Idle"]);
     expect(candidates.every((entry) => entry.entry.features[5] <= 0.15)).toBe(true);
+    expect(
+      retrieveMotionCandidates(
+        { intent: "attentive", context: "idle" },
+        {
+          nowMs: 0,
+          availableAnimations: new Set([
+            "anim:VRMA_06_HandOnHip",
+            "anim:Idle Watching Something",
+            "anim:Idle Looking Around",
+            "anim:Idle Looking Around 2",
+            "/animations/recorded-idle/survey.vrma",
+          ]),
+        },
+      ),
+    ).toEqual([]);
   });
 
   it("respects installed asset availability without falling back to excluded motions", () => {
