@@ -1,5 +1,7 @@
 # Recorded motion quality direction: preserve source performance first
 
+The primary implementation decision is [motion-quality-strategy.md](motion-quality-strategy.md). This document supplies source research and measured asset evidence for that direction.
+
 Research checked on 2026-09-14. This is a proposed content and evaluation direction, not a claim that the existing implementation outperforms Animates. The user cites Animates' conversational gestures and music-responsive dance as examples of the expected quality. The first implementation priority remains idle, listening, and conversation with natural full-body timing. Music and dance set a broader quality benchmark; they are not the first feature expansion. Quiet-idle contact improvements alone do not satisfy that goal.
 
 ## Production direction
@@ -25,7 +27,7 @@ Two professional marketplaces need additional care before making a production re
 
 No purchases, new accounts, marketing-form submissions, provider messages, or large dataset downloads were performed during this research.
 
-The existing everyday-idle pack's original source was subsequently recovered from the official page's public [ZIP link](https://media.rokoko.com/EVERYDAY-IDLES-MOCAP.zip): 8,695,149 bytes, SHA-256 `ce239abe239a264cc6567be14a53a973fa719a759095eece0cddb7cc3f16fa37`. Its ten FBX files are available only in the ignored `.motion-review/source-assets/rokoko-everyday-original/` directory, including `Idle_Conversation_Loop_MIXAMO_769_segment-2.fbx` and `Idle_LookingAround_MIXAMO_769.fbx`. Archive paths and file hashes are recorded locally; macOS metadata was excluded, and no files were executed. The archive includes no README or license document, so the official pack page and existing CREDITS remain the recorded license origins. This makes a direct source-versus-conversion audit possible before acquiring different motion content.
+The existing everyday-idle pack's original source was subsequently recovered from the official page's public [ZIP link](https://media.rokoko.com/EVERYDAY-IDLES-MOCAP.zip): 8,695,149 bytes, SHA-256 `ce239abe239a264cc6567be14a53a973fa719a759095eece0cddb7cc3f16fa37`. Its ten FBX files are available only in the ignored `.motion-review/source-assets/rokoko-everyday-original/` directory, including `Idle_Conversation_Loop_MIXAMO_769_segment-2.fbx` and `Idle_LookingAround_MIXAMO_769.fbx`. Archive paths are recorded locally and the [compact source provenance](recorded-motion-source-provenance.json) records all ten FBX hashes; macOS metadata was excluded, and no files were executed. The archive includes no README or license document, so the official pack page and existing CREDITS remain the recorded license origins. This makes a direct source-versus-conversion audit possible before acquiring different motion content.
 
 ## Research datasets are a different category
 
