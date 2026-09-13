@@ -33,7 +33,7 @@ function playback() {
   } satisfies Playback;
 }
 
-function createBody() {
+function createBody(modelSha256?: string) {
   const bones = new Map<VRMHumanBoneName, THREE.Object3D>();
   const scene = new THREE.Object3D();
   const claimed = new Set<ClaimKind>();
@@ -64,7 +64,7 @@ function createBody() {
     lookAt: { yaw: 0, pitch: 0, applier: { applyYawPitch: () => {} } },
     update: () => {},
   } as unknown as VRM;
-  const body = new Body(vrm, undefined, claims);
+  const body = new Body(vrm, undefined, claims, { modelSha256 });
   bodies.push(body);
   return { body, claims, vrm };
 }
@@ -74,6 +74,7 @@ const bodies: Body[] = [];
 afterEach(() => {
   for (const body of bodies.splice(0)) body.dispose();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 async function flush() {
@@ -118,6 +119,46 @@ function cue(overrides: Partial<StateExpressionCue> = {}): StateExpressionCue {
 }
 
 describe("recorded motion Body integration", () => {
+  it("keeps the supporting recording through terminal activities and yields to an animation claim", async () => {
+    const sha = "a".repeat(64);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({
+          schemaVersion: 1,
+          targetModelSha256: sha,
+          units: [
+            {
+              id: "standing",
+              animation: "/animations/recorded-body/standing.vrma",
+              context: "idle",
+              startTimeSec: 2,
+              endTimeSec: 8,
+              contactWindows: [{ startTimeSec: 1, endTimeSec: 10, feet: "both" }],
+            },
+          ],
+        }),
+      })),
+    );
+    vi.spyOn(AnimationPlayer.prototype, "preloadRecordedBase").mockResolvedValue(true);
+    const base = { ...playback(), phaseSec: 2, held: false, setUpperWeight: vi.fn() };
+    vi.spyOn(AnimationPlayer.prototype, "playRecordedBase").mockResolvedValue(base);
+    const { body, claims } = createBody(sha);
+    await body.initializeRecordedBody();
+    for (const state of ["reading", "writing", "running", "thinking", "idle"] as const) {
+      body.setState(state);
+      advance(body, 0.1);
+      expect(body.getRecordedBodySnapshot().active?.id).toBe("standing");
+      expect(base.stop).not.toHaveBeenCalled();
+      expect(base.cancel).not.toHaveBeenCalled();
+    }
+    claims.claim("animation");
+    body.update(1 / 60, 1);
+    expect(base.cancel).toHaveBeenCalledOnce();
+    expect(body.getRecordedBodySnapshot().active).toBeNull();
+  });
+
   it.each([
     3, 25,
   ])("resumes explanation as a real %ss finite gesture finishes, without adding idle settling", async (duration) => {

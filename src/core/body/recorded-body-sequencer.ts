@@ -65,6 +65,7 @@ export class RecordedBodySequencer {
   private upperEnabled = true;
   private allowBaseUpper = true;
   private readonly lastPlayed = new Map<string, number>();
+  private lastRejection: string | null = null;
 
   constructor(
     private readonly player: RecordedBodyPlayer,
@@ -207,12 +208,14 @@ export class RecordedBodySequencer {
           // arms back during listening/speech on every lower-body transition.
           playback.setUpperWeight(this.upperEnabled ? 1 : 0, this.upperEnabled ? 650 : 0);
           this.lastPlayed.set(unit.id, this.elapsedMs);
+          this.lastRejection = null;
           return;
         } catch (error) {
           if (!isCurrent()) return;
           // A contact mismatch is pose-dependent; do not permanently exclude the
           // recording. Missing/invalid clips were screened by prepareOnce.
           if (error instanceof DOMException && error.name === "AbortError") return;
+          this.lastRejection = error instanceof Error ? error.message : String(error);
         }
       }
       this.retryAtMs = this.elapsedMs + 2_000;
@@ -239,6 +242,7 @@ export class RecordedBodySequencer {
       targetModelSha256: this.options.modelSha256 ?? null,
       availableUnits: this.units.length,
       pending: this.pending,
+      lastRejection: this.lastRejection,
       active: this.current
         ? {
             id: this.current.unit.id,

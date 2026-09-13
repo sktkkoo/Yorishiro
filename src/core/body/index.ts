@@ -1351,7 +1351,13 @@ export class Body {
   }
 
   getRecordedBodySnapshot() {
-    return this.recordedBody.getSnapshot();
+    return {
+      ...this.recordedBody.getSnapshot(),
+      activity: this.eyeSystem.state,
+      intensity: this.motionIntensity,
+      animationClaimed: this.claimState.isClaimed("animation"),
+      performanceOwnsBody: this.foundationBlockedByPerformance,
+    };
   }
 
   getMotionDirectorSnapshot(): MotionDirectorSnapshot {
@@ -1403,7 +1409,7 @@ export class Body {
     const activePriority = this.motionScheduler.getActivePriority();
     this.recordedBody.update(
       delta * 1000,
-      allowed &&
+      this.motionLibraryEnabled &&
         !claimed &&
         this.motionIntensity >= 1 &&
         !this.foundationBlockedByPerformance &&
