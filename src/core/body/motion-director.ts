@@ -131,6 +131,14 @@ export class MotionDirector {
     };
   }
 
+  /** Reconsider a changed conversation state without bypassing ownership or history. */
+  requestNextIdle(delayMs = 600): void {
+    const delay = Number.isFinite(delayMs) ? Math.max(0, delayMs) : 600;
+    this.nextDueAtMs = Math.min(this.nextDueAtMs, this.elapsedMs + delay);
+    this.quietUntilMs = 0;
+    this.retryAtMs = 0;
+  }
+
   /** A failed or missing asset must not be retried on every animation frame. */
   excludeAnimation(animation: string): void {
     this.excludedAnimations.add(animation);

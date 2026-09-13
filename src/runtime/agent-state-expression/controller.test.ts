@@ -37,8 +37,9 @@ function setup() {
   const clock = new FakeClock();
   const onCue = vi.fn();
   const onRelease = vi.fn();
+  const onConversationPhaseChange = vi.fn();
   const controller = new RealtimeStateExpressionController(
-    { onCue, onRelease },
+    { onCue, onRelease, onConversationPhaseChange },
     {
       silenceCompletionMs: 400,
       responseCompletionSilenceMs: 1_500,
@@ -46,10 +47,87 @@ function setup() {
     },
     clock,
   );
-  return { clock, controller, onCue, onRelease };
+  return { clock, controller, onCue, onRelease, onConversationPhaseChange };
 }
 
 describe("RealtimeStateExpressionController", () => {
+  it("reports grounded turn phases only on changes, with speaking tied to actual playout", () => {
+    const h = setup();
+    h.controller.onUserSpeechStarted("user-1");
+    h.controller.onTranscriptDelta("user", "質問です");
+    h.controller.onTranscriptDone("user");
+    h.controller.onAssistantResponseBoundary("assistant-1");
+    h.controller.onTranscriptDelta("assistant", "はい。");
+    h.controller.onOutputAudioItem("assistant-1");
+    expect(h.onConversationPhaseChange.mock.calls.flat()).toEqual([
+      "user-speaking",
+      "assistant-responding",
+    ]);
+    h.controller.observeRemoteSpeech(true);
+    for (let i = 0; i < 100; i++) h.controller.observeRemoteSpeech(true);
+    h.controller.onTranscriptDone("assistant");
+    h.clock.advance(400);
+    h.controller.observeRemoteSpeech(false);
+    // Resumable pauses retain the speaking turn, rather than toggling every gap.
+    expect(h.onConversationPhaseChange.mock.calls.flat()).toEqual([
+      "user-speaking",
+      "assistant-responding",
+      "assistant-speaking",
+    ]);
+    h.clock.advance(1_100);
+    expect(h.onConversationPhaseChange).toHaveBeenLastCalledWith("idle");
+    h.controller.cancelAll();
+    h.controller.cancelAll();
+    expect(h.onConversationPhaseChange.mock.calls.flat()).toEqual([
+      "user-speaking",
+      "assistant-responding",
+      "assistant-speaking",
+      "idle",
+      "disconnected",
+    ]);
+  });
+
+  it("does not let interrupted audio or an invalidated response reclaim the conversation phase", () => {
+    const h = setup();
+    h.controller.onAssistantResponseBoundary("assistant-old");
+    h.controller.onTranscriptDelta("assistant", "はい。");
+    h.controller.observeRemoteSpeech(true);
+    h.controller.onUserSpeechStarted("user-1");
+    h.controller.observeRemoteSpeech(true);
+    h.controller.onAssistantResponseBoundary("assistant-old");
+    h.controller.onTranscriptDelta("assistant", "古い返事。");
+    expect(h.onConversationPhaseChange.mock.calls.flat()).toEqual([
+      "assistant-responding",
+      "assistant-speaking",
+      "interrupted",
+      "user-speaking",
+    ]);
+    h.controller.onTranscriptDone("user");
+    h.controller.observeRemoteSpeech(true);
+    expect(h.onConversationPhaseChange).toHaveBeenLastCalledWith("assistant-responding");
+    h.controller.onAssistantResponseBoundary("assistant-new");
+    h.controller.onOutputAudioItem("assistant-new");
+    h.controller.observeRemoteSpeech(true);
+    expect(h.onConversationPhaseChange).toHaveBeenLastCalledWith("assistant-speaking");
+  });
+
+  it("ignores delayed user completion and old response boundaries after the replacement is speaking", () => {
+    const h = setup();
+    h.controller.onAssistantResponseBoundary("assistant-old");
+    h.controller.onTranscriptDelta("assistant", "はい。");
+    h.controller.observeRemoteSpeech(true);
+    h.controller.onUserSpeechStarted("user-1");
+    h.controller.onAssistantResponseBoundary("assistant-new");
+    h.controller.onTranscriptDelta("assistant", "次の返事。");
+    h.controller.onOutputAudioItem("assistant-new");
+    h.controller.observeRemoteSpeech(true);
+    const calls = h.onConversationPhaseChange.mock.calls.length;
+    h.controller.onTranscriptDone("user");
+    h.controller.onAssistantResponseBoundary("assistant-old");
+    expect(h.onConversationPhaseChange).toHaveBeenCalledTimes(calls);
+    expect(h.onConversationPhaseChange).toHaveBeenLastCalledWith("assistant-speaking");
+  });
+
   it("assistant transcriptを変更せずsemantic cueをremote speech clockへ載せる", () => {
     const h = setup();
     const transcript = "はい。";

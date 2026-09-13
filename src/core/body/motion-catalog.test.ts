@@ -79,7 +79,7 @@ describe("local semantic motion catalog", () => {
   });
 
   it("reduces same-family sampling weight while preserving semantic ranking", () => {
-    const query = { intent: "attentive", context: "idle" } as const;
+    const query = { intent: "neutral", context: "idle" } as const;
     const first = retrieveMotionCandidates(query, { nowMs: 50_000 });
     const following = retrieveMotionCandidates(query, {
       nowMs: 50_000,
@@ -90,6 +90,18 @@ describe("local semantic motion catalog", () => {
     expect(original).toBeDefined();
     expect(penalized?.score).toBe(original?.score);
     expect(penalized?.weight).toBeCloseTo((original?.weight ?? 0) * 0.35);
+  });
+
+  it("keeps listening in a quiet attentive pool without scanning or hand-on-hip poses", () => {
+    const candidates = retrieveMotionCandidates(
+      { intent: "attentive", context: "idle" },
+      { nowMs: 0 },
+    );
+    expect(candidates.map((entry) => entry.animation).sort()).toEqual([
+      "anim:Idle",
+      "anim:Idle Watching Something",
+    ]);
+    expect(candidates.every((entry) => entry.entry.features[5] <= 0.15)).toBe(true);
   });
 
   it("respects installed asset availability without falling back to excluded motions", () => {

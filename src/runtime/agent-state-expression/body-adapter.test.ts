@@ -41,11 +41,29 @@ afterEach(() => {
 });
 
 describe("createBodyStateExpressionAdapter", () => {
+  it("forwards grounded conversation phase changes without requesting a speech gesture", () => {
+    const body = {
+      setMotionConversationPhase: vi.fn(),
+      acquireSemanticMotion: vi.fn(() => null),
+      acquireSpeechStateExpression: vi.fn(() => stateHandle()),
+    };
+    const adapter = createBodyStateExpressionAdapter(() => body);
+    adapter.onConversationPhaseChange?.("user-speaking");
+    adapter.onConversationPhaseChange?.("assistant-responding");
+    expect(body.setMotionConversationPhase.mock.calls.flat()).toEqual([
+      "user-speaking",
+      "assistant-responding",
+    ]);
+    expect(body.acquireSemanticMotion).not.toHaveBeenCalled();
+    expect(body.acquireSpeechStateExpression).not.toHaveBeenCalled();
+  });
+
   it("continues the current gesture when a cue update is intentionally declined by the director", () => {
     const motion = motionHandle();
     const firstState = stateHandle();
     const secondState = stateHandle();
     const body = {
+      setMotionConversationPhase: vi.fn(),
       acquireSemanticMotion: vi
         .fn<() => MotionHandle | null>()
         .mockReturnValueOnce(motion)
@@ -72,10 +90,12 @@ describe("createBodyStateExpressionAdapter", () => {
   it("does not transfer an old gesture into a replacement Body when no new gesture is selected", () => {
     const motion = motionHandle();
     const firstBody = {
+      setMotionConversationPhase: vi.fn(),
       acquireSemanticMotion: vi.fn(() => motion),
       acquireSpeechStateExpression: vi.fn(() => stateHandle()),
     };
     const secondBody = {
+      setMotionConversationPhase: vi.fn(),
       acquireSemanticMotion: vi.fn(() => null),
       acquireSpeechStateExpression: vi.fn(() => stateHandle()),
     };
@@ -95,6 +115,7 @@ describe("createBodyStateExpressionAdapter", () => {
     "emphasize",
   ] as const)("passes %s through to the semantic director with no animation alias collapse", (gestureIntent) => {
     const body = {
+      setMotionConversationPhase: vi.fn(),
       acquireSemanticMotion: vi.fn(() => motionHandle()),
       acquireSpeechStateExpression: vi.fn(() => stateHandle()),
     };
@@ -117,6 +138,7 @@ describe("createBodyStateExpressionAdapter", () => {
   it("still owns and releases the expression when the director declines a repeated gesture", () => {
     const state = stateHandle();
     const body = {
+      setMotionConversationPhase: vi.fn(),
       acquireSemanticMotion: vi.fn(() => null),
       acquireSpeechStateExpression: vi.fn(() => state),
     };
@@ -131,6 +153,7 @@ describe("createBodyStateExpressionAdapter", () => {
     const motion = motionHandle();
     const state = stateHandle();
     const body = {
+      setMotionConversationPhase: vi.fn(),
       acquireSemanticMotion: vi.fn(() => motion),
       acquireSpeechStateExpression: vi.fn(() => state),
     };
@@ -163,6 +186,7 @@ describe("createBodyStateExpressionAdapter", () => {
     const firstState = stateHandle();
     const secondState = stateHandle();
     const body = {
+      setMotionConversationPhase: vi.fn(),
       acquireSemanticMotion: vi.fn(() => firstMotion),
       acquireSpeechStateExpression: vi
         .fn<() => SpeechStateExpressionHandle>()
@@ -192,6 +216,7 @@ describe("createBodyStateExpressionAdapter", () => {
     const motion = motionHandle();
     const state = stateHandle();
     const body = {
+      setMotionConversationPhase: vi.fn(),
       acquireSemanticMotion: vi.fn(() => motion),
       acquireSpeechStateExpression: vi.fn(() => state),
     };
@@ -212,6 +237,7 @@ describe("createBodyStateExpressionAdapter", () => {
   it("keeps a grounded low-salience profile even without a mood or gesture", () => {
     const state = stateHandle();
     const body = {
+      setMotionConversationPhase: vi.fn(),
       acquireSemanticMotion: vi.fn(),
       acquireSpeechStateExpression: vi.fn(() => state),
     };
@@ -240,6 +266,7 @@ describe("createBodyStateExpressionAdapter", () => {
     const firstState = stateHandle();
     const secondState = stateHandle();
     const body = {
+      setMotionConversationPhase: vi.fn(),
       acquireSemanticMotion: vi.fn(),
       acquireSpeechStateExpression: vi
         .fn<() => SpeechStateExpressionHandle>()

@@ -112,6 +112,19 @@ describe("MotionDirector", () => {
     expect(director.getSnapshot().lastDecision?.context).toBe("idle");
   });
 
+  it("reconsiders changed listening context promptly while preserving no-repeat and priority gates", () => {
+    const director = new MotionDirector({ random: createSeededMotionRandom(7), initialDelayMs: 0 });
+    const first = director.update(0, idle);
+    director.requestNextIdle(600);
+    expect(advance(director, 500, { ...idle, intent: "attentive" })).toEqual([]);
+    const listening = advance(director, 100, { ...idle, intent: "attentive" });
+    expect(listening).toHaveLength(1);
+    expect(listening[0].animation).not.toBe(first?.animation);
+    expect(["anim:Idle", "anim:Idle Watching Something"]).toContain(listening[0].animation);
+    director.requestNextIdle(0);
+    expect(advance(director, 5_000, { ...idle, blocked: true })).toEqual([]);
+  });
+
   it("omits unavailable or failed assets and backs off when the safe pool is exhausted", () => {
     const availableAnimations = new Set(["anim:Idle"]);
     const director = new MotionDirector({ initialDelayMs: 0, availableAnimations });

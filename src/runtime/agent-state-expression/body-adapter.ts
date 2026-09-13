@@ -4,7 +4,10 @@ import type { SpeechMicroexpressionParams } from "../../core/body/speech-microex
 import type { StateExpressionSchedulerCallbacks } from "./scheduler";
 import type { GroundedAgentState, StateExpressionCue } from "./types";
 
-type StateExpressionBody = Pick<Body, "acquireSemanticMotion" | "acquireSpeechStateExpression">;
+type StateExpressionBody = Pick<
+  Body,
+  "acquireSemanticMotion" | "acquireSpeechStateExpression" | "setMotionConversationPhase"
+>;
 
 interface OwnedStateExpression {
   readonly body: StateExpressionBody;
@@ -43,6 +46,7 @@ export function createBodyStateExpressionAdapter(
   };
 
   return {
+    onConversationPhaseChange: (phase) => getBody()?.setMotionConversationPhase(phase),
     onCue: (cue) => {
       const body = getBody();
       if (!body) {

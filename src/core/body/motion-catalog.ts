@@ -73,7 +73,7 @@ export const DEFAULT_MOTION_CATALOG: readonly MotionCatalogEntry[] = [
     animation: "anim:Idle Looking Around",
     family: "orient",
     contexts: ["idle"],
-    intents: IDLE_INTENTS,
+    intents: ["neutral", "relaxed", "thinking"],
     features: [0.7, 1, 0.4, 0.1, 0, 0.32],
     weight: 0.86,
     speed: 0.85,
@@ -84,7 +84,7 @@ export const DEFAULT_MOTION_CATALOG: readonly MotionCatalogEntry[] = [
     animation: "anim:Idle Looking Around 2",
     family: "orient",
     contexts: ["idle"],
-    intents: IDLE_INTENTS,
+    intents: ["neutral", "relaxed", "thinking"],
     features: [0.8, 0.85, 0.6, 0.1, 0, 0.24],
     weight: 0.86,
     speed: 0.82,
@@ -224,11 +224,15 @@ export function retrieveMotionCandidates(
     const age = previous ? Math.max(0, options.nowMs - previous.selectedAtMs) : Infinity;
     const recencyWeight = Math.min(1, 0.5 + age / 120_000);
     const familyWeight = last?.family === entry.family ? 0.35 : 1;
+    const energyWeight =
+      query.intent === "attentive" || query.intent === "thinking"
+        ? 1 / (1 + Math.max(0, entry.features[5] - features[5]) * 8)
+        : 1;
     candidates.push({
       id: entry.id,
       animation: entry.animation,
       score,
-      weight: score ** 4 * recencyWeight * familyWeight,
+      weight: score ** 4 * recencyWeight * familyWeight * energyWeight,
       entry,
     });
   }

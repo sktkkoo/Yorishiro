@@ -154,7 +154,7 @@ describe("recorded motion Body integration", () => {
     expect(body.prepareMotionLibrary()).toBe(first);
     await first;
     expect(preload).toHaveBeenCalledTimes(DEFAULT_MOTION_CATALOG.length);
-    expect(preload).toHaveBeenCalledWith("anim:Idle", { mask: "upper-body" });
+    expect(preload).toHaveBeenCalledWith("anim:Idle", { mask: "upper-body", loop: true });
     advance(body, 1.3);
     await flush();
     expect(play).toHaveBeenCalledOnce();
@@ -185,6 +185,61 @@ describe("recorded motion Body integration", () => {
     expect(preload).toHaveBeenCalledOnce();
     advance(body, 5);
     expect(play).not.toHaveBeenCalled();
+  });
+
+  it("replaces ambient scanning with an attentive recording on user speech, then reconsiders thinking", async () => {
+    vi.spyOn(AnimationPlayer.prototype, "preload").mockResolvedValue(true);
+    const play = vi
+      .spyOn(AnimationPlayer.prototype, "play")
+      .mockImplementation(async () => playback());
+    const { body } = createBody();
+    await body.prepareMotionLibrary();
+    advance(body, 1.3);
+    await flush();
+    body.setMotionConversationPhase("user-speaking");
+    advance(body, 0.7);
+    await flush();
+    expect(play).toHaveBeenCalledTimes(2);
+    expect(body.getMotionDirectorSnapshot().lastDecision?.intent).toBe("attentive");
+    expect(["anim:Idle", "anim:Idle Watching Something"]).toContain(play.mock.calls[1][0]);
+    body.setMotionConversationPhase("user-speaking");
+    advance(body, 0.7);
+    expect(play).toHaveBeenCalledTimes(2);
+    body.setMotionConversationPhase("assistant-responding");
+    advance(body, 0.7);
+    expect(play).toHaveBeenCalledTimes(3);
+    expect(body.getMotionDirectorSnapshot().lastDecision?.intent).toBe("thinking");
+  });
+
+  it("lets speaking own motion, releases it on interruption, and preserves explicit persona priority", async () => {
+    vi.spyOn(AnimationPlayer.prototype, "preload").mockResolvedValue(true);
+    const speechPlayback = playback();
+    const personaPlayback = playback();
+    const play = vi
+      .spyOn(AnimationPlayer.prototype, "play")
+      .mockResolvedValueOnce(speechPlayback)
+      .mockResolvedValueOnce(personaPlayback);
+    const { body } = createBody();
+    await body.prepareMotionLibrary();
+    body.setMotionConversationPhase("assistant-speaking");
+    advance(body, 30);
+    expect(play).not.toHaveBeenCalled();
+    const speech = body.acquireSemanticMotion(speechRequest);
+    await flush();
+    body.setMotionConversationPhase("interrupted");
+    expect(speechPlayback.stop).toHaveBeenCalledWith(250);
+    expect(speech?.isActive()).toBe(false);
+    const persona = body.acquireMotionSlot({
+      source: "persona",
+      priority: "persona-handler",
+      animation: "anim:persona-owned",
+    });
+    await flush();
+    body.setMotionConversationPhase("user-speaking");
+    advance(body, 10);
+    expect(personaPlayback.stop).not.toHaveBeenCalled();
+    expect(persona.isActive()).toBe(true);
+    expect(play).toHaveBeenCalledTimes(2);
   });
 
   it("yields immediately to an animation claim and protects semantic selection history", async () => {
