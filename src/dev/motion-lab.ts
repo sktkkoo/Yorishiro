@@ -8,6 +8,7 @@ import {
   type MotionIntent,
 } from "../core/body/motion-catalog";
 import { applyVrmRestPose } from "../core/body/vrm-rest-pose";
+import { MotionLabSpeech } from "./motion-lab-speech";
 
 function element<T extends HTMLElement>(id: string): T {
   const found = document.getElementById(id);
@@ -42,6 +43,7 @@ let manual = false;
 let nextSample = 0;
 const status = element("status");
 const point = new THREE.Vector3();
+let speech: MotionLabSpeech | null = null;
 
 async function createLane(id: string, recorded: boolean): Promise<Lane> {
   const canvas = element<HTMLCanvasElement>(id);
@@ -156,6 +158,7 @@ function gesture(intent: MotionIntent): void {
 }
 
 function speaking(): void {
+  speech?.stop();
   for (const lane of lanes) {
     lane.body.setState("idle");
     lane.body.setMotionConversationPhase("assistant-speaking");
@@ -163,6 +166,7 @@ function speaking(): void {
 }
 
 function listening(): void {
+  speech?.stop();
   for (const lane of lanes) {
     lane.body.setState("idle");
     lane.body.setMotionConversationPhase("user-speaking");
@@ -170,6 +174,7 @@ function listening(): void {
 }
 
 async function step(seconds: number): Promise<void> {
+  speech?.stop("Speech stopped for deterministic stepping");
   manual = true;
   paused = true;
   const duration = Math.max(0, Math.min(600, seconds));
@@ -186,6 +191,7 @@ function observations() {
     kind: "yorishiro-motion-lab-diagnostic",
     elapsedSeconds: elapsed,
     seed: 738,
+    speech: speech?.snapshot(),
     baseline: { samples: lanes[0]?.samples },
     recorded: { director: lanes[1]?.body.getMotionDirectorSnapshot(), samples: lanes[1]?.samples },
     limitation:
@@ -194,6 +200,7 @@ function observations() {
 }
 
 async function playClip(animation: string, matched = true): Promise<void> {
+  speech?.stop();
   lanes[1]?.body.acquireMotionSlot({
     source: "mcp",
     priority: "mcp-conscious",
@@ -219,6 +226,7 @@ Object.assign(window, {
     playClip,
     observations,
     pause: () => {
+      speech?.stop("Speech stopped while the lab is paused");
       paused = true;
     },
   },
@@ -227,6 +235,27 @@ Object.assign(window, {
 async function start(): Promise<void> {
   lanes.push(await createLane("baseline", false));
   lanes.push(await createLane("recorded", true));
+  speech = new MotionLabSpeech(
+    lanes.map((lane) => lane.body),
+    (state) => {
+      element("speech-status").textContent = state.message;
+      element("speech-text").textContent = state.text;
+      element<HTMLButtonElement>("stop-speech").disabled =
+        state.status !== "playing" && state.status !== "loading";
+    },
+  );
+  element<HTMLButtonElement>("play-speech").disabled = false;
+  element("play-speech").onclick = () => {
+    paused = false;
+    manual = false;
+    element("pause").textContent = "Pause";
+    for (const lane of lanes) {
+      lane.body.createCharacterAPI().interrupt("local-speech-review");
+      lane.body.setState("idle");
+    }
+    void speech?.play();
+  };
+  element("stop-speech").onclick = () => speech?.stop();
   const select = element<HTMLSelectElement>("clip");
   for (const entry of DEFAULT_MOTION_CATALOG) {
     const option = document.createElement("option");
@@ -235,10 +264,13 @@ async function start(): Promise<void> {
     select.append(option);
   }
   element("pause").onclick = () => {
+    speech?.stop("Speech stopped while changing playback mode");
     paused = !paused;
     manual = false;
+    element("pause").textContent = paused ? "Play" : "Pause";
   };
   element("idle").onclick = () => {
+    speech?.stop();
     for (const lane of lanes) {
       lane.body.setState("idle");
       lane.body.setMotionConversationPhase("idle");
@@ -247,13 +279,18 @@ async function start(): Promise<void> {
   element("listening").onclick = listening;
   element("speaking").onclick = speaking;
   element("thinking").onclick = () => {
+    speech?.stop();
     for (const lane of lanes) {
       lane.body.setState("thinking");
       lane.body.setMotionConversationPhase("assistant-responding");
     }
   };
   element("interrupt").onclick = () => {
-    for (const lane of lanes) lane.body.createCharacterAPI().interrupt("motion-lab");
+    speech?.stop("Speech interrupted");
+    for (const lane of lanes) {
+      lane.body.setMotionConversationPhase("interrupted");
+      lane.body.createCharacterAPI().interrupt("motion-lab");
+    }
   };
   element("play-clip").onclick = () => {
     void playClip(select.value);
@@ -275,12 +312,25 @@ async function start(): Promise<void> {
   status.textContent = "Ready · same avatar / lighting / camera · local assets";
   let previous = performance.now();
   const frame = (now: number) => {
-    if (!paused && !manual) advance(Math.min((now - previous) / 1000, 1 / 15));
+    const delta = Math.max(0, (now - previous) / 1000);
+    speech?.sampleFrame();
+    if (!paused && !manual) {
+      if (speech?.isBusy() && delta > 0.25) {
+        // A suspended/overloaded tab cannot truthfully replay delayed gestures
+        // against audio that has already advanced. Stop and let the user restart.
+        speech.stop("Speech stopped after a browser delay; press Play to restart");
+        advance(1 / 60);
+      } else if (speech?.isBusy()) {
+        const frames = Math.ceil(delta * 60);
+        for (let i = 0; i < frames; i++) advance(Math.min(1 / 60, delta - i / 60));
+      } else advance(Math.min(delta, 1 / 15));
+    }
     previous = now;
     render();
     requestAnimationFrame(frame);
   };
   requestAnimationFrame(frame);
+  window.addEventListener("pagehide", () => speech?.dispose(), { once: true });
 }
 
 void start().catch((error: unknown) => {
