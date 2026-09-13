@@ -180,6 +180,70 @@ describe("recorded motion Body integration", () => {
     expect(persona.isActive()).toBe(true);
   });
 
+  it("applies reduced motion to prepared idle clips and updates the current clip's gain", async () => {
+    vi.spyOn(AnimationPlayer.prototype, "preload").mockResolvedValue(true);
+    const active = playback();
+    const play = vi.spyOn(AnimationPlayer.prototype, "play").mockResolvedValue(active);
+    const { body } = createBody();
+    await body.prepareMotionLibrary();
+    body.setMotionIntensity(0);
+    expect(body.acquireSemanticMotion(speechRequest)).toBeNull();
+    advance(body, 30);
+    expect(play).not.toHaveBeenCalled();
+    body.setMotionIntensity(0.25);
+    advance(body, 1.3);
+    await flush();
+    expect(play).toHaveBeenCalledOnce();
+    expect(play.mock.calls[0][1]?.weight).toBeLessThanOrEqual(0.25);
+    body.setMotionIntensity(0.5);
+    const baseWeight = body.getMotionDirectorSnapshot().lastDecision?.options.weight ?? 0;
+    expect(active.setWeight).toHaveBeenCalledWith(baseWeight * 0.5, 350);
+  });
+
+  it("disabling the library releases owned speech motion while leaving explicit persona motion alone", async () => {
+    vi.spyOn(AnimationPlayer.prototype, "preload").mockResolvedValue(true);
+    const speech = playback();
+    const personaPlayback = playback();
+    vi.spyOn(AnimationPlayer.prototype, "play")
+      .mockResolvedValueOnce(speech)
+      .mockResolvedValueOnce(personaPlayback);
+    const { body } = createBody();
+    await body.prepareMotionLibrary();
+    const handle = body.acquireSemanticMotion(speechRequest);
+    await flush();
+    body.setMotionLibraryEnabled(false);
+    expect(speech.stop).toHaveBeenCalledWith(500);
+    expect(handle?.isActive()).toBe(false);
+    expect(body.acquireSemanticMotion(speechRequest)).toBeNull();
+    const persona = body.acquireMotionSlot({
+      source: "persona",
+      priority: "persona-handler",
+      animation: "anim:persona-owned",
+    });
+    await flush();
+    body.setMotionLibraryEnabled(false);
+    expect(personaPlayback.stop).not.toHaveBeenCalled();
+    expect(persona.isActive()).toBe(true);
+  });
+
+  it("invalidates a pending semantic load when an external animation claim arrives", async () => {
+    vi.spyOn(AnimationPlayer.prototype, "preload").mockResolvedValue(true);
+    const pending = deferred<Playback>();
+    const play = vi.spyOn(AnimationPlayer.prototype, "play").mockReturnValue(pending.promise);
+    const { body, claims } = createBody();
+    await body.prepareMotionLibrary();
+    const handle = body.acquireSemanticMotion(speechRequest);
+    expect(play.mock.calls[0][1]?.isCurrent?.()).toBe(true);
+    claims.claim("animation");
+    expect(play.mock.calls[0][1]?.isCurrent?.()).toBe(false);
+    advance(body, 1 / 60);
+    const late = playback();
+    pending.resolve(late);
+    await flush();
+    expect(late.cancel).toHaveBeenCalledOnce();
+    await expect(handle?.completion).resolves.toEqual({ reason: "cancelled" });
+  });
+
   it("keeps the outgoing clip while a replacement loads, then cancels both when ownership ends", async () => {
     const outgoing = playback();
     const incoming = playback();
@@ -292,5 +356,24 @@ describe("recorded motion Body integration", () => {
     expect(body.getMotionSnapshot().active?.priority).toBe("speech-expression");
     adapter.onRelease("u1", "completed");
     expect(active.stop).toHaveBeenCalledWith(180);
+  });
+
+  it("resumes a recorded idle shortly after a finite speech gesture is released", async () => {
+    vi.spyOn(AnimationPlayer.prototype, "preload").mockResolvedValue(true);
+    const play = vi
+      .spyOn(AnimationPlayer.prototype, "play")
+      .mockImplementation(async () => playback());
+    const { body } = createBody();
+    await body.prepareMotionLibrary();
+    const adapter = createBodyStateExpressionAdapter(() => body);
+    adapter.onCue(cue(), { scheduledForMs: 0, firedAtMs: 0, lateByMs: 0 });
+    await flush();
+    advance(body, 1);
+    adapter.onRelease("u1", "completed");
+    await flush();
+    advance(body, 2.6);
+    expect(play).toHaveBeenCalledTimes(2);
+    expect(play.mock.calls[1][1]).toMatchObject({ loop: true, transition: "matched" });
+    expect(body.getMotionSnapshot().active?.priority).toBe("idle-fidget");
   });
 });

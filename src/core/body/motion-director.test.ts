@@ -103,6 +103,15 @@ describe("MotionDirector", () => {
     expect(advance(director, 2_400)).toEqual([]);
   });
 
+  it("returns to a recorded idle after speech settles instead of waiting an entire ambient dwell", () => {
+    const director = new MotionDirector({ random: createSeededMotionRandom(42) });
+    director.request({ intent: "agree", context: "speech" });
+    expect(advance(director, 10_000, { ...idle, context: "speech" })).toEqual([]);
+    expect(advance(director, 2_400)).toEqual([]);
+    expect(advance(director, 100)).toHaveLength(1);
+    expect(director.getSnapshot().lastDecision?.context).toBe("idle");
+  });
+
   it("omits unavailable or failed assets and backs off when the safe pool is exhausted", () => {
     const availableAnimations = new Set(["anim:Idle"]);
     const director = new MotionDirector({ initialDelayMs: 0, availableAnimations });

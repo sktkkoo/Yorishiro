@@ -161,7 +161,10 @@ export class MotionDirector {
     const intensity = Number.isFinite(query.intensity)
       ? Math.max(0, Math.min(1, query.intensity ?? 0.5))
       : 0.5;
-    const dwellMs = 12_000 + this.unitRandom() * 13_000;
+    // A short finite gesture must not leave the body without a recorded idle
+    // for an entire 12–25 second ambient dwell after the utterance ends.
+    // While speech remains active, Body's blocked context extends this handoff.
+    const dwellMs = speech ? 2_500 : 12_000 + this.unitRandom() * 13_000;
     // Occasional extra stillness prevents metronomic switching, without stopping
     // the current loop. The normal dwell window remains 12–25 seconds.
     const quietMs = !speech && this.unitRandom() < 0.2 ? 1_000 + this.unitRandom() * 2_000 : 0;
