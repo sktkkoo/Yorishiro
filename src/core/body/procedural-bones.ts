@@ -78,6 +78,13 @@ export class ProceduralBones {
   private headRotationAfterApplyZ = 0;
   private headRotationApplied = false;
   private restPose: VrmRestPose | null = null;
+  private readonly clipOverlays: Array<{
+    bone: THREE.Object3D;
+    base: THREE.Quaternion;
+    applied: THREE.Quaternion;
+    rest: THREE.Quaternion;
+    dirty: boolean;
+  }> = [];
 
   // BreathingSystem からの胸郭・肩オフセット（毎フレーム Body が供給）。
   // spine sway / arm sway と同じ bone に加算合成するためここで適用する。
@@ -179,6 +186,42 @@ export class ProceduralBones {
     this.leftUpperArm = h.getNormalizedBoneNode("leftUpperArm");
     this.rightUpperArm = h.getNormalizedBoneNode("rightUpperArm");
     this.restPose = createVrmRestPose(vrm);
+    this.clipOverlays.length = 0;
+    for (const bone of [this.spineBone, this.leftUpperArm, this.rightUpperArm]) {
+      if (!bone) continue;
+      const rest = bone.quaternion.clone();
+      const pose =
+        bone === this.leftUpperArm
+          ? this.restPose.leftArm
+          : bone === this.rightUpperArm
+            ? this.restPose.rightArm
+            : null;
+      if (pose) {
+        const rotation = bone.rotation.clone();
+        rotation.x = pose.upperArmX;
+        rotation.z = pose.upperArmZ;
+        rest.setFromEuler(rotation);
+      }
+      this.clipOverlays.push({
+        bone,
+        base: rest.clone(),
+        applied: rest.clone(),
+        rest,
+        dirty: false,
+      });
+    }
+  }
+
+  /** Remove our overlays before mixer evaluation or original-pose capture. */
+  restoreBaseRotations(): void {
+    this.restoreHeadBaseRotation();
+    for (const overlay of this.clipOverlays) {
+      // An action stop or an external owner may already have replaced our write.
+      if (overlay.dirty && 1 - Math.abs(overlay.bone.quaternion.dot(overlay.applied)) < 1e-12) {
+        overlay.bone.quaternion.copy(overlay.base);
+      }
+      overlay.dirty = false;
+    }
   }
 
   setHeadLookAtOffset(yawRad: number, pitchRad: number): void {
@@ -247,7 +290,11 @@ export class ProceduralBones {
    * `weight` is used to blend with VRMA animations (1.0 = full procedural).
    */
   update(delta: number, elapsed: number, weight = 1.0): void {
-    const w = weight;
+    const w = Math.max(0, Math.min(1, weight));
+    this.restoreBaseRotations();
+    for (const overlay of this.clipOverlays) {
+      overlay.base.copy(w === 1 ? overlay.rest : overlay.bone.quaternion);
+    }
     this.statePose.update(delta);
     const swayGain = motionGain(this.intensity, "sway");
     const headGain = motionGain(this.intensity, "head");
@@ -289,9 +336,11 @@ export class ProceduralBones {
     }
 
     if (this.spineBone && w >= 0.001) {
-      this.spineBone.rotation.z = (this.swaySpringZ.pos + this.postureLeanZ) * w;
+      const baseZ = w === 1 ? 0 : this.spineBone.rotation.z;
+      const baseX = w === 1 ? 0 : this.spineBone.rotation.x;
+      this.spineBone.rotation.z = baseZ + (this.swaySpringZ.pos + this.postureLeanZ) * w;
       this.spineBone.rotation.x =
-        (this.swaySpringX.pos + this.breathChestPitch + this.statePose.spinePitch) * w;
+        baseX + (this.swaySpringX.pos + this.breathChestPitch + this.statePose.spinePitch) * w;
     }
 
     // ── Head drift ──────────────────────────────────────
@@ -338,8 +387,10 @@ export class ProceduralBones {
       const appliedPitchX =
         this.headLookAtCurrentX + restPitchX + flinchX - headArc + this.statePose.headPitch * w;
       if (w >= 0.001) {
-        this.headBone.rotation.z = this.headSpringZ.pos * w;
-        this.headBone.rotation.y = this.headSpringY.pos * w;
+        this.headBone.rotation.z =
+          (w === 1 ? 0 : this.headBone.rotation.z) + this.headSpringZ.pos * w;
+        this.headBone.rotation.y =
+          (w === 1 ? 0 : this.headBone.rotation.y) + this.headSpringY.pos * w;
       }
       this.headBone.rotation.x += appliedPitchX;
       this.headBone.rotation.y += this.headLookAtCurrentY;
@@ -362,13 +413,23 @@ export class ProceduralBones {
     // 呼吸の肩上げは左右ミラー（吸気で両肩がわずかに開く / 上がる）。
     if (this.leftUpperArm && restPose && w >= 0.001) {
       this.leftUpperArm.rotation.z =
-        restPose.leftArm.upperArmZ + (this.armSpringLeftZ.pos + this.breathShoulderLift) * w;
-      this.leftUpperArm.rotation.x = restPose.leftArm.upperArmX + this.armSpringLeftX.pos * w;
+        (w === 1 ? restPose.leftArm.upperArmZ : this.leftUpperArm.rotation.z) +
+        (this.armSpringLeftZ.pos + this.breathShoulderLift) * w;
+      this.leftUpperArm.rotation.x =
+        (w === 1 ? restPose.leftArm.upperArmX : this.leftUpperArm.rotation.x) +
+        this.armSpringLeftX.pos * w;
     }
     if (this.rightUpperArm && restPose && w >= 0.001) {
       this.rightUpperArm.rotation.z =
-        restPose.rightArm.upperArmZ + (this.armSpringRightZ.pos - this.breathShoulderLift) * w;
-      this.rightUpperArm.rotation.x = restPose.rightArm.upperArmX + this.armSpringRightX.pos * w;
+        (w === 1 ? restPose.rightArm.upperArmZ : this.rightUpperArm.rotation.z) +
+        (this.armSpringRightZ.pos - this.breathShoulderLift) * w;
+      this.rightUpperArm.rotation.x =
+        (w === 1 ? restPose.rightArm.upperArmX : this.rightUpperArm.rotation.x) +
+        this.armSpringRightX.pos * w;
+    }
+    for (const overlay of this.clipOverlays) {
+      overlay.applied.copy(overlay.bone.quaternion);
+      overlay.dirty = w >= 0.001;
     }
   }
 }
