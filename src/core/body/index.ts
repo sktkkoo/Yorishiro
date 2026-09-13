@@ -109,6 +109,14 @@ export interface LipSyncSource {
   sampleMouth(out?: MouthValues): MouthValues;
 }
 
+export type MotionConversationPhase =
+  | "idle"
+  | "user-speaking"
+  | "assistant-responding"
+  | "assistant-speaking"
+  | "interrupted"
+  | "disconnected";
+
 export interface SpeechStateExpressionRequest {
   readonly preset?: string;
   readonly intensity?: number;
@@ -248,6 +256,7 @@ export class Body {
   private readonly semanticMotionHandles = new Set<SdkMotionHandle>();
   private disposed = false;
   private motionIntensity = 1;
+  private motionConversationPhase: MotionConversationPhase = "idle";
   private readonly ambientMotionContext = {
     enabled: true,
     context: "idle" as const,
@@ -1154,7 +1163,12 @@ export class Body {
     this.motionLibraryLoad = (async () => {
       for (const entry of DEFAULT_MOTION_CATALOG) {
         if (this.disposed) return;
-        if (await this.animationPlayer.preload(entry.animation, { mask: "upper-body" })) {
+        if (
+          await this.animationPlayer.preload(entry.animation, {
+            mask: "upper-body",
+            loop: entry.contexts.includes("idle"),
+          })
+        ) {
           this.availableMotions.add(entry.animation);
         } else {
           this.motionDirector.excludeAnimation(entry.animation);
@@ -1216,6 +1230,20 @@ export class Body {
     return this.motionDirector.getSnapshot();
   }
 
+  /** Conversation boundaries shape listening and thinking without waiting for text tags. */
+  setMotionConversationPhase(phase: MotionConversationPhase): void {
+    if (phase === this.motionConversationPhase || this.disposed) return;
+    this.motionConversationPhase = phase;
+    this.motionDirector.requestNextIdle(phase === "interrupted" ? 1_200 : 600);
+    if (phase === "interrupted") {
+      this.ambientMotionHandle?.release(650);
+      this.ambientMotionHandle = null;
+    }
+    if (phase === "interrupted" || phase === "disconnected" || phase === "user-speaking") {
+      for (const handle of this.semanticMotionHandles) handle.release(250);
+    }
+  }
+
   private updateAmbientMotion(delta: number, claimed: boolean): void {
     if (claimed) {
       for (const handle of this.semanticMotionHandles) handle.cancel();
@@ -1234,11 +1262,18 @@ export class Body {
     const blocked =
       claimed ||
       (activePriority !== null && activePriority !== "idle-fidget") ||
+      this.motionConversationPhase === "assistant-speaking" ||
       this.speechStateExpressionLayers.size > 0 ||
       (this.lipSyncSource?.isMouthActive?.() ?? this.lipSyncSource !== null);
     this.ambientMotionContext.enabled = allowed;
     this.ambientMotionContext.intent =
-      state === "thinking" ? "thinking" : this.relaxedValue > 0.2 ? "relaxed" : "neutral";
+      this.motionConversationPhase === "user-speaking"
+        ? "attentive"
+        : state === "thinking" || this.motionConversationPhase === "assistant-responding"
+          ? "thinking"
+          : this.relaxedValue > 0.2
+            ? "relaxed"
+            : "neutral";
     this.ambientMotionContext.blocked = blocked;
     const decision = this.motionDirector.update(delta * 1000, this.ambientMotionContext);
     if (!decision) return;
