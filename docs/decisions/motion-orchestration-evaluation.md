@@ -1,7 +1,7 @@
 # Recorded motion orchestration and comparative evaluation
 
 **Status**: implementation guidance; comparison with Animates pending  
-**Last updated**: 2026-09-13
+**Last updated**: 2026-09-14
 
 2026-09-14 update: the [quality strategy](motion-quality-strategy.md) supersedes an Idle-only interpretation of the comparison. The user's Animates example includes expressive conversational arms and dancing in time with music playing on the PC. Music detection/dancing is a reference for contextual timing and full-body quality, not the first required Yorishiro feature. Prioritize original-recording fidelity and Idle/listening/conversation handoffs before extending feature count.
 
@@ -143,3 +143,34 @@ The movie, acquisition metadata and Swift capture utility remain local review ar
 Two planned five-minute, window-only recordings were stopped by macOS. The first ended at roughly 150 seconds without a finalized movie, and its beginning overlapped a local browser-rendering task; it is not a valid benchmark. The second used the same exact Animates window filter with no concurrent intensive rendering. It was stopped by the system after 195.092 seconds (`SCStreamErrorDomain`, `-3821`), but the recorder finalized the acquired 4,432 frames into a valid silent 578 × 1156 movie. Metadata explicitly records `completedRequestedDuration=false`. Writer backpressure dropped zero frames; maximum presentation-time gap was 132 ms. Capture timing is not evidence of an Animates defect.
 
 The second movie remains in the Git-ignored `.motion-review/animates-idle-5min-clean.mov`; despite the requested-duration filename, its observed duration is only 195 seconds. No input was sent by the recorder. A montage sampled every ten seconds shows larger changes in arm spread, hand orientation, torso lean and mouth opening around 130–190 seconds, following subtler early movement. The active conversation/music state could not be inspected, so the entire recording must not be labeled pure idle, nor can the cause of those movements be inferred. Ankles/feet remain outside the view and audio was not captured. This evidence broadens observed behavior but does not establish a controlled comparison, beat alignment, conversational appropriateness, contact quality or Yorishiro superiority.
+
+## Current Yorishiro implementation check, 2026-09-14
+
+After adding the upper-body physical candidate gate, preserving conversational
+recordings at weight 0.85, and fixing speech-to-listening/tool-activity boundaries,
+the frontend passed 3,022 tests in 239 files, TypeScript checking, targeted Biome
+checks and a production build. This establishes regression coverage, not motion
+quality. The [implementation record](motion-orchestration.md) documents the
+remaining build/test warnings and the scope of each check.
+
+A fresh localhost-only browser with HMR and file watching disabled exercised
+232 seconds of deterministic lab time and produced a separate 30-second film
+under `.motion-review/orchestration-v3/`. The film contains 720 frames at 24 fps,
+1400 × 1000 pixels, confirmed with `ffprobe`. It uses the current nine-clip catalog
+and supersedes the older prototype-containing film for runtime review. No
+Animates recording ran alongside this browser capture.
+
+The recorded lane changed among Conversation, Chatting and Chatting 2 during
+the 45-second explanatory interval. At the listening boundary its talking loop
+stopped and attentive Idle began about 0.6 seconds later. Selected film frames
+show visible conversational hand poses followed by lowered arms while listening.
+The physical gate can decline a requested gesture; request-labelled screenshot
+filenames do not imply admission. The lab supplies conversation phases directly,
+without spoken audio, so it does not validate word alignment or audible pauses.
+
+Sampled normalized foot markers remained within 1.496 mm of their first position
+after the initial three seconds, versus 12.286 mm for the procedural baseline.
+These values describe marker movement under this exact layered setup, not sole
+penetration, universally stable contacts, or perceived naturalness. Source-faithful
+conversion, target-avatar adaptation, continuous acting quality, and an Animates
+comparison remain separate decisions; see [source replay review](source-motion-review.md).
