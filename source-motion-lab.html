@@ -24,10 +24,10 @@
     <header><h1>Yorishiro · Source Motion Review</h1><p id="status">Loading the same Yori model and Conversation recording…</p></header>
     <nav><button id="play" type="button">Play</button><button id="restart" type="button">Restart</button><input id="time" type="range" min="0" max="1" step="0.0166666667" value="0" aria-label="Recording time" /><output id="clock">0.00 s</output></nav>
     <main>
-      <article><h2>Current converted recording</h2><canvas id="converted"></canvas><p class="caption">Full-body rotations from the current VRMA. Hips translation is absent in this file.</p></article>
-      <article><h2>Original FBX · new conversion candidate</h2><canvas id="source"></canvas><p class="caption">Original full-body and finger recording, including hips movement. Quality review pending.</p></article>
+      <article><h2 id="left-title">Current converted recording</h2><canvas id="converted"></canvas><p class="caption" id="left-caption">Full-body rotations from the current VRMA. Hips translation is absent in this file.</p></article>
+      <article><h2 id="right-title">Original FBX · new conversion candidate</h2><canvas id="source"></canvas><p class="caption" id="right-caption">Original full-body and finger recording, including hips movement. Quality review pending.</p></article>
     </main>
-    <footer><p>Same avatar, camera and lighting. New clip time zero is FBX time 0.1 s; the current conversion aligns approximately to that point. Both use full weight and playback speed 1, with no procedural body overlays, masks or loop repair. This compares conversion paths; it is not an Animates comparison or a production quality approval.</p></footer>
+    <footer><p id="comparison-note">Same avatar, camera and lighting. New clip time zero is FBX time 0.1 s; the current conversion aligns approximately to that point. Both use full weight and playback speed 1, with no procedural body overlays, masks or loop repair. This compares conversion paths; it is not an Animates comparison or a production quality approval.</p></footer>
     <script type="module" src="/src/dev/source-motion-lab.ts"></script>
   </body>
 </html>

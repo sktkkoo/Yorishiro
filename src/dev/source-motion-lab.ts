@@ -26,7 +26,12 @@ let elapsed = 0;
 let duration = 0;
 let playing = false;
 const marker = new THREE.Vector3();
-const sourcePath = "/.motion-review/source-assets/prepared/Idle Conversation.vrma";
+const contactReview = new URLSearchParams(window.location.search).get("contacts") === "1";
+const faithfulPath = "/.motion-review/source-assets/prepared/Idle Conversation.vrma";
+const leftPath = contactReview ? faithfulPath : "/animations/Idle Conversation.vrma";
+const sourcePath = contactReview
+  ? "/.motion-review/source-assets/prepared/Idle Conversation.yori-contact.vrma"
+  : faithfulPath;
 
 async function createLane(id: string, animationPath: string): Promise<Lane> {
   const renderer = new THREE.WebGLRenderer({
@@ -114,6 +119,8 @@ function observations() {
   return {
     elapsedSeconds: elapsed,
     durationSeconds: duration,
+    comparison: contactReview ? "target-contact-adaptation" : "source-conversion",
+    leftPath,
     sourcePath,
     lanes: lanes.map((lane) => ({
       hips: lane.vrm.humanoid.getNormalizedBoneNode("hips")?.getWorldPosition(marker).toArray(),
@@ -142,7 +149,16 @@ const api = {
 Object.assign(window, { sourceMotionLab: api });
 
 async function start(): Promise<void> {
-  lanes.push(await createLane("converted", "/animations/Idle Conversation.vrma"));
+  if (contactReview) {
+    element("left-title").textContent = "Faithful source · direct retarget";
+    element("right-title").textContent = "Yori · contact adaptation candidate";
+    element("left-caption").textContent = "Original full-body recording, with hips and fingers.";
+    element("right-caption").textContent =
+      "The same performance with offline support correction for this Yori model. Review pending.";
+    element("comparison-note").textContent =
+      "Same Yori, camera, lighting and source time. Both use full weight and playback speed 1, with no runtime procedural overlays, masks or loop repair. The right clip contains target-specific offline contact adaptation. This is a contact review, not an Animates comparison or production quality approval.";
+  }
+  lanes.push(await createLane("converted", leftPath));
   lanes.push(await createLane("source", sourcePath));
   duration = Math.min(...lanes.map((lane) => lane.duration));
   slider.max = String(duration);
