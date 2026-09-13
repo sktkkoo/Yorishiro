@@ -8,6 +8,7 @@
 // 外部ストアの既定位置: `../Yorishiro-assets/`（worktree と同じ親に置く運用）
 // 上書きしたい場合は env var `YORISHIRO_ASSETS_DIR` を設定する。
 
+import { createHash } from "node:crypto";
 import { cp, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -180,6 +181,35 @@ async function syncDir({ label, from, to, optional = false }) {
   return { label, copied, skipped: false, optional };
 }
 
+/** Optional newer recordings retain original timing, fingers and source hips.
+ * Only reviewed hashes replace the legacy conversion in the bundled alias.
+ * Original files in the external store stay intact for comparison/recovery.
+ */
+async function syncReviewedSpeech() {
+  const reviewed = [
+    [
+      "chatting.vrma",
+      "Idle Chatting.vrma",
+      "d485a7dabb21d4b8809433a23ddf68a43ba5a31761d7106925c6bd8917e56e0d",
+    ],
+    [
+      "chatting-2.vrma",
+      "Idle Chatting 2.vrma",
+      "b0c1a26c46e24e03b9fef3b5c61977fea814921f2293527cb3f0706ed39fd4d2",
+    ],
+  ];
+  for (const [file, alias, expected] of reviewed) {
+    const source = join(externalRoot, "animations", "recorded-speech", file);
+    if (!(await exists(source))) continue;
+    const bytes = await readFile(source);
+    if (createHash("sha256").update(bytes).digest("hex") !== expected) {
+      throw new Error(`Reviewed recording hash mismatch: ${source}`);
+    }
+    await writeFile(join(REPO_ROOT, "public", "animations", alias), bytes);
+    console.log(`  [ok]   reviewed 30 Hz recording: ${alias}`);
+  }
+}
+
 async function main() {
   console.log(`fetch-assets: external store = ${externalRoot}`);
   const required = Boolean(process.env.YORISHIRO_ASSETS_REQUIRED);
@@ -222,6 +252,8 @@ under the store and re-run:
   for (const target of TARGETS) {
     results.push(await syncDir(target));
   }
+
+  await syncReviewedSpeech();
 
   for (const ft of FILE_TARGETS) {
     results.push(await syncFile(ft));
