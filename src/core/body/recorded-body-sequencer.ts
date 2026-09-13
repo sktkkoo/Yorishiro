@@ -202,7 +202,10 @@ export class RecordedBodySequencer {
           }
           this.current = { unit, playback };
           this.upperEnabled = this.allowBaseUpper && unit.context === this.context;
-          playback.setUpperWeight(this.upperEnabled ? 1 : 0, 650);
+          // A new lower-body unit must inherit the current upper ownership at
+          // once. Fading from its default gain of one would briefly bring idle
+          // arms back during listening/speech on every lower-body transition.
+          playback.setUpperWeight(this.upperEnabled ? 1 : 0, this.upperEnabled ? 650 : 0);
           this.lastPlayed.set(unit.id, this.elapsedMs);
           return;
         } catch (error) {

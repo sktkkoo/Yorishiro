@@ -155,6 +155,20 @@ describe("recorded whole-body sequencing", () => {
     expect(active.cancel).toHaveBeenCalledOnce();
   });
 
+  it("starts replacement legs with idle arms already suppressed during listening", async () => {
+    const { sequencer, active, playRecordedBase } = setup();
+    await sequencer.initialize();
+    sequencer.update(16, true, "idle", false);
+    expect(active.setUpperWeight).toHaveBeenLastCalledWith(0, 650);
+    active.held = true;
+    const incoming = playback();
+    playRecordedBase.mockResolvedValueOnce(incoming);
+    sequencer.update(16, true, "idle", false);
+    await flush();
+    expect(incoming.setUpperWeight).toHaveBeenCalledWith(0, 0);
+    expect(sequencer.ownsUpperBody).toBe(false);
+  });
+
   it("does not retire the quiet foundation while a candidate is pending or physically rejected", async () => {
     const { sequencer, playRecordedBase, onCommit } = setup();
     playRecordedBase.mockRejectedValue(new Error("incompatible feet"));
@@ -206,7 +220,7 @@ describe("recorded whole-body sequencing", () => {
       speechUnit.animation,
       idleUnit.animation,
     ]);
-    expect(active.setUpperWeight).toHaveBeenLastCalledWith(0, 650);
+    expect(active.setUpperWeight).toHaveBeenLastCalledWith(0, 0);
     expect(active.stop).not.toHaveBeenCalled();
   });
 
