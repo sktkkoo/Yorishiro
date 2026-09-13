@@ -1,6 +1,6 @@
 # Motion source eligibility and performance review
 
-Status: source audit, 2026-09-14. The automatic catalog retains nine documented source assets. Source provenance and passing runtime tests do not establish perceptual quality or superiority to Animates.
+Status: source audit, 2026-09-14. The automatic catalog retains eight documented source assets. Source provenance and passing runtime tests do not establish perceptual quality or superiority to Animates.
 
 ## Source records
 
@@ -9,7 +9,8 @@ The repository's [CREDITS.md](../../CREDITS.md#vrma-animations) is the existing 
 | Assets | Documented source and intended use | Eligibility judgment |
 | --- | --- | --- |
 | `Idle` | Mixamo, converted to VRMA. Quiet standing recording. | Retain as the reviewed standing foundation under its documented calibration constraints. This is not a reusable arbitrary full-body contact solver. |
-| `Idle Conversation`, `Idle Chatting`, `Idle Chatting 2` | Rokoko everyday idle mocap pack. Sustained conversational performances. | Retain as conversational candidates. Validate the complete performance and its retargeting before treating any subphrase as agreement, reassurance, or emphasis. |
+| `Idle Chatting`, `Idle Chatting 2` | Rokoko everyday idle mocap pack. Sustained conversational performances. | Retain as conversational candidates. Validate the complete performance and its retargeting before treating any subphrase as agreement, reassurance, or emphasis. |
+| `Idle Conversation` | Same Rokoko pack. | Excluded from automatic playback after wrist QA: direct source FBX and faithful retargeting both reproduce the folded wrist. Explicit diagnostic playback remains available. |
 | `Idle Looking Around`, `Idle Looking Around 2` | Same Rokoko pack. Includes substantial whole-body reorientation. | Retained compatibility candidates, not accepted as universally quiet idle. Review coherent intervals and restore the original body/root relationship before extending full-body use. They are excluded from listening selection. |
 | `Idle Watching Something` | Same Rokoko pack. Observation/attention recording with posture changes. | Retain as an attentive candidate, subject to checking gaze direction, body support and its complete transitions. A low-speed interval alone is not acceptance. |
 | `VRMA_06_HandOnHip` | VRoid Project's official `VRMA_06`, described as “Model pose.” | Treat as a deliberate pose change, not evidence of conversational listening or a naturally idle body. Review hand-to-hip contact and weight transfer before expanding its automatic use. |
@@ -56,3 +57,9 @@ Record both products' available behavior before judging relative quality. Keep f
 | Music-to-conversation and conversation-to-music | Activity handoff, attention, stance recovery and priority between speaking and dancing. |
 
 Judge movement naturalness, appropriateness to speech/music, and contribution to presence separately. Compare complete blinded paired trials where possible; do not infer a broad advantage from a quiet-idle sample, a successful asset conversion or a hand-picked demonstration. The current branch has not established the requested clear advantage over Animates.
+
+## User review follow-up: wrists and hands
+
+On 2026-09-14 the user reported folded wrists during a rolling-hands gesture. The exact active clip was not captured, so the report is not attributed to a clip from appearance alone. A subsequent source audit found a reproducible failure in `Idle Conversation`: at source 11.0667 seconds the left forearm-to-middle-finger-base angle is 100.84 degrees in direct FBX forward kinematics. Existing VRMA and faithful 30 Hz conversion reproduce the deformation. Nine targeted frames of `Idle Chatting` and `Idle Chatting 2`, including their largest wrist angles, did not show that same inversion; this is sampled review, not a guarantee of every frame.
+
+The automatic catalog excludes Conversation instead of clamping its wrists and losing the intended hand movement. The default relaxed fingers also now bend toward the palm rather than twisting around their long axes. Authored open palms remain authoritative. The source conversion pipeline can retain all 30 finger joints at 30 Hz; preserved tracks still require acting review.

@@ -430,9 +430,7 @@ describe("recorded motion Body integration", () => {
     }
     expect(play.mock.calls.length).toBeGreaterThanOrEqual(3);
     for (const [ref, options] of play.mock.calls) {
-      expect(["anim:Idle Conversation", "anim:Idle Chatting", "anim:Idle Chatting 2"]).toContain(
-        ref,
-      );
+      expect(["anim:Idle Chatting", "anim:Idle Chatting 2"]).toContain(ref);
       expect(options).toMatchObject({ loop: true, transition: "matched", mask: "upper-body" });
     }
     expression.release();

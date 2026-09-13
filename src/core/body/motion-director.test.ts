@@ -45,7 +45,7 @@ describe("MotionDirector", () => {
   });
 
   it("favours a compatible seam before drawing, using the actual playback strength", () => {
-    const first = DEFAULT_MOTION_CATALOG.find((entry) => entry.id === "speech-conversation");
+    const first = DEFAULT_MOTION_CATALOG.find((entry) => entry.id === "speech-chat");
     if (!first) throw new Error("conversation fixture missing");
     const director = new MotionDirector({
       catalog: [first, { ...first, id: "second", animation: "anim:second" }],
@@ -189,7 +189,7 @@ describe("MotionDirector", () => {
     const decisions = advance(director, 180_000, speaking);
     expect(decisions.length).toBeGreaterThanOrEqual(9);
     expect(decisions.length).toBeLessThanOrEqual(18);
-    expect(new Set(decisions.map((entry) => entry.animation)).size).toBe(3);
+    expect(new Set(decisions.map((entry) => entry.animation)).size).toBe(2);
     for (const [index, decision] of decisions.entries()) {
       expect(decision).toMatchObject({
         context: "speech",

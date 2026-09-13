@@ -48,11 +48,11 @@ describe("local semantic motion catalog", () => {
       { intent: "emphasize", context: "speech" },
       { nowMs: 0 },
     );
-    expect(consider[0].id).toBe("speech-conversation");
+    expect(consider[0].id).toBe("speech-chat");
     expect(consider.some((candidate) => candidate.id === "speech-animated")).toBe(false);
     expect(emphasize[0].id).toBe("speech-animated");
     for (const candidates of [consider, emphasize]) {
-      expect(candidates.length).toBeGreaterThan(1);
+      expect(candidates.length).toBeGreaterThan(0);
       expect(candidates.length).toBeLessThanOrEqual(5);
       expect(candidates.map((entry) => entry.score)).toEqual(
         candidates.map((entry) => entry.score).sort((a, b) => b - a),
@@ -61,7 +61,9 @@ describe("local semantic motion catalog", () => {
   });
 
   it("keeps unreviewed prototypes out of automatic selection while retaining recorded emphasis candidates", () => {
-    expect(DEFAULT_MOTION_CATALOG.some((entry) => /Prototype/i.test(entry.animation))).toBe(false);
+    expect(
+      DEFAULT_MOTION_CATALOG.some((entry) => /Prototype|Idle Conversation/i.test(entry.animation)),
+    ).toBe(false);
     const candidates = retrieveMotionCandidates(
       { intent: "emphasize", context: "speech" },
       { nowMs: 0 },
@@ -69,7 +71,6 @@ describe("local semantic motion catalog", () => {
     expect(candidates.map((entry) => entry.animation).sort()).toEqual([
       "anim:Idle Chatting",
       "anim:Idle Chatting 2",
-      "anim:Idle Conversation",
     ]);
   });
 
@@ -81,7 +82,6 @@ describe("local semantic motion catalog", () => {
     expect(candidates.map((entry) => entry.animation).sort()).toEqual([
       "anim:Idle Chatting",
       "anim:Idle Chatting 2",
-      "anim:Idle Conversation",
     ]);
     expect(retrieveMotionCandidates({ intent: "explain", context: "idle" }, { nowMs: 0 })).toEqual(
       [],

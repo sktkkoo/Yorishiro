@@ -59,6 +59,7 @@ const CONVERSATION_INTENTS = ["explain", "agree", "consider", "reassure", "empha
 /**
  * Documented source assets only. Local extraction/generation prototypes remain
  * available for explicit playback, but are not automatic production candidates.
+ * Idle Conversation is excluded: source wrist/forearm coupling failed acting QA.
  * See CREDITS.md and docs/decisions/motion-source-eligibility.md.
  */
 export const DEFAULT_MOTION_CATALOG: readonly MotionCatalogEntry[] = [
@@ -125,17 +126,6 @@ export const DEFAULT_MOTION_CATALOG: readonly MotionCatalogEntry[] = [
     intents: ["agree", "reassure"],
     features: [0.65, 0.6, 0.1, 1, 0.15, 0.3],
     weight: 0.42,
-    speed: 1,
-    cooldownMs: 6_000,
-  },
-  {
-    id: "speech-conversation",
-    animation: "anim:Idle Conversation",
-    family: "converse",
-    contexts: ["speech"],
-    intents: CONVERSATION_INTENTS,
-    features: [0.55, 0.9, 0.55, 0.8, 0.45, 0.38],
-    weight: 0.85,
     speed: 1,
     cooldownMs: 6_000,
   },
