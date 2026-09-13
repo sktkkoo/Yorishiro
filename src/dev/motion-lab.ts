@@ -25,6 +25,7 @@ interface Lane {
   samples: {
     at: number;
     animation: string | null;
+    recordedBody: ReturnType<Body["getRecordedBodySnapshot"]>;
     head: number[];
     leftHand: number[];
     rightHand: number[];
@@ -64,7 +65,12 @@ async function createLane(id: string, recorded: boolean): Promise<Lane> {
   scene.add(grid);
   const loader = new GLTFLoader();
   loader.register((parser) => new VRMLoaderPlugin(parser));
-  const gltf = await loader.loadAsync("/models/Yori.vrm");
+  const bytes = await fetch("/models/Yori.vrm").then((response) => response.arrayBuffer());
+  const modelSha256 = Array.from(
+    new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)),
+    (byte) => byte.toString(16).padStart(2, "0"),
+  ).join("");
+  const gltf = await loader.parseAsync(bytes, "");
   const vrm = gltf.userData.vrm as VRM;
   VRMUtils.rotateVRM0(vrm);
   applyVrmRestPose(vrm);
@@ -78,12 +84,13 @@ async function createLane(id: string, recorded: boolean): Promise<Lane> {
   Math.random = createSeededMotionRandom(738);
   let body: Body;
   try {
-    body = new Body(vrm);
+    body = new Body(vrm, undefined, undefined, { modelSha256 });
   } finally {
     Math.random = previousRandom;
   }
   body.setMotionLibraryEnabled(recorded);
   await body.prepareMotionLibrary();
+  await body.initializeRecordedBody();
   return { body, vrm, scene, renderer, camera, samples: [] };
 }
 
@@ -129,6 +136,7 @@ function advance(delta: number): void {
       lane.samples.push({
         at: elapsed,
         animation: lane.body.getMotionSnapshot().active?.animation ?? null,
+        recordedBody: lane.body.getRecordedBodySnapshot(),
         head: position("head"),
         leftHand: position("leftHand"),
         rightHand: position("rightHand"),
@@ -142,8 +150,10 @@ function advance(delta: number): void {
     }
     const current = lanes[1]?.body.getMotionDirectorSnapshot();
     const active = lanes[1]?.body.getMotionSnapshot().active;
-    element("recorded-caption").textContent =
-      `${active?.animation ?? "Settling"} · ${current?.phase ?? "loading"} · ${elapsed.toFixed(1)} s`;
+    const recordedBody = lanes[1]?.body.getRecordedBodySnapshot().active;
+    element("recorded-caption").textContent = recordedBody
+      ? `${recordedBody.id} · ${recordedBody.phaseSec.toFixed(2)} s · ${recordedBody.held ? "transition" : "full body"}${active ? ` + ${active.animation}` : ""}`
+      : `${active?.animation ?? "Settling"} · ${current?.phase ?? "loading"} · ${elapsed.toFixed(1)} s`;
   }
 }
 

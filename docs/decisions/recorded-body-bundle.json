@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "targetModelSha256": "739a1515cffe09c17a535eb52a11f88640fc7728b86b9e4c74f00c353437b7cd",
+  "source": "Rokoko everyday idle originals, faithful 30 Hz conversion and bounded Yori contact preparation",
+  "recordings": [
+    {
+      "file": "around.vrma",
+      "sourceFile": "Idle Looking Around.yori-contact.vrma",
+      "sha256": "cbd3ef8c5caa58634fa71b8bf6b63f9e5fe00845d1cfc1bcf2d576c3a0894bef"
+    }
+  ],
+  "units": [
+    {
+      "id": "idle-weight-shift",
+      "animation": "/animations/recorded-body/around.vrma",
+      "context": "idle",
+      "handsAtRest": true,
+      "startTimeSec": 7.08333333,
+      "endTimeSec": 15.66666667,
+      "contactWindows": [
+        {
+          "startTimeSec": 4.88333333,
+          "endTimeSec": 31.76666667,
+          "feet": "both"
+        }
+      ]
+    },
+    {
+      "id": "idle-look-around",
+      "animation": "/animations/recorded-body/around.vrma",
+      "context": "idle",
+      "handsAtRest": true,
+      "startTimeSec": 15.66666667,
+      "endTimeSec": 23.36666667,
+      "contactWindows": [
+        {
+          "startTimeSec": 4.88333333,
+          "endTimeSec": 31.76666667,
+          "feet": "both"
+        }
+      ]
+    }
+  ]
+}

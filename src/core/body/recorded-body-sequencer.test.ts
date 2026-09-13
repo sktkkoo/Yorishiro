@@ -181,6 +181,19 @@ describe("recorded whole-body sequencing", () => {
     expect(active.stop).not.toHaveBeenCalled();
   });
 
+  it("tries another complete idle unit before repeating the same movement", async () => {
+    const alternative = { ...idleUnit, id: "other-shift", startTimeSec: 4, endTimeSec: 9 };
+    const { sequencer, active, playRecordedBase } = setup({
+      ...manifest,
+      units: [idleUnit, alternative],
+    });
+    await sequencer.initialize();
+    active.held = true;
+    sequencer.update(16, true, "idle");
+    await flush();
+    expect(playRecordedBase.mock.calls[1][1]).toMatchObject({ startTimeSec: 4, endTimeSec: 9 });
+  });
+
   it("keeps moving with its compatible supported unit if the next activity has a different stance", async () => {
     const { sequencer, active, playRecordedBase } = setup();
     await sequencer.initialize();

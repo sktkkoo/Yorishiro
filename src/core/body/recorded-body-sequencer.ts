@@ -4,6 +4,8 @@ export interface RecordedBodyUnit {
   readonly id: string;
   readonly animation: string;
   readonly context: MotionContext;
+  /** Reviewed low hands that may receive a small relaxed hand fidget. */
+  readonly handsAtRest?: boolean;
   readonly startTimeSec: number;
   readonly endTimeSec: number;
   readonly contactWindows: readonly {
@@ -164,9 +166,11 @@ export class RecordedBodySequencer {
     });
     try {
       while (pool.length > 0 && isCurrent()) {
-        const eligible = pool.some((item) => item.unit.context === this.context)
+        const contextual = pool.some((item) => item.unit.context === this.context)
           ? pool.filter((item) => item.unit.context === this.context)
           : pool;
+        const alternatives = contextual.filter((item) => item.unit.id !== this.current?.unit.id);
+        const eligible = alternatives.length > 0 ? alternatives : contextual;
         const random = this.options.random?.() ?? Math.random();
         let draw =
           (Number.isFinite(random) ? Math.max(0, Math.min(0.999999, random)) : 0.5) *
@@ -221,6 +225,10 @@ export class RecordedBodySequencer {
     return (
       this.allowBaseUpper && this.current !== null && this.current.unit.context === this.context
     );
+  }
+
+  get allowsHandFidget(): boolean {
+    return this.ownsUpperBody && this.current?.unit.handsAtRest === true;
   }
 
   getSnapshot() {
@@ -286,6 +294,7 @@ export function parseRecordedBodyManifest(
       typeof unit.animation !== "string" ||
       !/^\/animations\/recorded-body\/[A-Za-z0-9_-]+\.vrma$/.test(unit.animation) ||
       !["idle", "speech"].includes(unit.context) ||
+      (unit.handsAtRest !== undefined && typeof unit.handsAtRest !== "boolean") ||
       !Number.isFinite(unit.startTimeSec) ||
       !Number.isFinite(unit.endTimeSec) ||
       unit.startTimeSec < 0 ||
