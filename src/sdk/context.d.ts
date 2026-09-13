@@ -433,6 +433,11 @@ export interface MotionOptions {
   readonly weight?: number;
   readonly loop?: boolean;
   readonly speed?: number;
+  /** Continuous clips may enter at a compatible pose; immediate preserves the beginning. */
+  readonly transition?: "matched" | "immediate";
+  /** Upper-body leaves hips and legs available to the standing base pose. */
+  readonly mask?: "upper-body" | "full-body";
+  readonly maxTransitionDelayMs?: number;
 }
 
 /** Scheduler への motion 依頼。priority と animation 識別子を含む。 */
