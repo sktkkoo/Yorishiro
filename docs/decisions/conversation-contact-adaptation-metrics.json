@@ -1,0 +1,82 @@
+{
+  "schemaVersion": 1,
+  "input": {
+    "file": ".motion-review/source-assets/prepared/Idle Conversation.vrma",
+    "sha256": "0376d3e416975f7d25aadd817828b77cf53a2f84ec5bc3cc3053fe1bc631dcf1"
+  },
+  "model": {
+    "file": "public/models/Yori.vrm",
+    "sha256": "739a1515cffe09c17a535eb52a11f88640fc7728b86b9e4c74f00c353437b7cd"
+  },
+  "output": {
+    "file": ".motion-review/source-assets/prepared/Idle Conversation.yori-contact.vrma",
+    "sha256": "d900b418602f444f9913188e63138d068a2ad17fb5ac2d2793df06515b965627",
+    "bytes": 832116
+  },
+  "metadata": {
+    "target": "Yori",
+    "modelSha256": "739a1515cffe09c17a535eb52a11f88640fc7728b86b9e4c74f00c353437b7cd",
+    "sourceFaithfulSha256": "0376d3e416975f7d25aadd817828b77cf53a2f84ec5bc3cc3053fe1bc631dcf1",
+    "supportStartSec": 0.15,
+    "supportEndSec": 25,
+    "rampSec": 0.35,
+    "sampleHz": 60,
+    "method": "small common hips translation + authored-pole two-bone legs; preserve foot world orientation; unchanged upper body and fingers"
+  },
+  "rootReachPaddingMetres": 0.00175,
+  "hipsOnly": {
+    "maxRootCorrectionMetres": 0.012707186900617052,
+    "maxHorizontalPointResidualMetres": 0.00405640141464697,
+    "maxSoleClearanceMetres": 0.00539485998094973,
+    "maxPenetrationMetres": 0
+  },
+  "corrections": {
+    "maxRootCorrectionMetres": 0.013803061099110383,
+    "maxIndependentAnkleCorrectionMetres": 0.00524238900596492,
+    "maxAnkleSolveErrorMetres": 2.8263261622143048e-12,
+    "minimumAuthoredPoleAgreement": 0.9999999999999996,
+    "maxWorldFootRotationChangeDegrees": 0.0000017075472925031877,
+    "maxLocalRotationChangesDegrees": {
+      "leftUpperLeg": 2.3048900957668423,
+      "leftLowerLeg": 4.708153730490529,
+      "leftFoot": 2.4033616194331033,
+      "rightUpperLeg": 3.2780867076684403,
+      "rightLowerLeg": 6.378668528457242,
+      "rightFoot": 3.1013729900248683
+    }
+  },
+  "authoredTargetHipAxisRangesMetres": [
+    0.09793217684587699,
+    0.012638040765528791,
+    0.04473909079261445
+  ],
+  "adaptedTargetHipAxisRangesMetres": [
+    0.0882379740609434,
+    0.019793471768012418,
+    0.04115965597552477
+  ],
+  "kneeStability": {
+    "minimumKneeBendDegrees": 2.6849321035189746,
+    "minimumAdjacentPoleDot": 0.9999551111810033,
+    "maxSourceKneeSpeedMetresPerSec": 0.6242439095858583,
+    "maxAdaptedKneeSpeedMetresPerSec": 0.3643394200370551
+  },
+  "validation": {
+    "evaluatedFrameCount": 3021,
+    "fullContactFrameCount": 2899,
+    "maxSoleClearanceMetres": 0.00007241642980406333,
+    "maxSolePenetrationMetres": 0.000004540447233450878,
+    "maxHorizontalSupportPointDisplacementMetres": 0.0018562796666934257,
+    "maxContactCenterErrorMetres": 0.000010649463964087221,
+    "maxFootOrientationErrorDegrees": 0.000682700812243042,
+    "upperBodyRotationTracksExactlyPreserved": true,
+    "allRetargetValuesFinite": true,
+    "worstOrientationAtSec": 23.008333333333333
+  },
+  "limitations": [
+    "This is a Yori-specific target adaptation, not source-faithful roundtrip data or a general dance solver.",
+    "Support labels are provisional source-derived quiet intervals. Entry/release ramps and remaining foot rocking require visual review.",
+    "Original hips XYZ variation remains the baseline. Upper-body/finger tracks are byte-identical; feet retain authored world orientation, with small leg-local changes.",
+    "No production catalog or original asset is replaced."
+  ]
+}

@@ -30,3 +30,23 @@ The converter's static non-hips translation bake is necessary for accurate repla
 Keep the source-faithful candidate immutable. Create a separate Yori-specific Conversation candidate, preserving the authored full-body/hand rotations and time-varying hips path as the baseline. First quantify a small common hips translation correction; use constrained leg/foot adjustment only if both feet cannot satisfy the contact tolerance together. Smooth the entry and release around the provisional support interval and measure knee/pole stability, angle changes, remaining shoe clearance/penetration and horizontal support motion.
 
 This review does not approve arbitrary full-body assets, looping this excerpt, cross-clip transitions or dance IK. It does not establish perceptual superiority over Animates.
+
+## Separate target adaptation experiment
+
+`node scripts/adapt-conversation-contacts.mjs` now creates a private `Idle Conversation.yori-contact.vrma` alongside the immutable source-faithful candidate. The tool checks the exact Conversation and Yori hashes. The [adaptation report](conversation-contact-adaptation-metrics.json) records this as target correction, not a new source-fidelity result.
+
+A hips-only correction of at most 12.71 mm leaves 4.06 mm horizontal support-point residual and 5.39 mm shoe clearance. The selected correction adds authored-pole two-bone leg IK and preserves each foot's authored world orientation. The common root correction is at most 13.80 mm, including 1.75 mm of constant reach padding under the contact envelope; the remaining independent ankle adjustment is at most 5.24 mm. The largest leg-local rotation change is 6.38 degrees at the right knee. Upper-body, fingers, hips rotation and their time keys remain unchanged.
+
+The contact envelope ramps smoothly over 0.35 seconds at either end of the provisional 0.15–25.0-second interval. The exported candidate is reloaded through the official VRMA path and evaluated at 120 Hz, independently of the 60 Hz bake:
+
+| Exported target check | Maximum error |
+| --- | ---: |
+| Contact-center horizontal error during full lock | 0.0107 mm |
+| Individual ankle/toe horizontal movement, retaining authored foot rotation | 1.857 mm |
+| Shoe clearance during full lock | 0.0725 mm |
+| Shoe penetration during full lock | 0.0046 mm |
+| Foot world-orientation difference | 0.000683 degrees |
+
+The knees retain at least 2.68 degrees of bend, and adjacent sampled knee-plane normals have a dot product of at least 0.999955; the solver does not flip to an opposite knee pole. Original hip X/Y/Z ranges of 97.93/12.64/44.74 mm become 88.24/19.79/41.16 mm, rather than being removed. The extra vertical range includes the smooth lowering into and release from target contact.
+
+These numerical checks permit the separate visual contact review. They do not approve general reuse or production catalog replacement. The lock/release behavior, original performance and the beginning/end of the excerpt remain visible review subjects.

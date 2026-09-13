@@ -18,10 +18,6 @@ const files = {
   current: path.join(root, "public/animations/Idle Conversation.vrma"),
   faithful: path.join(root, ".motion-review/source-assets/prepared/Idle Conversation.vrma"),
 };
-const output = path.resolve(
-  process.argv[2] ?? path.join(root, "docs/decisions/conversation-retarget-metrics.json"),
-);
-if (path.extname(output) !== ".json") throw new Error("Report output must be JSON");
 const sampleHz = 60;
 const names = ["hips", "leftFoot", "leftToes", "rightFoot", "rightToes"];
 const hash = (buffer) => createHash("sha256").update(buffer).digest("hex");
@@ -305,77 +301,88 @@ function contactEpisodes(source, lanes) {
   return episodes;
 }
 
-const buffers = Object.fromEntries(
-  await Promise.all(
-    Object.entries(files).map(async ([name, file]) => [name, await fs.readFile(file)]),
-  ),
-);
-const currentAnimation = await loadAnimation(buffers.current),
-  faithfulAnimation = await loadAnimation(buffers.faithful);
-const duration = Math.min(currentAnimation.duration, faithfulAnimation.duration);
-const source = sample(await createRig(buffers.faithful, false), faithfulAnimation, duration);
-const current = sample(await createRig(buffers.model, true), currentAnimation, duration);
-const faithful = sample(await createRig(buffers.model, true), faithfulAnimation, duration);
-const report = {
-  schemaVersion: 1,
-  inputs: Object.fromEntries(
-    Object.entries(buffers).map(([name, buffer]) => [
-      name,
-      { file: path.relative(root, files[name]), sha256: hash(buffer) },
-    ]),
-  ),
-  method: {
-    sampleHz,
-    durationSec: duration,
-    source:
-      "Prepared source-normalized skeleton and unchanged full-body recording; previous same-source FK roundtrip verified it against original FBX.",
-    target:
-      "Original Yori glTF geometry, skin, inverse binds and humanoid rest hierarchy. Textures/materials omitted only in memory. Official createVRMAnimationClip + AnimationMixer, weight1, speed1, VRM0 rotation, no body/procedural/masking/conditioning/IK.",
-    sourceToTargetHipHeightScale:
-      faithful.rig.humanoid.normalizedRestPose.hips.position[1] /
-      faithfulAnimation.restHipsPosition.y,
-    comparisonTiming:
-      "Same clip-local time. Faithful clip0 is source0.1s; older clip0 best diagnostic offset was source0.0966667s, so up to one source-frame timing mismatch remains.",
-    contactProxy:
-      "Intervals >=0.4s where both source ankle/toe speeds <0.04m/s and source toe Y is within0.015m of its clip minimum. Same source-derived intervals measure all lanes; these are inferred quiet support intervals, not authored contact labels.",
-    shoeVertices:
-      "Rest-world Y <=0.15m and >=50% skin influence from the same-side Foot/Toes bones. Minimum Y of actual skinned vertices compared to that shoe's unanimated rest minimum; no guessed ankle floor.",
-    limitations: [
-      "Fidelity/grounding diagnostics, not perceptual superiority over Animates.",
-      "Source foot motion may contain capture drift; low-speed contact inference is not ground truth.",
-      "Per-shoe rest minima diagnose shoe sinking/hover relative to the model's own floor. The lab grid remains at worldY0.",
-      "No retargeting correction or source asset replacement is performed.",
-    ],
-  },
-  source: summarize(source),
-  currentYori: summarize(current),
-  faithfulYori: summarize(faithful),
-  browserCheckpoints: [0, 3, 8, 15, 25].map((time) => ({
-    time,
-    currentYori: current.frames[Math.round(time * sampleHz)].positions,
-    faithfulYori: faithful.frames[Math.round(time * sampleHz)].positions,
-  })),
-  quietSourceSupportEpisodes: contactEpisodes(source, {
-    source,
-    currentYori: current,
-    faithfulYori: faithful,
-  }),
-};
-await fs.mkdir(path.dirname(output), { recursive: true });
-await fs.writeFile(
-  output,
-  `${JSON.stringify(report, (_key, value) => (typeof value === "number" ? round(value) : value), 2)}\n`,
-);
-console.log(
-  JSON.stringify(
-    {
-      output,
-      sourceToTargetHipHeightScale: report.method.sourceToTargetHipHeightScale,
-      currentShoes: report.currentYori.shoes,
-      faithfulShoes: report.faithfulYori.shoes,
-      supportEpisodes: report.quietSourceSupportEpisodes.length,
+async function main() {
+  const output = path.resolve(
+    process.argv[2] ?? path.join(root, "docs/decisions/conversation-retarget-metrics.json"),
+  );
+  if (path.extname(output) !== ".json") throw new Error("Report output must be JSON");
+  const buffers = Object.fromEntries(
+    await Promise.all(
+      Object.entries(files).map(async ([name, file]) => [name, await fs.readFile(file)]),
+    ),
+  );
+  const currentAnimation = await loadAnimation(buffers.current),
+    faithfulAnimation = await loadAnimation(buffers.faithful);
+  const duration = Math.min(currentAnimation.duration, faithfulAnimation.duration);
+  const source = sample(await createRig(buffers.faithful, false), faithfulAnimation, duration);
+  const current = sample(await createRig(buffers.model, true), currentAnimation, duration);
+  const faithful = sample(await createRig(buffers.model, true), faithfulAnimation, duration);
+  const report = {
+    schemaVersion: 1,
+    inputs: Object.fromEntries(
+      Object.entries(buffers).map(([name, buffer]) => [
+        name,
+        { file: path.relative(root, files[name]), sha256: hash(buffer) },
+      ]),
+    ),
+    method: {
+      sampleHz,
+      durationSec: duration,
+      source:
+        "Prepared source-normalized skeleton and unchanged full-body recording; previous same-source FK roundtrip verified it against original FBX.",
+      target:
+        "Original Yori glTF geometry, skin, inverse binds and humanoid rest hierarchy. Textures/materials omitted only in memory. Official createVRMAnimationClip + AnimationMixer, weight1, speed1, VRM0 rotation, no body/procedural/masking/conditioning/IK.",
+      sourceToTargetHipHeightScale:
+        faithful.rig.humanoid.normalizedRestPose.hips.position[1] /
+        faithfulAnimation.restHipsPosition.y,
+      comparisonTiming:
+        "Same clip-local time. Faithful clip0 is source0.1s; older clip0 best diagnostic offset was source0.0966667s, so up to one source-frame timing mismatch remains.",
+      contactProxy:
+        "Intervals >=0.4s where both source ankle/toe speeds <0.04m/s and source toe Y is within0.015m of its clip minimum. Same source-derived intervals measure all lanes; these are inferred quiet support intervals, not authored contact labels.",
+      shoeVertices:
+        "Rest-world Y <=0.15m and >=50% skin influence from the same-side Foot/Toes bones. Minimum Y of actual skinned vertices compared to that shoe's unanimated rest minimum; no guessed ankle floor.",
+      limitations: [
+        "Fidelity/grounding diagnostics, not perceptual superiority over Animates.",
+        "Source foot motion may contain capture drift; low-speed contact inference is not ground truth.",
+        "Per-shoe rest minima diagnose shoe sinking/hover relative to the model's own floor. The lab grid remains at worldY0.",
+        "No retargeting correction or source asset replacement is performed.",
+      ],
     },
-    null,
-    2,
-  ),
-);
+    source: summarize(source),
+    currentYori: summarize(current),
+    faithfulYori: summarize(faithful),
+    browserCheckpoints: [0, 3, 8, 15, 25].map((time) => ({
+      time,
+      currentYori: current.frames[Math.round(time * sampleHz)].positions,
+      faithfulYori: faithful.frames[Math.round(time * sampleHz)].positions,
+    })),
+    quietSourceSupportEpisodes: contactEpisodes(source, {
+      source,
+      currentYori: current,
+      faithfulYori: faithful,
+    }),
+  };
+  await fs.mkdir(path.dirname(output), { recursive: true });
+  await fs.writeFile(
+    output,
+    `${JSON.stringify(report, (_key, value) => (typeof value === "number" ? round(value) : value), 2)}\n`,
+  );
+  console.log(
+    JSON.stringify(
+      {
+        output,
+        sourceToTargetHipHeightScale: report.method.sourceToTargetHipHeightScale,
+        currentShoes: report.currentYori.shoes,
+        faithfulShoes: report.faithfulYori.shoes,
+        supportEpisodes: report.quietSourceSupportEpisodes.length,
+      },
+      null,
+      2,
+    ),
+  );
+}
+
+export { createRig, glbParts, loadAnimation, sample, summarize };
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url))
+  await main();
