@@ -119,6 +119,144 @@ function cue(overrides: Partial<StateExpressionCue> = {}): StateExpressionCue {
 
 describe("recorded motion Body integration", () => {
   it.each([
+    3, 25,
+  ])("resumes explanation as a real %ss finite gesture finishes, without adding idle settling", async (duration) => {
+    mockPerformanceLibrary();
+    const { body, vrm } = createBody();
+    const arm = vrm.humanoid.getNormalizedBoneNode("leftLowerArm");
+    if (!arm) throw new Error("test arm is required");
+    const player = (body as unknown as { animationPlayer: AnimationPlayer }).animationPlayer;
+    const cache = (player as unknown as { clipCache: Map<string, THREE.AnimationClip> }).clipCache;
+    for (const entry of DEFAULT_MOTION_CATALOG) {
+      cache.set(
+        entry.animation,
+        new THREE.AnimationClip(entry.animation, duration, [
+          new THREE.QuaternionKeyframeTrack(
+            `${arm.name}.quaternion`,
+            [0, duration / 2, duration],
+            [0, 0, 0, 1, Math.sin(0.2), 0, 0, Math.cos(0.2), 0, 0, 0, 1],
+          ),
+        ]),
+      );
+    }
+    await body.prepareMotionLibrary();
+    body.setMotionConversationPhase("assistant-speaking");
+    const handle = body.acquireSemanticMotion(speechRequest);
+    expect(handle).not.toBeNull();
+    const gesture = body.getMotionDirectorSnapshot().lastDecision;
+    expect(gesture?.options).toMatchObject({ loop: false, maxDurationMs: 6_000, fadeOutMs: 600 });
+    await flush();
+    let elapsed = 0;
+    while (handle?.isActive() && elapsed < 7) {
+      advance(body, 1 / 60);
+      elapsed += 1 / 60;
+      await flush();
+    }
+    await expect(handle?.completion).resolves.toEqual({ reason: "completed" });
+    if (duration === 3) expect(elapsed).toBeCloseTo(duration / (gesture?.options.speed ?? 1), 1);
+    else expect(elapsed).toBeGreaterThanOrEqual(6);
+    expect(elapsed).toBeLessThanOrEqual(6.6);
+    // Ownership completes when the authored exit starts fading. The next
+    // frame may select a compatible background without cutting that exit.
+    expect(body.getMotionSnapshot().active).toBeNull();
+    expect(player.getTotalEffectiveWeight()).toBeGreaterThan(0);
+    advance(body, 1 / 60);
+    await flush();
+    expect(body.getMotionSnapshot().active?.priority).toBe("idle-fidget");
+    expect(body.getMotionDirectorSnapshot().lastDecision).toMatchObject({
+      context: "speech",
+      intent: "explain",
+      options: { loop: true, transition: "matched", fadeInMs: 1_200 },
+    });
+  });
+
+  it("still rejects incompatible or cold backgrounds after a completed speech gesture", async () => {
+    mockPerformanceLibrary();
+    const completed = deferred<void>();
+    const play = vi
+      .spyOn(AnimationPlayer.prototype, "play")
+      .mockResolvedValueOnce({ ...playback(), completion: completed.promise })
+      .mockImplementation(async () => playback());
+    const { body } = createBody();
+    await body.prepareMotionLibrary();
+    body.setMotionConversationPhase("assistant-speaking");
+    const handle = body.acquireSemanticMotion(speechRequest);
+    await flush();
+    advance(body, 3);
+    const evaluate = vi.mocked(AnimationPlayer.prototype.evaluateTransition).mockReturnValue(null);
+    completed.resolve();
+    await handle?.completion;
+    advance(body, 1 / 60);
+    expect(play).toHaveBeenCalledOnce();
+    expect(body.getMotionSnapshot().active).toBeNull();
+    expect(body.getMotionDirectorSnapshot().suppressedReason).toBe("transition");
+    const calls = evaluate.mock.calls.length;
+    advance(body, 2.4);
+    expect(evaluate).toHaveBeenCalledTimes(calls);
+    evaluate.mockReturnValue({ cost: 0, startTimeSec: 1.2 });
+    advance(body, 0.2);
+    expect(play).toHaveBeenCalledTimes(2);
+    expect(body.getMotionDirectorSnapshot().lastDecision?.intent).toBe("explain");
+  });
+
+  it.each([
+    "idle",
+    "user-speaking",
+  ] as const)("retains idle settling when a speech gesture ends after the phase becomes %s", async (phase) => {
+    mockPerformanceLibrary();
+    const completed = deferred<void>();
+    const play = vi
+      .spyOn(AnimationPlayer.prototype, "play")
+      .mockResolvedValueOnce({ ...playback(), completion: completed.promise })
+      .mockImplementation(async () => playback());
+    const { body } = createBody();
+    await body.prepareMotionLibrary();
+    body.setMotionConversationPhase("assistant-speaking");
+    const handle = body.acquireSemanticMotion(speechRequest);
+    await flush();
+    advance(body, 3);
+    body.setMotionConversationPhase(phase);
+    completed.resolve();
+    await handle?.completion;
+    advance(body, 0.1);
+    expect(play).toHaveBeenCalledOnce();
+    advance(body, 2.5);
+    expect(play).toHaveBeenCalledTimes(2);
+    expect(body.getMotionDirectorSnapshot().lastDecision?.context).toBe("idle");
+  });
+
+  it("does not accelerate ambient recovery after a manual owner preempts the speech gesture", async () => {
+    mockPerformanceLibrary();
+    const completed = deferred<void>();
+    const play = vi
+      .spyOn(AnimationPlayer.prototype, "play")
+      .mockResolvedValueOnce({ ...playback(), completion: completed.promise })
+      .mockImplementation(async () => playback());
+    const { body } = createBody();
+    await body.prepareMotionLibrary();
+    body.setMotionConversationPhase("assistant-speaking");
+    body.acquireSemanticMotion(speechRequest);
+    await flush();
+    advance(body, 3);
+    const owner = body.acquireMotionSlot({
+      source: "persona",
+      priority: "persona-handler",
+      animation: "anim:manual",
+      options: { loop: true },
+    });
+    completed.resolve();
+    await flush();
+    advance(body, 1);
+    expect(owner.isActive()).toBe(true);
+    expect(play).toHaveBeenCalledTimes(2);
+    owner.release();
+    advance(body, 0.1);
+    expect(play).toHaveBeenCalledTimes(2);
+    advance(body, 2.5);
+    expect(play).toHaveBeenCalledTimes(3);
+  });
+
+  it.each([
     "user-speaking",
     "idle",
     "disconnected",

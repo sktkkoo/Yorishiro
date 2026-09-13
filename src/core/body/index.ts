@@ -1274,7 +1274,23 @@ export class Body {
       },
     });
     this.semanticMotionHandles.add(handle);
-    void handle.completion.then(() => this.semanticMotionHandles.delete(handle));
+    void handle.completion.then(({ reason }) => {
+      this.semanticMotionHandles.delete(handle);
+      if (
+        reason === "completed" &&
+        request.priority === "speech-expression" &&
+        decision.context === "speech" &&
+        this.motionConversationPhase === "assistant-speaking" &&
+        this.motionScheduler.getActivePriority() === null &&
+        !this.disposed
+      ) {
+        // The player has reached the authored end or bounded quiet exit and
+        // started its recovery fade. During continued speech, reconsider the
+        // background now instead of adding idle's 2.5-second settling period.
+        // Selection still applies availability, history and the physical gate.
+        this.motionDirector.requestNextIdle(0);
+      }
+    });
     return handle;
   }
 
