@@ -179,7 +179,7 @@ function bake(source, inPoint, outPoint, sampleHz) {
   return { duration, times, rotations, positions, originOffset };
 }
 
-function encodeVrma(source, baked, sourceSha256) {
+function encodeVrma(source, baked, sourceSha256, animationName) {
   const names = [...source.bones.keys()];
   const nodeIndex = new Map(
     names.map((name, i) => [source.humanoid.getNormalizedBoneNode(name), i]),
@@ -226,7 +226,7 @@ function encodeVrma(source, baked, sourceSha256) {
     scene: 0,
     scenes: [{ nodes: [names.indexOf("hips")] }],
     nodes,
-    animations: [{ name: "Rokoko Conversation source-faithful", channels, samplers }],
+    animations: [{ name: animationName, channels, samplers }],
     buffers: [{ byteLength }],
     bufferViews,
     accessors,
@@ -356,6 +356,7 @@ export async function prepareRecordedFbx({
   outPointSec,
   sampleHz = 30,
   expectedSourceSha256 = expectedConversationSha256,
+  animationName = "Rokoko Conversation source-faithful",
 }) {
   if (path.resolve(inputFbx) === path.resolve(outputVrma) || path.extname(outputVrma) !== ".vrma")
     throw new Error("Output must be a separate VRMA path");
@@ -376,7 +377,7 @@ export async function prepareRecordedFbx({
       "Explicit in-point must exclude the reference prefix and remain in the source interval",
     );
   const baked = bake(source, inPointSec, end, sampleHz),
-    binary = encodeVrma(source, baked, sourceSha256);
+    binary = encodeVrma(source, baked, sourceSha256, animationName);
   const validation = await validateRoundtrip(buffer, binary, baked, inPointSec);
   const report = {
     schemaVersion: 1,
