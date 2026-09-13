@@ -4348,6 +4348,7 @@ function App() {
           // instead of a reflex the moment the VRM appears on screen.
           setTimeout(() => {
             bodyRef.current?.createCharacterAPI().play("anim:VRMA_small_nod", {
+              mask: "upper-body",
               fadeInMs: 1200,
               fadeOutMs: 800,
               weight: 0.8,
