@@ -1052,6 +1052,7 @@ export class Body {
         weight: options?.weight,
         loop: options?.loop,
         speed: options?.speed,
+        rootMotion: options?.rootMotion,
       },
     });
     return adaptMotionHandleToAnimationHandle(motionHandle);

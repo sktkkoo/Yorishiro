@@ -311,6 +311,8 @@ export interface PlayOptions {
   weight?: number;
   loop?: boolean;
   speed?: number;
+  /** Default in-place; preserve reviewed hips XYZ only for non-looping full-body playback. */
+  rootMotion?: "in-place" | "preserve";
   /**
    * Legacy field — MVP では無視される。
    *
@@ -437,6 +439,8 @@ export interface MotionOptions {
   readonly transition?: "matched" | "immediate";
   /** Upper-body leaves hips and legs available to the standing base pose. */
   readonly mask?: "upper-body" | "full-body";
+  /** Default in-place; preserve reviewed hips XYZ only for full-body, immediate one-shots. */
+  readonly rootMotion?: "in-place" | "preserve";
   readonly maxTransitionDelayMs?: number;
   /** Bound a non-looping performance at a nearby quiet exit; shorter clips keep their ending. */
   readonly maxDurationMs?: number;

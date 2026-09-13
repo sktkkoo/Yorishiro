@@ -4,7 +4,11 @@
  * Analysis runs once per retargeted clip. update() does no feature allocation.
  */
 import { type VRM, VRMHumanBoneName } from "@pixiv/three-vrm";
-import { createVRMAnimationClip, VRMAnimationLoaderPlugin } from "@pixiv/three-vrm-animation";
+import {
+  createVRMAnimationClip,
+  type VRMAnimation,
+  VRMAnimationLoaderPlugin,
+} from "@pixiv/three-vrm-animation";
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import type { SubsystemLog } from "../dev-log";
@@ -38,6 +42,8 @@ export interface AnimationPlayOptions {
   /** Only matched idle motifs may enter in the middle of a clip. */
   transition?: "matched" | "immediate";
   mask?: "upper-body" | "lower-body" | "full-body";
+  /** Preserve reviewed hips XYZ only for full-body, immediate, non-looping performances. */
+  rootMotion?: "in-place" | "preserve";
   /** Internal mixer ownership. Public motion requests remain on the performance layer. */
   layer?: "foundation" | "performance";
   /** Explicit phase override for deterministic visual comparisons. */
@@ -101,6 +107,8 @@ export class AnimationPlayer {
   private readonly loader: GLTFLoader;
   private readonly clipCache = new Map<string, THREE.AnimationClip>();
   private readonly pendingLoads = new Map<string, Promise<THREE.AnimationClip | null>>();
+  private readonly sourceAnimations = new Map<string, VRMAnimation>();
+  private readonly pendingSources = new Map<string, Promise<VRMAnimation | null>>();
   private readonly maskedClips = new WeakMap<
     THREE.AnimationClip,
     Map<NonNullable<AnimationPlayOptions["mask"]>, THREE.AnimationClip>
@@ -190,17 +198,21 @@ export class AnimationPlayer {
   /** Load, retarget, mask and analyze before a scheduler commits to a replacement. */
   async preload(
     ref: string,
-    opts: Pick<AnimationPlayOptions, "mask" | "loop" | "isCurrent"> = {},
+    opts: Pick<
+      AnimationPlayOptions,
+      "mask" | "loop" | "isCurrent" | "rootMotion" | "transition" | "layer"
+    > = {},
   ): Promise<boolean> {
-    const clip = await this.loadClip(ref);
-    if (opts.isCurrent && !opts.isCurrent()) return false;
-    if (!clip) return false;
     try {
-      this.prepareClip(clip, opts.mask, opts.loop, ref);
+      this.assertRootMotionOptions(opts);
+      const clip = await this.loadClip(ref, opts.rootMotion);
+      if (opts.isCurrent && !opts.isCurrent()) return false;
+      if (!clip) return false;
+      this.prepareClip(clip, opts.mask, opts.loop, ref, opts.rootMotion);
       return true;
     } catch {
-      // An unsupported standing foundation must never become an absolute-stance
-      // fallback. The controller can retain procedural rest when preparation fails.
+      // Invalid root preservation or standing preparation must fail closed.
+      // The caller can retain its existing pose when a reviewed variant is unavailable.
       return false;
     }
   }
@@ -231,12 +243,19 @@ export class AnimationPlayer {
   }
 
   async play(ref: string, opts: AnimationPlayOptions = {}) {
+    this.assertRootMotionOptions(opts);
     const generation = this.generation;
     const isCurrent = () => generation === this.generation && (opts.isCurrent?.() ?? true);
-    const loadedClip = await this.loadClip(ref);
+    const loadedClip = await this.loadClip(ref, opts.rootMotion);
     this.assertCurrent(isCurrent);
     if (!loadedClip) throw new Error(`animation not found: ${ref}`);
-    const { clip, profile } = this.prepareClip(loadedClip, opts.mask, opts.loop, ref);
+    const { clip, profile } = this.prepareClip(
+      loadedClip,
+      opts.mask,
+      opts.loop,
+      ref,
+      opts.rootMotion,
+    );
     const layer = opts.layer ?? "performance";
     let previous = this.latestAnimation(layer);
     if (previous && opts.transition === "matched" && opts.startTimeSec === undefined) {
@@ -335,6 +354,7 @@ export class AnimationPlayer {
         entrySec: action.time,
         transition: opts.transition ?? "immediate",
         mask: opts.mask ?? "full-body",
+        rootMotion: opts.rootMotion ?? "in-place",
         layer,
         grounded:
           layer === "foundation" && clip.tracks.some((track) => track.name.endsWith(".position")),
@@ -446,8 +466,13 @@ export class AnimationPlayer {
     this.hasPoseSample = true;
   }
 
-  private profileKey(ref: string, mask: AnimationPlayOptions["mask"], loop = false): string {
-    return JSON.stringify([ref, mask ?? "full-body", loop]);
+  private profileKey(
+    ref: string,
+    mask: AnimationPlayOptions["mask"],
+    loop = false,
+    rootMotion: AnimationPlayOptions["rootMotion"] = "in-place",
+  ): string {
+    return JSON.stringify([ref, mask ?? "full-body", loop, rootMotion]);
   }
   private updateWeight(anim: ActiveAnimation, time: number): void {
     const ramp = anim.ramp;
@@ -488,6 +513,7 @@ export class AnimationPlayer {
     mask: AnimationPlayOptions["mask"],
     loop = false,
     ref?: string,
+    rootMotion: AnimationPlayOptions["rootMotion"] = "in-place",
   ) {
     let clip = loaded;
     if (mask === "upper-body" || mask === "lower-body") {
@@ -575,43 +601,124 @@ export class AnimationPlayer {
       profile = analyzeMotionClip(clip, weights);
       this.profiles.set(clip, profile);
     }
-    if (ref) this.preparedProfiles.set(this.profileKey(ref, mask, loop), profile);
+    if (ref) this.preparedProfiles.set(this.profileKey(ref, mask, loop, rootMotion), profile);
     return { clip, profile };
   }
-  private async loadClip(ref: string): Promise<THREE.AnimationClip | null> {
-    const cached = this.clipCache.get(ref);
+  private assertRootMotionOptions(opts: AnimationPlayOptions): void {
+    if (opts.rootMotion !== "preserve") return;
+    if (
+      opts.loop ||
+      (opts.mask !== undefined && opts.mask !== "full-body") ||
+      opts.layer === "foundation" ||
+      opts.transition === "matched"
+    ) {
+      // Quaternion seam conditioning/matching cannot guarantee root closure or
+      // contacts. Reviewed one-shots are the only supported first integration.
+      throw new Error(
+        "rootMotion preserve requires a full-body, immediate, non-looping performance",
+      );
+    }
+  }
+  private async loadClip(
+    ref: string,
+    rootMotion: AnimationPlayOptions["rootMotion"] = "in-place",
+  ): Promise<THREE.AnimationClip | null> {
+    const key = rootMotion === "in-place" ? ref : JSON.stringify([ref, rootMotion]);
+    const cached = this.clipCache.get(key);
     if (cached) return cached;
-    const pending = this.pendingLoads.get(ref);
+    const pending = this.pendingLoads.get(key);
     if (pending) return pending;
     const path = this.resolveRefToPath(ref);
     if (!path) return null;
-    const loading = this.fetchClip(ref, path);
-    this.pendingLoads.set(ref, loading);
+    const loading = this.fetchClip(ref, path, key, rootMotion);
+    this.pendingLoads.set(key, loading);
     try {
       return await loading;
     } finally {
-      this.pendingLoads.delete(ref);
+      this.pendingLoads.delete(key);
     }
   }
-  private async fetchClip(ref: string, path: string): Promise<THREE.AnimationClip | null> {
+  private async loadSource(ref: string, path: string): Promise<VRMAnimation | null> {
+    const cached = this.sourceAnimations.get(ref);
+    if (cached) return cached;
+    const pending = this.pendingSources.get(ref);
+    if (pending) return pending;
+    const loading = this.loader.loadAsync(path).then((gltf) => {
+      const animation: VRMAnimation | undefined = gltf.userData.vrmAnimations?.[0];
+      if (animation) this.sourceAnimations.set(ref, animation);
+      return animation ?? null;
+    });
+    this.pendingSources.set(ref, loading);
     try {
-      const gltf = await this.loader.loadAsync(path);
-      const animations = gltf.userData.vrmAnimations;
-      if (!animations?.length) return null;
-      const clip = createVRMAnimationClip(animations[0], this.vrm);
-      // Preserve the in-place policy. Full-body foot contacts still need IK/root compensation.
+      return await loading;
+    } finally {
+      this.pendingSources.delete(ref);
+    }
+  }
+  private async fetchClip(
+    ref: string,
+    path: string,
+    key: string,
+    rootMotion: AnimationPlayOptions["rootMotion"],
+  ): Promise<THREE.AnimationClip | null> {
+    try {
+      const source = await this.loadSource(ref, path);
+      if (!source) return null;
+      const preserve = rootMotion === "preserve";
+      const translation = new Map<"hips", THREE.VectorKeyframeTrack>();
+      if (preserve) {
+        if (
+          !source.restHipsPosition.toArray().every(Number.isFinite) ||
+          source.restHipsPosition.y < 1e-3
+        ) {
+          throw new Error("rootMotion preserve requires finite positive source rest hips height");
+        }
+        const sourceHips = source.humanoidTracks.translation.get("hips");
+        validateHipsTranslation(sourceHips, source.duration);
+        translation.set("hips", sourceHips);
+        const targetHeight = this.vrm.humanoid?.normalizedRestPose?.hips?.position?.[1];
+        if (
+          !this.vrm.humanoid?.getNormalizedBoneNode("hips")?.name ||
+          !Number.isFinite(targetHeight) ||
+          (targetHeight ?? 0) < 1e-3
+        ) {
+          throw new Error("rootMotion preserve requires finite positive target rest hips height");
+        }
+      }
+      // Remove unsupported translations before retargeting. Old converter clips
+      // have zero rest hips height; stripping later would first produce NaNs.
+      // The parsed source remains immutable so policy variants cannot contaminate each other.
+      const animation: VRMAnimation = {
+        ...source,
+        humanoidTracks: {
+          ...source.humanoidTracks,
+          translation,
+        },
+      };
+      const clip = createVRMAnimationClip(animation, this.vrm);
+      const hips = this.vrm.humanoid?.getNormalizedBoneNode("hips");
+      const hipsTrackName = hips && `${hips.name}.position`;
       clip.tracks = clip.tracks.filter(
-        (track) => !track.name.endsWith(".position") && !track.name.endsWith(".scale"),
+        (track) =>
+          !track.name.endsWith(".scale") &&
+          (!track.name.endsWith(".position") || (preserve && track.name === hipsTrackName)),
       );
-      this.prepareClip(clip, "full-body", false, ref);
-      this.clipCache.set(ref, clip);
+      if (preserve) {
+        validateHipsTranslation(
+          clip.tracks.find((track) => track.name === hipsTrackName),
+          clip.duration,
+        );
+      }
+      this.prepareClip(clip, "full-body", false, ref, rootMotion);
+      this.clipCache.set(key, clip);
       this.devLog?.write({
         phase: "load",
         note: `loaded ${ref}`,
-        data: { tracks: clip.tracks.length, durationSec: clip.duration },
+        data: { tracks: clip.tracks.length, durationSec: clip.duration, rootMotion },
       });
       return clip;
     } catch (error) {
+      if (rootMotion === "preserve") throw error;
       console.warn(`[AnimationPlayer] failed to load ${path}:`, error);
       return null;
     }
@@ -622,6 +729,30 @@ export class AnimationPlayer {
       return `/animations/${ANIM_ALIAS[name] ?? name}.vrma`;
     }
     return ref.endsWith(".vrma") ? ref : null;
+  }
+}
+
+function validateHipsTranslation(
+  track: THREE.KeyframeTrack | undefined,
+  duration: number,
+): asserts track is THREE.KeyframeTrack {
+  if (
+    !track ||
+    track.getValueSize() !== 3 ||
+    !Number.isFinite(duration) ||
+    duration <= 0 ||
+    track.times.length === 0 ||
+    track.values.length !== track.times.length * 3 ||
+    !track.values.every(Number.isFinite) ||
+    !track.times.every(
+      (time, index, times) =>
+        Number.isFinite(time) &&
+        time >= 0 &&
+        time <= duration + 1e-5 &&
+        (index === 0 || time > times[index - 1]),
+    )
+  ) {
+    throw new Error("rootMotion preserve requires a finite hips XYZ track with increasing times");
   }
 }
 

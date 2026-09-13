@@ -183,6 +183,31 @@ describe("Body motion activation ownership", () => {
     };
   }
 
+  it.each([
+    "character",
+    "motion",
+  ])("forwards reviewed hips policy from the %s SDK route", async (route) => {
+    const { vrm } = mockBodyVrm();
+    const body = new Body(vrm, undefined, mockClaimState());
+    const active = playback();
+    const play = mockPendingPlay(body).mockResolvedValue(active.result);
+    const options = { rootMotion: "preserve", weight: 1, loop: false } as const;
+    const handle =
+      route === "character"
+        ? body.createCharacterAPI().play("reviewed.vrma", options)
+        : body.acquireMotionSlot({
+            source: "persona",
+            priority: "persona-handler",
+            animation: "reviewed.vrma",
+            options,
+          });
+    await flushMicrotasks();
+    expect(play).toHaveBeenCalledWith("reviewed.vrma", expect.objectContaining(options));
+    handle.cancel();
+    await handle.completion;
+    body.dispose();
+  });
+
   it("cancels playback that finishes loading after its scheduler handle is released", async () => {
     const { vrm } = mockBodyVrm();
     const body = new Body(vrm, undefined, mockClaimState());
