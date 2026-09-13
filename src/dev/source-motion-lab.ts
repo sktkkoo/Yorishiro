@@ -2,6 +2,7 @@ import { type VRM, VRMLoaderPlugin, VRMUtils } from "@pixiv/three-vrm";
 import { createVRMAnimationClip, VRMAnimationLoaderPlugin } from "@pixiv/three-vrm-animation";
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { AnimationPlayer } from "../core/body/animation-player";
 import { applyVrmRestPose } from "../core/body/vrm-rest-pose";
 
 function element<T extends HTMLElement>(id: string): T {
@@ -17,6 +18,7 @@ interface Lane {
   camera: THREE.PerspectiveCamera;
   mixer: THREE.AnimationMixer;
   action: THREE.AnimationAction;
+  player?: AnimationPlayer;
   duration: number;
 }
 
@@ -25,13 +27,20 @@ const slider = element<HTMLInputElement>("time");
 let elapsed = 0;
 let duration = 0;
 let playing = false;
+let seekGeneration = 0;
+let seeking = false;
 const marker = new THREE.Vector3();
 const contactReview = new URLSearchParams(window.location.search).get("contacts") === "1";
+const runtimeReview = new URLSearchParams(window.location.search).get("runtime") === "1";
 const faithfulPath = "/.motion-review/source-assets/prepared/Idle Conversation.vrma";
-const leftPath = contactReview ? faithfulPath : "/animations/Idle Conversation.vrma";
 const sourcePath = contactReview
   ? "/.motion-review/source-assets/prepared/Idle Conversation.yori-contact.vrma"
   : faithfulPath;
+const leftPath = runtimeReview
+  ? sourcePath
+  : contactReview
+    ? faithfulPath
+    : "/animations/Idle Conversation.vrma";
 
 async function createLane(id: string, animationPath: string): Promise<Lane> {
   const renderer = new THREE.WebGLRenderer({
@@ -71,8 +80,11 @@ async function createLane(id: string, animationPath: string): Promise<Lane> {
   const action = mixer.clipAction(clip);
   action.setLoop(THREE.LoopOnce, 1);
   action.clampWhenFinished = true;
-  action.setEffectiveWeight(1).play();
-  return { vrm, renderer, scene, camera, mixer, action, duration: clip.duration };
+  const player = runtimeReview && id === "source" ? new AnimationPlayer(vrm) : undefined;
+  if (player) {
+    await player.preload(animationPath, { rootMotion: "preserve" });
+  } else action.setEffectiveWeight(1).play();
+  return { vrm, renderer, scene, camera, mixer, action, player, duration: clip.duration };
 }
 
 function render(): void {
@@ -90,25 +102,55 @@ function render(): void {
   element("clock").textContent = `${elapsed.toFixed(2)} / ${duration.toFixed(2)} s`;
 }
 
-function seek(time: number): void {
+async function seek(time: number): Promise<void> {
+  const generation = ++seekGeneration;
+  seeking = true;
+  playing = false;
   elapsed = Math.max(0, Math.min(duration, time));
-  for (const lane of lanes) {
-    lane.action.reset().play();
-    lane.mixer.setTime(elapsed);
-    lane.vrm.update(0);
-    lane.vrm.springBoneManager?.reset();
-  }
+  await Promise.all(
+    lanes.map(async (lane) => {
+      if (lane.player) {
+        lane.player.stopAll();
+        try {
+          await lane.player.play(sourcePath, {
+            rootMotion: "preserve",
+            loop: false,
+            transition: "immediate",
+            weight: 1,
+            speed: 1,
+            fadeInMs: 0,
+            startTimeSec: elapsed,
+            isCurrent: () => generation === seekGeneration,
+          });
+        } catch (error) {
+          if (generation !== seekGeneration) return;
+          throw error;
+        }
+        if (generation !== seekGeneration) return;
+        lane.player.update(0);
+      } else {
+        lane.action.reset().play();
+        lane.mixer.setTime(elapsed);
+      }
+      lane.vrm.update(0);
+      lane.vrm.springBoneManager?.reset();
+    }),
+  );
+  if (generation !== seekGeneration) return;
+  seeking = false;
   render();
 }
 
 function step(seconds: number): void {
+  if (seeking) return;
   const delta = Math.max(0, Math.min(duration - elapsed, seconds));
   const frames = Math.ceil(delta * 60);
   for (let frame = 0; frame < frames; frame++) {
     const dt = Math.min(1 / 60, delta - frame / 60);
     elapsed += dt;
     for (const lane of lanes) {
-      lane.mixer.update(dt);
+      if (lane.player) lane.player.update(dt);
+      else lane.mixer.update(dt);
       lane.vrm.update(dt);
     }
   }
@@ -119,7 +161,11 @@ function observations() {
   return {
     elapsedSeconds: elapsed,
     durationSeconds: duration,
-    comparison: contactReview ? "target-contact-adaptation" : "source-conversion",
+    comparison: runtimeReview
+      ? "runtime-root-preservation"
+      : contactReview
+        ? "target-contact-adaptation"
+        : "source-conversion",
     leftPath,
     sourcePath,
     lanes: lanes.map((lane) => ({
@@ -149,7 +195,15 @@ const api = {
 Object.assign(window, { sourceMotionLab: api });
 
 async function start(): Promise<void> {
-  if (contactReview) {
+  if (runtimeReview) {
+    element("left-title").textContent = "Official loader · direct replay";
+    element("right-title").textContent = "Yorishiro AnimationPlayer · root preserved";
+    element("left-caption").textContent = "Direct reference playback of the same prepared clip.";
+    element("right-caption").textContent =
+      "The actual runtime player, with explicit whole-body root preservation.";
+    element("comparison-note").textContent =
+      "Both lanes use the same clip, Yori model, time, full weight and playback speed 1. The right uses the actual AnimationPlayer with rootMotion: preserve, a finite performance and no body mask. This checks runtime ingestion; it does not approve cross-clip transitions or Animates superiority.";
+  } else if (contactReview) {
     element("left-title").textContent = "Faithful source · direct retarget";
     element("right-title").textContent = "Yori · contact adaptation candidate";
     element("left-caption").textContent = "Original full-body recording, with hips and fingers.";
@@ -162,16 +216,16 @@ async function start(): Promise<void> {
   lanes.push(await createLane("source", sourcePath));
   duration = Math.min(...lanes.map((lane) => lane.duration));
   slider.max = String(duration);
-  element("play").onclick = () => {
-    if (elapsed >= duration) seek(0);
+  element("play").onclick = async () => {
+    if (elapsed >= duration) await seek(0);
     playing = !playing;
   };
-  element("restart").onclick = () => seek(0);
+  element("restart").onclick = () => void seek(0);
   slider.oninput = () => {
     playing = false;
-    seek(Number(slider.value));
+    void seek(Number(slider.value));
   };
-  seek(0);
+  await seek(0);
   api.ready = true;
   element("status").textContent =
     "Ready · same Yori, full body, playback speed 1 · drag the timeline to inspect";

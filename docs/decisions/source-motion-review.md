@@ -81,3 +81,15 @@ Outputs remain ignored under `.motion-review/source-replay`: `seek-*.png`,
 `replay-*.png`, `observations.json`, and optionally `frames/` plus
 `source-comparison.mp4`. The committed driver and this report contain no binary
 recordings or screenshots.
+
+For the separate target-contact comparison, open
+`source-motion-lab.html?contacts=1` after running
+`scripts/adapt-conversation-contacts.mjs`. The paired front, side and dense
+start/end images showed no obvious newly introduced stance or boot jump;
+clothing hides most knee detail, and sparse image review does not certify
+every-frame smoothness. The full 25-second film is retained privately in
+`.motion-review/contact-replay/`.
+
+The additional `runtime=1` mode compares the **same** prepared clip through the
+official loader and the real runtime player. Its options, measured coordinate
+agreement and limits are described in [recorded-root-playback.md](recorded-root-playback.md).
