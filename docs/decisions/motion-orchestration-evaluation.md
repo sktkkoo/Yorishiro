@@ -3,6 +3,8 @@
 **Status**: implementation guidance; comparison with Animates pending  
 **Last updated**: 2026-09-13
 
+2026-09-14 update: the [quality strategy](motion-quality-strategy.md) supersedes an Idle-only interpretation of the comparison. The user's Animates example includes expressive conversational arms and dancing in time with music playing on the PC. Music detection/dancing is a reference for contextual timing and full-body quality, not the first required Yorishiro feature. Prioritize original-recording fidelity and Idle/listening/conversation handoffs before extending feature count.
+
 ## Goal and scope
 
 Yorishiro の自然さと実在感を、収録済みの複数モーションを自然につなぐことで改善する。ユーザーの希望により、主役は収録済みモーションとする。procedural な呼吸・視線・補正は小さな補助であり、clip の代わりに大きな身体動作を生成しない。追加の有料 API や常駐 vector database を必須にしない。
@@ -135,3 +137,9 @@ A later reference was captured on 2026-09-13 at 14:13:39 UTC using macOS ScreenC
 The resulting local-only movie contains 579 frames at 578 × 1156 pixels over 20.183 seconds (about 28.7 frames/s), with no audio track. Maximum written-frame interval was 81.6 ms and writer backpressure dropped zero frames. These are capture diagnostics; they do not isolate Animates renderer performance. Dimensions, stream metadata and a montage were checked to confirm only the selected avatar window was present. The avatar remained in its standing idle presentation, with small body/eye changes and feet outside the view. This adds a continuous visual reference to the earlier sparse stills but supplies no same-avatar controlled comparison or human preference result.
 
 The movie, acquisition metadata and Swift capture utility remain local review artifacts outside Git. A 30-second Yorishiro diagnostic video was also rendered at 24 frames/s using the same Yori model, light and camera for the procedural baseline and the new recorded-motion system. That video demonstrates the implemented behavior; comparing its motion variety with the short Animates idle sample cannot establish overall superiority.
+
+## Longer installed-app observation, 2026-09-14
+
+Two planned five-minute, window-only recordings were stopped by macOS. The first ended at roughly 150 seconds without a finalized movie, and its beginning overlapped a local browser-rendering task; it is not a valid benchmark. The second used the same exact Animates window filter with no concurrent intensive rendering. It was stopped by the system after 195.092 seconds (`SCStreamErrorDomain`, `-3821`), but the recorder finalized the acquired 4,432 frames into a valid silent 578 × 1156 movie. Metadata explicitly records `completedRequestedDuration=false`. Writer backpressure dropped zero frames; maximum presentation-time gap was 132 ms. Capture timing is not evidence of an Animates defect.
+
+The second movie remains in the Git-ignored `.motion-review/animates-idle-5min-clean.mov`; despite the requested-duration filename, its observed duration is only 195 seconds. No input was sent by the recorder. A montage sampled every ten seconds shows larger changes in arm spread, hand orientation, torso lean and mouth opening around 130–190 seconds, following subtler early movement. The active conversation/music state could not be inspected, so the entire recording must not be labeled pure idle, nor can the cause of those movements be inferred. Ankles/feet remain outside the view and audio was not captured. This evidence broadens observed behavior but does not establish a controlled comparison, beat alignment, conversational appropriateness, contact quality or Yorishiro superiority.
