@@ -201,3 +201,25 @@ that automatic masked playback restores the original actor's full-body motion.
 The default stays in-place and the candidates remain outside the automatic
 catalog. The check excludes transitions, Body overlays and human preference;
 details are in `.motion-review/runtime-root-preservation-qa.json`.
+
+### Additional handoff review, 2026-09-14
+
+Reviewing the existing film and real-audio observations revealed a finite-gesture
+handoff gap: the old v3 film lowered the arms into its settling state before the
+listening command, and speech observations contained several seconds with no
+active recorded upper-body slot despite uninterrupted audio. A new actual-audio
+run confirmed a 2.5-second scheduler delay after the finite performance. A narrow
+Body completion change now reconsiders the conversational background while its
+recovery fade continues, keeping physical rejection and other owners intact.
+The repeat run had no sampled inactive interval at that handoff. This is removal
+of unnecessary scheduling delay, not a requirement for constant movement.
+
+An independent actual Web Audio probe also reproduced a same-task false
+speaking → responding → speaking boundary on immediate audio replacement.
+Announcing successful new playout before ending the old owner removed that
+boundary; genuine stop, failed start and non-speech replacement retain their
+release behavior. The combined affected suites passed 136 tests in six files,
+plus TypeScript and Biome. See the [implementation follow-up](motion-orchestration.md#follow-up-conversational-handoff-fixes-2026-09-14)
+for before/after timestamps, artifact paths, and limits. Earlier film and full
+suite results predate these changes. Neither fix establishes superiority over
+Animates; the input-method dependency and controlled comparison remain open.
