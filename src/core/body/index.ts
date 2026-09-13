@@ -95,6 +95,7 @@ import {
 import { ProceduralBones } from "./procedural-bones";
 import { RecordedBodySequencer } from "./recorded-body-sequencer";
 import { RecordedIdleFoundation } from "./recorded-idle-foundation";
+import { RelaxedHandFidget } from "./relaxed-hand-fidget";
 import {
   DEFAULT_SPEECH_MICROEXPRESSION_PARAMS,
   type SpeechMicroexpressionOutput,
@@ -235,6 +236,7 @@ export class Body {
   private readonly animationPlayer: AnimationPlayer;
   private readonly recordedIdleFoundation: RecordedIdleFoundation;
   private readonly recordedBody: RecordedBodySequencer;
+  private readonly relaxedHandFidget: RelaxedHandFidget;
   private foundationBlockedByPerformance = false;
   private readonly proceduralBones: ProceduralBones;
   private readonly beatScheduler: IdleBeatScheduler;
@@ -460,9 +462,11 @@ export class Body {
     );
     this.proceduralBones = new ProceduralBones();
     this.proceduralBones.bindVrm(vrm);
-    this.animationPlayer = new AnimationPlayer(vrm, devLog, () =>
-      this.proceduralBones.restoreBaseRotations(),
-    );
+    this.relaxedHandFidget = new RelaxedHandFidget(vrm);
+    this.animationPlayer = new AnimationPlayer(vrm, devLog, () => {
+      this.relaxedHandFidget.restoreBaseRotations();
+      this.proceduralBones.restoreBaseRotations();
+    });
     this.recordedIdleFoundation = new RecordedIdleFoundation(this.animationPlayer);
     this.recordedBody = new RecordedBodySequencer(this.animationPlayer, {
       modelSha256: motionAssets.modelSha256,
@@ -801,6 +805,7 @@ export class Body {
     // Previous-frame procedural head pose must not be seen as AnimationMixer's base
     // pose. This also clears the last offset while an external animation claim
     // owns the body.
+    this.relaxedHandFidget.restoreBaseRotations();
     this.updateAmbientMotion(delta, animationClaimed);
     this.proceduralBones.restoreBaseRotations();
     if (!animationClaimed) {
@@ -836,6 +841,27 @@ export class Body {
     } else {
       this.proceduralBones.clearTransientReflexes();
     }
+    const handMotionPriority = this.motionScheduler.getActivePriority();
+    this.relaxedHandFidget.update(
+      delta,
+      !animationClaimed &&
+        this.motionLibraryEnabled &&
+        this.motionIntensity >= 1 &&
+        this.recordedBody.allowsHandFidget &&
+        this.eyeSystem.state === "idle" &&
+        !["assistant-speaking", "user-speaking", "assistant-responding", "interrupted"].includes(
+          this.motionConversationPhase,
+        ) &&
+        handMotionPriority === null,
+      !animationClaimed &&
+        this.motionLibraryEnabled &&
+        this.motionIntensity >= 1 &&
+        this.recordedBody.active &&
+        !this.foundationBlockedByPerformance &&
+        (handMotionPriority === null ||
+          handMotionPriority === "idle-fidget" ||
+          handMotionPriority === "speech-expression"),
+    );
 
     // 3. Blink
     const blinkValue = this.blinkSystem.update(delta);
@@ -945,6 +971,7 @@ export class Body {
     this.disposeAttention();
     this.motionScheduler.cancelAll(0);
     this.motionActivationGeneration++;
+    this.relaxedHandFidget.dispose();
     this.recordedBody.dispose();
     this.recordedIdleFoundation.dispose();
     this.animationPlayer.stopAll();
