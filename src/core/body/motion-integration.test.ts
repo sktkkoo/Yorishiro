@@ -34,6 +34,7 @@ function playback() {
 
 function createBody() {
   const bones = new Map<VRMHumanBoneName, THREE.Object3D>();
+  const scene = new THREE.Object3D();
   const claimed = new Set<ClaimKind>();
   const claims: ClaimState = {
     isClaimed: (kind) => claimed.has(kind),
@@ -45,11 +46,16 @@ function createBody() {
   };
   const vrm = {
     meta: { metaVersion: "1" },
-    scene: new THREE.Object3D(),
+    scene,
     humanoid: {
       resetNormalizedPose: () => {},
       getNormalizedBoneNode: (name: VRMHumanBoneName) => {
-        if (!bones.has(name)) bones.set(name, new THREE.Object3D());
+        if (!bones.has(name)) {
+          const bone = new THREE.Object3D();
+          bone.name = name;
+          bones.set(name, bone);
+          scene.add(bone);
+        }
         return bones.get(name);
       },
     },
@@ -59,7 +65,7 @@ function createBody() {
   } as unknown as VRM;
   const body = new Body(vrm, undefined, claims);
   bodies.push(body);
-  return { body, claims };
+  return { body, claims, vrm };
 }
 
 const bodies: Body[] = [];
@@ -99,11 +105,50 @@ function cue(overrides: Partial<StateExpressionCue> = {}): StateExpressionCue {
 }
 
 describe("recorded motion Body integration", () => {
+  it("preserves the real mixer's fade ramp through Body activation at unchanged motion gain", async () => {
+    const { body, vrm } = createBody();
+    body.setMotionLibraryEnabled(false);
+    const arm = vrm.humanoid.getNormalizedBoneNode("leftLowerArm");
+    if (!arm) throw new Error("test arm is required");
+    arm.quaternion.identity();
+    const player = (body as unknown as { animationPlayer: AnimationPlayer }).animationPlayer;
+    const cache = (player as unknown as { clipCache: Map<string, THREE.AnimationClip> }).clipCache;
+    cache.set(
+      "anim:fade-regression",
+      new THREE.AnimationClip("fade-regression", 2, [
+        new THREE.QuaternionKeyframeTrack(
+          `${arm.name}.quaternion`,
+          [0, 2],
+          [Math.sin(0.5), 0, 0, Math.cos(0.5), Math.sin(0.5), 0, 0, Math.cos(0.5)],
+        ),
+      ]),
+    );
+    body.acquireMotionSlot({
+      source: "idle",
+      priority: "idle-fidget",
+      animation: "anim:fade-regression",
+      options: { loop: true, fadeInMs: 1_000, weight: 0.9 },
+    });
+    await flush();
+    body.update(0.1, 0.1);
+    expect(player.getTotalEffectiveWeight()).toBeGreaterThan(0);
+    expect(player.getTotalEffectiveWeight()).toBeLessThan(0.03);
+    expect(arm.rotation.x).toBeGreaterThan(0);
+    expect(arm.rotation.x).toBeLessThan(0.03);
+    body.update(0.4, 0.5);
+    expect(player.getTotalEffectiveWeight()).toBeCloseTo(0.45, 5);
+    expect(arm.rotation.x).toBeCloseTo(0.45, 5);
+    body.update(0.5, 1);
+    expect(player.getTotalEffectiveWeight()).toBeCloseTo(0.9, 5);
+    expect(arm.rotation.x).toBeCloseTo(0.9, 5);
+  });
+
   it("prepares the local catalog once, tolerates absent assets, and plays only prepared candidates", async () => {
     const preload = vi
       .spyOn(AnimationPlayer.prototype, "preload")
       .mockImplementation(async (animation) => animation !== "anim:Idle");
-    const play = vi.spyOn(AnimationPlayer.prototype, "play").mockResolvedValue(playback());
+    const active = playback();
+    const play = vi.spyOn(AnimationPlayer.prototype, "play").mockResolvedValue(active);
     const { body } = createBody();
     const first = body.prepareMotionLibrary();
     expect(body.prepareMotionLibrary()).toBe(first);
@@ -120,6 +165,8 @@ describe("recorded motion Body integration", () => {
       transition: "matched",
     });
     expect(play.mock.calls[0][1]?.weight).toBeGreaterThanOrEqual(0.85);
+    // Resetting the weight here would erase the player's in-progress fade ramp.
+    expect(active.setWeight).not.toHaveBeenCalled();
     advance(body, 10);
     expect(play).toHaveBeenCalledOnce();
   });
@@ -198,6 +245,37 @@ describe("recorded motion Body integration", () => {
     body.setMotionIntensity(0.5);
     const baseWeight = body.getMotionDirectorSnapshot().lastDecision?.options.weight ?? 0;
     expect(active.setWeight).toHaveBeenCalledWith(baseWeight * 0.5, 350);
+  });
+
+  it("fades to the latest reduced-motion gain when that setting changes during loading", async () => {
+    vi.spyOn(AnimationPlayer.prototype, "preload").mockResolvedValue(true);
+    const pending = deferred<Playback>();
+    vi.spyOn(AnimationPlayer.prototype, "play").mockReturnValue(pending.promise);
+    const { body } = createBody();
+    await body.prepareMotionLibrary();
+    advance(body, 1.3);
+    body.setMotionIntensity(0.25);
+    const active = playback();
+    pending.resolve(active);
+    await flush();
+    const baseWeight = body.getMotionDirectorSnapshot().lastDecision?.options.weight ?? 0;
+    expect(active.setWeight).toHaveBeenCalledWith(baseWeight * 0.25, 350);
+  });
+
+  it("immediately invalidates pending idle playback when reduced motion is set to zero", async () => {
+    vi.spyOn(AnimationPlayer.prototype, "preload").mockResolvedValue(true);
+    const pending = deferred<Playback>();
+    const play = vi.spyOn(AnimationPlayer.prototype, "play").mockReturnValue(pending.promise);
+    const { body } = createBody();
+    await body.prepareMotionLibrary();
+    advance(body, 1.3);
+    body.setMotionIntensity(0);
+    expect(play.mock.calls[0][1]?.isCurrent?.()).toBe(false);
+    const late = playback();
+    pending.resolve(late);
+    await flush();
+    expect(late.cancel).toHaveBeenCalledOnce();
+    expect(late.setWeight).not.toHaveBeenCalled();
   });
 
   it("disabling the library releases owned speech motion while leaving explicit persona motion alone", async () => {
