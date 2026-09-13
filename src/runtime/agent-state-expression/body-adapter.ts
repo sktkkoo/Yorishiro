@@ -2,22 +2,15 @@ import type { MotionHandle } from "@yorishiro/sdk";
 import type { Body, SpeechStateExpressionHandle } from "../../core/body";
 import type { SpeechMicroexpressionParams } from "../../core/body/speech-microexpression-system";
 import type { StateExpressionSchedulerCallbacks } from "./scheduler";
-import type { GroundedAgentState, StateExpressionCue, StateExpressionGestureIntent } from "./types";
+import type { GroundedAgentState, StateExpressionCue } from "./types";
 
-type StateExpressionBody = Pick<Body, "acquireMotionSlot" | "acquireSpeechStateExpression">;
+type StateExpressionBody = Pick<Body, "acquireSemanticMotion" | "acquireSpeechStateExpression">;
 
 interface OwnedStateExpression {
   readonly state: SpeechStateExpressionHandle;
   motion: MotionHandle | null;
   releaseTimer: ReturnType<typeof globalThis.setTimeout> | null;
 }
-
-const GESTURE_ANIMATION: Readonly<Partial<Record<StateExpressionGestureIntent, string>>> = {
-  agree: "anim:VRMA_small_nod",
-  consider: "anim:VRMA_head_tilt_down",
-  reassure: "anim:VRMA_small_nod",
-  emphasize: "anim:VRMA_small_nod",
-};
 
 const MICROEXPRESSION_PROFILES: Readonly<
   Record<GroundedAgentState, Partial<SpeechMicroexpressionParams>>
@@ -88,17 +81,12 @@ function subtleProfile(
 }
 
 function acquireGesture(body: StateExpressionBody, cue: StateExpressionCue): MotionHandle | null {
-  const animation = cue.gestureIntent ? GESTURE_ANIMATION[cue.gestureIntent] : undefined;
-  if (!animation) return null;
-  return body.acquireMotionSlot({
+  if (!cue.gestureIntent || cue.gestureIntent === "none") return null;
+  return body.acquireSemanticMotion({
     source: "system",
     priority: "speech-expression",
-    animation,
-    options: {
-      fadeInMs: 160,
-      fadeOutMs: 280,
-      loop: false,
-      weight: cue.intensity === "medium" ? 0.45 : 0.32,
-    },
+    intent: cue.gestureIntent,
+    context: "speech",
+    intensity: cue.intensity === "medium" ? 0.65 : 0.35,
   });
 }

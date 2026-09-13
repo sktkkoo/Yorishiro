@@ -41,11 +41,50 @@ afterEach(() => {
 });
 
 describe("createBodyStateExpressionAdapter", () => {
+  it.each([
+    "agree",
+    "consider",
+    "reassure",
+    "emphasize",
+  ] as const)("passes %s through to the semantic director with no animation alias collapse", (gestureIntent) => {
+    const body = {
+      acquireSemanticMotion: vi.fn(() => motionHandle()),
+      acquireSpeechStateExpression: vi.fn(() => stateHandle()),
+    };
+    const adapter = createBodyStateExpressionAdapter(() => body);
+    adapter.onCue(cue({ gestureIntent, intensity: "medium" }), {
+      scheduledForMs: 0,
+      firedAtMs: 0,
+      lateByMs: 0,
+    });
+    expect(body.acquireSemanticMotion).toHaveBeenCalledWith({
+      source: "system",
+      priority: "speech-expression",
+      intent: gestureIntent,
+      context: "speech",
+      intensity: 0.65,
+    });
+    adapter.onRelease("u1", "completed");
+  });
+
+  it("still owns and releases the expression when the director declines a repeated gesture", () => {
+    const state = stateHandle();
+    const body = {
+      acquireSemanticMotion: vi.fn(() => null),
+      acquireSpeechStateExpression: vi.fn(() => state),
+    };
+    const adapter = createBodyStateExpressionAdapter(() => body);
+    adapter.onCue(cue(), { scheduledForMs: 0, firedAtMs: 0, lateByMs: 0 });
+    expect(body.acquireSemanticMotion).toHaveBeenCalledOnce();
+    adapter.onRelease("u1", "completed");
+    expect(state.release).toHaveBeenCalledOnce();
+  });
+
   it("resolves facial and body cues into speech state-expression slots", () => {
     const motion = motionHandle();
     const state = stateHandle();
     const body = {
-      acquireMotionSlot: vi.fn(() => motion),
+      acquireSemanticMotion: vi.fn(() => motion),
       acquireSpeechStateExpression: vi.fn(() => state),
     };
     const adapter = createBodyStateExpressionAdapter(() => body);
@@ -61,11 +100,13 @@ describe("createBodyStateExpressionAdapter", () => {
         }),
       }),
     );
-    expect(body.acquireMotionSlot).toHaveBeenCalledWith(
+    expect(body.acquireSemanticMotion).toHaveBeenCalledWith(
       expect.objectContaining({
         source: "system",
         priority: "speech-expression",
-        animation: "anim:VRMA_small_nod",
+        intent: "agree",
+        context: "speech",
+        intensity: 0.35,
       }),
     );
   });
@@ -75,7 +116,7 @@ describe("createBodyStateExpressionAdapter", () => {
     const firstState = stateHandle();
     const secondState = stateHandle();
     const body = {
-      acquireMotionSlot: vi.fn(() => firstMotion),
+      acquireSemanticMotion: vi.fn(() => firstMotion),
       acquireSpeechStateExpression: vi
         .fn<() => SpeechStateExpressionHandle>()
         .mockReturnValueOnce(firstState)
@@ -96,7 +137,7 @@ describe("createBodyStateExpressionAdapter", () => {
     expect(body.acquireSpeechStateExpression).toHaveBeenLastCalledWith(
       expect.objectContaining({ preset: "neutral" }),
     );
-    expect(body.acquireMotionSlot).toHaveBeenCalledTimes(1);
+    expect(body.acquireSemanticMotion).toHaveBeenCalledTimes(1);
   });
 
   it("releases owned state once when duration and utterance completion overlap", () => {
@@ -104,7 +145,7 @@ describe("createBodyStateExpressionAdapter", () => {
     const motion = motionHandle();
     const state = stateHandle();
     const body = {
-      acquireMotionSlot: vi.fn(() => motion),
+      acquireSemanticMotion: vi.fn(() => motion),
       acquireSpeechStateExpression: vi.fn(() => state),
     };
     const adapter = createBodyStateExpressionAdapter(() => body);
@@ -124,7 +165,7 @@ describe("createBodyStateExpressionAdapter", () => {
   it("keeps a grounded low-salience profile even without a mood or gesture", () => {
     const state = stateHandle();
     const body = {
-      acquireMotionSlot: vi.fn(),
+      acquireSemanticMotion: vi.fn(),
       acquireSpeechStateExpression: vi.fn(() => state),
     };
     const adapter = createBodyStateExpressionAdapter(() => body);
@@ -144,7 +185,7 @@ describe("createBodyStateExpressionAdapter", () => {
         }),
       }),
     );
-    expect(body.acquireMotionSlot).not.toHaveBeenCalled();
+    expect(body.acquireSemanticMotion).not.toHaveBeenCalled();
     expect(state.release).toHaveBeenCalledOnce();
   });
 
@@ -152,7 +193,7 @@ describe("createBodyStateExpressionAdapter", () => {
     const firstState = stateHandle();
     const secondState = stateHandle();
     const body = {
-      acquireMotionSlot: vi.fn(),
+      acquireSemanticMotion: vi.fn(),
       acquireSpeechStateExpression: vi
         .fn<() => SpeechStateExpressionHandle>()
         .mockReturnValueOnce(firstState)
