@@ -147,9 +147,11 @@ The second movie remains in the Git-ignored `.motion-review/animates-idle-5min-c
 ## Current Yorishiro implementation check, 2026-09-14
 
 After adding the upper-body physical candidate gate, preserving conversational
-recordings at weight 0.85, and fixing speech-to-listening/tool-activity boundaries,
-the frontend passed 3,022 tests in 239 files, TypeScript checking, targeted Biome
-checks and a production build. This establishes regression coverage, not motion
+recordings at weight 0.85, fixing speech-to-listening/tool-activity boundaries,
+and completing the explicit root-preservation path and optional local speech lab,
+source `22720746` passed 3,047 tests in 241 files, TypeScript checking and a production
+build. Biome passed all 47 changed TS/TSX/MJS/JS files since `2af32786`.
+This establishes regression coverage, not motion
 quality. The [implementation record](motion-orchestration.md) documents the
 remaining build/test warnings and the scope of each check.
 
@@ -158,15 +160,30 @@ A fresh localhost-only browser with HMR and file watching disabled exercised
 under `.motion-review/orchestration-v3/`. The film contains 720 frames at 24 fps,
 1400 × 1000 pixels, confirmed with `ffprobe`. It uses the current nine-clip catalog
 and supersedes the older prototype-containing film for runtime review. No
-Animates recording ran alongside this browser capture.
+Animates recording ran alongside this browser capture. This run predates the
+optional speech UI and explicit root-preservation path; those additions leave
+automatic catalog playback unchanged.
 
 The recorded lane changed among Conversation, Chatting and Chatting 2 during
 the 45-second explanatory interval. At the listening boundary its talking loop
 stopped and attentive Idle began about 0.6 seconds later. Selected film frames
 show visible conversational hand poses followed by lowered arms while listening.
 The physical gate can decline a requested gesture; request-labelled screenshot
-filenames do not imply admission. The lab supplies conversation phases directly,
+filenames do not imply admission. This film supplies conversation phases directly,
 without spoken audio, so it does not validate word alignment or audible pauses.
+
+The lab now separately offers user-clicked playback of a locally generated
+24.052-second Japanese Kyoko sample. `node scripts/prepare-motion-speech-sample.mjs`
+creates the WAV and text manifest without audible output or network synthesis.
+Both lanes use the actual VoicePlayer playback clock and share mouth/expression
+cues through the existing runtime bridge. Muted-browser QA sampled the real
+analyser, observed recorded conversation, verified completion and interruption,
+and reported no page errors. Approximately 100 ms frame spacing preserved Body's
+real-time progress; a 300 ms delay stopped playback and cleared the mouth. The
+observations and inspected 4/11-second stills are in
+`.motion-review/speech-sample/qa/`. No microphone or autoplay is involved.
+Estimated phrase offsets are not word alignment, and these checks do not approve
+the timing or expressiveness of the resulting performance.
 
 Sampled normalized foot markers remained within 1.496 mm of their first position
 after the initial three seconds, versus 12.286 mm for the procedural baseline.
@@ -174,3 +191,13 @@ These values describe marker movement under this exact layered setup, not sole
 penetration, universally stable contacts, or perceived naturalness. Source-faithful
 conversion, target-avatar adaptation, continuous acting quality, and an Animates
 comparison remain separate decisions; see [source replay review](source-motion-review.md).
+
+An additional isolated player check compared direct official playback with
+`rootMotion: "preserve"` on the same prepared source and contact-adapted clips.
+Across seek and continuous replay, 60 paired hips/feet coordinate checks recorded
+zero lane difference, with actual hips displacement of 41.626 / 37.751 mm.
+The opt-in therefore retains translation for these inputs; it is not evidence
+that automatic masked playback restores the original actor's full-body motion.
+The default stays in-place and the candidates remain outside the automatic
+catalog. The check excludes transitions, Body overlays and human preference;
+details are in `.motion-review/runtime-root-preservation-qa.json`.
