@@ -304,6 +304,8 @@ export interface CharacterAPI {
 export type AnimationRef = string;
 
 export interface PlayOptions {
+  /** Upper-body performances leave the supporting recorded body motion running. */
+  mask?: "upper-body" | "full-body";
   /** フェードインの時間（他アニメとの blend 用） */
   fadeInMs?: number;
   fadeOutMs?: number;

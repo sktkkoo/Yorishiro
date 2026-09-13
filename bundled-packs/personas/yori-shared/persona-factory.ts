@@ -310,7 +310,7 @@ export function createYoriPersona(args: {
               label: "small-smile",
               handler: async (ctx: PersonaContext) => {
                 const expr = ctx.character.express({ kind: "mood", preset: "happy" }, 0.3);
-                ctx.character.play("anim:VRMA_small_nod");
+                ctx.character.play("anim:VRMA_small_nod", { mask: "upper-body" });
                 // 表情を 2 秒後にフェードアウト
                 await ctx.time.after(2000);
                 if (ctx.signal.aborted) return;
@@ -327,7 +327,7 @@ export function createYoriPersona(args: {
               label: "small-recoil",
               handler: async (ctx: PersonaContext) => {
                 ctx.character.express({ kind: "mood", preset: "surprised" }, 0.4);
-                ctx.character.play("anim:VRMA_small_recoil", { fadeInMs: 80 });
+                ctx.character.play("anim:VRMA_small_recoil", { mask: "upper-body", fadeInMs: 80 });
                 ctx.voice.play("voice:filler_ah");
               },
             },
@@ -342,6 +342,7 @@ export function createYoriPersona(args: {
               handler: async (ctx: PersonaContext) => {
                 // idle sway を loop で薄く流す
                 const anim = ctx.character.play("anim:VRMA_idle_sway", {
+                  mask: "upper-body",
                   weight: 0.4,
                   loop: true,
                   fadeInMs: 300,
@@ -373,7 +374,7 @@ export function createYoriPersona(args: {
             {
               label: "nod",
               handler: async (ctx: PersonaContext) => {
-                ctx.character.play("anim:VRMA_small_nod");
+                ctx.character.play("anim:VRMA_small_nod", { mask: "upper-body" });
               },
             },
           ],
@@ -433,7 +434,7 @@ export function createYoriPersona(args: {
               cooldownMs: 180000, // 3 分クールダウン
               label: "subtle-stretch",
               handler: async (ctx: PersonaContext) => {
-                ctx.character.play("anim:VRMA_still", { weight: 0.5 });
+                ctx.character.play("anim:VRMA_still", { mask: "upper-body", weight: 0.5 });
                 await ctx.time.after(2000);
               },
             },

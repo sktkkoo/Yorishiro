@@ -119,7 +119,7 @@ function cue(overrides: Partial<StateExpressionCue> = {}): StateExpressionCue {
 }
 
 describe("recorded motion Body integration", () => {
-  it("keeps the supporting recording through terminal activities and yields to an animation claim", async () => {
+  it("keeps supporting legs through terminal activity and upper-body persona reactions, then yields to a claim", async () => {
     const sha = "a".repeat(64);
     vi.stubGlobal(
       "fetch",
@@ -146,6 +146,9 @@ describe("recorded motion Body integration", () => {
     vi.spyOn(AnimationPlayer.prototype, "playRecordedBase").mockResolvedValue(base);
     const { body, claims } = createBody(sha);
     await body.initializeRecordedBody();
+    vi.spyOn(AnimationPlayer.prototype, "play").mockResolvedValue(playback());
+    body.createCharacterAPI().play("anim:VRMA_small_nod", { mask: "upper-body" });
+    await flush();
     for (const state of ["reading", "writing", "running", "thinking", "idle"] as const) {
       body.setState(state);
       advance(body, 0.1);

@@ -478,11 +478,12 @@ export class Body {
     this.motionScheduler = new MotionScheduler({
       onActivate: async (req) => {
         const generation = ++this.motionActivationGeneration;
-        this.foundationBlockedByPerformance =
-          req.options?.mask !== "upper-body" ||
-          !["idle-fidget", "speech-expression"].includes(req.priority);
+        this.foundationBlockedByPerformance = req.options?.mask !== "upper-body";
         if (this.foundationBlockedByPerformance) {
-          this.recordedBody.suspend(req.options?.fadeInMs ?? 200);
+          this.recordedBody.suspend(
+            req.options?.fadeInMs ?? 200,
+            `performance:${req.source}:${req.priority}:${req.animation}`,
+          );
           this.recordedIdleFoundation.suspend(req.options?.fadeInMs ?? 200);
         }
         // AnimationPlayer.play() を呼んで clip を mixer に載せる。返値の handle
@@ -644,7 +645,7 @@ export class Body {
     ) {
       playback.setWeight(playback.automaticBaseWeight * Math.min(1, this.motionIntensity), 350);
     }
-    if (this.motionIntensity < 1) this.recordedBody.suspend(350);
+    if (this.motionIntensity < 1) this.recordedBody.suspend(350, "reduced-intensity");
     if (this.motionIntensity === 0) {
       this.recordedIdleFoundation.suspend(350);
       this.ambientMotionHandle?.release(350);
@@ -1093,6 +1094,7 @@ export class Body {
         weight: options?.weight,
         loop: options?.loop,
         speed: options?.speed,
+        mask: options?.mask,
         rootMotion: options?.rootMotion,
       },
     });
@@ -1276,7 +1278,7 @@ export class Body {
   setMotionLibraryEnabled(enabled: boolean): void {
     this.motionLibraryEnabled = enabled;
     if (!enabled) {
-      this.recordedBody.suspend(500);
+      this.recordedBody.suspend(500, "library-disabled");
       this.recordedIdleFoundation.suspend(500);
       this.ambientMotionHandle?.release(500);
       this.ambientMotionHandle = null;
@@ -1391,7 +1393,7 @@ export class Body {
 
   private updateAmbientMotion(delta: number, claimed: boolean): void {
     if (claimed) {
-      this.recordedBody.suspend(0);
+      this.recordedBody.suspend(0, "animation-claim");
       this.recordedIdleFoundation.suspend(0);
       for (const handle of this.semanticMotionHandles) handle.cancel();
       this.animationPlayer.retireFadingActions();
@@ -1412,10 +1414,7 @@ export class Body {
       this.motionLibraryEnabled &&
         !claimed &&
         this.motionIntensity >= 1 &&
-        !this.foundationBlockedByPerformance &&
-        (activePriority === null ||
-          activePriority === "idle-fidget" ||
-          activePriority === "speech-expression"),
+        !this.foundationBlockedByPerformance,
       speaking ? "speech" : "idle",
       speaking ||
         (state === "idle" &&

@@ -66,6 +66,8 @@ export class RecordedBodySequencer {
   private allowBaseUpper = true;
   private readonly lastPlayed = new Map<string, number>();
   private lastRejection: string | null = null;
+  private initialRejection: string | null = null;
+  private lastSuspension: { reason: string; unit: string } | null = null;
 
   constructor(
     private readonly player: RecordedBodyPlayer,
@@ -216,6 +218,7 @@ export class RecordedBodySequencer {
           // recording. Missing/invalid clips were screened by prepareOnce.
           if (error instanceof DOMException && error.name === "AbortError") return;
           this.lastRejection = error instanceof Error ? error.message : String(error);
+          if (initialPose) this.initialRejection = this.lastRejection;
         }
       }
       this.retryAtMs = this.elapsedMs + 2_000;
@@ -243,6 +246,8 @@ export class RecordedBodySequencer {
       availableUnits: this.units.length,
       pending: this.pending,
       lastRejection: this.lastRejection,
+      initialRejection: this.initialRejection,
+      lastSuspension: this.lastSuspension,
       active: this.current
         ? {
             id: this.current.unit.id,
@@ -256,9 +261,10 @@ export class RecordedBodySequencer {
     };
   }
 
-  suspend(fadeMs = 650): void {
+  suspend(fadeMs = 650, reason = "disabled"): void {
     this.enabled = false;
     if (!this.pending && !this.current) return;
+    if (this.current) this.lastSuspension = { reason, unit: this.current.unit.id };
     this.generation++;
     this.pending = false;
     const previous = this.current;

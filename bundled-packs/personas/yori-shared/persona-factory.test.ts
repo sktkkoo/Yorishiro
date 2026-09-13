@@ -50,6 +50,25 @@ function cameraMoveCount(injectEffect: ReturnType<typeof vi.fn>): number {
   return injectEffect.mock.calls.filter((c) => c[0]?.kind === "camera-move").length;
 }
 
+describe("routine persona motion ownership", () => {
+  it.each([
+    "pleased",
+    "acknowledging",
+    "startled",
+  ] as const)("%s requests only the upper body so it cannot cancel a standing weight shift", async (reaction) => {
+    const persona = createYoriPersona({ id: "test", name: "Yori", systemPromptAddition: "test" });
+    const handler = persona.reflex?.responses?.[reaction]?.handlers[0].handler;
+    if (!handler) throw new Error(`Missing ${reaction}`);
+    const { ctx, play } = createMockCtx();
+    ctx.time.after = async () => {};
+    await handler(ctx);
+    expect(play).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ mask: "upper-body" }),
+    );
+  });
+});
+
 describe("yori shoot timeline single-flight", () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
