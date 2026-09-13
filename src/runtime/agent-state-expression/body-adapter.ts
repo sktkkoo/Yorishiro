@@ -7,6 +7,7 @@ import type { GroundedAgentState, StateExpressionCue } from "./types";
 type StateExpressionBody = Pick<Body, "acquireSemanticMotion" | "acquireSpeechStateExpression">;
 
 interface OwnedStateExpression {
+  readonly body: StateExpressionBody;
   readonly state: SpeechStateExpressionHandle;
   motion: MotionHandle | null;
   releaseTimer: ReturnType<typeof globalThis.setTimeout> | null;
@@ -43,18 +44,37 @@ export function createBodyStateExpressionAdapter(
 
   return {
     onCue: (cue) => {
-      release(cue.utteranceId);
       const body = getBody();
-      if (!body) return;
+      if (!body) {
+        release(cue.utteranceId);
+        return;
+      }
+      const previous = ownedByUtterance.get(cue.utteranceId);
+      if (previous?.releaseTimer !== null && previous?.releaseTimer !== undefined) {
+        globalThis.clearTimeout(previous.releaseTimer);
+      }
 
+      // Install the new facial layer before releasing the old one, so a cue
+      // update does not briefly restart the speech mood's release envelope.
       const state = body.acquireSpeechStateExpression({
         preset: cue.expression,
         intensity: cue.expressionWeight,
         microexpressionParams: MICROEXPRESSION_PROFILES[cue.state],
       });
-      const motion = acquireGesture(body, cue);
+      const replacement = acquireGesture(body, cue);
+      // The director may deliberately decline a closely spaced or repeated cue.
+      // Preserve the current finite gesture in that case; an explicit `none`,
+      // completed gesture, or replaced Body must still release the old owner.
+      const canContinue =
+        previous?.body === body &&
+        previous.motion?.isActive() &&
+        cue.gestureIntent &&
+        cue.gestureIntent !== "none";
+      const motion = replacement ?? (canContinue ? previous.motion : null);
+      previous?.state.release();
+      if (previous?.motion !== motion) previous?.motion?.release(180);
 
-      const owned: OwnedStateExpression = { state, motion, releaseTimer: null };
+      const owned: OwnedStateExpression = { body, state, motion, releaseTimer: null };
       ownedByUtterance.set(cue.utteranceId, owned);
       if (cue.durationMs && cue.durationMs > 0) {
         owned.releaseTimer = globalThis.setTimeout(() => release(cue.utteranceId), cue.durationMs);

@@ -41,6 +41,53 @@ afterEach(() => {
 });
 
 describe("createBodyStateExpressionAdapter", () => {
+  it("continues the current gesture when a cue update is intentionally declined by the director", () => {
+    const motion = motionHandle();
+    const firstState = stateHandle();
+    const secondState = stateHandle();
+    const body = {
+      acquireSemanticMotion: vi
+        .fn<() => MotionHandle | null>()
+        .mockReturnValueOnce(motion)
+        .mockReturnValueOnce(null),
+      acquireSpeechStateExpression: vi
+        .fn<() => SpeechStateExpressionHandle>()
+        .mockReturnValueOnce(firstState)
+        .mockReturnValueOnce(secondState),
+    };
+    const adapter = createBodyStateExpressionAdapter(() => body);
+    adapter.onCue(cue(), { scheduledForMs: 0, firedAtMs: 0, lateByMs: 0 });
+    adapter.onCue(cue({ gestureIntent: "reassure" }), {
+      scheduledForMs: 400,
+      firedAtMs: 400,
+      lateByMs: 0,
+    });
+    expect(firstState.release).toHaveBeenCalledOnce();
+    expect(motion.release).not.toHaveBeenCalled();
+    adapter.onRelease("u1", "completed");
+    expect(secondState.release).toHaveBeenCalledOnce();
+    expect(motion.release).toHaveBeenCalledOnce();
+  });
+
+  it("does not transfer an old gesture into a replacement Body when no new gesture is selected", () => {
+    const motion = motionHandle();
+    const firstBody = {
+      acquireSemanticMotion: vi.fn(() => motion),
+      acquireSpeechStateExpression: vi.fn(() => stateHandle()),
+    };
+    const secondBody = {
+      acquireSemanticMotion: vi.fn(() => null),
+      acquireSpeechStateExpression: vi.fn(() => stateHandle()),
+    };
+    const getBody = vi.fn().mockReturnValueOnce(firstBody).mockReturnValueOnce(secondBody);
+    const adapter = createBodyStateExpressionAdapter(getBody);
+    adapter.onCue(cue(), { scheduledForMs: 0, firedAtMs: 0, lateByMs: 0 });
+    adapter.onCue(cue(), { scheduledForMs: 400, firedAtMs: 400, lateByMs: 0 });
+    expect(motion.release).toHaveBeenCalledOnce();
+    adapter.onRelease("u1", "completed");
+    expect(motion.release).toHaveBeenCalledOnce();
+  });
+
   it.each([
     "agree",
     "consider",
