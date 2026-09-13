@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Yorishiro Motion Lab</title>
+    <style>
+      * { box-sizing: border-box; }
+                  body { margin: 0; background: #131720; color: #e7e9ef; font: 14px system-ui, sans-serif; }
+                  header { padding: 22px 32px 12px; display: flex; align-items: center; justify-content: space-between; }
+                  h1 { margin: 0 0 6px; font-size: 23px; font-weight: 600; }
+                  p { margin: 0; color: #9eaac0; }
+                  nav { display: flex; gap: 8px; padding: 8px 32px 18px; flex-wrap: wrap; }
+                  button, select { color: #e7e9ef; background: #252d3c; border: 1px solid #43506a; border-radius: 7px; padding: 8px 12px; cursor: pointer; }
+                  button:hover { background: #35445b; }
+                  main { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 0 32px; }
+                  article { background: #1b2130; border-radius: 14px; overflow: hidden; }
+                  h2 { font-size: 15px; margin: 0; padding: 14px 18px; }
+                  canvas { display: block; width: 100%; height: 62vh; min-height: 360px; }
+                  .caption { padding: 10px 18px 15px; font: 12px ui-monospace, monospace; min-height: 55px; color: #9eb7d2; }
+                  footer { padding: 17px 32px; color: #9eaac0; font-size: 12px; line-height: 1.6; }
+                  #status { max-width: 400px; font-size: 12px; text-align: right; }
+    </style>
+  </head>
+  <body>
+    <header><div><h1>Yorishiro · Motion Lab</h1><p>Recorded motion, continuous transitions, local selection.</p></div><p id="status">Loading the same avatar for both views…</p></header>
+    <nav>
+      <button type="button" id="pause">Pause</button>
+      <button type="button" id="idle">Idle</button>
+      <button type="button" id="thinking">Thinking</button>
+      <button type="button" data-intent="agree">Agree</button>
+      <button type="button" data-intent="consider">Consider</button>
+      <button type="button" data-intent="reassure">Reassure</button>
+      <button type="button" data-intent="emphasize">Emphasize</button>
+      <button type="button" id="interrupt">Interrupt</button>
+      <select id="clip" aria-label="Recorded motion"></select>
+      <button type="button" id="play-clip">Play selected motion</button>
+      <button type="button" id="export">Export observations</button>
+    </nav>
+    <main>
+      <article><h2>Procedural baseline</h2><canvas id="baseline"></canvas><div class="caption" id="baseline-caption">Same avatar, light and camera. Motion library disabled.</div></article>
+      <article><h2>Recorded motion + orchestration</h2><canvas id="recorded"></canvas><div class="caption" id="recorded-caption">Warming local motion library…</div></article>
+    </main>
+    <footer>This is a diagnostic comparison, not a blinded study. Animates preference must be measured separately. Local VRM/VRMA assets are loaded from your asset store. No voice service, text generation or paid API is used.</footer>
+    <script type="module" src="/src/dev/motion-lab.ts"></script>
+  </body>
+</html>

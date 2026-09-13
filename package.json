@@ -39,7 +39,11 @@
     "doc:rust": "cargo doc --manifest-path src-tauri/Cargo.toml --no-deps --document-private-items",
     "doc:open": "open docs/api/typescript/index.html",
     "doc:rust:open": "open src-tauri/target/doc/yorishiro_lib/index.html",
-    "prepare": "lefthook install"
+    "prepare": "lefthook install",
+    "premotion:lab": "node scripts/fetch-assets.mjs",
+    "motion:lab": "vite --port 1437 --host 127.0.0.1 --open /motion-lab.html",
+    "motion:audit": "node scripts/analyze-motion-assets.mjs",
+    "motion:seams": "node scripts/measure-motion-loop-seams.mjs"
   },
   "dependencies": {
     "@pixiv/three-vrm": "^3.5.1",
