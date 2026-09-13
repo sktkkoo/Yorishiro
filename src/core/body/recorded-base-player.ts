@@ -277,11 +277,13 @@ export class RecordedBasePlayer {
     const incoming = this.sample(prepared, start);
     const incomingPoints = this.contacts(incoming);
     const offset = new THREE.Vector3();
-    if (!opts.initialPose) {
-      for (let index = 0; index < anchors.length; index++)
-        offset.add(anchors[index]).sub(incomingPoints[index]);
-      offset.multiplyScalar(1 / anchors.length);
-    }
+    // Initial placement uses the avatar's normal footprint center, while
+    // replacements inherit the held recording's anchor. Both are constant XZ
+    // translations: source stance width, facing, Y and motion deltas survive.
+    const placement = opts.initialPose ? this.contacts(this.rest) : anchors;
+    for (let index = 0; index < placement.length; index++)
+      offset.add(placement[index]).sub(incomingPoints[index]);
+    offset.multiplyScalar(1 / placement.length);
     offset.y = 0;
     this.assertBoundary(prepared, start, offset, opts.initialPose ? undefined : anchors);
     this.assertBoundary(prepared, end, offset);
@@ -297,7 +299,9 @@ export class RecordedBasePlayer {
       const blend = smooth(fraction);
       target.hips.lerpVectors(outgoing.hips, target.hips, blend);
       target.rotations.forEach((rotation, index) => {
-        rotation.slerpQuaternions(outgoing.rotations[index], rotation, blend);
+        // slerpQuaternions(a, this, t) overwrites its second input in Three.
+        // Reverse the interpolation instead so the sampled target stays intact.
+        rotation.slerp(outgoing.rotations[index], 1 - blend);
       });
       this.assertContacts(this.contacts(target), anchors);
       if (!previous && opts.onCommit) {
@@ -306,7 +310,7 @@ export class RecordedBasePlayer {
         const fromRest = this.sample(prepared, phase, offset);
         fromRest.hips.lerpVectors(this.rest.hips, fromRest.hips, blend);
         fromRest.rotations.forEach((rotation, index) => {
-          rotation.slerpQuaternions(this.rest.rotations[index], rotation, blend);
+          rotation.slerp(this.rest.rotations[index], 1 - blend);
         });
         this.assertContacts(this.contacts(fromRest), anchors);
       }

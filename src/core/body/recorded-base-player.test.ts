@@ -70,14 +70,52 @@ function fixture() {
 }
 
 describe("atomic recorded full-body base", () => {
+  it("validates the same leg slerp as the mixer when hips compensate a gradual knee bend", async () => {
+    const { player, node, recording, opts } = fixture();
+    const clip = recording("bent", 0, 0);
+    for (const side of ["left", "right"] as const) {
+      for (const [part, angle] of [
+        ["UpperLeg", 0.2],
+        ["LowerLeg", -0.4],
+        ["Foot", 0.2],
+      ] as const) {
+        const track = clip.tracks.find(
+          (track) => track.name === `${node(`${side}${part}`).name}.quaternion`,
+        );
+        if (!track) throw new Error("Missing bend channel");
+        for (let key = 0; key < track.values.length; key += 4)
+          new THREE.Quaternion()
+            .setFromAxisAngle(new THREE.Vector3(1, 0, 0), angle)
+            .toArray(track.values, key);
+      }
+    }
+    const position = clip.tracks[clip.tracks.length - 1];
+    for (let key = 1; key < position.values.length; key += 3)
+      position.values[key] = 0.95 - 0.8 * (1 - Math.cos(0.2));
+    const foot = node("leftFoot");
+    const initial = foot.getWorldPosition(new THREE.Vector3());
+    await player.playRecordedBase("bent", { ...opts, fadeInMs: 800 });
+    let maximumDrop = 0;
+    for (let frame = 0; frame < 49; frame++) {
+      player.update(1 / 60);
+      maximumDrop = Math.max(maximumDrop, initial.y - foot.getWorldPosition(new THREE.Vector3()).y);
+    }
+    expect(maximumDrop).toBeGreaterThan(0.003);
+    expect(maximumDrop).toBeLessThan(0.0041);
+    expect(foot.getWorldPosition(new THREE.Vector3()).distanceTo(initial)).toBeLessThan(1e-6);
+  });
+
   it("initializes an authored stance only before first presentation, then forbids late bootstrap", async () => {
     const { player, node, recording, opts } = fixture();
     recording("offset", 0.3);
     const base = await player.playRecordedBase("offset", { ...opts, initialPose: true });
     // Initial presentation is evaluated atomically; the renderer never sees the rest stance.
-    expect(node("hips").position.x).toBeCloseTo(0.3, 6);
+    expect(node("hips").position.x).toBeCloseTo(0, 6);
     expect(node("head").rotation.x).toBeCloseTo(0.2, 6);
     expect(base.phaseSec).toBe(0);
+    player.update(0.5);
+    // Constant placement removes the source's entrance location, not its motion.
+    expect(node("hips").position.x).toBeCloseTo(0.0015, 6);
     base.cancel();
     await expect(player.playRecordedBase("offset", { ...opts, initialPose: true })).rejects.toThrow(
       "first playback or update",
