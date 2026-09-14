@@ -43,6 +43,7 @@ function playback() {
     stop: vi.fn(async () => {}),
     cancel: vi.fn(),
     setUpperWeight: vi.fn(),
+    setAxialStrength: vi.fn(),
     setPaused: vi.fn((paused: boolean) => {
       result.paused = paused;
     }),
@@ -75,6 +76,41 @@ async function flush() {
 }
 
 describe("recorded whole-body sequencing", () => {
+  it("keeps a shared axial reference and applies the latest gains atomically to a pending unit", async () => {
+    const unit = { ...idleUnit, axialReferenceTimeSec: 5 };
+    const { sequencer, active, playRecordedBase } = setup({ ...manifest, units: [unit] });
+    const pending = deferred<typeof active>();
+    playRecordedBase.mockReturnValueOnce(pending.promise);
+    sequencer.setAxialStrength({ torso: 0.18, head: 0.06 }, 0);
+    const loading = sequencer.initialize();
+    await flush();
+    sequencer.setAxialStrength({ torso: 0.65, head: 0.45 });
+    const options = playRecordedBase.mock.calls[0][1];
+    expect(options).toMatchObject({ axialReferenceTimeSec: 5 });
+    expect(options.getInitialState?.()).toMatchObject({
+      axialStrength: { torso: 0.65, head: 0.45 },
+    });
+    pending.resolve(active);
+    await loading;
+    expect(active.setAxialStrength).toHaveBeenLastCalledWith({ torso: 0.65, head: 0.45 }, 0);
+    sequencer.setAxialStrength({ torso: 0.18, head: 0.06 }, 0);
+    expect(active.setAxialStrength).toHaveBeenLastCalledWith({ torso: 0.18, head: 0.06 }, 0);
+    expect(active.stop).not.toHaveBeenCalled();
+    expect(active.cancel).not.toHaveBeenCalled();
+    expect(active.setUpperWeight).toHaveBeenLastCalledWith(1, 0);
+  });
+
+  it("rejects invalid axial reference metadata", () => {
+    for (const axialReferenceTimeSec of [-1, Number.NaN, Infinity]) {
+      expect(
+        parseRecordedBodyManifest(
+          { ...manifest, units: [{ ...idleUnit, axialReferenceTimeSec }] },
+          modelSha256,
+        ),
+      ).toBeNull();
+    }
+  });
+
   it("requires the exact reviewed avatar and contact-qualified unit endpoints", () => {
     expect(parseRecordedBodyManifest(manifest, modelSha256)).toEqual(manifest);
     expect(parseRecordedBodyManifest(manifest, "b".repeat(64))).toBeNull();
@@ -115,6 +151,7 @@ describe("recorded whole-body sequencing", () => {
     const { sequencer, active, playRecordedBase } = setup();
     await sequencer.initialize(0.95);
     expect(playRecordedBase.mock.calls[0][1].getInitialState?.()).toEqual({
+      axialStrength: { torso: 1, head: 1 },
       paused: false,
       upperWeight: 0.95,
     });
@@ -153,6 +190,7 @@ describe("recorded whole-body sequencing", () => {
     const { sequencer, active, playRecordedBase } = setup();
     await sequencer.initialize(0);
     expect(playRecordedBase.mock.calls[0][1].getInitialState?.()).toEqual({
+      axialStrength: { torso: 1, head: 1 },
       paused: true,
       upperWeight: 0,
     });
@@ -177,7 +215,11 @@ describe("recorded whole-body sequencing", () => {
     const options = playRecordedBase.mock.calls[0][1];
     sequencer.update(16, true, "idle", true, 0);
     expect(options.isCurrent()).toBe(true);
-    expect(options.getInitialState?.()).toEqual({ paused: true, upperWeight: 0 });
+    expect(options.getInitialState?.()).toEqual({
+      paused: true,
+      upperWeight: 0,
+      axialStrength: { torso: 1, head: 1 },
+    });
     pending.resolve(active);
     await flush();
     expect(active.setPaused).toHaveBeenLastCalledWith(true);

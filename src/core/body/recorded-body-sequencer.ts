@@ -1,4 +1,5 @@
 import type { MotionContext } from "./motion-catalog";
+import type { RecordedAxialStrength } from "./recorded-base-player";
 
 export interface RecordedBodyUnit {
   readonly id: string;
@@ -6,6 +7,8 @@ export interface RecordedBodyUnit {
   readonly context: MotionContext;
   /** Reviewed low hands that may receive a small relaxed hand fidget. */
   readonly handsAtRest?: boolean;
+  /** Shared authored neutral reference for axial attenuation across this recording. */
+  readonly axialReferenceTimeSec?: number;
   readonly startTimeSec: number;
   readonly endTimeSec: number;
   readonly contactWindows: readonly {
@@ -31,6 +34,7 @@ export interface RecordedBodyPlayback {
   cancel(): void;
   setUpperWeight(value: number, fadeMs?: number): void;
   setPaused(paused: boolean): void;
+  setAxialStrength(strength: RecordedAxialStrength, fadeMs?: number): void;
 }
 
 interface RecordedBodyPlayer {
@@ -45,7 +49,12 @@ interface RecordedBodyPlayer {
       isCurrent: () => boolean;
       onCommit?: () => void;
       initialPose?: boolean;
-      getInitialState?: () => { readonly paused: boolean; readonly upperWeight: number };
+      axialReferenceTimeSec?: number;
+      getInitialState?: () => {
+        readonly paused: boolean;
+        readonly upperWeight: number;
+        readonly axialStrength?: RecordedAxialStrength;
+      };
     },
   ): Promise<RecordedBodyPlayback>;
 }
@@ -70,6 +79,7 @@ export class RecordedBodySequencer {
   private intensity = 1;
   private upperStrength = 1;
   private paused = false;
+  private axialStrength: RecordedAxialStrength = { torso: 1, head: 1 };
   private readonly lastPlayed = new Map<string, number>();
   private lastRejection: string | null = null;
   private initialRejection: string | null = null;
@@ -84,6 +94,15 @@ export class RecordedBodySequencer {
       onCommit?: () => void;
     } = {},
   ) {}
+
+  /** Independent from layer ownership: damp axial motion without weakening the hands or feet. */
+  setAxialStrength(strength: RecordedAxialStrength, fadeMs = 350): void {
+    const torso = clampIntensity(strength.torso);
+    const head = clampIntensity(strength.head);
+    if (torso === this.axialStrength.torso && head === this.axialStrength.head) return;
+    this.axialStrength = { torso, head };
+    this.current?.playback.setAxialStrength(this.axialStrength, fadeMs);
+  }
 
   prepare(): Promise<void> {
     this.prepared ??= this.prepareOnce();
@@ -219,10 +238,12 @@ export class RecordedBodySequencer {
             contactWindows: unit.contactWindows,
             fadeInMs: initialPose ? 0 : 800,
             initialPose,
+            axialReferenceTimeSec: unit.axialReferenceTimeSec,
             isCurrent,
             onCommit: this.options.onCommit,
             getInitialState: () => ({
               paused: this.intensity === 0,
+              axialStrength: this.axialStrength,
               upperWeight:
                 this.allowBaseUpper && unit.context === this.context ? this.intensity : 0,
             }),
@@ -241,6 +262,7 @@ export class RecordedBodySequencer {
           // arms back during listening/speech on every lower-body transition.
           playback.setUpperWeight(this.upperStrength, 0);
           playback.setPaused(this.paused);
+          playback.setAxialStrength(this.axialStrength, 0);
           this.lastPlayed.set(unit.id, this.elapsedMs);
           this.lastRejection = null;
           return;
@@ -277,6 +299,7 @@ export class RecordedBodySequencer {
 
   getSnapshot() {
     return {
+      axialStrength: this.axialStrength,
       targetModelSha256: this.options.modelSha256 ?? null,
       availableUnits: this.units.length,
       pending: this.pending,
@@ -375,6 +398,11 @@ export function parseRecordedBodyManifest(
             time >= window.startTimeSec && time <= window.endTimeSec,
         ),
       )
+    )
+      return null;
+    if (
+      unit.axialReferenceTimeSec !== undefined &&
+      (!Number.isFinite(unit.axialReferenceTimeSec) || unit.axialReferenceTimeSec < 0)
     )
       return null;
     ids.add(unit.id);

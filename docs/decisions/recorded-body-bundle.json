@@ -23,7 +23,8 @@
           "endTimeSec": 31.76666667,
           "feet": "both"
         }
-      ]
+      ],
+      "axialReferenceTimeSec": 16.283333333333335
     },
     {
       "id": "idle-look-around",
@@ -38,7 +39,8 @@
           "endTimeSec": 31.76666667,
           "feet": "both"
         }
-      ]
+      ],
+      "axialReferenceTimeSec": 16.283333333333335
     }
   ]
 }
