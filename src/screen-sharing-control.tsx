@@ -3,6 +3,7 @@ import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from
 import type { ScreenCaptureRegion, ScreenSourceKind } from "./bindings/tauri-commands";
 import { CameraPreviewToggle } from "./camera-preview-toggle";
 import { MediaPermissionHelp } from "./media-permission-help";
+import { CONTACT_SHEET_FRAME_COUNTS } from "./runtime/codex-realtime/use-screen-sharing";
 import { getMediaPermissionKind } from "./runtime/media-permissions";
 import {
   formatSharingInterval,
@@ -514,18 +515,21 @@ export function ScreenSharingControl({
                     </label>
                     <output htmlFor={frameCountId}>{contactSheetFrameCount}</output>
                   </div>
-                  <input
+                  <select
                     id={frameCountId}
-                    className="screen-sharing-slider"
-                    type="range"
-                    min={4}
-                    max={25}
-                    step={1}
+                    className="screen-sharing-frame-count-select"
                     value={contactSheetFrameCount}
+                    aria-label={labels.frameCount}
                     onChange={(event) =>
                       onContactSheetFrameCountChange(Number(event.currentTarget.value))
                     }
-                  />
+                  >
+                    {CONTACT_SHEET_FRAME_COUNTS.map((count) => (
+                      <option key={count} value={count}>
+                        {count}
+                      </option>
+                    ))}
+                  </select>
                 </>
               ) : null}
               {onPreviewVisibleChange ? (

@@ -93,6 +93,7 @@ let annotationBeginQueue: Promise<void> = Promise.resolve();
 // system interaction; a later lease must wait until that picker settles.
 let regionPickerQueue: Promise<void> = Promise.resolve();
 const DEFAULT_CONTACT_SHEET_FRAME_COUNT = 16;
+export const CONTACT_SHEET_FRAME_COUNTS = [4, 8, 16, 25] as const;
 
 // Native rotates this epoch when the main WebView reloads. One lookup per JS
 // document prevents a Start waiting on permission from borrowing a new epoch.
@@ -890,8 +891,11 @@ export function useScreenSharing({
       if (Number.isFinite(value)) setIntervalSeconds(normalizeIntervalSeconds(value));
     },
     setContactSheetFrameCount: (value: number) => {
-      if (Number.isFinite(value))
-        setContactSheetFrameCount(Math.min(25, Math.max(4, Math.round(value))));
+      if (
+        CONTACT_SHEET_FRAME_COUNTS.includes(value as (typeof CONTACT_SHEET_FRAME_COUNTS)[number])
+      ) {
+        setContactSheetFrameCount(value);
+      }
     },
   };
 }
