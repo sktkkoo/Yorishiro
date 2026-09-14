@@ -868,27 +868,7 @@ export class Body {
     } else {
       this.proceduralBones.clearTransientReflexes();
     }
-    const handMotionPriority = this.motionScheduler.getActivePriority();
-    this.relaxedHandFidget.update(
-      delta,
-      !animationClaimed &&
-        this.motionLibraryEnabled &&
-        this.motionIntensity > 0 &&
-        this.recordedBody.allowsHandFidget &&
-        this.eyeSystem.state === "idle" &&
-        !["assistant-speaking", "user-speaking", "assistant-responding", "interrupted"].includes(
-          this.motionConversationPhase,
-        ) &&
-        handMotionPriority === null,
-      !animationClaimed &&
-        this.motionLibraryEnabled &&
-        this.motionIntensity > 0 &&
-        this.recordedBody.active &&
-        !this.foundationBlockedByPerformance &&
-        (handMotionPriority === null ||
-          handMotionPriority === "idle-fidget" ||
-          handMotionPriority === "speech-expression"),
-    );
+    this.updateRelaxedHands(delta, animationClaimed);
 
     // 3. Blink
     const blinkValue = this.blinkSystem.update(delta);
@@ -977,6 +957,31 @@ export class Body {
 
     // 8. VRM spring bones etc.
     this.vrm.update(delta);
+  }
+
+  /** Add hand relaxation after authored tracks, with explicit ownership gates. */
+  private updateRelaxedHands(delta: number, animationClaimed: boolean): void {
+    const handMotionPriority = this.motionScheduler.getActivePriority();
+    this.relaxedHandFidget.update(
+      delta,
+      !animationClaimed &&
+        this.motionLibraryEnabled &&
+        this.motionIntensity > 0 &&
+        this.recordedBody.allowsHandFidget &&
+        this.eyeSystem.state === "idle" &&
+        !["assistant-speaking", "user-speaking", "assistant-responding", "interrupted"].includes(
+          this.motionConversationPhase,
+        ) &&
+        handMotionPriority === null,
+      !animationClaimed &&
+        this.motionLibraryEnabled &&
+        this.motionIntensity > 0 &&
+        this.recordedBody.active &&
+        !this.foundationBlockedByPerformance &&
+        (handMotionPriority === null ||
+          handMotionPriority === "idle-fidget" ||
+          handMotionPriority === "speech-expression"),
+    );
   }
 
   /**
@@ -1428,18 +1433,24 @@ export class Body {
     }
     const state = this.eyeSystem.state;
     const speaking = this.motionConversationPhase === "assistant-speaking";
-    const allowed =
+    const ambientAllowed =
       this.motionLibraryEnabled &&
       this.motionIntensity > 0 &&
       (state === "idle" || state === "thinking" || speaking);
-    if ((!allowed || claimed) && this.ambientMotionHandle?.isActive()) {
+    if ((!ambientAllowed || claimed) && this.ambientMotionHandle?.isActive()) {
       this.ambientMotionHandle.release(claimed ? 0 : 650);
       this.ambientMotionHandle = null;
     }
     const activePriority = this.motionScheduler.getActivePriority();
+    const recordedBodyAllowed =
+      this.motionLibraryEnabled && !claimed && !this.foundationBlockedByPerformance;
+    const ungroundedSpeechActive =
+      !this.hasGroundedConversationPhase &&
+      (this.speechStateExpressionLayers.size > 0 ||
+        (this.lipSyncSource?.isMouthActive?.() ?? this.lipSyncSource !== null));
     this.recordedBody.update(
       delta * 1000,
-      this.motionLibraryEnabled && !claimed && !this.foundationBlockedByPerformance,
+      recordedBodyAllowed,
       speaking ? "speech" : "idle",
       speaking ||
         (state === "idle" &&
@@ -1454,7 +1465,7 @@ export class Body {
       this.ambientMotionPlaybackContext = null;
     }
     this.recordedIdleFoundation.update(
-      allowed &&
+      ambientAllowed &&
         !claimed &&
         !this.recordedBody.active &&
         !this.foundationBlockedByPerformance &&
@@ -1468,29 +1479,23 @@ export class Body {
     // the same recorded phase throughout entry, performance and recovery.
     this.occasionalIdleMotion.update(
       delta * 1000,
-      allowed &&
+      ambientAllowed &&
         !claimed &&
         this.recordedBody.active &&
         !this.foundationBlockedByPerformance &&
         state === "idle" &&
-        !(
-          !this.hasGroundedConversationPhase &&
-          (this.speechStateExpressionLayers.size > 0 ||
-            (this.lipSyncSource?.isMouthActive?.() ?? this.lipSyncSource !== null))
-        ) &&
+        !ungroundedSpeechActive &&
         ["idle", "disconnected"].includes(this.motionConversationPhase) &&
         (activePriority === null ||
           this.motionScheduler.getSnapshot().active?.animation === REVIEWED_SURVEY_ANIMATION),
       claimed || this.foundationBlockedByPerformance,
     );
-    const blocked =
+    const ambientBlocked =
       this.recordedBody.ownsUpperBody ||
       claimed ||
       (activePriority !== null && activePriority !== "idle-fidget") ||
-      (!this.hasGroundedConversationPhase &&
-        (this.speechStateExpressionLayers.size > 0 ||
-          (this.lipSyncSource?.isMouthActive?.() ?? this.lipSyncSource !== null)));
-    this.ambientMotionContext.enabled = allowed;
+      ungroundedSpeechActive;
+    this.ambientMotionContext.enabled = ambientAllowed;
     this.ambientMotionContext.context = speaking ? "speech" : "idle";
     this.ambientMotionContext.intent = speaking
       ? "explain"
@@ -1501,7 +1506,7 @@ export class Body {
           : this.relaxedValue > 0.2
             ? "relaxed"
             : "neutral";
-    this.ambientMotionContext.blocked = blocked;
+    this.ambientMotionContext.blocked = ambientBlocked;
     const decision = this.motionDirector.update(delta * 1000, this.ambientMotionContext);
     if (!decision) return;
     const handle = this.motionScheduler.request({
