@@ -98,6 +98,41 @@ function mockPerformanceLibrary() {
     .mockImplementation(async (_ref, options) => options?.mask !== "lower-body");
 }
 
+function mockStandingBase() {
+  const sha = "a".repeat(64);
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        schemaVersion: 1,
+        targetModelSha256: sha,
+        units: [
+          {
+            id: "standing",
+            animation: "/animations/recorded-body/standing.vrma",
+            context: "idle",
+            startTimeSec: 2,
+            endTimeSec: 8,
+            contactWindows: [{ startTimeSec: 1, endTimeSec: 10, feet: "both" }],
+          },
+        ],
+      }),
+    })),
+  );
+  vi.spyOn(AnimationPlayer.prototype, "preloadRecordedBase").mockResolvedValue(true);
+  const base = {
+    ...playback(),
+    phaseSec: 2,
+    held: false,
+    paused: false,
+    setPaused: vi.fn(),
+    setUpperWeight: vi.fn(),
+  };
+  const playBase = vi.spyOn(AnimationPlayer.prototype, "playRecordedBase").mockResolvedValue(base);
+  return { sha, base, playBase };
+}
+
 const speechRequest = {
   source: "system",
   priority: "speech-expression",
@@ -120,37 +155,7 @@ function cue(overrides: Partial<StateExpressionCue> = {}): StateExpressionCue {
 
 describe("recorded motion Body integration", () => {
   it("keeps supporting legs through terminal activity and upper-body persona reactions, then yields to a claim", async () => {
-    const sha = "a".repeat(64);
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => ({
-        ok: true,
-        json: async () => ({
-          schemaVersion: 1,
-          targetModelSha256: sha,
-          units: [
-            {
-              id: "standing",
-              animation: "/animations/recorded-body/standing.vrma",
-              context: "idle",
-              startTimeSec: 2,
-              endTimeSec: 8,
-              contactWindows: [{ startTimeSec: 1, endTimeSec: 10, feet: "both" }],
-            },
-          ],
-        }),
-      })),
-    );
-    vi.spyOn(AnimationPlayer.prototype, "preloadRecordedBase").mockResolvedValue(true);
-    const base = {
-      ...playback(),
-      phaseSec: 2,
-      held: false,
-      paused: false,
-      setPaused: vi.fn(),
-      setUpperWeight: vi.fn(),
-    };
-    vi.spyOn(AnimationPlayer.prototype, "playRecordedBase").mockResolvedValue(base);
+    const { sha, base } = mockStandingBase();
     const { body, claims } = createBody(sha);
     body.setMotionIntensity(0.95);
     await body.initializeRecordedBody();
@@ -178,6 +183,66 @@ describe("recorded motion Body integration", () => {
     body.update(1 / 60, 1);
     expect(base.cancel).toHaveBeenCalledOnce();
     expect(body.getRecordedBodySnapshot().active).toBeNull();
+  });
+
+  it.each([
+    "user-speaking",
+    "animation-claim",
+  ] as const)("keeps a rare finite survey separate from the body base, then yields to %s", async (interruption) => {
+    vi.spyOn(Math, "random").mockReturnValue(0.999);
+    mockPerformanceLibrary();
+    const { sha, base, playBase } = mockStandingBase();
+    const survey = playback();
+    const play = vi.spyOn(AnimationPlayer.prototype, "play").mockResolvedValue(survey);
+    const { body, claims } = createBody(sha);
+    body.setMotionIntensity(0.95);
+    await body.initializeRecordedBody();
+    await body.prepareMotionLibrary();
+
+    advance(body, 299);
+    expect(play).not.toHaveBeenCalled();
+    advance(body, 2);
+    await flush();
+    expect(play).toHaveBeenCalledOnce();
+    expect(play.mock.calls[0][0]).toBe("/animations/recorded-idle/survey.vrma");
+    expect(play.mock.calls[0][1]).toMatchObject({
+      loop: false,
+      mask: "upper-body",
+      transition: "immediate",
+      speed: 1,
+      weight: 0.95,
+      fadeInMs: 800,
+      fadeOutMs: 800,
+    });
+    expect(play.mock.calls[0][1]?.maxDurationMs).toBeUndefined();
+    advance(body, 1);
+    await flush();
+    expect(body.getMotionSnapshot().active?.animation).toBe(
+      "/animations/recorded-idle/survey.vrma",
+    );
+    expect(play).toHaveBeenCalledOnce();
+    expect(survey.stop).not.toHaveBeenCalled();
+    expect(survey.cancel).not.toHaveBeenCalled();
+    expect(playBase).toHaveBeenCalledOnce();
+    expect(base.stop).not.toHaveBeenCalled();
+    expect(base.cancel).not.toHaveBeenCalled();
+
+    if (interruption === "user-speaking") body.setMotionConversationPhase(interruption);
+    else claims.claim("animation");
+    body.update(1 / 60, 303);
+    await flush();
+    expect(body.getMotionSnapshot().active).toBeNull();
+    if (interruption === "user-speaking") {
+      expect(survey.stop).toHaveBeenCalledExactlyOnceWith(800);
+      expect(survey.cancel).not.toHaveBeenCalled();
+      expect(base.stop).not.toHaveBeenCalled();
+      expect(base.cancel).not.toHaveBeenCalled();
+      expect(body.getRecordedBodySnapshot().active?.id).toBe("standing");
+    } else {
+      expect(survey.cancel).toHaveBeenCalledOnce();
+      expect(survey.stop).not.toHaveBeenCalled();
+      expect(base.cancel).toHaveBeenCalledOnce();
+    }
   });
 
   it.each([
@@ -575,9 +640,14 @@ describe("recorded motion Body integration", () => {
     await first;
     expect(preload).toHaveBeenCalledTimes(
       DEFAULT_MOTION_CATALOG.length +
-        DEFAULT_MOTION_CATALOG.filter((entry) => entry.intents.includes("explain")).length,
+        DEFAULT_MOTION_CATALOG.filter((entry) => entry.intents.includes("explain")).length +
+        1,
     );
     expect(preload).toHaveBeenCalledWith("anim:Idle", { mask: "upper-body", loop: true });
+    expect(preload).toHaveBeenCalledWith("/animations/recorded-idle/survey.vrma", {
+      mask: "upper-body",
+      loop: false,
+    });
     advance(body, 1.3);
     await flush();
     expect(play).toHaveBeenCalledOnce();
@@ -610,8 +680,9 @@ describe("recorded motion Body integration", () => {
     expect(play).not.toHaveBeenCalled();
   });
 
-  it("replaces ambient scanning with an attentive recording on user speech, then reconsiders thinking", async () => {
+  it("retains a safe quiet recording through listening and thinking without unsafe substitutions", async () => {
     mockPerformanceLibrary();
+    vi.spyOn(Math, "random").mockReturnValue(0);
     const play = vi
       .spyOn(AnimationPlayer.prototype, "play")
       .mockImplementation(async () => playback());
@@ -619,19 +690,21 @@ describe("recorded motion Body integration", () => {
     await body.prepareMotionLibrary();
     advance(body, 1.3);
     await flush();
+    expect(play).toHaveBeenCalledOnce();
+    expect(play.mock.calls[0][0]).toBe("anim:Idle");
     body.setMotionConversationPhase("user-speaking");
     advance(body, 0.7);
     await flush();
-    expect(play).toHaveBeenCalledTimes(2);
-    expect(body.getMotionDirectorSnapshot().lastDecision?.intent).toBe("attentive");
-    expect(["anim:Idle", "anim:Idle Watching Something"]).toContain(play.mock.calls[1][0]);
+    expect(play).toHaveBeenCalledOnce();
+    expect(body.getMotionSnapshot().active?.animation).toBe("anim:Idle");
     body.setMotionConversationPhase("user-speaking");
     advance(body, 0.7);
-    expect(play).toHaveBeenCalledTimes(2);
+    expect(play).toHaveBeenCalledOnce();
     body.setMotionConversationPhase("assistant-responding");
     advance(body, 0.7);
-    expect(play).toHaveBeenCalledTimes(3);
-    expect(body.getMotionDirectorSnapshot().lastDecision?.intent).toBe("thinking");
+    expect(play).toHaveBeenCalledOnce();
+    expect(body.getMotionSnapshot().active?.animation).toBe("anim:Idle");
+    expect(body.getMotionDirectorSnapshot().suppressedReason).toBe("cooldown");
   });
 
   it("lets speaking own motion, releases it on interruption, and preserves explicit persona priority", async () => {
