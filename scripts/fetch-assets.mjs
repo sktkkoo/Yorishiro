@@ -12,6 +12,7 @@ import { createHash } from "node:crypto";
 import { cp, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { verifyInstalledMixamoRecordings } from "./install-mixamo-recordings.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "..");
@@ -267,6 +268,7 @@ under the store and re-run:
 
   await syncReviewedSpeech();
   await verifyReviewedSurvey();
+  await verifyInstalledMixamoRecordings(join(REPO_ROOT, "public", "animations", "mixamo"));
 
   for (const ft of FILE_TARGETS) {
     results.push(await syncFile(ft));
