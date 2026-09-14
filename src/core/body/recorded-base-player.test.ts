@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { AnimationPlayer } from "./animation-player";
 import type { RecordedBaseOptions } from "./recorded-base-player";
 
-function fixture() {
+function fixture(axialChain = false) {
   const scene = new THREE.Object3D();
   const raw = new Map<VRMHumanBoneName, THREE.Object3D>();
   const add = (name: VRMHumanBoneName, parent: THREE.Object3D, position: number[]) => {
@@ -16,7 +16,18 @@ function fixture() {
     return bone;
   };
   const hips = add("hips", scene, [0, 0.95, 0]);
-  add("head", hips, [0, 0.5, 0]);
+  if (axialChain) {
+    const spine = add("spine", hips, [0, 0.12, 0]);
+    const chest = add("chest", spine, [0, 0.16, 0]);
+    const neck = add("neck", chest, [0, 0.1, 0]);
+    add("head", neck, [0, 0.12, 0]);
+    for (const side of ["left", "right"] as const) {
+      const arm = add(`${side}UpperArm`, chest, [side === "left" ? 0.15 : -0.15, 0.05, 0]);
+      const forearm = add(`${side}LowerArm`, arm, [0.15, 0, 0]);
+      const hand = add(`${side}Hand`, forearm, [0.15, 0, 0]);
+      add(`${side}IndexProximal`, hand, [0.03, 0, 0]);
+    }
+  } else add("head", hips, [0, 0.5, 0]);
   for (const side of ["left", "right"] as const) {
     const thigh = add(`${side}UpperLeg`, hips, [side === "left" ? 0.1 : -0.1, -0.05, 0]);
     const shin = add(`${side}LowerLeg`, thigh, [0, -0.4, 0]);
@@ -70,6 +81,219 @@ function fixture() {
 }
 
 describe("atomic recorded full-body base", () => {
+  it("passes full-strength fractional samples through with the exact direct mixer precision", async () => {
+    const current = fixture(true);
+    const reference = fixture(true);
+    current.recording("base");
+    const source = reference.recording("base");
+    const mixer = new THREE.AnimationMixer(reference.vrm.scene);
+    mixer.clipAction(source).play();
+    await current.player.playRecordedBase("base", {
+      ...current.opts,
+      initialPose: true,
+      axialReferenceTimeSec: 0.8,
+      getInitialState: () => ({
+        paused: false,
+        upperWeight: 1,
+        axialStrength: { torso: 1, head: 1 },
+      }),
+    });
+    for (const delta of [0.1333, 0.3333, 0.1117, 0.2881]) {
+      current.player.update(delta);
+      mixer.update(delta);
+      for (const name of ["spine", "chest", "neck", "head"] as const)
+        expect(current.node(name).quaternion.toArray()).toEqual(
+          reference.node(name).quaternion.toArray(),
+        );
+    }
+  });
+
+  it("attenuates global torso and head motion, including inherited hips rotation, without changing limbs", async () => {
+    const quiet = fixture(true);
+    const source = fixture(true);
+    const axis = new THREE.Vector3(0, 1, 0);
+    for (const rig of [quiet, source]) {
+      const clip = rig.recording("axial", 0, 0);
+      for (const [name, angles] of [
+        ["hips", [-0.05, 0, 0.05]],
+        ["spine", [-0.1, 0.03, 0.16]],
+        ["chest", [0.02, -0.02, 0.06]],
+        ["neck", [-0.2, 0.02, 0.24]],
+        ["head", [-0.1, 0.01, 0.12]],
+        ["leftUpperArm", [0.3, 0.4, 0.5]],
+        ["leftHand", [0.1, 0.2, 0.3]],
+        ["leftIndexProximal", [0.2, 0.3, 0.4]],
+      ] as const) {
+        const track = clip.tracks.find(
+          (track) => track.name === `${rig.node(name).name}.quaternion`,
+        );
+        if (!track) throw new Error(`Missing ${name}`);
+        angles.forEach((angle, index) => {
+          new THREE.Quaternion().setFromAxisAngle(axis, angle).toArray(track.values, index * 4);
+        });
+      }
+    }
+    const referenceTime = 1;
+    const full = await source.player.playRecordedBase("axial", {
+      ...source.opts,
+      startTimeSec: referenceTime,
+      initialPose: true,
+    });
+    const reference = new Map(
+      (["spine", "chest", "neck", "head"] as const).map((name) => [
+        name,
+        source.node(name).getWorldQuaternion(new THREE.Quaternion()),
+      ]),
+    );
+    full.cancel();
+    const raw = await source.player.playRecordedBase("axial", source.opts);
+    const filtered = await quiet.player.playRecordedBase("axial", {
+      ...quiet.opts,
+      initialPose: true,
+      axialReferenceTimeSec: referenceTime,
+      getInitialState: () => ({
+        paused: false,
+        upperWeight: 1,
+        axialStrength: { torso: 0.18, head: 0.06 },
+      }),
+    });
+    for (let frame = 0; frame < 90; frame++) {
+      source.player.update(1 / 60);
+      quiet.player.update(1 / 60);
+      for (const name of ["spine", "chest", "neck", "head"] as const) {
+        const neutral = reference.get(name) ?? new THREE.Quaternion();
+        const gain = name === "spine" || name === "chest" ? 0.18 : 0.06;
+        const originalAngle = source
+          .node(name)
+          .getWorldQuaternion(new THREE.Quaternion())
+          .angleTo(neutral);
+        const attenuatedAngle = quiet
+          .node(name)
+          .getWorldQuaternion(new THREE.Quaternion())
+          .angleTo(neutral);
+        expect(attenuatedAngle).toBeCloseTo(originalAngle * gain, 5);
+      }
+      for (const name of ["hips", "leftFoot", "rightFoot", "leftToes", "rightToes"] as const) {
+        expect(quiet.node(name).position.distanceTo(source.node(name).position)).toBeLessThan(
+          1e-10,
+        );
+        expect(quiet.node(name).quaternion.toArray()).toEqual(
+          source.node(name).quaternion.toArray(),
+        );
+      }
+      for (const name of ["leftUpperArm", "leftHand", "leftIndexProximal"] as const)
+        expect(quiet.node(name).quaternion.toArray()).toEqual(
+          source.node(name).quaternion.toArray(),
+        );
+      expect(quiet.player.getTotalEffectiveWeight()).toBe(1);
+    }
+    expect(filtered.phaseSec).toBe(raw.phaseSec);
+  });
+
+  it("retains the exact source at full axial strength and blends semantic head ownership normally", async () => {
+    const { player, node, recording, cache, opts } = fixture();
+    const clip = recording("base");
+    const original = clip.tracks.map((track) => [...track.values]);
+    const base = await player.playRecordedBase("base", {
+      ...opts,
+      axialReferenceTimeSec: 0.8,
+      getInitialState: () => ({
+        paused: false,
+        upperWeight: 1,
+        axialStrength: { torso: 1, head: 1 },
+      }),
+    });
+    player.update(0.5);
+    expect(node("head").rotation.x).toBeCloseTo(0.25, 6);
+    base.setAxialStrength({ torso: 0, head: 0 }, 500);
+    player.update(0.25);
+    expect(node("head").rotation.x).toBeCloseTo((0.28 + 0.275) / 2, 6);
+    player.update(0.25);
+    expect(node("head").rotation.x).toBeCloseTo(0.28, 6);
+    cache.set(
+      "head-gesture",
+      new THREE.AnimationClip("head-gesture", 2, [
+        new THREE.QuaternionKeyframeTrack(
+          `${node("head").name}.quaternion`,
+          [0, 2],
+          [0.8, 0.8].flatMap((angle) =>
+            new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), angle).toArray(),
+          ),
+        ),
+      ]),
+    );
+    const gesture = await player.play("head-gesture", {
+      mask: "upper-body",
+      fadeInMs: 0,
+      weight: 0.75,
+    });
+    player.update(0.1);
+    expect(node("head").rotation.x).toBeCloseTo(0.28 * 0.25 + 0.8 * 0.75, 6);
+    gesture.cancel();
+    player.update(0.1);
+    expect(node("head").rotation.x).toBeCloseTo(0.28, 6);
+    base.setAxialStrength({ torso: 1, head: 1 });
+    player.update(0.1);
+    expect(node("head").rotation.x).toBeCloseTo(0.33, 6);
+    expect(clip.tracks.map((track) => [...track.values])).toEqual(original);
+    base.cancel();
+    expect(node("head").rotation.x).toBeCloseTo(0, 6);
+  });
+
+  it("shares one authored axial reference across unit transitions and smooth paused strength changes", async () => {
+    const { player, node, recording, opts } = fixture();
+    recording("base");
+    const settings = {
+      ...opts,
+      axialReferenceTimeSec: 0.8,
+      getInitialState: () => ({
+        paused: false,
+        upperWeight: 1,
+        axialStrength: { torso: 0, head: 0 },
+      }),
+    };
+    const first = await player.playRecordedBase("base", settings);
+    player.update(1.5);
+    await first.completion;
+    expect(node("head").rotation.x).toBeCloseTo(0.28, 6);
+    const next = await player.playRecordedBase("base", {
+      ...settings,
+      startTimeSec: 0.4,
+      fadeInMs: 800,
+    });
+    for (let frame = 0; frame < 49; frame++) {
+      player.update(1 / 60);
+      expect(node("head").rotation.x).toBeCloseTo(0.28, 6);
+      expect(player.getFoundationEffectiveWeight()).toBeCloseTo(1, 12);
+    }
+    next.setPaused(true);
+    const phase = next.phaseSec;
+    next.setAxialStrength({ torso: 1, head: 1 }, 500);
+    player.update(0.25);
+    expect(next.phaseSec).toBe(phase);
+    expect(node("head").rotation.x).toBeCloseTo((0.28 + 0.2 + phase * 0.1) / 2, 6);
+    expect(player.hasActiveRecordedBase()).toBe(true);
+    player.update(0.25);
+    expect(node("head").rotation.x).toBeCloseTo(0.2 + phase * 0.1, 6);
+    expect(player.hasActiveRecordedBase()).toBe(false);
+  });
+
+  it("rejects invalid reference times before committing and clamps invalid gains to finite poses", async () => {
+    const { player, node, recording, opts } = fixture();
+    recording("base");
+    const onCommit = vi.fn();
+    for (const axialReferenceTimeSec of [-1, Number.NaN, Number.POSITIVE_INFINITY, 3])
+      await expect(
+        player.playRecordedBase("base", { ...opts, axialReferenceTimeSec, onCommit }),
+      ).rejects.toThrow("axial reference");
+    expect(onCommit).not.toHaveBeenCalled();
+    const base = await player.playRecordedBase("base", opts);
+    base.setAxialStrength({ torso: Number.NaN, head: Number.POSITIVE_INFINITY });
+    player.update(0.5);
+    expect(node("head").rotation.x).toBeCloseTo(0.2, 6);
+    expect(node("head").quaternion.toArray().every(Number.isFinite)).toBe(true);
+  });
+
   it("scales the upper performance while preserving lower trajectories, then pauses and resumes in place", async () => {
     const current = fixture();
     const reference = fixture();

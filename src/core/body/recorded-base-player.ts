@@ -1,6 +1,9 @@
 import type { VRM, VRMHumanBoneName } from "@pixiv/three-vrm";
 import * as THREE from "three";
 import type { MotionPoseJoint } from "./motion-transition";
+import { RecordedAxialMotion, type RecordedAxialStrength } from "./recorded-axial-motion";
+
+export type { RecordedAxialStrength } from "./recorded-axial-motion";
 
 export interface RecordedBaseContactWindow {
   readonly startTimeSec: number;
@@ -19,8 +22,14 @@ export interface RecordedBaseOptions {
   readonly onCommit?: () => void;
   /** Only the owning AnimationPlayer may authorize a pose before its first update. */
   readonly initialPose?: boolean;
+  /** One authored reference shared by every unit of the source clip, never its current entry. */
+  readonly axialReferenceTimeSec?: number;
   /** Evaluated at commit so pending loads inherit the latest intensity and upper ownership. */
-  readonly getInitialState?: () => { readonly paused: boolean; readonly upperWeight: number };
+  readonly getInitialState?: () => {
+    readonly paused: boolean;
+    readonly upperWeight: number;
+    readonly axialStrength?: RecordedAxialStrength;
+  };
 }
 
 export interface RecordedBaseHandle {
@@ -31,6 +40,7 @@ export interface RecordedBaseHandle {
   /** Resolves at the selected end, where both tracks hold instead of fading to rest. */
   readonly completion: Promise<void>;
   setUpperWeight(value: number, fadeMs?: number): void;
+  setAxialStrength(strength: RecordedAxialStrength, fadeMs?: number): void;
   /** Freeze the source phase without releasing the supporting pose or fade deadlines. */
   setPaused(paused: boolean): void;
   stop(fadeMs?: number): Promise<void>;
@@ -89,6 +99,9 @@ interface Group {
   blendRamp?: Ramp;
   upperGain: number;
   upperRamp?: Ramp;
+  readonly axial: RecordedAxialMotion;
+  readonly axialStrength: { torso: number; head: number };
+  axialRamp?: { torso: Ramp; head: Ramp };
   stopAt?: number;
   offset: THREE.Vector3;
   completion: ReturnType<typeof deferred>;
@@ -113,7 +126,7 @@ export class RecordedBasePlayer {
 
   constructor(
     private readonly mixer: THREE.AnimationMixer,
-    vrm: VRM,
+    private readonly vrm: VRM,
   ) {
     const humanoid = vrm.humanoid;
     const hips = humanoid?.getNormalizedBoneNode("hips");
@@ -330,10 +343,19 @@ export class RecordedBasePlayer {
     const lowerTracks = prepared.lower.map((track) =>
       track === prepared.positions ? shifted : track,
     );
+    const axial = new RecordedAxialMotion(this.vrm, clip, opts.axialReferenceTimeSec);
     opts.onCommit?.();
     const initialState = opts.getInitialState?.();
+    const axialStrength = {
+      torso: clampWeight(initialState?.axialStrength?.torso ?? 1),
+      head: clampWeight(initialState?.axialStrength?.head ?? 1),
+    };
     const upper = this.action(
-      new THREE.AnimationClip(`${clip.name}:recorded-upper`, clip.duration, prepared.upper),
+      new THREE.AnimationClip(
+        `${clip.name}:recorded-upper`,
+        clip.duration,
+        axial.tracks(prepared.upper, () => axialStrength),
+      ),
       start,
     );
     const lower = this.action(
@@ -354,6 +376,8 @@ export class RecordedBasePlayer {
       blend: fade ? 0 : 1,
       blendRamp: fade ? { from: 0, to: 1, start: this.mixer.time, duration: fade } : undefined,
       upperGain: clampWeight(initialState?.upperWeight ?? 1),
+      axial,
+      axialStrength,
       offset,
       completion: deferred(),
       stopped: deferred(),
@@ -376,6 +400,27 @@ export class RecordedBasePlayer {
         return group.paused;
       },
       completion: group.completion.promise,
+      setAxialStrength: (strength, fadeMs = 0) => {
+        if (!this.groups.has(group.id)) return;
+        const torso = clampWeight(strength.torso),
+          head = clampWeight(strength.head);
+        const duration = Number.isFinite(fadeMs) ? Math.max(0, fadeMs / 1000) : 0;
+        group.axialRamp = duration
+          ? {
+              torso: {
+                from: group.axialStrength.torso,
+                to: torso,
+                start: this.mixer.time,
+                duration,
+              },
+              head: { from: group.axialStrength.head, to: head, start: this.mixer.time, duration },
+            }
+          : undefined;
+        if (!duration) {
+          group.axialStrength.torso = torso;
+          group.axialStrength.head = head;
+        }
+      },
       setPaused: (paused) => {
         if (this.groups.has(group.id)) group.paused = paused;
       },
@@ -415,6 +460,12 @@ export class RecordedBasePlayer {
         group.upperGain = rampValue(group.upperRamp, nextTime);
         if (nextTime >= group.upperRamp.start + group.upperRamp.duration)
           group.upperRamp = undefined;
+      }
+      if (group.axialRamp) {
+        group.axialStrength.torso = rampValue(group.axialRamp.torso, nextTime);
+        group.axialStrength.head = rampValue(group.axialRamp.head, nextTime);
+        if (nextTime >= group.axialRamp.torso.start + group.axialRamp.torso.duration)
+          group.axialRamp = undefined;
       }
       group.upper.time = group.phase;
       group.lower.time = group.phase;
@@ -458,6 +509,7 @@ export class RecordedBasePlayer {
         (!group.paused && !group.held && group.stopAt === undefined) ||
         group.blendRamp ||
         group.upperRamp ||
+        group.axialRamp ||
         group.stopAt !== undefined
       )
         return true;
@@ -489,8 +541,14 @@ export class RecordedBasePlayer {
         referenceMoving ||=
           (!group.paused && !group.held) ||
           group.blendRamp !== undefined ||
-          group.upperRamp !== undefined;
-        rotation.fromArray(channel.evaluate(group.phase)).normalize();
+          group.upperRamp !== undefined ||
+          group.axialRamp !== undefined;
+        rotation
+          .fromArray(
+            group.axial.sample(name, group.phase, group.axialStrength) ??
+              channel.evaluate(group.phase),
+          )
+          .normalize();
         if (weight === 0) mixed.copy(rotation);
         else mixed.slerp(rotation, contribution / (weight + contribution));
         weight += contribution;
