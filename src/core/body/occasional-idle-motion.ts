@@ -6,6 +6,8 @@ export interface OccasionalIdleMotionOptions {
   readonly random?: () => number;
   /** Quiet, eligible time between performances. Injectable for deterministic checks. */
   readonly waitRangeMs?: readonly [number, number];
+  /** Optional maximum ownership time for looping variations; finite recordings keep their natural end by default. */
+  readonly activeDurationRangeMs?: readonly [number, number];
 }
 
 /**
@@ -16,23 +18,21 @@ export interface OccasionalIdleMotionOptions {
 export class OccasionalIdleMotion {
   private readonly random: () => number;
   private readonly waitRangeMs: readonly [number, number];
+  private readonly activeDurationRangeMs?: readonly [number, number];
   private remainingMs: number;
   private retryMs = 0;
+  private activeRemainingMs: number | null = null;
   private handle: MotionHandle | null = null;
   private disposed = false;
 
   constructor(private readonly options: OccasionalIdleMotionOptions) {
     this.random = options.random ?? Math.random;
     const range = options.waitRangeMs;
-    this.waitRangeMs =
-      range &&
-      Number.isFinite(range[0]) &&
-      Number.isFinite(range[1]) &&
-      range[0] >= 0 &&
-      range[1] >= range[0]
-        ? range
-        : [180_000, 300_000];
-    this.remainingMs = this.nextWait();
+    this.waitRangeMs = validRange(range) ? range : [180_000, 300_000];
+    this.activeDurationRangeMs = validRange(options.activeDurationRangeMs)
+      ? options.activeDurationRangeMs
+      : undefined;
+    this.remainingMs = this.sampleRange(this.waitRangeMs);
   }
 
   update(deltaMs: number, eligible: boolean, hardCancel = false): void {
@@ -41,10 +41,17 @@ export class OccasionalIdleMotion {
       this.stop(hardCancel);
       return;
     }
-    if (this.handle || !Number.isFinite(deltaMs) || deltaMs <= 0) return;
+    if (!Number.isFinite(deltaMs) || deltaMs <= 0) return;
 
     // A suspended tab must not catch up several minutes of idle on resumption.
     const elapsed = Math.min(deltaMs, 1_000);
+    if (this.handle) {
+      if (this.activeRemainingMs !== null) {
+        this.activeRemainingMs = Math.max(0, this.activeRemainingMs - elapsed);
+        if (this.activeRemainingMs === 0) this.stop(false);
+      }
+      return;
+    }
     this.remainingMs = Math.max(0, this.remainingMs - elapsed);
     this.retryMs = Math.max(0, this.retryMs - elapsed);
     if (this.remainingMs > 0 || this.retryMs > 0) return;
@@ -55,6 +62,9 @@ export class OccasionalIdleMotion {
       return;
     }
     this.handle = handle;
+    this.activeRemainingMs = this.activeDurationRangeMs
+      ? this.sampleRange(this.activeDurationRangeMs)
+      : null;
     void handle.completion.then(() => {
       if (this.handle !== handle) return;
       this.handle = null;
@@ -79,13 +89,26 @@ export class OccasionalIdleMotion {
   }
 
   private resetWait(): void {
-    this.remainingMs = this.nextWait();
+    this.remainingMs = this.sampleRange(this.waitRangeMs);
     this.retryMs = 0;
+    this.activeRemainingMs = null;
   }
 
-  private nextWait(): number {
+  private sampleRange(range: readonly [number, number]): number {
     const random = this.random();
     const unit = Number.isFinite(random) ? Math.max(0, Math.min(1, random)) : 0.5;
-    return this.waitRangeMs[0] + unit * (this.waitRangeMs[1] - this.waitRangeMs[0]);
+    return range[0] + unit * (range[1] - range[0]);
   }
+}
+
+function validRange(
+  range: readonly [number, number] | undefined,
+): range is readonly [number, number] {
+  return (
+    range !== undefined &&
+    Number.isFinite(range[0]) &&
+    Number.isFinite(range[1]) &&
+    range[0] >= 0 &&
+    range[1] >= range[0]
+  );
 }

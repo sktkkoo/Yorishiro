@@ -75,6 +75,67 @@ describe("OccasionalIdleMotion", () => {
     expect(random).toHaveBeenCalledOnce();
   });
 
+  it("leaves a finite survey uncapped by default until its natural completion", async () => {
+    const active = playback();
+    const play = vi.fn(() => active.handle);
+    const controller = new OccasionalIdleMotion({ play, waitRangeMs: [100, 100] });
+    controller.update(100, true);
+    advance(controller, 24_700);
+    expect(active.handle.release).not.toHaveBeenCalled();
+    expect(active.handle.cancel).not.toHaveBeenCalled();
+    expect(play).toHaveBeenCalledOnce();
+    active.finish({ reason: "completed" });
+    await Promise.resolve();
+    controller.update(99, true);
+    expect(play).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    0, 0.5, 1,
+  ])("retires a looping variation once after its selected 8–12 seconds (%s)", (random) => {
+    const active = playback();
+    const play = vi.fn(() => active.handle);
+    const controller = new OccasionalIdleMotion({
+      play,
+      random: () => random,
+      waitRangeMs: [25_000, 25_000],
+      activeDurationRangeMs: [8_000, 12_000],
+    });
+    advance(controller, 25_000);
+    advance(controller, 8_000 + random * 4_000 - 1);
+    controller.update(0, true);
+    expect(active.handle.release).not.toHaveBeenCalled();
+    controller.update(1, true);
+    expect(active.handle.release).toHaveBeenCalledExactlyOnceWith(800);
+    expect(active.handle.cancel).not.toHaveBeenCalled();
+    advance(controller, 24_000);
+    expect(active.handle.release).toHaveBeenCalledOnce();
+    expect(play).toHaveBeenCalledOnce();
+  });
+
+  it("does not carry a preempted variation's cap into the next handle", async () => {
+    const first = playback();
+    const second = playback();
+    const play = vi.fn().mockReturnValueOnce(first.handle).mockReturnValue(second.handle);
+    const controller = new OccasionalIdleMotion({
+      play,
+      waitRangeMs: [100, 100],
+      activeDurationRangeMs: [8_000, 8_000],
+    });
+    controller.update(100, true);
+    advance(controller, 7_500);
+    controller.update(0, false, true);
+    expect(first.handle.cancel).toHaveBeenCalledOnce();
+    controller.update(100, true);
+    first.finish({ reason: "preempted" });
+    await Promise.resolve();
+    advance(controller, 7_999);
+    expect(second.handle.release).not.toHaveBeenCalled();
+    controller.update(1, true);
+    expect(second.handle.release).toHaveBeenCalledExactlyOnceWith(800);
+    expect(play).toHaveBeenCalledTimes(2);
+  });
+
   it("releases on loss of eligibility and ignores the old handle's late completion", async () => {
     const first = playback();
     const second = playback();
