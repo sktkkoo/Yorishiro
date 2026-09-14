@@ -93,6 +93,10 @@ import {
   type MotionSource,
 } from "./motion-scheduler";
 import { OccasionalIdleMotion } from "./occasional-idle-motion";
+import {
+  OCCASIONAL_IDLE_ANIMATIONS,
+  selectOccasionalIdleAnimation,
+} from "./occasional-idle-selector";
 import { ProceduralBones } from "./procedural-bones";
 import { RecordedBodySequencer } from "./recorded-body-sequencer";
 import { RecordedIdleFoundation } from "./recorded-idle-foundation";
@@ -140,8 +144,6 @@ export interface SemanticMotionHandle extends SdkMotionHandle {
 interface SpeechStateExpressionLayer extends SpeechStateExpressionRequest {
   readonly id: number;
 }
-
-const REVIEWED_SURVEY_ANIMATION = "/animations/recorded-idle/survey.vrma";
 
 const BLINK_EXPRESSION_NAME = "blink";
 const SPEECH_BROW_EXPRESSION_NAME = "Fcl_BRW_Surprised";
@@ -250,7 +252,8 @@ export class Body {
   private readonly postureVariation: OccasionalIdleMotion;
   private firstPostureVariation = true;
   private readonly occasionalIdleMotion: OccasionalIdleMotion;
-  private surveyReady = false;
+  private readonly availableOccasionalIdles = new Set<string>();
+  private previousOccasionalIdle: string | null = null;
   private readonly relaxedHandFidget: RelaxedHandFidget;
   private foundationBlockedByPerformance = false;
   private readonly proceduralBones: ProceduralBones;
@@ -588,10 +591,10 @@ export class Body {
     });
 
     this.occasionalIdleMotion = new OccasionalIdleMotion({
-      // Only the reviewed finite trim is used; unsafe source head/tail poses stay excluded.
+      // Alternate reviewed finite performances with long quiet gaps.
       waitRangeMs: [90_000, 150_000],
       play: () => {
-        if (!this.surveyReady || this.motionScheduler.getActivePriority() !== null) return null;
+        if (this.motionScheduler.getActivePriority() !== null) return null;
         const options = {
           mask: "upper-body",
           loop: false,
@@ -601,14 +604,21 @@ export class Body {
           fadeInMs: 800,
           fadeOutMs: 800,
         } as const;
-        if (!this.animationPlayer.evaluateTransition(REVIEWED_SURVEY_ANIMATION, options))
-          return null;
-        return this.motionScheduler.request({
+        const animation = selectOccasionalIdleAnimation({
+          available: this.availableOccasionalIdles,
+          previous: this.previousOccasionalIdle,
+          canPlay: (ref) => this.animationPlayer.evaluateTransition(ref, options) !== null,
+          random: Math.random,
+        });
+        if (!animation) return null;
+        const handle = this.motionScheduler.request({
           source: "idle",
           priority: "idle-fidget",
-          animation: REVIEWED_SURVEY_ANIMATION,
+          animation,
           options,
         });
+        if (handle.isActive()) this.previousOccasionalIdle = animation;
+        return handle;
       },
     });
     this.postureVariation = new OccasionalIdleMotion({
@@ -1347,10 +1357,12 @@ export class Body {
         }
       }
       if (this.disposed) return;
-      this.surveyReady = await this.animationPlayer.preload(REVIEWED_SURVEY_ANIMATION, {
-        mask: "upper-body",
-        loop: false,
-      });
+      for (const animation of OCCASIONAL_IDLE_ANIMATIONS) {
+        if (this.disposed) return;
+        if (await this.animationPlayer.preload(animation, { mask: "upper-body", loop: false })) {
+          this.availableOccasionalIdles.add(animation);
+        }
+      }
       await bodyPreparation;
     })();
     return this.motionLibraryLoad;
@@ -1548,7 +1560,7 @@ export class Body {
           activePriority === "speech-expression"),
       this.motionIntensity,
     );
-    // The finite survey owns a separate handle, so the ordinary idle replacement
+    // Rare finite performances own a separate handle, so ordinary idle replacement
     // path above cannot release it on the next frame. Its supporting legs keep
     // the same recorded phase throughout entry, performance and recovery.
     this.occasionalIdleMotion.update(
@@ -1560,8 +1572,7 @@ export class Body {
         state === "idle" &&
         !ungroundedSpeechActive &&
         ["idle", "disconnected"].includes(this.motionConversationPhase) &&
-        (activePriority === null ||
-          this.motionScheduler.getSnapshot().active?.animation === REVIEWED_SURVEY_ANIMATION),
+        (activePriority === null || this.occasionalIdleMotion.isActive),
       claimed || this.foundationBlockedByPerformance,
     );
     const currentMotion = this.motionScheduler.getSnapshot().active;

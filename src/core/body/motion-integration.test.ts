@@ -11,6 +11,7 @@ import { AnimationPlayer } from "./animation-player";
 import { Body } from "./index";
 import { DEFAULT_MOTION_CATALOG, type MotionCatalogEntry } from "./motion-catalog";
 import { MotionDirector } from "./motion-director";
+import { OCCASIONAL_IDLE_ANIMATIONS } from "./occasional-idle-selector";
 
 type Playback = Awaited<ReturnType<AnimationPlayer["play"]>>;
 
@@ -376,6 +377,36 @@ describe("recorded motion Body integration", () => {
       expect(survey.stop).not.toHaveBeenCalled();
       expect(base.cancel).toHaveBeenCalledOnce();
     }
+  });
+
+  it("keeps a finite stretch alive over the recorded legs and yields when listening begins", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    mockPerformanceLibrary();
+    const ref = "/animations/mixamo/Warrior Stretch.vrma";
+    vi.mocked(AnimationPlayer.prototype.evaluateTransition).mockImplementation((animation) =>
+      animation === ref ? { cost: 0.14, startTimeSec: 0 } : null,
+    );
+    const { sha, base } = mockStandingBase();
+    const stretch = playback();
+    const play = vi.spyOn(AnimationPlayer.prototype, "play").mockResolvedValue(stretch);
+    const { body } = createBody(sha);
+    await body.initializeRecordedBody();
+    await body.prepareMotionLibrary();
+    advance(body, 91);
+    await flush();
+    expect(play).toHaveBeenCalledOnce();
+    expect(play.mock.calls[0][0]).toBe(ref);
+    expect(play.mock.calls[0][1]).toMatchObject({ loop: false, mask: "upper-body", speed: 1 });
+    expect(play.mock.calls[0][1]?.maxDurationMs).toBeUndefined();
+    advance(body, 1);
+    expect(stretch.stop).not.toHaveBeenCalled();
+    expect(base.stop).not.toHaveBeenCalled();
+    expect(base.cancel).not.toHaveBeenCalled();
+    body.setMotionConversationPhase("user-speaking");
+    advance(body, 0.1);
+    await flush();
+    expect(stretch.stop).toHaveBeenCalledExactlyOnceWith(800);
+    expect(body.getRecordedBodySnapshot().active?.id).toBe("standing");
   });
 
   it("backs off an incompatible rare survey entry and retries it without another full wait", async () => {
@@ -995,8 +1026,10 @@ describe("recorded motion Body integration", () => {
     await first;
     expect(preload).toHaveBeenCalledTimes(
       DEFAULT_MOTION_CATALOG.length +
-        DEFAULT_MOTION_CATALOG.filter((entry) => entry.intents.includes("explain")).length +
-        1,
+        DEFAULT_MOTION_CATALOG.filter(
+          (entry) => entry.intents.includes("explain") && entry.playback !== "once",
+        ).length +
+        OCCASIONAL_IDLE_ANIMATIONS.length,
     );
     expect(preload).toHaveBeenCalledWith("anim:Idle", { mask: "upper-body", loop: true });
     expect(preload).toHaveBeenCalledWith("/animations/recorded-idle/survey.vrma", {
