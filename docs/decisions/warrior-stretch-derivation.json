@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "command": "node scripts/prepare-warrior-stretch.mjs",
+  "source": {
+    "file": ".motion-review/mixamo-import-20260915/Warrior Idle.vrma",
+    "sha256": "7ce88e4cbb5591da1964d45a182180522150b7b277a5292b8d6390cd75ed4d42",
+    "originalFbxSha256": "fc918df6793089bb301ef414a87159cb366a18f8f741abae7c8fee7a68c01996"
+  },
+  "output": {
+    "file": ".motion-review/mixamo-import-20260915/Warrior Stretch.vrma",
+    "sha256": "5327a29d61afa3d001fdd37daf100d1f20776257af05dc3d37e34405e99c9ce1",
+    "bytes": 148056
+  },
+  "unit": {
+    "sourcePreparedSha256": "7ce88e4cbb5591da1964d45a182180522150b7b277a5292b8d6390cd75ed4d42",
+    "startSec": 5,
+    "endSec": 10,
+    "loop": false,
+    "sourceFirstKey": 150,
+    "sourceLastKeyInclusive": 300,
+    "status": "Candidate; actual-target composition and automatic admission remain separate reviews",
+    "scope": "Exact finite slice. All source body/finger rotation keys and hips XYZ values are retained; only timestamps are rebased. No loop closure, smoothing, masking, gain change, or target contact adaptation."
+  },
+  "sourceFrameCount": 400,
+  "durationSec": 5,
+  "frameCount": 151,
+  "sampleHz": 30,
+  "validation": {
+    "exactAuthoredKeyValues": true,
+    "strictlyIncreasingTimes": true,
+    "rotationTracks": 52,
+    "fingerTracks": 30,
+    "hipsTranslationTracks": 1,
+    "sampleHz": 120,
+    "checkedSamples": 31853,
+    "maxRotationDegrees": 0.000003818191820832845,
+    "maxTranslationMetres": 0
+  }
+}
