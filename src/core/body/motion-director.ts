@@ -137,12 +137,19 @@ export class MotionDirector {
   }
 
   /** Grounded speech intent works without inline tags or an additional LLM. */
-  request(query: SemanticMotionQuery): MotionDecision | null {
+  request(
+    query: SemanticMotionQuery,
+    options?: { readonly preferredAnimation?: string },
+  ): MotionDecision | null {
     if (query.context === "speech" && this.elapsedMs - this.lastSpeechAtMs < 2_400) {
       this.suppressedReason = "quiet";
       return null;
     }
-    return this.select(query, query.context === "speech" ? "speech-intent" : "idle-dwell-elapsed");
+    return this.select(
+      query,
+      query.context === "speech" ? "speech-intent" : "idle-dwell-elapsed",
+      options?.preferredAnimation,
+    );
   }
 
   getSnapshot(): MotionDirectorSnapshot {
@@ -175,6 +182,7 @@ export class MotionDirector {
   private select(
     query: SemanticMotionQuery,
     reason: MotionDecision["reason"],
+    preferredAnimation?: string,
   ): MotionDecision | null {
     const semanticCandidates = retrieveMotionCandidates(query, {
       nowMs: this.elapsedMs,
@@ -213,8 +221,15 @@ export class MotionDirector {
     if (this.options.evaluateTransition) {
       candidates.sort((a, b) => b.weight - a.weight || a.id.localeCompare(b.id));
     }
+    // A preferred first posture still has to pass semantic, history and physical
+    // gates. When it cannot, keep the ordinary weighted choice of safe candidates.
+    const preferredIndex = candidates.findIndex((entry) => entry.animation === preferredAnimation);
+    if (preferredIndex > 0) candidates.unshift(...candidates.splice(preferredIndex, 1));
     candidates.splice(5);
-    const selected = sampleMotionCandidate(candidates, this.random);
+    const selected = sampleMotionCandidate(
+      preferredIndex >= 0 ? candidates.slice(0, 1) : candidates,
+      this.random,
+    );
     if (!selected) {
       this.suppressedReason = semanticCandidates.length > 0 ? "transition" : "cooldown";
       this.nextDueAtMs = Math.max(this.nextDueAtMs, this.elapsedMs + 2_500);

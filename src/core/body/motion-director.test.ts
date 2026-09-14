@@ -19,6 +19,41 @@ function advance(
 }
 
 describe("MotionDirector", () => {
+  it("prefers a compatible initial posture without bypassing real selection history", () => {
+    const director = new MotionDirector({
+      random: () => 0,
+      evaluateTransition: () => ({ cost: 0, startTimeSec: 0 }),
+    });
+    const preference = { preferredAnimation: "anim:VRMA_06_HandOnHip" };
+    expect(director.request({ context: "idle", intent: "neutral" }, preference)?.animation).toBe(
+      preference.preferredAnimation,
+    );
+    expect(director.request({ context: "idle", intent: "neutral" }, preference)?.animation).toBe(
+      "anim:Idle",
+    );
+    expect(director.getSnapshot().history.map((entry) => entry.id)).toEqual([
+      "idle-rest-hand",
+      "idle-balance",
+    ]);
+  });
+
+  it.each([
+    "anim:VRMA_06_HandOnHip",
+    "anim:Idle Watching Something",
+  ])("falls back to safe weighted candidates when the preferred %s fails eligibility", (preferredAnimation) => {
+    const director = new MotionDirector({
+      random: () => 0,
+      evaluateTransition: (animation) =>
+        animation === "anim:Idle" ? { cost: 0, startTimeSec: 0 } : null,
+    });
+    const decision = director.request(
+      { context: "idle", intent: "neutral" },
+      { preferredAnimation },
+    );
+    expect(decision?.animation).toBe("anim:Idle");
+    expect(decision?.candidates.map((entry) => entry.animation)).toEqual(["anim:Idle"]);
+  });
+
   it("filters physical incompatibility before the final five and retains the evaluated entry", () => {
     const catalog = Array.from({ length: 7 }, (_, index) => ({
       ...DEFAULT_MOTION_CATALOG[0],

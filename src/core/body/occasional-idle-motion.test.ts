@@ -30,6 +30,45 @@ function advance(controller: OccasionalIdleMotion, ms: number, eligible = true) 
 }
 
 describe("OccasionalIdleMotion", () => {
+  it("reports eligibility, remaining wait, retry and active ownership without advancing its clock", () => {
+    const active = playback();
+    const play = vi.fn().mockReturnValueOnce(null).mockReturnValue(active.handle);
+    const controller = new OccasionalIdleMotion({
+      play,
+      waitRangeMs: [100, 100],
+      activeDurationRangeMs: [8_000, 8_000],
+    });
+    const cold = controller.getSnapshot();
+    expect(cold).toEqual({
+      eligible: false,
+      disposed: false,
+      waitRemainingMs: 100,
+      retryRemainingMs: 0,
+      activeAnimation: null,
+      activeRemainingMs: null,
+    });
+    controller.update(100, true);
+    expect(cold.waitRemainingMs).toBe(100);
+    expect(controller.getSnapshot()).toMatchObject({
+      eligible: true,
+      waitRemainingMs: 0,
+      retryRemainingMs: 2_500,
+    });
+    advance(controller, 2_500);
+    expect(controller.getSnapshot()).toMatchObject({
+      activeAnimation: active.handle.animation,
+      activeRemainingMs: 8_000,
+    });
+    controller.update(1_000, true);
+    expect(controller.getSnapshot().activeRemainingMs).toBe(7_000);
+    controller.dispose();
+    expect(controller.getSnapshot()).toMatchObject({
+      eligible: false,
+      disposed: true,
+      activeAnimation: null,
+      activeRemainingMs: null,
+    });
+  });
   it.each([0, 0.5, 1])("waits 180–300 seconds of eligible idle with random %s", (random) => {
     const play = vi.fn(() => playback().handle);
     const controller = new OccasionalIdleMotion({ play, random: () => random });

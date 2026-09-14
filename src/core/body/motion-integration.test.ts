@@ -209,7 +209,7 @@ describe("recorded motion Body integration", () => {
     await body.initializeRecordedBody();
     await body.prepareMotionLibrary();
 
-    advance(body, 299);
+    advance(body, 149);
     expect(play).not.toHaveBeenCalled();
     advance(body, 2);
     await flush();
@@ -266,7 +266,7 @@ describe("recorded motion Body integration", () => {
     await body.initializeRecordedBody();
     await body.prepareMotionLibrary();
 
-    advance(body, 181);
+    advance(body, 91);
     expect(play).not.toHaveBeenCalled();
     const surveyEvaluations = () =>
       evaluate.mock.calls.filter(([ref]) => ref === "/animations/recorded-idle/survey.vrma");
@@ -319,10 +319,10 @@ describe("recorded motion Body integration", () => {
       const expression = body.acquireSpeechStateExpression({ preset: "neutral" });
       release = () => expression.release();
     }
-    advance(body, 181);
+    advance(body, 91);
     expect(play).not.toHaveBeenCalled();
     release();
-    advance(body, 179);
+    advance(body, 89);
     expect(play).not.toHaveBeenCalled();
     advance(body, 2);
     await flush();
@@ -344,12 +344,12 @@ describe("recorded motion Body integration", () => {
     await body.initializeRecordedBody();
     await body.prepareMotionLibrary();
 
-    advance(body, 24);
+    advance(body, 14);
     expect(play).not.toHaveBeenCalled();
     advance(body, 1.1);
     await flush();
     expect(play).toHaveBeenCalledOnce();
-    expect(play.mock.calls[0][0]).toBe("anim:Idle");
+    expect(play.mock.calls[0][0]).toBe("anim:VRMA_06_HandOnHip");
     expect(play.mock.calls[0][1]).toMatchObject({ loop: true, mask: "upper-body" });
     advance(body, 7.8);
     expect(first.stop).not.toHaveBeenCalled();
@@ -358,12 +358,12 @@ describe("recorded motion Body integration", () => {
     expect(first.stop).toHaveBeenCalledExactlyOnceWith(800);
     expect(body.getMotionSnapshot().active).toBeNull();
 
-    advance(body, 24);
+    advance(body, 14);
     expect(play).toHaveBeenCalledOnce();
     advance(body, 1.2);
     await flush();
     expect(play).toHaveBeenCalledTimes(2);
-    expect(play.mock.calls[1][0]).toBe("anim:VRMA_06_HandOnHip");
+    expect(play.mock.calls[1][0]).toBe("anim:Idle");
     expect(play.mock.calls[1][1]).toMatchObject({ loop: true, mask: "upper-body" });
     advance(body, 8.1);
     await flush();
@@ -373,6 +373,73 @@ describe("recorded motion Body integration", () => {
     expect(base.stop).not.toHaveBeenCalled();
     expect(base.cancel).not.toHaveBeenCalled();
     expect(body.getRecordedBodySnapshot().active?.id).toBe("standing");
+  });
+
+  it.each([
+    "assistant-speaking",
+    "manual",
+  ] as const)("varies posture across listening and thinking, replacing only its ambient loop before %s", async (nextOwner) => {
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    mockPerformanceLibrary();
+    const { sha, base } = mockStandingBase();
+    const played: Playback[] = [];
+    const play = vi.spyOn(AnimationPlayer.prototype, "play").mockImplementation(async () => {
+      const active = playback();
+      played.push(active);
+      return active;
+    });
+    const { body } = createBody(sha);
+    body.setMotionConversationPhase("user-speaking");
+    await body.initializeRecordedBody();
+    await body.prepareMotionLibrary();
+    advance(body, 1);
+    await flush();
+    expect(play.mock.calls[0][0]).toBe("anim:Idle");
+    expect(body.getRecordedBodySnapshot()).toMatchObject({
+      conversationPhase: "user-speaking",
+      postureVariation: { eligible: true, activeAnimation: null },
+      occasionalIdle: { eligible: false, activeAnimation: null },
+    });
+
+    advance(body, 14.2);
+    await flush();
+    expect(play).toHaveBeenCalledTimes(2);
+    expect(play.mock.calls[1][0]).toBe("anim:VRMA_06_HandOnHip");
+    body.setMotionConversationPhase("assistant-responding");
+    body.setState("thinking");
+    advance(body, 1);
+    await flush();
+    expect(play).toHaveBeenCalledTimes(2);
+    expect(body.getRecordedBodySnapshot()).toMatchObject({
+      conversationPhase: "assistant-responding",
+      postureVariation: { eligible: true, activeAnimation: "anim:VRMA_06_HandOnHip" },
+    });
+    expect(played[1].stop).not.toHaveBeenCalled();
+
+    if (nextOwner === "assistant-speaking") {
+      body.setMotionConversationPhase(nextOwner);
+      body.update(0, 17);
+      await flush();
+      expect(played[1].stop).toHaveBeenCalledExactlyOnceWith(800);
+    } else {
+      const manual = body.acquireMotionSlot({
+        source: "mcp",
+        priority: "mcp-conscious",
+        animation: "anim:explicit",
+        options: { mask: "upper-body" },
+      });
+      await flush();
+      advance(body, 1);
+      await flush();
+      expect(manual.isActive()).toBe(true);
+      expect(body.getMotionSnapshot().active?.animation).toBe("anim:explicit");
+    }
+    expect(body.getRecordedBodySnapshot().postureVariation).toMatchObject({
+      eligible: false,
+      activeAnimation: null,
+    });
+    expect(base.stop).not.toHaveBeenCalled();
+    expect(base.cancel).not.toHaveBeenCalled();
   });
 
   it("forwards quiet Normal and Over axial gains without relinquishing or restarting the body base", async () => {

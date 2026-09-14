@@ -10,6 +10,16 @@ export interface OccasionalIdleMotionOptions {
   readonly activeDurationRangeMs?: readonly [number, number];
 }
 
+export interface OccasionalIdleMotionSnapshot {
+  readonly eligible: boolean;
+  readonly disposed: boolean;
+  readonly waitRemainingMs: number;
+  readonly retryRemainingMs: number;
+  /** Includes a scheduler handle whose prepared recording has not started yet. */
+  readonly activeAnimation: string | null;
+  readonly activeRemainingMs: number | null;
+}
+
 /**
  * A rare, finite performance over the continuous recorded body base.
  * Eligibility and playback options belong to Body; this owns only the wait and
@@ -24,6 +34,7 @@ export class OccasionalIdleMotion {
   private activeRemainingMs: number | null = null;
   private handle: MotionHandle | null = null;
   private disposed = false;
+  private eligible = false;
 
   constructor(private readonly options: OccasionalIdleMotionOptions) {
     this.random = options.random ?? Math.random;
@@ -37,6 +48,7 @@ export class OccasionalIdleMotion {
 
   update(deltaMs: number, eligible: boolean, hardCancel = false): void {
     if (this.disposed) return;
+    this.eligible = eligible && !hardCancel;
     if (!eligible || hardCancel) {
       this.stop(hardCancel);
       return;
@@ -75,7 +87,23 @@ export class OccasionalIdleMotion {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.eligible = false;
     this.stop(true);
+  }
+
+  getSnapshot(): OccasionalIdleMotionSnapshot {
+    return {
+      eligible: this.eligible,
+      disposed: this.disposed,
+      waitRemainingMs: this.remainingMs,
+      retryRemainingMs: this.retryMs,
+      activeAnimation: this.handle?.animation ?? null,
+      activeRemainingMs: this.activeRemainingMs,
+    };
+  }
+
+  get isActive(): boolean {
+    return this.handle?.isActive() ?? false;
   }
 
   private stop(immediate: boolean): void {

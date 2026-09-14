@@ -243,6 +243,7 @@ export class Body {
   private readonly recordedMotionDynamics = new RecordedMotionDynamics();
   private readonly axialStrength = { torso: 0.18, head: 0.06 };
   private readonly postureVariation: OccasionalIdleMotion;
+  private firstPostureVariation = true;
   private readonly occasionalIdleMotion: OccasionalIdleMotion;
   private surveyReady = false;
   private readonly relaxedHandFidget: RelaxedHandFidget;
@@ -582,6 +583,8 @@ export class Body {
     });
 
     this.occasionalIdleMotion = new OccasionalIdleMotion({
+      // Only the reviewed finite trim is used; unsafe source head/tail poses stay excluded.
+      waitRangeMs: [90_000, 150_000],
       play: () => {
         if (!this.surveyReady || this.motionScheduler.getActivePriority() !== null) return null;
         const options = {
@@ -604,12 +607,21 @@ export class Body {
       },
     });
     this.postureVariation = new OccasionalIdleMotion({
-      waitRangeMs: [25_000, 45_000],
+      waitRangeMs: [15_000, 25_000],
       activeDurationRangeMs: [8_000, 12_000],
       play: () => {
-        if (this.motionScheduler.getActivePriority() !== null) return null;
-        const decision = this.motionDirector.request({ context: "idle", intent: "neutral" });
+        const activePriority = this.motionScheduler.getActivePriority();
+        if (
+          activePriority !== null &&
+          !(activePriority === "idle-fidget" && this.ambientMotionHandle?.isActive())
+        )
+          return null;
+        const decision = this.motionDirector.request(
+          { context: "idle", intent: "neutral" },
+          this.firstPostureVariation ? { preferredAnimation: "anim:VRMA_06_HandOnHip" } : undefined,
+        );
         if (!decision) return null;
+        this.firstPostureVariation = false;
         return this.motionScheduler.request({
           source: "idle",
           priority: "idle-fidget",
@@ -1422,6 +1434,9 @@ export class Body {
     return {
       ...this.recordedBody.getSnapshot(),
       activity: this.eyeSystem.state,
+      conversationPhase: this.motionConversationPhase,
+      postureVariation: this.postureVariation.getSnapshot(),
+      occasionalIdle: this.occasionalIdleMotion.getSnapshot(),
       intensity: this.motionIntensity,
       animationClaimed: this.claimState.isClaimed("animation"),
       performanceOwnsBody: this.foundationBlockedByPerformance,
@@ -1544,7 +1559,13 @@ export class Body {
     this.postureVariation.update(
       delta * 1000,
       ambientAllowed &&
-        quietIdle &&
+        recordedBodyAllowed &&
+        this.recordedBody.active &&
+        (state === "idle" || state === "thinking") &&
+        !ungroundedSpeechActive &&
+        ["idle", "disconnected", "user-speaking", "assistant-responding"].includes(
+          this.motionConversationPhase,
+        ) &&
         (currentMotion === null ||
           (currentMotion.source === "idle" &&
             currentMotion.priority === "idle-fidget" &&
@@ -1555,6 +1576,7 @@ export class Body {
       claimed || this.foundationBlockedByPerformance,
     );
     const ambientBlocked =
+      this.postureVariation.isActive ||
       this.recordedBody.ownsUpperBody ||
       claimed ||
       (activePriority !== null && activePriority !== "idle-fidget") ||
