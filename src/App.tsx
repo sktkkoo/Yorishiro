@@ -5946,6 +5946,7 @@ function App() {
               pointersEnabled={screenPointerSettings.enabled}
               pointersReady={screenPointerSettings.ready}
               intervalSeconds={screenSharing.intervalSeconds}
+              contactSheetFrameCount={screenSharing.contactSheetFrameCount}
               sources={screenSharing.sources}
               sourceId={screenSharing.sourceId}
               sourceKind={screenSharing.sourceKind}
@@ -5967,6 +5968,7 @@ function App() {
               lastObservedAt={screenSharing.lastObservedAt}
               language={appLanguage.resolved}
               onIntervalChange={screenSharing.setIntervalSeconds}
+              onContactSheetFrameCountChange={screenSharing.setContactSheetFrameCount}
               onSourceChange={screenSharing.setSourceId}
               onStart={() => void screenSharing.start()}
               onStop={screenSharing.stop}

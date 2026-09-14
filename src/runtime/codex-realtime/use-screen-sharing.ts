@@ -92,7 +92,7 @@ let annotationBeginQueue: Promise<void> = Promise.resolve();
 // Native owns one picker. Stop invalidates its result but cannot dismiss the
 // system interaction; a later lease must wait until that picker settles.
 let regionPickerQueue: Promise<void> = Promise.resolve();
-const CONTACT_SHEET_FRAME_COUNT = 16;
+const DEFAULT_CONTACT_SHEET_FRAME_COUNT = 16;
 
 // Native rotates this epoch when the main WebView reloads. One lookup per JS
 // document prevents a Start waiting on permission from borrowing a new epoch.
@@ -136,6 +136,9 @@ export function useScreenSharing({
   const [region, setRegion] = useState<ScreenCaptureRegion | null>(null);
   const [sourceId, setSourceId] = useState<number | null>(null);
   const [intervalValue, setIntervalSeconds] = useState(30);
+  const [contactSheetFrameCount, setContactSheetFrameCount] = useState(
+    DEFAULT_CONTACT_SHEET_FRAME_COUNT,
+  );
   // HMR can retain a value selected before the periodic lower bound changed.
   const intervalSeconds = normalizeIntervalSeconds(intervalValue);
   const [active, setActive] = useState(false);
@@ -165,6 +168,7 @@ export function useScreenSharing({
     share,
     onTiming,
     intervalSeconds,
+    contactSheetFrameCount,
     sourceKind,
     screenSourceKind,
     sourceId,
@@ -177,6 +181,7 @@ export function useScreenSharing({
     share,
     onTiming,
     intervalSeconds,
+    contactSheetFrameCount,
     sourceKind,
     screenSourceKind,
     sourceId,
@@ -451,7 +456,7 @@ export function useScreenSharing({
         reason === "periodic" &&
         lastCaptureStartedAt.current !== null &&
         now - lastCaptureStartedAt.current <
-          (latest.current.intervalSeconds * 1000) / CONTACT_SHEET_FRAME_COUNT
+          (latest.current.intervalSeconds * 1000) / latest.current.contactSheetFrameCount
       )
         return Promise.resolve();
       lastCaptureStartedAt.current = now;
@@ -509,11 +514,14 @@ export function useScreenSharing({
               dataUrl: frame.dataUrl,
               capturedAt: frame.capturedAt,
             });
-            if (contactSheetSamples.current.length < CONTACT_SHEET_FRAME_COUNT) {
+            if (contactSheetSamples.current.length < latest.current.contactSheetFrameCount) {
               outcome = "shared";
               return;
             }
-            const sheet = await buildContactSheet(contactSheetSamples.current);
+            const sheet = await buildContactSheet(
+              contactSheetSamples.current,
+              latest.current.contactSheetFrameCount,
+            );
             contactSheetSamples.current = [];
             outgoingFrame = {
               ...frame,
@@ -726,12 +734,12 @@ export function useScreenSharing({
       // added because an interval tick arrived while capture was in flight.
       const nextDue =
         (lastCaptureStartedAt.current ?? Date.now()) +
-        (intervalSeconds * 1000) / CONTACT_SHEET_FRAME_COUNT;
+        (intervalSeconds * 1000) / contactSheetFrameCount;
       timer = window.setTimeout(
         () => void tick(),
         owner.current?.ready
           ? Math.max(0, nextDue - Date.now())
-          : (intervalSeconds * 1000) / CONTACT_SHEET_FRAME_COUNT,
+          : (intervalSeconds * 1000) / contactSheetFrameCount,
       );
     };
     void tick();
@@ -739,7 +747,7 @@ export function useScreenSharing({
       disposed = true;
       window.clearTimeout(timer);
     };
-  }, [active, intervalSeconds, capture]);
+  }, [active, intervalSeconds, contactSheetFrameCount, capture]);
 
   const clearAnnotations = useCallback(async () => {
     const lease = owner.current;
@@ -861,6 +869,7 @@ export function useScreenSharing({
     sources,
     sourceId,
     intervalSeconds,
+    contactSheetFrameCount,
     active,
     busy: busy || adjustingRegion,
     error,
@@ -879,6 +888,10 @@ export function useScreenSharing({
     },
     setIntervalSeconds: (value: number) => {
       if (Number.isFinite(value)) setIntervalSeconds(normalizeIntervalSeconds(value));
+    },
+    setContactSheetFrameCount: (value: number) => {
+      if (Number.isFinite(value))
+        setContactSheetFrameCount(Math.min(25, Math.max(4, Math.round(value))));
     },
   };
 }

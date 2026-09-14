@@ -17,11 +17,14 @@ function loadImage(dataUrl: string): Promise<HTMLImageElement> {
 }
 
 /** Builds a numbered chronological contact sheet without sending individual frames. */
-export async function buildContactSheet(samples: readonly ContactSheetSample[]) {
+export async function buildContactSheet(
+  samples: readonly ContactSheetSample[],
+  frameCount = samples.length,
+) {
   if (samples.length === 0) throw new Error("Cannot build an empty contact sheet.");
   const images = await Promise.all(samples.map((sample) => loadImage(sample.dataUrl)));
-  const columns = Math.ceil(Math.sqrt(samples.length));
-  const rows = Math.ceil(samples.length / columns);
+  const columns = Math.ceil(Math.sqrt(frameCount));
+  const rows = Math.ceil(frameCount / columns);
   const aspect = Math.max(...images.map((image) => image.naturalWidth / image.naturalHeight));
   const cellWidth = Math.min(Math.floor((MAX_SHEET_SIZE - SHEET_PADDING * 2) / columns), 1280);
   const cellHeight = Math.max(1, Math.round(cellWidth / aspect));
