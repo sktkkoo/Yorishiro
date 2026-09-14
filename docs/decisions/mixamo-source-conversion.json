@@ -1,0 +1,712 @@
+{
+  "schemaVersion": 1,
+  "source": "Seven user-provided Adobe Mixamo FBX files received 2026-09-15",
+  "sourceDirectory": "../Yorishiro-assets/sources",
+  "outputDirectory": ".motion-review/mixamo-import-20260915",
+  "status": "Source fidelity validated; target acting, context and automatic admission remain separate reviews",
+  "command": "node scripts/prepare-mixamo-import.mjs",
+  "recordings": [
+    {
+      "schemaVersion": 1,
+      "sourceFile": "Sad Idle.fbx",
+      "sourceSha256": "f2aeb3d91d83113363efef245776ec2ff53992d0ac16b41dd620a703e1c07c23",
+      "outputFile": "Sad Idle.vrma",
+      "outputSha256": "ac02f349aafe3cc64fea6c72898ce3dd6bf24b02d6f1940b040de04024011d6b",
+      "outputBytes": 91524,
+      "preparation": {
+        "sourceProfile": "mixamo",
+        "sourceKeySampleHz": 30,
+        "originalKeyTimesPreserved": true,
+        "sourceTrackCount": 53,
+        "sourceNonFiniteValueCount": 0,
+        "constantSourceRotationTracks": [
+          "mixamorigRightHandThumb1.quaternion",
+          "mixamorigRightHandThumb2.quaternion",
+          "mixamorigRightHandThumb3.quaternion",
+          "mixamorigRightHandIndex1.quaternion",
+          "mixamorigRightHandIndex2.quaternion",
+          "mixamorigRightHandIndex3.quaternion",
+          "mixamorigRightHandMiddle1.quaternion",
+          "mixamorigRightHandMiddle2.quaternion",
+          "mixamorigRightHandMiddle3.quaternion",
+          "mixamorigRightHandRing1.quaternion",
+          "mixamorigRightHandRing2.quaternion",
+          "mixamorigRightHandRing3.quaternion",
+          "mixamorigRightHandPinky1.quaternion",
+          "mixamorigRightHandPinky2.quaternion",
+          "mixamorigRightHandPinky3.quaternion",
+          "mixamorigLeftHandThumb2.quaternion",
+          "mixamorigLeftHandThumb3.quaternion"
+        ],
+        "inPointSec": 0,
+        "outPointSec": 2.799999952316284,
+        "durationSec": 2.799999952316284,
+        "sampleHz": 30,
+        "frameCount": 85,
+        "sourceMetresPerUnit": 0.01,
+        "initialXZOffsetRemovedMetres": [
+          0.001181459752842784,
+          0,
+          0.012430665083229542
+        ],
+        "sourceRestHipsMetres": [
+          0,
+          1.0427490000000001,
+          0
+        ],
+        "rotationBoneCount": 52,
+        "fingerRotationBoneCount": 30,
+        "translation": "all authored hips XYZ variation; only a constant initial XZ offset removed",
+        "staticNonHipsTranslationsBakedIntoReference": [],
+        "modifications": "Constant non-hips animation translations become reference bone offsets. No speed change, smoothing, loop conditioning, masking, or contact correction."
+      },
+      "validation": {
+        "officialLoaderRestHipsMetres": [
+          0,
+          1.0427490000000001,
+          0
+        ],
+        "officialRetargetAllValuesFinite": true,
+        "rotationTracks": 52,
+        "hipsTranslationTracks": 1,
+        "outputKeyTimes": {
+          "frameCount": 85,
+          "boneCount": 52,
+          "maxWorldPositionErrorMetres": 9.365522249777937e-8,
+          "maxWorldRotationErrorDegrees": 0.000008189109132934075,
+          "maxHipsPositionErrorMetres": 6.355039805153469e-9,
+          "maxFootPositionErrorMetres": {
+            "leftFoot": 5.286765212642004e-8,
+            "leftToes": 5.775858404929395e-8,
+            "rightFoot": 7.574566591140266e-8,
+            "rightToes": 9.365522249777937e-8
+          }
+        },
+        "betweenOutputKeys": {
+          "frameCount": 84,
+          "boneCount": 52,
+          "maxWorldPositionErrorMetres": 4.810683842435078e-8,
+          "maxWorldRotationErrorDegrees": 0.000006613302226726412,
+          "maxHipsPositionErrorMetres": 6.355039805153469e-9,
+          "maxFootPositionErrorMetres": {
+            "leftFoot": 1.5584028169045484e-8,
+            "leftToes": 1.760174569731685e-8,
+            "rightFoot": 3.464973071576875e-8,
+            "rightToes": 3.9565756086223553e-8
+          }
+        },
+        "nonFiniteOutputValueCount": 0
+      },
+      "method": {
+        "sourcePage": "https://www.mixamo.com/",
+        "sourceDeclaration": "User-provided Adobe Mixamo download; original FBX SHA-256 recorded",
+        "loader": "Three.js r183 FBXLoader + official VRMAnimationLoaderPlugin/createVRMAnimationClip",
+        "unitDefinition": "https://help.autodesk.com/cloudhelp/2020/ENU/FBX-API-Reference/cpp_ref/class_fbx_system_unit.html",
+        "reference": "Original FBX poses sampled on its own skeleton in metres, compared to official VRMA replay retargeted back onto a second identical source skeleton. Account for the one constant XZ offset before comparing all 52 bone world positions/orientations.",
+        "thresholds": {
+          "outputKeyPositionMetres": 0.0001,
+          "outputKeyRotationDegrees": 0.02,
+          "midpointPositionMetres": 0.005,
+          "midpointRotationDegrees": 1
+        },
+        "limitations": [
+          "Source-fidelity gate only; Yori retargeting, perceived acting quality, contacts on a differently proportioned avatar, and cross-clip transitions require separate review.",
+          "Complete original source clock from zero is retained, including all 30 Hz keys. No reference prefix or semantic interval is inferred or removed. Original capture frame rate before Mixamo export is unknown.",
+          "Foot metrics measure error relative to the authored source feet, not absolute foot sliding against the floor.",
+          "Prepared binary is a private review artifact; no existing catalog, original asset, or distribution asset is replaced."
+        ]
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "sourceFile": "Fist Pump.fbx",
+      "sourceSha256": "20679c51027d9c2215edaca1681cd53ac55c6fb2cfc3119ebefd4a8d27b87e5f",
+      "outputFile": "Fist Pump.vrma",
+      "outputSha256": "9bd1b7745794bd06e73af1d37c67c28e4c7e8a576c7e8fa3c4e0778e021cea2f",
+      "outputBytes": 117024,
+      "preparation": {
+        "sourceProfile": "mixamo",
+        "sourceKeySampleHz": 30,
+        "originalKeyTimesPreserved": true,
+        "sourceTrackCount": 53,
+        "sourceNonFiniteValueCount": 0,
+        "constantSourceRotationTracks": [],
+        "inPointSec": 0,
+        "outPointSec": 3.799999952316284,
+        "durationSec": 3.799999952316284,
+        "sampleHz": 30,
+        "frameCount": 115,
+        "sourceMetresPerUnit": 0.01,
+        "initialXZOffsetRemovedMetres": [
+          0.0014543536817654967,
+          0,
+          0.014234605245292187
+        ],
+        "sourceRestHipsMetres": [
+          0,
+          1.0427490000000001,
+          0
+        ],
+        "rotationBoneCount": 52,
+        "fingerRotationBoneCount": 30,
+        "translation": "all authored hips XYZ variation; only a constant initial XZ offset removed",
+        "staticNonHipsTranslationsBakedIntoReference": [],
+        "modifications": "Constant non-hips animation translations become reference bone offsets. No speed change, smoothing, loop conditioning, masking, or contact correction."
+      },
+      "validation": {
+        "officialLoaderRestHipsMetres": [
+          0,
+          1.0427490000000001,
+          0
+        ],
+        "officialRetargetAllValuesFinite": true,
+        "rotationTracks": 52,
+        "hipsTranslationTracks": 1,
+        "outputKeyTimes": {
+          "frameCount": 115,
+          "boneCount": 52,
+          "maxWorldPositionErrorMetres": 1.690356857910884e-7,
+          "maxWorldRotationErrorDegrees": 0.000014286365630539068,
+          "maxHipsPositionErrorMetres": 1.7770027651537381e-9,
+          "maxFootPositionErrorMetres": {
+            "leftFoot": 1.5117542823035402e-7,
+            "leftToes": 1.690356857910884e-7,
+            "rightFoot": 4.8008609064373096e-8,
+            "rightToes": 5.915624483675874e-8
+          }
+        },
+        "betweenOutputKeys": {
+          "frameCount": 114,
+          "boneCount": 52,
+          "maxWorldPositionErrorMetres": 4.698418810404703e-8,
+          "maxWorldRotationErrorDegrees": 0.000006830189170012753,
+          "maxHipsPositionErrorMetres": 1.0982599495976003e-9,
+          "maxFootPositionErrorMetres": {
+            "leftFoot": 1.2264803410830803e-8,
+            "leftToes": 1.4681886142175467e-8,
+            "rightFoot": 1.074800151780923e-8,
+            "rightToes": 1.2380845860036847e-8
+          }
+        },
+        "nonFiniteOutputValueCount": 0
+      },
+      "method": {
+        "sourcePage": "https://www.mixamo.com/",
+        "sourceDeclaration": "User-provided Adobe Mixamo download; original FBX SHA-256 recorded",
+        "loader": "Three.js r183 FBXLoader + official VRMAnimationLoaderPlugin/createVRMAnimationClip",
+        "unitDefinition": "https://help.autodesk.com/cloudhelp/2020/ENU/FBX-API-Reference/cpp_ref/class_fbx_system_unit.html",
+        "reference": "Original FBX poses sampled on its own skeleton in metres, compared to official VRMA replay retargeted back onto a second identical source skeleton. Account for the one constant XZ offset before comparing all 52 bone world positions/orientations.",
+        "thresholds": {
+          "outputKeyPositionMetres": 0.0001,
+          "outputKeyRotationDegrees": 0.02,
+          "midpointPositionMetres": 0.005,
+          "midpointRotationDegrees": 1
+        },
+        "limitations": [
+          "Source-fidelity gate only; Yori retargeting, perceived acting quality, contacts on a differently proportioned avatar, and cross-clip transitions require separate review.",
+          "Complete original source clock from zero is retained, including all 30 Hz keys. No reference prefix or semantic interval is inferred or removed. Original capture frame rate before Mixamo export is unknown.",
+          "Foot metrics measure error relative to the authored source feet, not absolute foot sliding against the floor.",
+          "Prepared binary is a private review artifact; no existing catalog, original asset, or distribution asset is replaced."
+        ]
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "sourceFile": "Thoughtful Head Shake.fbx",
+      "sourceSha256": "28474981675659a419d67b7b4c9026328cdb630f6901183d2474219900cd28c7",
+      "outputFile": "Thoughtful Head Shake.vrma",
+      "outputSha256": "06bd35f1f9578253464b6babff107e27f29225f9a685bb30ca5557d2158da848",
+      "outputBytes": 98324,
+      "preparation": {
+        "sourceProfile": "mixamo",
+        "sourceKeySampleHz": 30,
+        "originalKeyTimesPreserved": true,
+        "sourceTrackCount": 53,
+        "sourceNonFiniteValueCount": 0,
+        "constantSourceRotationTracks": [],
+        "inPointSec": 0,
+        "outPointSec": 3.066666603088379,
+        "durationSec": 3.066666603088379,
+        "sampleHz": 30,
+        "frameCount": 93,
+        "sourceMetresPerUnit": 0.01,
+        "initialXZOffsetRemovedMetres": [
+          0.0014564875746145844,
+          0,
+          0.014232032001018524
+        ],
+        "sourceRestHipsMetres": [
+          0,
+          1.0427490000000001,
+          0
+        ],
+        "rotationBoneCount": 52,
+        "fingerRotationBoneCount": 30,
+        "translation": "all authored hips XYZ variation; only a constant initial XZ offset removed",
+        "staticNonHipsTranslationsBakedIntoReference": [],
+        "modifications": "Constant non-hips animation translations become reference bone offsets. No speed change, smoothing, loop conditioning, masking, or contact correction."
+      },
+      "validation": {
+        "officialLoaderRestHipsMetres": [
+          0,
+          1.0427490000000001,
+          0
+        ],
+        "officialRetargetAllValuesFinite": true,
+        "rotationTracks": 52,
+        "hipsTranslationTracks": 1,
+        "outputKeyTimes": {
+          "frameCount": 93,
+          "boneCount": 52,
+          "maxWorldPositionErrorMetres": 6.525743071358251e-8,
+          "maxWorldRotationErrorDegrees": 0.000006613302226726412,
+          "maxHipsPositionErrorMetres": 1.1641532182693481e-10,
+          "maxFootPositionErrorMetres": {
+            "leftFoot": 4.6058399296508674e-8,
+            "leftToes": 5.322995833414299e-8,
+            "rightFoot": 1.5166452937464782e-8,
+            "rightToes": 2.6463869745154418e-8
+          }
+        },
+        "betweenOutputKeys": {
+          "frameCount": 92,
+          "boneCount": 52,
+          "maxWorldPositionErrorMetres": 4.11833206987084e-8,
+          "maxWorldRotationErrorDegrees": 0.000005399738656763832,
+          "maxHipsPositionErrorMetres": 1.1641532182693481e-10,
+          "maxFootPositionErrorMetres": {
+            "leftFoot": 1.2016105331325856e-8,
+            "leftToes": 1.3976109770466902e-8,
+            "rightFoot": 5.6843041388990145e-9,
+            "rightToes": 6.812346176805158e-9
+          }
+        },
+        "nonFiniteOutputValueCount": 0
+      },
+      "method": {
+        "sourcePage": "https://www.mixamo.com/",
+        "sourceDeclaration": "User-provided Adobe Mixamo download; original FBX SHA-256 recorded",
+        "loader": "Three.js r183 FBXLoader + official VRMAnimationLoaderPlugin/createVRMAnimationClip",
+        "unitDefinition": "https://help.autodesk.com/cloudhelp/2020/ENU/FBX-API-Reference/cpp_ref/class_fbx_system_unit.html",
+        "reference": "Original FBX poses sampled on its own skeleton in metres, compared to official VRMA replay retargeted back onto a second identical source skeleton. Account for the one constant XZ offset before comparing all 52 bone world positions/orientations.",
+        "thresholds": {
+          "outputKeyPositionMetres": 0.0001,
+          "outputKeyRotationDegrees": 0.02,
+          "midpointPositionMetres": 0.005,
+          "midpointRotationDegrees": 1
+        },
+        "limitations": [
+          "Source-fidelity gate only; Yori retargeting, perceived acting quality, contacts on a differently proportioned avatar, and cross-clip transitions require separate review.",
+          "Complete original source clock from zero is retained, including all 30 Hz keys. No reference prefix or semantic interval is inferred or removed. Original capture frame rate before Mixamo export is unknown.",
+          "Foot metrics measure error relative to the authored source feet, not absolute foot sliding against the floor.",
+          "Prepared binary is a private review artifact; no existing catalog, original asset, or distribution asset is replaced."
+        ]
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "sourceFile": "Shrugging.fbx",
+      "sourceSha256": "8c2f00a6c67ec135f1a5cc98f8ca55c5b28dd5f629b5407be7a370ee9f0e170e",
+      "outputFile": "Shrugging.vrma",
+      "outputSha256": "1b58f03fa3cebee66816600ff42ec8e9455001618bf5adde2c73b285a71fc667",
+      "outputBytes": 71104,
+      "preparation": {
+        "sourceProfile": "mixamo",
+        "sourceKeySampleHz": 30,
+        "originalKeyTimesPreserved": true,
+        "sourceTrackCount": 53,
+        "sourceNonFiniteValueCount": 0,
+        "constantSourceRotationTracks": [
+          "mixamorigRightHandThumb1.quaternion",
+          "mixamorigRightHandThumb2.quaternion",
+          "mixamorigRightHandThumb3.quaternion",
+          "mixamorigRightHandIndex1.quaternion",
+          "mixamorigRightHandIndex2.quaternion",
+          "mixamorigRightHandIndex3.quaternion",
+          "mixamorigRightHandMiddle1.quaternion",
+          "mixamorigRightHandMiddle2.quaternion",
+          "mixamorigRightHandMiddle3.quaternion",
+          "mixamorigRightHandRing1.quaternion",
+          "mixamorigRightHandRing2.quaternion",
+          "mixamorigRightHandRing3.quaternion",
+          "mixamorigRightHandPinky1.quaternion",
+          "mixamorigRightHandPinky2.quaternion",
+          "mixamorigRightHandPinky3.quaternion",
+          "mixamorigLeftHandThumb1.quaternion",
+          "mixamorigLeftHandThumb2.quaternion",
+          "mixamorigLeftHandThumb3.quaternion",
+          "mixamorigLeftHandIndex1.quaternion",
+          "mixamorigLeftHandIndex2.quaternion",
+          "mixamorigLeftHandIndex3.quaternion",
+          "mixamorigLeftHandMiddle1.quaternion",
+          "mixamorigLeftHandMiddle2.quaternion",
+          "mixamorigLeftHandMiddle3.quaternion",
+          "mixamorigLeftHandRing1.quaternion",
+          "mixamorigLeftHandRing2.quaternion",
+          "mixamorigLeftHandRing3.quaternion",
+          "mixamorigLeftHandPinky1.quaternion",
+          "mixamorigLeftHandPinky2.quaternion",
+          "mixamorigLeftHandPinky3.quaternion",
+          "mixamorigRightToeBase.quaternion",
+          "mixamorigLeftToeBase.quaternion"
+        ],
+        "inPointSec": 0,
+        "outPointSec": 2,
+        "durationSec": 2,
+        "sampleHz": 30,
+        "frameCount": 61,
+        "sourceMetresPerUnit": 0.01,
+        "initialXZOffsetRemovedMetres": [
+          -0.0019747475162148476,
+          0,
+          0.012776154093444347
+        ],
+        "sourceRestHipsMetres": [
+          0,
+          1.0427490000000001,
+          0
+        ],
+        "rotationBoneCount": 52,
+        "fingerRotationBoneCount": 30,
+        "translation": "all authored hips XYZ variation; only a constant initial XZ offset removed",
+        "staticNonHipsTranslationsBakedIntoReference": [],
+        "modifications": "Constant non-hips animation translations become reference bone offsets. No speed change, smoothing, loop conditioning, masking, or contact correction."
+      },
+      "validation": {
+        "officialLoaderRestHipsMetres": [
+          0,
+          1.0427490000000001,
+          0
+        ],
+        "officialRetargetAllValuesFinite": true,
+        "rotationTracks": 52,
+        "hipsTranslationTracks": 1,
+        "outputKeyTimes": {
+          "frameCount": 61,
+          "boneCount": 52,
+          "maxWorldPositionErrorMetres": 1.3617607773256746e-7,
+          "maxWorldRotationErrorDegrees": 0.000011952831047522321,
+          "maxHipsPositionErrorMetres": 5.206251464550825e-10,
+          "maxFootPositionErrorMetres": {
+            "leftFoot": 1.167807035440975e-7,
+            "leftToes": 1.3617607773256746e-7,
+            "rightFoot": 1.1928708951663112e-8,
+            "rightToes": 1.3992315418533483e-8
+          }
+        },
+        "betweenOutputKeys": {
+          "frameCount": 60,
+          "boneCount": 52,
+          "maxWorldPositionErrorMetres": 3.925790722852421e-8,
+          "maxWorldRotationErrorDegrees": 0.000006613302226726412,
+          "maxHipsPositionErrorMetres": 3.681375715146283e-10,
+          "maxFootPositionErrorMetres": {
+            "leftFoot": 1.0119242927340972e-8,
+            "leftToes": 1.1475465384455764e-8,
+            "rightFoot": 8.288987439544327e-9,
+            "rightToes": 9.545092361446412e-9
+          }
+        },
+        "nonFiniteOutputValueCount": 0
+      },
+      "method": {
+        "sourcePage": "https://www.mixamo.com/",
+        "sourceDeclaration": "User-provided Adobe Mixamo download; original FBX SHA-256 recorded",
+        "loader": "Three.js r183 FBXLoader + official VRMAnimationLoaderPlugin/createVRMAnimationClip",
+        "unitDefinition": "https://help.autodesk.com/cloudhelp/2020/ENU/FBX-API-Reference/cpp_ref/class_fbx_system_unit.html",
+        "reference": "Original FBX poses sampled on its own skeleton in metres, compared to official VRMA replay retargeted back onto a second identical source skeleton. Account for the one constant XZ offset before comparing all 52 bone world positions/orientations.",
+        "thresholds": {
+          "outputKeyPositionMetres": 0.0001,
+          "outputKeyRotationDegrees": 0.02,
+          "midpointPositionMetres": 0.005,
+          "midpointRotationDegrees": 1
+        },
+        "limitations": [
+          "Source-fidelity gate only; Yori retargeting, perceived acting quality, contacts on a differently proportioned avatar, and cross-clip transitions require separate review.",
+          "Complete original source clock from zero is retained, including all 30 Hz keys. No reference prefix or semantic interval is inferred or removed. Original capture frame rate before Mixamo export is unknown.",
+          "Foot metrics measure error relative to the authored source feet, not absolute foot sliding against the floor.",
+          "Prepared binary is a private review artifact; no existing catalog, original asset, or distribution asset is replaced."
+        ]
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "sourceFile": "Hands Forward Gesture.fbx",
+      "sourceSha256": "730fdc5741dc9bca58b4189a3d273e6fe661c9bd2c7fd514af78c16642c9838b",
+      "outputFile": "Hands Forward Gesture.vrma",
+      "outputSha256": "232c2d63f01385f0b0c1ccdf265d9008a6bd10b8c453712a639250eb5aee4308",
+      "outputBytes": 99172,
+      "preparation": {
+        "sourceProfile": "mixamo",
+        "sourceKeySampleHz": 30,
+        "originalKeyTimesPreserved": true,
+        "sourceTrackCount": 53,
+        "sourceNonFiniteValueCount": 0,
+        "constantSourceRotationTracks": [],
+        "inPointSec": 0,
+        "outPointSec": 3.0999999046325684,
+        "durationSec": 3.0999999046325684,
+        "sampleHz": 30,
+        "frameCount": 94,
+        "sourceMetresPerUnit": 0.01,
+        "initialXZOffsetRemovedMetres": [
+          0.001454305020160973,
+          0,
+          0.014234921894967556
+        ],
+        "sourceRestHipsMetres": [
+          0,
+          1.0427490000000001,
+          0
+        ],
+        "rotationBoneCount": 52,
+        "fingerRotationBoneCount": 30,
+        "translation": "all authored hips XYZ variation; only a constant initial XZ offset removed",
+        "staticNonHipsTranslationsBakedIntoReference": [],
+        "modifications": "Constant non-hips animation translations become reference bone offsets. No speed change, smoothing, loop conditioning, masking, or contact correction."
+      },
+      "validation": {
+        "officialLoaderRestHipsMetres": [
+          0,
+          1.0427490000000001,
+          0
+        ],
+        "officialRetargetAllValuesFinite": true,
+        "rotationTracks": 52,
+        "hipsTranslationTracks": 1,
+        "outputKeyTimes": {
+          "frameCount": 94,
+          "boneCount": 52,
+          "maxWorldPositionErrorMetres": 1.2792409231510813e-7,
+          "maxWorldRotationErrorDegrees": 0.000010799477313527668,
+          "maxHipsPositionErrorMetres": 3.4924596548080444e-10,
+          "maxFootPositionErrorMetres": {
+            "leftFoot": 4.623046292396923e-8,
+            "leftToes": 5.449080022494306e-8,
+            "rightFoot": 3.761578103280689e-8,
+            "rightToes": 4.0438685361941246e-8
+          }
+        },
+        "betweenOutputKeys": {
+          "frameCount": 93,
+          "boneCount": 52,
+          "maxWorldPositionErrorMetres": 4.1906507196784585e-8,
+          "maxWorldRotationErrorDegrees": 0.000005122641877509564,
+          "maxHipsPositionErrorMetres": 1.1641532182693481e-10,
+          "maxFootPositionErrorMetres": {
+            "leftFoot": 9.011966548986793e-9,
+            "leftToes": 1.013707991300025e-8,
+            "rightFoot": 6.6993965551809366e-9,
+            "rightToes": 7.112551271920168e-9
+          }
+        },
+        "nonFiniteOutputValueCount": 0
+      },
+      "method": {
+        "sourcePage": "https://www.mixamo.com/",
+        "sourceDeclaration": "User-provided Adobe Mixamo download; original FBX SHA-256 recorded",
+        "loader": "Three.js r183 FBXLoader + official VRMAnimationLoaderPlugin/createVRMAnimationClip",
+        "unitDefinition": "https://help.autodesk.com/cloudhelp/2020/ENU/FBX-API-Reference/cpp_ref/class_fbx_system_unit.html",
+        "reference": "Original FBX poses sampled on its own skeleton in metres, compared to official VRMA replay retargeted back onto a second identical source skeleton. Account for the one constant XZ offset before comparing all 52 bone world positions/orientations.",
+        "thresholds": {
+          "outputKeyPositionMetres": 0.0001,
+          "outputKeyRotationDegrees": 0.02,
+          "midpointPositionMetres": 0.005,
+          "midpointRotationDegrees": 1
+        },
+        "limitations": [
+          "Source-fidelity gate only; Yori retargeting, perceived acting quality, contacts on a differently proportioned avatar, and cross-clip transitions require separate review.",
+          "Complete original source clock from zero is retained, including all 30 Hz keys. No reference prefix or semantic interval is inferred or removed. Original capture frame rate before Mixamo export is unknown.",
+          "Foot metrics measure error relative to the authored source feet, not absolute foot sliding against the floor.",
+          "Prepared binary is a private review artifact; no existing catalog, original asset, or distribution asset is replaced."
+        ]
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "sourceFile": "Texting While Standing.fbx",
+      "sourceSha256": "f2aa04ed79ea929344b5344bf1dfc84f792b0abb66d28c9eb275ecceead4ebb2",
+      "outputFile": "Texting While Standing.vrma",
+      "outputSha256": "b67a0d8029df0aac55f7de7b455ac528aefa469aae0468e593df4c8a7952100c",
+      "outputBytes": 620004,
+      "preparation": {
+        "sourceProfile": "mixamo",
+        "sourceKeySampleHz": 30,
+        "originalKeyTimesPreserved": true,
+        "sourceTrackCount": 53,
+        "sourceNonFiniteValueCount": 0,
+        "constantSourceRotationTracks": [],
+        "inPointSec": 0,
+        "outPointSec": 23.566667556762695,
+        "durationSec": 23.566667556762695,
+        "sampleHz": 30,
+        "frameCount": 708,
+        "sourceMetresPerUnit": 0.01,
+        "initialXZOffsetRemovedMetres": [
+          0.0014415261102840304,
+          0,
+          0.014228412881493568
+        ],
+        "sourceRestHipsMetres": [
+          0,
+          1.0427490000000001,
+          0
+        ],
+        "rotationBoneCount": 52,
+        "fingerRotationBoneCount": 30,
+        "translation": "all authored hips XYZ variation; only a constant initial XZ offset removed",
+        "staticNonHipsTranslationsBakedIntoReference": [],
+        "modifications": "Constant non-hips animation translations become reference bone offsets. No speed change, smoothing, loop conditioning, masking, or contact correction."
+      },
+      "validation": {
+        "officialLoaderRestHipsMetres": [
+          0,
+          1.0427490000000001,
+          0
+        ],
+        "officialRetargetAllValuesFinite": true,
+        "rotationTracks": 52,
+        "hipsTranslationTracks": 1,
+        "outputKeyTimes": {
+          "frameCount": 708,
+          "boneCount": 52,
+          "maxWorldPositionErrorMetres": 8.585223947533005e-8,
+          "maxWorldRotationErrorDegrees": 0.000012194326777763644,
+          "maxHipsPositionErrorMetres": 2.137101226333275e-9,
+          "maxFootPositionErrorMetres": {
+            "leftFoot": 7.52003597812803e-8,
+            "leftToes": 8.585223947533005e-8,
+            "rightFoot": 3.544073607285881e-8,
+            "rightToes": 3.879112618045249e-8
+          }
+        },
+        "betweenOutputKeys": {
+          "frameCount": 707,
+          "boneCount": 52,
+          "maxWorldPositionErrorMetres": 4.2351751673559254e-8,
+          "maxWorldRotationErrorDegrees": 0.000007636383641665691,
+          "maxHipsPositionErrorMetres": 2.137101226333275e-9,
+          "maxFootPositionErrorMetres": {
+            "leftFoot": 1.3553906116405528e-8,
+            "leftToes": 1.5342080064877643e-8,
+            "rightFoot": 6.907430434272491e-9,
+            "rightToes": 7.678794851022315e-9
+          }
+        },
+        "nonFiniteOutputValueCount": 0
+      },
+      "method": {
+        "sourcePage": "https://www.mixamo.com/",
+        "sourceDeclaration": "User-provided Adobe Mixamo download; original FBX SHA-256 recorded",
+        "loader": "Three.js r183 FBXLoader + official VRMAnimationLoaderPlugin/createVRMAnimationClip",
+        "unitDefinition": "https://help.autodesk.com/cloudhelp/2020/ENU/FBX-API-Reference/cpp_ref/class_fbx_system_unit.html",
+        "reference": "Original FBX poses sampled on its own skeleton in metres, compared to official VRMA replay retargeted back onto a second identical source skeleton. Account for the one constant XZ offset before comparing all 52 bone world positions/orientations.",
+        "thresholds": {
+          "outputKeyPositionMetres": 0.0001,
+          "outputKeyRotationDegrees": 0.02,
+          "midpointPositionMetres": 0.005,
+          "midpointRotationDegrees": 1
+        },
+        "limitations": [
+          "Source-fidelity gate only; Yori retargeting, perceived acting quality, contacts on a differently proportioned avatar, and cross-clip transitions require separate review.",
+          "Complete original source clock from zero is retained, including all 30 Hz keys. No reference prefix or semantic interval is inferred or removed. Original capture frame rate before Mixamo export is unknown.",
+          "Foot metrics measure error relative to the authored source feet, not absolute foot sliding against the floor.",
+          "Prepared binary is a private review artifact; no existing catalog, original asset, or distribution asset is replaced."
+        ]
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "sourceFile": "Warrior Idle.fbx",
+      "sourceSha256": "fc918df6793089bb301ef414a87159cb366a18f8f741abae7c8fee7a68c01996",
+      "outputFile": "Warrior Idle.vrma",
+      "outputSha256": "7ce88e4cbb5591da1964d45a182180522150b7b277a5292b8d6390cd75ed4d42",
+      "outputBytes": 358752,
+      "preparation": {
+        "sourceProfile": "mixamo",
+        "sourceKeySampleHz": 30,
+        "originalKeyTimesPreserved": true,
+        "sourceTrackCount": 53,
+        "sourceNonFiniteValueCount": 0,
+        "constantSourceRotationTracks": [],
+        "inPointSec": 0,
+        "outPointSec": 13.300000190734863,
+        "durationSec": 13.300000190734863,
+        "sampleHz": 30,
+        "frameCount": 400,
+        "sourceMetresPerUnit": 0.01,
+        "initialXZOffsetRemovedMetres": [
+          0.00002247441625513602,
+          0,
+          0.023750005289912224
+        ],
+        "sourceRestHipsMetres": [
+          0,
+          1.0427490000000001,
+          0
+        ],
+        "rotationBoneCount": 52,
+        "fingerRotationBoneCount": 30,
+        "translation": "all authored hips XYZ variation; only a constant initial XZ offset removed",
+        "staticNonHipsTranslationsBakedIntoReference": [],
+        "modifications": "Constant non-hips animation translations become reference bone offsets. No speed change, smoothing, loop conditioning, masking, or contact correction."
+      },
+      "validation": {
+        "officialLoaderRestHipsMetres": [
+          0,
+          1.0427490000000001,
+          0
+        ],
+        "officialRetargetAllValuesFinite": true,
+        "rotationTracks": 52,
+        "hipsTranslationTracks": 1,
+        "outputKeyTimes": {
+          "frameCount": 400,
+          "boneCount": 52,
+          "maxWorldPositionErrorMetres": 1.0532138823992098e-7,
+          "maxWorldRotationErrorDegrees": 0.000012778113880520799,
+          "maxHipsPositionErrorMetres": 9.669652544806307e-10,
+          "maxFootPositionErrorMetres": {
+            "leftFoot": 4.1904509190534e-8,
+            "leftToes": 3.9559875597652274e-8,
+            "rightFoot": 5.300414037279134e-8,
+            "rightToes": 6.131286038704033e-8
+          }
+        },
+        "betweenOutputKeys": {
+          "frameCount": 399,
+          "boneCount": 52,
+          "maxWorldPositionErrorMetres": 4.726136594821507e-8,
+          "maxWorldRotationErrorDegrees": 0.000008706816964856284,
+          "maxHipsPositionErrorMetres": 8.554144586291249e-10,
+          "maxFootPositionErrorMetres": {
+            "leftFoot": 1.5739348268482172e-8,
+            "leftToes": 1.7022464104283974e-8,
+            "rightFoot": 1.636293368993647e-8,
+            "rightToes": 1.7973617673519723e-8
+          }
+        },
+        "nonFiniteOutputValueCount": 0
+      },
+      "method": {
+        "sourcePage": "https://www.mixamo.com/",
+        "sourceDeclaration": "User-provided Adobe Mixamo download; original FBX SHA-256 recorded",
+        "loader": "Three.js r183 FBXLoader + official VRMAnimationLoaderPlugin/createVRMAnimationClip",
+        "unitDefinition": "https://help.autodesk.com/cloudhelp/2020/ENU/FBX-API-Reference/cpp_ref/class_fbx_system_unit.html",
+        "reference": "Original FBX poses sampled on its own skeleton in metres, compared to official VRMA replay retargeted back onto a second identical source skeleton. Account for the one constant XZ offset before comparing all 52 bone world positions/orientations.",
+        "thresholds": {
+          "outputKeyPositionMetres": 0.0001,
+          "outputKeyRotationDegrees": 0.02,
+          "midpointPositionMetres": 0.005,
+          "midpointRotationDegrees": 1
+        },
+        "limitations": [
+          "Source-fidelity gate only; Yori retargeting, perceived acting quality, contacts on a differently proportioned avatar, and cross-clip transitions require separate review.",
+          "Complete original source clock from zero is retained, including all 30 Hz keys. No reference prefix or semantic interval is inferred or removed. Original capture frame rate before Mixamo export is unknown.",
+          "Foot metrics measure error relative to the authored source feet, not absolute foot sliding against the floor.",
+          "Prepared binary is a private review artifact; no existing catalog, original asset, or distribution asset is replaced."
+        ]
+      }
+    }
+  ]
+}

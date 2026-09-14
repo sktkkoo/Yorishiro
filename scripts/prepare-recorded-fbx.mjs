@@ -132,13 +132,13 @@ function sourceRig(buffer) {
   };
 }
 
-function bake(source, inPoint, outPoint, sampleHz) {
+function bake(source, inPoint, outPoint, sampleHz, originalTimes) {
   const duration = outPoint - inPoint;
-  const sampleCount = Math.ceil(duration * sampleHz) + 1;
+  const sampleCount = originalTimes?.length ?? Math.ceil(duration * sampleHz) + 1;
   if (!(duration > 0 && sampleCount <= 18_001)) throw new Error("Invalid or excessive duration");
-  const times = Float32Array.from({ length: sampleCount }, (_, i) =>
-    Math.min(i / sampleHz, duration),
-  );
+  const times = originalTimes
+    ? Float32Array.from(originalTimes, (time) => time - inPoint)
+    : Float32Array.from({ length: sampleCount }, (_, i) => Math.min(i / sampleHz, duration));
   const rotations = new Map();
   for (const [name, bone] of source.bones) {
     const track = source.clip.tracks.find(
@@ -357,13 +357,20 @@ export async function prepareRecordedFbx({
   sampleHz = 30,
   expectedSourceSha256 = expectedConversationSha256,
   animationName = "Rokoko Conversation source-faithful",
+  sourceProfile = "rokoko",
 }) {
+  if (sourceProfile !== "rokoko" && sourceProfile !== "mixamo")
+    throw new Error("Unknown source preparation profile");
   if (path.resolve(inputFbx) === path.resolve(outputVrma) || path.extname(outputVrma) !== ".vrma")
     throw new Error("Output must be a separate VRMA path");
-  const relativeOutput = path.relative(path.dirname(defaultOutput), path.resolve(outputVrma));
+  const privateRoot =
+    sourceProfile === "mixamo"
+      ? path.join(projectRoot, ".motion-review")
+      : path.dirname(defaultOutput);
+  const relativeOutput = path.relative(privateRoot, path.resolve(outputVrma));
   if (relativeOutput.startsWith("..") || path.isAbsolute(relativeOutput))
     throw new Error(
-      "Preparation binaries must remain in the private .motion-review/source-assets/prepared directory",
+      "Preparation binaries must remain in the profile's private .motion-review directory",
     );
   if (sampleHz !== 30) throw new Error("Only the reviewed 30 Hz preparation is supported");
   const buffer = await fs.readFile(inputFbx),
@@ -372,11 +379,41 @@ export async function prepareRecordedFbx({
     throw new Error("Source hash does not match the reviewed recording");
   const source = sourceRig(buffer);
   const end = outPointSec ?? source.clip.duration;
-  if (!(Number.isFinite(inPointSec) && inPointSec >= 0.1 && end <= source.clip.duration))
+  let originalTimes;
+  if (sourceProfile === "mixamo") {
+    if (inPointSec !== 0 || end !== source.clip.duration)
+      throw new Error(
+        "Mixamo intake preserves the complete source from zero; trimming is separate",
+      );
+    originalTimes = source.clip.tracks.reduce(
+      (longest, track) => (track.times.length > longest.length ? track.times : longest),
+      source.clip.tracks[0].times,
+    );
+    if (
+      originalTimes[0] !== 0 ||
+      originalTimes[originalTimes.length - 1] !== end ||
+      originalTimes.some(
+        (time, index) =>
+          !Number.isFinite(time) ||
+          (index > 0 &&
+            (time <= originalTimes[index - 1] ||
+              Math.abs(time - originalTimes[index - 1] - 1 / sampleHz) > 0.000003)),
+      ) ||
+      source.clip.tracks.some(
+        (track) =>
+          !(track.times.length === 1 && track.times[0] === 0) &&
+          (track.times.length !== originalTimes.length ||
+            track.times.some((time, index) => time !== originalTimes[index])),
+      )
+    )
+      throw new Error(
+        "Mixamo intake requires shared original 30 Hz keys or a constant zero-time pose",
+      );
+  } else if (!(Number.isFinite(inPointSec) && inPointSec >= 0.1 && end <= source.clip.duration))
     throw new Error(
       "Explicit in-point must exclude the reference prefix and remain in the source interval",
     );
-  const baked = bake(source, inPointSec, end, sampleHz),
+  const baked = bake(source, inPointSec, end, sampleHz, originalTimes),
     binary = encodeVrma(source, baked, sourceSha256, animationName);
   const validation = await validateRoundtrip(buffer, binary, baked, inPointSec);
   const report = {
@@ -387,6 +424,18 @@ export async function prepareRecordedFbx({
     outputSha256: hash(binary),
     outputBytes: binary.length,
     preparation: {
+      ...(sourceProfile === "mixamo"
+        ? {
+            sourceProfile,
+            sourceKeySampleHz: 30,
+            originalKeyTimesPreserved: true,
+            sourceTrackCount: source.clip.tracks.length,
+            sourceNonFiniteValueCount: 0,
+            constantSourceRotationTracks: source.clip.tracks
+              .filter((track) => track.name.endsWith(".quaternion") && track.times.length === 1)
+              .map((track) => track.name),
+          }
+        : {}),
       inPointSec,
       outPointSec: end,
       durationSec: baked.duration,
@@ -402,10 +451,18 @@ export async function prepareRecordedFbx({
       modifications:
         "Constant non-hips animation translations become reference bone offsets. No speed change, smoothing, loop conditioning, masking, or contact correction.",
     },
-    validation,
+    validation:
+      sourceProfile === "mixamo" ? { ...validation, nonFiniteOutputValueCount: 0 } : validation,
     method: {
-      sourcePage: "https://www.rokoko.com/resources/rokoko-mocap-10-free-everyday-idle-animations",
-      sourceArchive: "https://media.rokoko.com/EVERYDAY-IDLES-MOCAP.zip",
+      sourcePage:
+        sourceProfile === "mixamo"
+          ? "https://www.mixamo.com/"
+          : "https://www.rokoko.com/resources/rokoko-mocap-10-free-everyday-idle-animations",
+      ...(sourceProfile === "mixamo"
+        ? {
+            sourceDeclaration: "User-provided Adobe Mixamo download; original FBX SHA-256 recorded",
+          }
+        : { sourceArchive: "https://media.rokoko.com/EVERYDAY-IDLES-MOCAP.zip" }),
       loader: `Three.js r${THREE.REVISION} FBXLoader + official VRMAnimationLoaderPlugin/createVRMAnimationClip`,
       unitDefinition:
         "https://help.autodesk.com/cloudhelp/2020/ENU/FBX-API-Reference/cpp_ref/class_fbx_system_unit.html",
@@ -419,7 +476,9 @@ export async function prepareRecordedFbx({
       },
       limitations: [
         "Source-fidelity gate only; Yori retargeting, perceived acting quality, contacts on a differently proportioned avatar, and cross-clip transitions require separate review.",
-        "The explicit 0.1-second in-point excludes the measured reference-pose prefix. It is not a semantic segmentation or approved looping boundary.",
+        sourceProfile === "mixamo"
+          ? "Complete original source clock from zero is retained, including all 30 Hz keys. No reference prefix or semantic interval is inferred or removed. Original capture frame rate before Mixamo export is unknown."
+          : "The explicit 0.1-second in-point excludes the measured reference-pose prefix. It is not a semantic segmentation or approved looping boundary.",
         "Foot metrics measure error relative to the authored source feet, not absolute foot sliding against the floor.",
         "Prepared binary is a private review artifact; no existing catalog, original asset, or distribution asset is replaced.",
       ],
