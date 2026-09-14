@@ -14,8 +14,11 @@ describe("local semantic motion catalog", () => {
     "celebrate",
     "sad",
     "uncertain",
-  ] as const)("keeps %s unassigned until an explicitly reviewed contextual recording is registered", (intent) => {
-    expect(retrieveMotionCandidates({ context: "speech", intent }, { nowMs: 0 })).toEqual([]);
+  ] as const)("requires an explicit contextual assignment for %s despite vector similarity", (intent) => {
+    const legacy = DEFAULT_MOTION_CATALOG.filter((entry) => !entry.animation.includes("/mixamo/"));
+    expect(
+      retrieveMotionCandidates({ context: "speech", intent }, { nowMs: 0, catalog: legacy }),
+    ).toEqual([]);
     const reviewed: MotionCatalogEntry = {
       ...DEFAULT_MOTION_CATALOG[0],
       id: `reviewed-${intent}`,
@@ -38,6 +41,42 @@ describe("local semantic motion catalog", () => {
     expect(
       retrieveMotionCandidates({ context: "idle", intent }, { nowMs: 0, catalog: [reviewed] }),
     ).toEqual([]);
+  });
+
+  it("admits only the reviewed short Mixamo speech performances, never props or foot-dependent acting", () => {
+    const admitted = DEFAULT_MOTION_CATALOG.filter((entry) => entry.animation.includes("/mixamo/"));
+    expect(admitted.map((entry) => entry.id).sort()).toEqual([
+      "speech-celebrate",
+      "speech-present",
+      "speech-thoughtful",
+      "speech-uncertain",
+    ]);
+    for (const entry of admitted) {
+      expect(entry.contexts).toEqual(["speech"]);
+      expect(entry.playback).toBe("once");
+      expect(entry.finishAfterSpeech).toBe(true);
+      expect(entry.intents).not.toContain("explain");
+    }
+    expect(retrieveMotionCandidates({ context: "speech", intent: "sad" }, { nowMs: 0 })).toEqual(
+      [],
+    );
+    const celebrate = retrieveMotionCandidates(
+      { context: "speech", intent: "celebrate" },
+      { nowMs: 0 },
+    );
+    expect(celebrate.map((entry) => entry.id)).toEqual(["speech-celebrate"]);
+    expect(
+      retrieveMotionCandidates({ context: "speech", intent: "uncertain" }, { nowMs: 0 }).map(
+        (entry) => entry.id,
+      ),
+    ).toEqual(["speech-uncertain", "speech-thoughtful"]);
+    for (const intent of ["agree", "reassure"] as const) {
+      expect(
+        retrieveMotionCandidates({ context: "speech", intent }, { nowMs: 0 }).some((entry) =>
+          entry.animation.includes("/mixamo/"),
+        ),
+      ).toBe(false);
+    }
   });
 
   it("limits automatic idle to the reviewed quiet recordings, keeping the rare survey separate", () => {
@@ -78,7 +117,7 @@ describe("local semantic motion catalog", () => {
       { intent: "emphasize", context: "speech" },
       { nowMs: 0 },
     );
-    expect(consider[0].id).toBe("speech-chat");
+    expect(consider[0].id).toBe("speech-thoughtful");
     expect(consider.some((candidate) => candidate.id === "speech-animated")).toBe(false);
     expect(emphasize[0].id).toBe("speech-animated");
     for (const candidates of [consider, emphasize]) {
@@ -99,6 +138,7 @@ describe("local semantic motion catalog", () => {
       { nowMs: 0 },
     );
     expect(candidates.map((entry) => entry.animation).sort()).toEqual([
+      "/animations/mixamo/Hands Forward Gesture.vrma",
       "anim:Idle Chatting",
       "anim:Idle Chatting 2",
     ]);

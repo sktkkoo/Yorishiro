@@ -302,11 +302,15 @@ export class MotionDirector {
     const intensity = Number.isFinite(query.intensity)
       ? Math.max(0, Math.min(1, query.intensity ?? 0.5))
       : 0.5;
+    const maxWeight = Number.isFinite(candidate.entry.maxWeight)
+      ? Math.max(0, Math.min(1, candidate.entry.maxWeight ?? 1))
+      : 1;
     return {
       loop: !finiteMotion,
-      weight: speechBaseline
-        ? candidate.entry.weight
-        : Math.min(1, candidate.entry.weight * (0.65 + intensity * 0.7)),
+      weight: Math.min(
+        maxWeight,
+        speechBaseline ? candidate.entry.weight : candidate.entry.weight * (0.65 + intensity * 0.7),
+      ),
       speed: candidate.entry.speed,
       fadeInMs: finiteMotion ? 420 : 1_200,
       fadeOutMs: finiteMotion ? 600 : 1_200,

@@ -29,6 +29,8 @@ export interface MotionCatalogEntry {
   readonly intents: readonly MotionIntent[];
   readonly features: MotionFeatures;
   readonly weight: number;
+  /** Clip-specific reviewed strength ceiling, applied before physical entry evaluation. */
+  readonly maxWeight?: number;
   readonly speed: number;
   readonly cooldownMs: number;
   /** Reviewed finite acting: start at zero, never use as a looping explanation baseline. */
@@ -131,6 +133,64 @@ export const DEFAULT_MOTION_CATALOG: readonly MotionCatalogEntry[] = [
     weight: 0.85,
     speed: 1,
     cooldownMs: 6_000,
+  },
+  // These short recordings passed Yori upper-body composition over both D/A
+  // supports. Keep prop-dependent Texting and the foot-dependent Sad out here.
+  // See docs/decisions/mixamo-motion-review.json for exact source hashes and QA.
+  {
+    id: "speech-celebrate",
+    animation: "/animations/mixamo/Fist Pump.vrma",
+    family: "celebration",
+    contexts: ["speech"],
+    intents: ["celebrate"],
+    features: [0.15, 0.7, 0.1, 1, 1, 0.9],
+    weight: 1,
+    speed: 1,
+    cooldownMs: 90_000,
+    playback: "once",
+    finishAfterSpeech: true,
+  },
+  {
+    id: "speech-thoughtful",
+    animation: "/animations/mixamo/Thoughtful Head Shake.vrma",
+    family: "reflection",
+    contexts: ["speech"],
+    intents: ["consider", "uncertain"],
+    features: [0.75, 0.85, 1, 0.2, 0.15, 0.3],
+    weight: 1,
+    speed: 1,
+    cooldownMs: 20_000,
+    playback: "once",
+    finishAfterSpeech: true,
+  },
+  {
+    id: "speech-uncertain",
+    animation: "/animations/mixamo/Shrugging.vrma",
+    family: "uncertainty",
+    contexts: ["speech"],
+    intents: ["uncertain"],
+    features: [0.65, 0.8, 1, 0.35, 0.2, 0.3],
+    weight: 1,
+    // Unattenuated left-upper-arm entry exceeds the existing joint gate.
+    // Intensity may never raise this above the reviewed 0.8 composition.
+    maxWeight: 0.8,
+    speed: 1,
+    cooldownMs: 45_000,
+    playback: "once",
+    finishAfterSpeech: true,
+  },
+  {
+    id: "speech-present",
+    animation: "/animations/mixamo/Hands Forward Gesture.vrma",
+    family: "presentation",
+    contexts: ["speech"],
+    intents: ["emphasize"],
+    features: [0.4, 0.95, 0.4, 0.8, 0.9, 0.55],
+    weight: 1,
+    speed: 1,
+    cooldownMs: 20_000,
+    playback: "once",
+    finishAfterSpeech: true,
   },
 ];
 

@@ -33,6 +33,33 @@ describe("MotionDirector", () => {
     speed: 1,
   };
 
+  it.each([
+    -1,
+    0,
+    0.35,
+    0.65,
+    1,
+    3,
+    Number.NaN,
+  ])("scores and plays Shrugging below its reviewed ceiling even at intensity %s", (intensity) => {
+    const entry = DEFAULT_MOTION_CATALOG.find((entry) => entry.id === "speech-uncertain");
+    if (!entry) throw new Error("reviewed shrug fixture required");
+    let evaluatedWeight: number | undefined;
+    const director = new MotionDirector({
+      catalog: [entry],
+      evaluateTransition: (_animation, options) => {
+        evaluatedWeight = options.weight;
+        expect(options.weight).toBeLessThanOrEqual(0.8);
+        return { cost: 0, startTimeSec: 0 };
+      },
+    });
+    const decision = director.request({ context: "speech", intent: "uncertain", intensity });
+    expect(decision?.options.weight).toBe(evaluatedWeight);
+    expect(decision?.options.loop).toBe(false);
+    expect(decision?.options.maxDurationMs).toBeUndefined();
+    expect(decision?.finishAfterSpeech).toBe(true);
+  });
+
   it("grants post-audio completion only to an explicitly reviewed speech one-shot", () => {
     for (const playback of [undefined, "once"] as const) {
       for (const context of ["idle", "speech"] as const) {
