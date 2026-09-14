@@ -96,6 +96,7 @@ import { OccasionalIdleMotion } from "./occasional-idle-motion";
 import { ProceduralBones } from "./procedural-bones";
 import { RecordedBodySequencer } from "./recorded-body-sequencer";
 import { RecordedIdleFoundation } from "./recorded-idle-foundation";
+import { RecordedMotionDynamics } from "./recorded-motion-dynamics";
 import { RelaxedHandFidget } from "./relaxed-hand-fidget";
 import {
   DEFAULT_SPEECH_MICROEXPRESSION_PARAMS,
@@ -239,6 +240,9 @@ export class Body {
   private readonly animationPlayer: AnimationPlayer;
   private readonly recordedIdleFoundation: RecordedIdleFoundation;
   private readonly recordedBody: RecordedBodySequencer;
+  private readonly recordedMotionDynamics = new RecordedMotionDynamics();
+  private readonly axialStrength = { torso: 0.18, head: 0.06 };
+  private readonly postureVariation: OccasionalIdleMotion;
   private readonly occasionalIdleMotion: OccasionalIdleMotion;
   private surveyReady = false;
   private readonly relaxedHandFidget: RelaxedHandFidget;
@@ -599,6 +603,24 @@ export class Body {
         });
       },
     });
+    this.postureVariation = new OccasionalIdleMotion({
+      waitRangeMs: [25_000, 45_000],
+      activeDurationRangeMs: [8_000, 12_000],
+      play: () => {
+        if (this.motionScheduler.getActivePriority() !== null) return null;
+        const decision = this.motionDirector.request({ context: "idle", intent: "neutral" });
+        if (!decision) return null;
+        return this.motionScheduler.request({
+          source: "idle",
+          priority: "idle-fidget",
+          animation: decision.animation,
+          options: {
+            ...decision.options,
+            weight: decision.options.weight * Math.min(1, this.motionIntensity),
+          },
+        });
+      },
+    });
     this.applyStateExpressions("idle");
     if (typeof window !== "undefined") void this.prepareMotionLibrary();
   }
@@ -662,7 +684,7 @@ export class Body {
     };
   }
 
-  /** idle motion 倍率（0-3, 1 で現状）を breathing / procedural bones に伝播する。 */
+  /** Map 0–3 expressiveness to the recorded and procedural motion layers. */
   setMotionIntensity(intensity: number): void {
     this.motionIntensity = Math.max(0, Math.min(3, Number.isFinite(intensity) ? intensity : 1));
     const playback = this.activeMotionPlayback;
@@ -821,9 +843,13 @@ export class Body {
     this.syncExpressionIntents();
     this.cursorAttention.update(delta);
     const cursorAttention = this.cursorAttention.writeOutput(this.cursorAttentionOutput);
+    const headLookGain =
+      this.motionIntensity <= 1
+        ? this.motionIntensity * 0.2
+        : 0.2 + (this.motionIntensity - 1) * 0.4;
     this.proceduralBones.setHeadLookAtOffset(
-      cursorAttention.headYawRad,
-      cursorAttention.headPitchRad,
+      cursorAttention.headYawRad * headLookGain,
+      cursorAttention.headPitchRad * headLookGain,
     );
     this.eyeSystem.setAmbientOffset(cursorAttention.eyeYawDeg, cursorAttention.eyePitchDeg);
     this.logCursorAttentionSample(delta, cursorAttention);
@@ -1001,6 +1027,7 @@ export class Body {
   dispose(): void {
     this.disposed = true;
     this.disposeAttention();
+    this.postureVariation.dispose();
     this.occasionalIdleMotion.dispose();
     this.motionScheduler.cancelAll(0);
     this.motionActivationGeneration++;
@@ -1315,6 +1342,7 @@ export class Body {
   setMotionLibraryEnabled(enabled: boolean): void {
     this.motionLibraryEnabled = enabled;
     if (!enabled) {
+      this.postureVariation.update(0, false);
       this.occasionalIdleMotion.update(0, false);
       this.recordedBody.suspend(500, "library-disabled");
       this.recordedIdleFoundation.suspend(500);
@@ -1382,6 +1410,11 @@ export class Body {
   async initializeRecordedBody(): Promise<void> {
     if (this.disposed || !this.motionLibraryEnabled || this.claimState.isClaimed("animation"))
       return;
+    Object.assign(
+      this.axialStrength,
+      this.recordedMotionDynamics.update(0, this.motionIntensity, true),
+    );
+    this.recordedBody.setAxialStrength(this.axialStrength, 0);
     await this.recordedBody.initialize(this.motionIntensity);
   }
 
@@ -1448,6 +1481,23 @@ export class Body {
       !this.hasGroundedConversationPhase &&
       (this.speechStateExpressionLayers.size > 0 ||
         (this.lipSyncSource?.isMouthActive?.() ?? this.lipSyncSource !== null));
+    const quietIdle =
+      recordedBodyAllowed &&
+      this.recordedBody.active &&
+      state === "idle" &&
+      !ungroundedSpeechActive &&
+      ["idle", "disconnected"].includes(this.motionConversationPhase);
+    const axialTarget = this.recordedMotionDynamics.update(
+      delta * 1000,
+      this.motionIntensity,
+      quietIdle && activePriority === null,
+    );
+    // Frame-rate independent settling handles slider changes without restarting
+    // a finite fade on every frame of the already smooth dynamics envelope.
+    const axialBlend = 1 - Math.exp(-Math.max(0, delta) / 0.15);
+    this.axialStrength.torso += (axialTarget.torso - this.axialStrength.torso) * axialBlend;
+    this.axialStrength.head += (axialTarget.head - this.axialStrength.head) * axialBlend;
+    this.recordedBody.setAxialStrength(this.axialStrength, 0);
     this.recordedBody.update(
       delta * 1000,
       recordedBodyAllowed,
@@ -1488,6 +1538,20 @@ export class Body {
         ["idle", "disconnected"].includes(this.motionConversationPhase) &&
         (activePriority === null ||
           this.motionScheduler.getSnapshot().active?.animation === REVIEWED_SURVEY_ANIMATION),
+      claimed || this.foundationBlockedByPerformance,
+    );
+    const currentMotion = this.motionScheduler.getSnapshot().active;
+    this.postureVariation.update(
+      delta * 1000,
+      ambientAllowed &&
+        quietIdle &&
+        (currentMotion === null ||
+          (currentMotion.source === "idle" &&
+            currentMotion.priority === "idle-fidget" &&
+            DEFAULT_MOTION_CATALOG.some(
+              (entry) =>
+                entry.contexts.includes("idle") && entry.animation === currentMotion.animation,
+            ))),
       claimed || this.foundationBlockedByPerformance,
     );
     const ambientBlocked =
