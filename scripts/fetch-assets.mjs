@@ -210,6 +210,18 @@ async function syncReviewedSpeech() {
   }
 }
 
+/** The survey is finite; stale bytes must not reintroduce its excluded tail. */
+async function verifyReviewedSurvey() {
+  const file = join(REPO_ROOT, "public/animations/recorded-idle/survey.vrma");
+  if (!(await exists(file))) return;
+  const review = JSON.parse(
+    await readFile(join(REPO_ROOT, "docs/decisions/idle-survey-metrics.json"), "utf8"),
+  );
+  const bytes = await readFile(file);
+  if (createHash("sha256").update(bytes).digest("hex") !== review.output.sha256)
+    throw new Error(`Reviewed survey hash mismatch: ${file}`);
+}
+
 async function main() {
   console.log(`fetch-assets: external store = ${externalRoot}`);
   const required = Boolean(process.env.YORISHIRO_ASSETS_REQUIRED);
@@ -254,6 +266,7 @@ under the store and re-run:
   }
 
   await syncReviewedSpeech();
+  await verifyReviewedSurvey();
 
   for (const ft of FILE_TARGETS) {
     results.push(await syncFile(ft));

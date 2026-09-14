@@ -92,6 +92,7 @@ import {
   MotionScheduler,
   type MotionSource,
 } from "./motion-scheduler";
+import { OccasionalIdleMotion } from "./occasional-idle-motion";
 import { ProceduralBones } from "./procedural-bones";
 import { RecordedBodySequencer } from "./recorded-body-sequencer";
 import { RecordedIdleFoundation } from "./recorded-idle-foundation";
@@ -133,6 +134,8 @@ export interface SpeechStateExpressionHandle {
 interface SpeechStateExpressionLayer extends SpeechStateExpressionRequest {
   readonly id: number;
 }
+
+const REVIEWED_SURVEY_ANIMATION = "/animations/recorded-idle/survey.vrma";
 
 const BLINK_EXPRESSION_NAME = "blink";
 const SPEECH_BROW_EXPRESSION_NAME = "Fcl_BRW_Surprised";
@@ -236,6 +239,8 @@ export class Body {
   private readonly animationPlayer: AnimationPlayer;
   private readonly recordedIdleFoundation: RecordedIdleFoundation;
   private readonly recordedBody: RecordedBodySequencer;
+  private readonly occasionalIdleMotion: OccasionalIdleMotion;
+  private surveyReady = false;
   private readonly relaxedHandFidget: RelaxedHandFidget;
   private foundationBlockedByPerformance = false;
   private readonly proceduralBones: ProceduralBones;
@@ -572,6 +577,28 @@ export class Body {
       now: () => performance.now(),
     });
 
+    this.occasionalIdleMotion = new OccasionalIdleMotion({
+      play: () => {
+        if (!this.surveyReady || this.motionScheduler.getActivePriority() !== null) return null;
+        const options = {
+          mask: "upper-body",
+          loop: false,
+          transition: "immediate",
+          speed: 1,
+          weight: Math.min(1, this.motionIntensity),
+          fadeInMs: 800,
+          fadeOutMs: 800,
+        } as const;
+        if (!this.animationPlayer.evaluateTransition(REVIEWED_SURVEY_ANIMATION, options))
+          return null;
+        return this.motionScheduler.request({
+          source: "idle",
+          priority: "idle-fidget",
+          animation: REVIEWED_SURVEY_ANIMATION,
+          options,
+        });
+      },
+    });
     this.applyStateExpressions("idle");
     if (typeof window !== "undefined") void this.prepareMotionLibrary();
   }
@@ -846,7 +873,7 @@ export class Body {
       delta,
       !animationClaimed &&
         this.motionLibraryEnabled &&
-        this.motionIntensity >= 1 &&
+        this.motionIntensity > 0 &&
         this.recordedBody.allowsHandFidget &&
         this.eyeSystem.state === "idle" &&
         !["assistant-speaking", "user-speaking", "assistant-responding", "interrupted"].includes(
@@ -855,7 +882,7 @@ export class Body {
         handMotionPriority === null,
       !animationClaimed &&
         this.motionLibraryEnabled &&
-        this.motionIntensity >= 1 &&
+        this.motionIntensity > 0 &&
         this.recordedBody.active &&
         !this.foundationBlockedByPerformance &&
         (handMotionPriority === null ||
@@ -969,6 +996,7 @@ export class Body {
   dispose(): void {
     this.disposed = true;
     this.disposeAttention();
+    this.occasionalIdleMotion.dispose();
     this.motionScheduler.cancelAll(0);
     this.motionActivationGeneration++;
     this.relaxedHandFidget.dispose();
@@ -1268,6 +1296,11 @@ export class Body {
           this.motionDirector.excludeAnimation(entry.animation);
         }
       }
+      if (this.disposed) return;
+      this.surveyReady = await this.animationPlayer.preload(REVIEWED_SURVEY_ANIMATION, {
+        mask: "upper-body",
+        loop: false,
+      });
       await bodyPreparation;
     })();
     return this.motionLibraryLoad;
@@ -1277,6 +1310,7 @@ export class Body {
   setMotionLibraryEnabled(enabled: boolean): void {
     this.motionLibraryEnabled = enabled;
     if (!enabled) {
+      this.occasionalIdleMotion.update(0, false);
       this.recordedBody.suspend(500, "library-disabled");
       this.recordedIdleFoundation.suspend(500);
       this.ambientMotionHandle?.release(500);
@@ -1428,6 +1462,26 @@ export class Body {
           activePriority === "idle-fidget" ||
           activePriority === "speech-expression"),
       this.motionIntensity,
+    );
+    // The finite survey owns a separate handle, so the ordinary idle replacement
+    // path above cannot release it on the next frame. Its supporting legs keep
+    // the same recorded phase throughout entry, performance and recovery.
+    this.occasionalIdleMotion.update(
+      delta * 1000,
+      allowed &&
+        !claimed &&
+        this.recordedBody.active &&
+        !this.foundationBlockedByPerformance &&
+        state === "idle" &&
+        !(
+          !this.hasGroundedConversationPhase &&
+          (this.speechStateExpressionLayers.size > 0 ||
+            (this.lipSyncSource?.isMouthActive?.() ?? this.lipSyncSource !== null))
+        ) &&
+        ["idle", "disconnected"].includes(this.motionConversationPhase) &&
+        (activePriority === null ||
+          this.motionScheduler.getSnapshot().active?.animation === REVIEWED_SURVEY_ANIMATION),
+      claimed || this.foundationBlockedByPerformance,
     );
     const blocked =
       this.recordedBody.ownsUpperBody ||

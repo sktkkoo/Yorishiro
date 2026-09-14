@@ -60,6 +60,8 @@ const CONVERSATION_INTENTS = ["explain", "agree", "consider", "reassure", "empha
  * Documented source assets only. Local extraction/generation prototypes remain
  * available for explicit playback, but are not automatic production candidates.
  * Idle Conversation is excluded: source wrist/forearm coupling failed acting QA.
+ * Watching and whole Looking Around clips fail low-wrist QA. The safe survey
+ * interval is a separate, infrequent finite performance over the recorded base.
  * See CREDITS.md and docs/decisions/motion-source-eligibility.md.
  */
 export const DEFAULT_MOTION_CATALOG: readonly MotionCatalogEntry[] = [
@@ -74,39 +76,7 @@ export const DEFAULT_MOTION_CATALOG: readonly MotionCatalogEntry[] = [
     speed: 0.9,
     cooldownMs: 30_000,
   },
-  {
-    id: "idle-orient",
-    animation: "anim:Idle Looking Around",
-    family: "orient",
-    contexts: ["idle"],
-    intents: ["neutral", "relaxed", "thinking"],
-    features: [0.7, 1, 0.4, 0.1, 0, 0.32],
-    weight: 0.86,
-    speed: 0.85,
-    cooldownMs: 36_000,
-  },
-  {
-    id: "idle-survey",
-    animation: "anim:Idle Looking Around 2",
-    family: "orient",
-    contexts: ["idle"],
-    intents: ["neutral", "relaxed", "thinking"],
-    features: [0.8, 0.85, 0.6, 0.1, 0, 0.24],
-    weight: 0.86,
-    speed: 0.82,
-    cooldownMs: 36_000,
-  },
-  {
-    id: "idle-observe",
-    animation: "anim:Idle Watching Something",
-    family: "observe",
-    contexts: ["idle"],
-    intents: IDLE_INTENTS,
-    features: [0.85, 1, 0.85, 0.2, 0, 0.14],
-    weight: 0.88,
-    speed: 0.88,
-    cooldownMs: 30_000,
-  },
+
   {
     id: "idle-rest-hand",
     animation: "anim:VRMA_06_HandOnHip",
