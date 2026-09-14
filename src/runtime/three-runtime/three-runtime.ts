@@ -11,6 +11,7 @@ import { TweenManager } from "../../core/tween/tween-manager";
 import { getOrInit } from "../hot-data";
 import { KEYS } from "../module-registry/keys";
 import { type ClaimState, getClaimState } from "../ui-claim-state";
+import { DEFAULT_CAMERA_HEAD_OFFSET, defaultCameraForCharacter } from "../view-mode-framing";
 import { getVrmCache } from "../vrm-cache";
 import { CameraModulationRegistry } from "./camera-modulation";
 import { R3fHost } from "./r3f-host";
@@ -59,7 +60,7 @@ class ThreeRuntimeImpl implements ThreeRuntime {
   private trackHead: THREE.Object3D | null = null;
   private loadToken = 0;
   private readonly tweenManager = new TweenManager();
-  private readonly cameraBase = { x: 0, y: 1.35, z: 1.1 };
+  private readonly cameraBase = { ...defaultCameraForCharacter() };
   private fixedCamera: {
     readonly token: symbol;
     readonly previousBase: { x: number; y: number; z: number };
@@ -102,8 +103,8 @@ class ThreeRuntimeImpl implements ThreeRuntime {
     // Lighting は scene pack が専有する。ThreeRuntime は light を持たない。
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(35, 1, 0.1, 20);
-    this.camera.position.set(0, 1.35, 1.1);
-    this.camera.lookAt(0, 1.35, 0);
+    this.camera.position.set(this.cameraBase.x, this.cameraBase.y, this.cameraBase.z);
+    this.camera.lookAt(0, this.cameraBase.y, 0);
     this.baseFov = this.camera.fov;
 
     // ── Renderer ──────────────────────────────────────────────────
@@ -236,17 +237,15 @@ class ThreeRuntimeImpl implements ThreeRuntime {
         if (headBone) headBone.getWorldPosition(headPos);
         else headPos.set(0, 1.6, 0);
 
-        const targetY = headPos.y - 0.05;
+        const framing = defaultCameraForCharacter(headPos.y);
         if (!this.fixedCamera) {
-          this.cameraBase.x = 0;
-          this.cameraBase.y = targetY;
-          this.cameraBase.z = 1.1;
-          this.camera.position.set(0, targetY, 1.1);
-          this.camera.lookAt(0, targetY, 0);
+          Object.assign(this.cameraBase, framing);
+          this.camera.position.set(framing.x, framing.y, framing.z);
+          this.camera.lookAt(0, framing.y, 0);
         }
         // 新しい姿は背丈が違う。切替経路（お別れの暗転中 / 設定画面の
-        // live 差し替え）を問わず、ロード時は追従を ON に戻して頭位置の
-        // 構図から始める。ここは即時スナップなので、暗転中なら
+        // live 差し替え）を問わず、ロード時は追従を ON に戻して頭位置に
+        // 合わせた上半身の構図から始める。ここは即時スナップなので、暗転中なら
         // カーテンが明けた瞬間から構図が決まっている。
         if (!this.fixedCamera) this.cameraTrackingEnabled = true;
 
@@ -503,7 +502,7 @@ class ThreeRuntimeImpl implements ThreeRuntime {
         // Step 1: Base — VRM head tracking（claim 未取得時のみ）
         if (this.trackHead && this.cameraTrackingEnabled && !cameraClaimed) {
           this.trackHead.getWorldPosition(this.headWorldPos);
-          const desiredY = this.headWorldPos.y - 0.05;
+          const desiredY = this.headWorldPos.y - DEFAULT_CAMERA_HEAD_OFFSET;
           this.cameraBase.y += (desiredY - this.cameraBase.y) * Math.min(1.5 * delta, 1);
         }
 

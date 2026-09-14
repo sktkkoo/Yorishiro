@@ -3,6 +3,7 @@ import type { ThreeRuntime } from "./three-runtime/types";
 import {
   acquireFixedViewModeCamera,
   acquireResponsiveCallCamera,
+  defaultCameraForCharacter,
   type WindowedViewMode,
 } from "./view-mode-framing";
 
@@ -19,7 +20,8 @@ export function useViewModeCamera(
 ): void {
   useEffect(() => {
     if (mode === null) {
-      runtime.setCameraBase(0, 1.35, 1.1);
+      const camera = defaultCameraForCharacter(runtime.getCharacterAnchor()?.y);
+      runtime.setCameraBase(camera.x, camera.y, camera.z);
     }
   }, [mode, runtime]);
   useEffect(() => {
