@@ -593,6 +593,21 @@ describe("auxiliary window ownership", () => {
 });
 
 describe("native snapshot compatibility", () => {
+  it("opens controls when the running native version predates frame counts and themes", async () => {
+    const publish = vi.fn(async (_snapshot: ScreenSharingSnapshot) => {});
+    publish.mockRejectedValueOnce("unknown field `contactSheetFrameCount`");
+    publish.mockRejectedValueOnce("unknown field `uiColors`");
+    const send = createAuxiliarySnapshotPublisher(publish);
+    await send(
+      createScreenSharingSnapshot(
+        { ...model(), uiColors: { "--yorishiro-accent": "#fff" } },
+        "revision",
+      ),
+    );
+    expect(publish).toHaveBeenCalledTimes(3);
+    expect(publish.mock.calls[2][0]).not.toHaveProperty("contactSheetFrameCount");
+    expect(publish.mock.calls[2][0]).not.toHaveProperty("uiColors");
+  });
   it.each([
     "camera",
     "screen",
