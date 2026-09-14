@@ -515,21 +515,24 @@ export function ScreenSharingControl({
                     </label>
                     <output htmlFor={frameCountId}>{contactSheetFrameCount}</output>
                   </div>
-                  <select
+                  <input
                     id={frameCountId}
-                    className="screen-sharing-frame-count-select"
-                    value={contactSheetFrameCount}
+                    className="screen-sharing-slider"
+                    type="range"
+                    min={0}
+                    max={CONTACT_SHEET_FRAME_COUNTS.length - 1}
+                    step={1}
+                    value={CONTACT_SHEET_FRAME_COUNTS.indexOf(
+                      contactSheetFrameCount as (typeof CONTACT_SHEET_FRAME_COUNTS)[number],
+                    )}
                     aria-label={labels.frameCount}
+                    aria-valuetext={String(contactSheetFrameCount)}
                     onChange={(event) =>
-                      onContactSheetFrameCountChange(Number(event.currentTarget.value))
+                      onContactSheetFrameCountChange(
+                        CONTACT_SHEET_FRAME_COUNTS[Number(event.currentTarget.value)],
+                      )
                     }
-                  >
-                    {CONTACT_SHEET_FRAME_COUNTS.map((count) => (
-                      <option key={count} value={count}>
-                        {count}
-                      </option>
-                    ))}
-                  </select>
+                  />
                 </>
               ) : null}
               {onPreviewVisibleChange ? (
