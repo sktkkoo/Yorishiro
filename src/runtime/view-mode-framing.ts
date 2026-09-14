@@ -9,12 +9,12 @@ export interface ViewModeCamera {
 export const DEFAULT_CAMERA_HEAD_OFFSET = 0.22;
 
 /** Terminal framing keeps the head and upper-body gestures in view. */
-export function defaultCameraForCharacter(characterAnchorY?: number | null): ViewModeCamera {
-  const headY =
-    typeof characterAnchorY === "number" && Number.isFinite(characterAnchorY)
-      ? characterAnchorY
-      : 1.6;
-  return { x: 0, y: headY - DEFAULT_CAMERA_HEAD_OFFSET, z: 1.6 };
+export function defaultCameraForCharacter(
+  characterAnchor?: Pick<ViewModeCamera, "x" | "y"> | null,
+): ViewModeCamera {
+  const headY = characterAnchor && Number.isFinite(characterAnchor.y) ? characterAnchor.y : 1.6;
+  const headX = characterAnchor && Number.isFinite(characterAnchor.x) ? characterAnchor.x : 0;
+  return { x: headX, y: headY - DEFAULT_CAMERA_HEAD_OFFSET, z: 1.6 };
 }
 
 export type CallFramingTier = "normal" | "small-face";

@@ -20,7 +20,7 @@ export function useViewModeCamera(
 ): void {
   useEffect(() => {
     if (mode === null) {
-      const camera = defaultCameraForCharacter(runtime.getCharacterAnchor()?.y);
+      const camera = defaultCameraForCharacter(runtime.getCharacterAnchor());
       runtime.setCameraBase(camera.x, camera.y, camera.z);
     }
   }, [mode, runtime]);

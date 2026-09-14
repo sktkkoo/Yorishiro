@@ -1,6 +1,7 @@
 # Recorded motion orchestration and comparative evaluation
 
-**Status**: implementation guidance; comparison with Animates pending  
+**Status**: implementation guidance; comparison with Animates pending
+
 **Last updated**: 2026-09-14
 
 2026-09-14 update: the [quality strategy](motion-quality-strategy.md) supersedes an Idle-only interpretation of the comparison. The user's Animates example includes expressive conversational arms and dancing in time with music playing on the PC. Music detection/dancing is a reference for contextual timing and full-body quality, not the first required Yorishiro feature. Prioritize original-recording fidelity and Idle/listening/conversation handoffs before extending feature count.

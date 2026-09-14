@@ -39,7 +39,7 @@ function cameraRuntime() {
       anchorY = y;
     },
     initializeLoadedCamera: () => {
-      camera = defaultCameraForCharacter(anchorY);
+      camera = defaultCameraForCharacter({ x: 0, y: anchorY });
     },
   };
 }

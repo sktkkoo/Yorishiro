@@ -237,11 +237,11 @@ class ThreeRuntimeImpl implements ThreeRuntime {
         if (headBone) headBone.getWorldPosition(headPos);
         else headPos.set(0, 1.6, 0);
 
-        const framing = defaultCameraForCharacter(headPos.y);
+        const framing = defaultCameraForCharacter(headPos);
         if (!this.fixedCamera) {
           Object.assign(this.cameraBase, framing);
           this.camera.position.set(framing.x, framing.y, framing.z);
-          this.camera.lookAt(0, framing.y, 0);
+          this.camera.lookAt(framing.x, framing.y, 0);
         }
         // 新しい姿は背丈が違う。切替経路（お別れの暗転中 / 設定画面の
         // live 差し替え）を問わず、ロード時は追従を ON に戻して頭位置に
@@ -529,7 +529,8 @@ class ThreeRuntimeImpl implements ThreeRuntime {
 
         // Step 3: lookAt — modulation 適用後の position から target を見る
         if (this.cameraTrackingEnabled && !cameraClaimed) {
-          this.camera.lookAt(0, this.camera.position.y, 0);
+          // Keep the initial horizontal framing; do not chase each head sway.
+          this.camera.lookAt(this.cameraBase.x, this.camera.position.y, 0);
         }
       }
 
