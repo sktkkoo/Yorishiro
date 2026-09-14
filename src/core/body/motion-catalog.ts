@@ -246,7 +246,11 @@ export function retrieveMotionCandidates(
   for (const entry of options.catalog ?? DEFAULT_MOTION_CATALOG) {
     if (!entry.contexts.includes(query.context) || !entry.intents.includes(query.intent)) continue;
     if (options.availableAnimations && !options.availableAnimations.has(entry.animation)) continue;
-    if (entry.id === last?.id) continue;
+    // A short contextual reaction can recur after its clip cooldown, even when
+    // no other speech motif occurred during a long silence. Continuous/idle
+    // recordings still avoid consecutive selections of the same clip.
+    if (entry.id === last?.id && !(query.context === "speech" && entry.playback === "once"))
+      continue;
     const clipHistory = history.filter((item) => item.id === entry.id);
     const previous = clipHistory[clipHistory.length - 1];
     if (previous && options.nowMs - previous.selectedAtMs < entry.cooldownMs) continue;

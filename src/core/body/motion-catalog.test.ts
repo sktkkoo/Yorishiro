@@ -177,6 +177,36 @@ describe("local semantic motion catalog", () => {
     expect(later.some((item) => item.id === "idle-rest-hand")).toBe(false);
   });
 
+  it("allows a cooled-down speech one-shot to recur but keeps idle and legacy no-repeat strict", () => {
+    const entry = DEFAULT_MOTION_CATALOG.find((entry) => entry.id === "speech-celebrate");
+    if (!entry) throw new Error("celebration fixture required");
+    const history: MotionHistoryEntry[] = [
+      { id: entry.id, family: entry.family, context: "speech", selectedAtMs: 0 },
+    ];
+    const query = { context: "speech", intent: "celebrate" } as const;
+    expect(retrieveMotionCandidates(query, { nowMs: 89_999, history })).toEqual([]);
+    expect(
+      retrieveMotionCandidates(query, { nowMs: 90_000, history }).map((item) => item.id),
+    ).toEqual([entry.id]);
+    expect(
+      retrieveMotionCandidates(query, {
+        nowMs: 90_000,
+        history,
+        catalog: [{ ...entry, playback: undefined }],
+      }),
+    ).toEqual([]);
+    expect(
+      retrieveMotionCandidates(
+        { context: "idle", intent: "neutral" },
+        {
+          nowMs: 90_000,
+          history: [{ ...history[0], context: "idle" }],
+          catalog: [{ ...entry, contexts: ["idle"], intents: ["neutral"] }],
+        },
+      ),
+    ).toEqual([]);
+  });
+
   it("reduces same-family sampling weight while preserving semantic ranking", () => {
     const query = { intent: "neutral", context: "idle" } as const;
     const catalog: MotionCatalogEntry[] = [

@@ -33,6 +33,20 @@ describe("MotionDirector", () => {
     speed: 1,
   };
 
+  it("can celebrate a second isolated success after a long silence, without bypassing its cooldown", () => {
+    const director = new MotionDirector({ random: () => 0 });
+    const query = { context: "speech", intent: "celebrate" } as const;
+    const first = director.request(query);
+    expect(first?.animation).toBe("/animations/mixamo/Fist Pump.vrma");
+    advance(director, 89_900, idle);
+    expect(director.request(query)).toBeNull();
+    advance(director, 100, idle);
+    const second = director.request(query);
+    expect(second?.animation).toBe(first?.animation);
+    expect(second?.options).toMatchObject({ loop: false, transition: "immediate" });
+    expect(second?.finishAfterSpeech).toBe(true);
+  });
+
   it.each([
     -1,
     0,
