@@ -27,7 +27,7 @@ export interface VoiceSpeechLifecycleCallbacks {
   readonly onStarted: (utteranceId: string, startedAtMs: number) => void;
   readonly onEnded: (utteranceId: string, reason: VoiceSpeechEndReason) => void;
   /** Explicit silence/disposal/owner loss also cancels a just-completed visual recovery. */
-  readonly onInvalidated?: () => void;
+  readonly onInvalidated?: (utteranceId?: string) => void;
 }
 
 let nextSpeechUtteranceId = 1;
@@ -297,10 +297,18 @@ export class VoicePlayer {
         await this.speakViaOsTts(text);
       }
     })();
-    const completion = this.completeOperation(operation, work);
-    void completion.then(
-      () => finishSpeech(operation.cancellationReason ?? "completed"),
-      () => finishSpeech(operation.cancellationReason ?? "errored"),
+    // Publish the natural ending before completeOperation removes the operation.
+    // Otherwise silence/owner loss in between could miss both the audio and its
+    // not-yet-announced visual recovery, which would then start after cancellation.
+    const completion = this.completeOperation(
+      operation,
+      work.then(
+        () => finishSpeech(operation.cancellationReason ?? "completed"),
+        (error) => {
+          finishSpeech(operation.cancellationReason ?? "errored");
+          throw error;
+        },
+      ),
     );
 
     return {
@@ -309,6 +317,7 @@ export class VoicePlayer {
         return operation.cancellationReason;
       },
       stop: () => {
+        this.notifySpeechLifecycle(() => this.speechLifecycle?.onInvalidated?.(utteranceId));
         operation.cancel("stopped");
         this.stopPlayback(playbackId);
         void this.stopOsTts();
@@ -378,6 +387,7 @@ export class VoicePlayer {
           audioBuffer,
           normalizeVolume(options?.volume),
           () => {
+            this.notifySpeechLifecycle(() => this.speechLifecycle?.onInvalidated?.());
             startedAt = Date.now();
           },
         );

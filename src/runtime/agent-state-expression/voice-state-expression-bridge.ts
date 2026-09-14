@@ -78,6 +78,8 @@ export function createVoiceStateExpressionBridge(
     },
     // Do not emit a phase here: another audio owner may already control Body.
     // Only this bridge's most recent naturally completed utterance can be released.
-    onInvalidated: () => releaseCompleted("cancelled"),
+    onInvalidated: (utteranceId) => {
+      if (utteranceId === undefined || utteranceId === completedId) releaseCompleted("cancelled");
+    },
   };
 }

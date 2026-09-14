@@ -437,6 +437,92 @@ describe("VoicePlayer (engine あり — Web Audio)", () => {
     expect(release).toHaveBeenCalledOnce();
   });
 
+  it.each([
+    "silence",
+    "dispose",
+    "disable",
+  ] as const)("cannot announce a completed recovery after %s wins between audio completion microtasks", async (action) => {
+    for (const depth of [2, 3, 4]) {
+      const { lifecycle, release, phases } = groundedSpeechLifecycle();
+      const player = new VoicePlayer("Kyoko", createMockEngine(), lifecycle);
+      const api = player.createVoiceAPI();
+      const handle = api.say("成功しましたね。");
+      await flushPlaybackStart();
+      const sources = mockAudioContext.createBufferSource.mock.results;
+      sources[sources.length - 1].value.onended?.();
+      let boundary = Promise.resolve();
+      for (let index = 0; index < depth; index++) boundary = boundary.then(() => {});
+      let phaseCount = 0;
+      await boundary.then(() => {
+        if (action === "silence") api.silence();
+        else if (action === "dispose") player.dispose();
+        else player.setPlaybackEnabled(false);
+        phaseCount = phases.length;
+      });
+      await handle.completion;
+      expect(release.mock.lastCall?.[1]).toBe("cancelled");
+      expect(phases).toHaveLength(phaseCount);
+      player.dispose();
+    }
+  });
+
+  it("scopes a completed voice handle's stop to its own recovery, including after a newer voice completes", async () => {
+    const { lifecycle, release, phases } = groundedSpeechLifecycle();
+    const player = new VoicePlayer("Kyoko", createMockEngine(), lifecycle);
+    const api = player.createVoiceAPI();
+    const first = api.say("成功しましたね。");
+    await flushPlaybackStart();
+    mockAudioContext.createBufferSource.mock.results[0].value.onended?.();
+    await first.completion;
+    const second = api.say("まだ分かりません。");
+    await flushPlaybackStart();
+    mockAudioContext.createBufferSource.mock.results[1].value.onended?.();
+    await second.completion;
+    const oldId = lifecycle.onPrepared.mock.calls[0][0];
+    const newId = lifecycle.onPrepared.mock.calls[1][0];
+    release.mockClear();
+    const phaseCount = phases.length;
+    await first.stop();
+    expect(lifecycle.onInvalidated).toHaveBeenLastCalledWith(oldId);
+    expect(release).not.toHaveBeenCalled();
+    await second.stop();
+    expect(release).toHaveBeenCalledExactlyOnceWith(newId, "cancelled");
+    await second.stop();
+    expect(release).toHaveBeenCalledOnce();
+    expect(phases).toHaveLength(phaseCount);
+    player.dispose();
+  });
+
+  it("releases a completed semantic recovery when non-speech audio actually starts", async () => {
+    const { lifecycle, release } = groundedSpeechLifecycle();
+    const player = new VoicePlayer("Kyoko", createMockEngine(), lifecycle);
+    const api = player.createVoiceAPI();
+    const first = api.say("成功しましたね。");
+    await flushPlaybackStart();
+    mockAudioContext.createBufferSource.mock.results[0].value.onended?.();
+    await first.completion;
+    release.mockClear();
+    let ready!: () => void;
+    const loading = new Promise<void>((resolve) => {
+      ready = resolve;
+    });
+    mockFetch.mockImplementationOnce(async () => {
+      await loading;
+      return { ok: true, arrayBuffer: async () => createMinimalWav() };
+    });
+    const clip = api.play("https://example.test/voice.wav");
+    await flushPlaybackStart();
+    expect(release).not.toHaveBeenCalled();
+    ready();
+    await flushPlaybackStart();
+    expect(release).toHaveBeenCalledExactlyOnceWith(
+      lifecycle.onPrepared.mock.calls[0][0],
+      "cancelled",
+    );
+    await clip.stop();
+    player.dispose();
+  });
+
   it("supersedes pending synthesis so a late old result cannot start sound or gestures", async () => {
     const lifecycle = speechLifecycle();
     let resolveOld!: (data: ArrayBuffer) => void;
