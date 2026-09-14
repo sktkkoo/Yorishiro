@@ -1317,13 +1317,14 @@ export class Body {
         if (
           await this.animationPlayer.preload(entry.animation, {
             mask: "upper-body",
-            loop: entry.contexts.includes("idle"),
+            loop: entry.contexts.includes("idle") && entry.playback !== "once",
           })
         ) {
           this.availableMotions.add(entry.animation);
           if (
             entry.contexts.includes("speech") &&
             entry.intents.includes("explain") &&
+            entry.playback !== "once" &&
             !this.disposed
           ) {
             // Neutral conversation loops and finite semantic performances use

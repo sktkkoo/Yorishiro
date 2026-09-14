@@ -188,7 +188,9 @@ export class MotionDirector {
       nowMs: this.elapsedMs,
       history: this.history,
       catalog: (this.options.catalog ?? DEFAULT_MOTION_CATALOG).filter(
-        (entry) => !this.excludedAnimations.has(entry.animation),
+        (entry) =>
+          !this.excludedAnimations.has(entry.animation) &&
+          !(reason === "speech-dwell-elapsed" && entry.playback === "once"),
       ),
       availableAnimations: this.options.availableAnimations,
       // Apply the physical gate before the final top five: a bad seam must not
@@ -289,20 +291,24 @@ export class MotionDirector {
   ): DirectedMotionOptions {
     const speechBaseline = reason === "speech-dwell-elapsed";
     const finiteGesture = query.context === "speech" && !speechBaseline;
+    const reviewedOnce = candidate.entry.playback === "once";
+    const finiteMotion = finiteGesture || reviewedOnce;
+    const maxDurationMs =
+      candidate.entry.maxDurationMs ?? (finiteGesture && !reviewedOnce ? 6_000 : undefined);
     const intensity = Number.isFinite(query.intensity)
       ? Math.max(0, Math.min(1, query.intensity ?? 0.5))
       : 0.5;
     return {
-      loop: !finiteGesture,
+      loop: !finiteMotion,
       weight: speechBaseline
         ? candidate.entry.weight
         : Math.min(1, candidate.entry.weight * (0.65 + intensity * 0.7)),
       speed: candidate.entry.speed,
-      fadeInMs: finiteGesture ? 420 : 1_200,
-      fadeOutMs: finiteGesture ? 600 : 1_200,
-      transition: finiteGesture ? "immediate" : "matched",
+      fadeInMs: finiteMotion ? 420 : 1_200,
+      fadeOutMs: finiteMotion ? 600 : 1_200,
+      transition: finiteMotion ? "immediate" : "matched",
       mask: "upper-body",
-      ...(finiteGesture ? { maxDurationMs: 6_000 } : {}),
+      ...(finiteMotion && maxDurationMs !== undefined ? { maxDurationMs } : {}),
     };
   }
 

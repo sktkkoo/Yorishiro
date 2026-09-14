@@ -113,6 +113,9 @@ describe("createBodyStateExpressionAdapter", () => {
     "consider",
     "reassure",
     "emphasize",
+    "celebrate",
+    "sad",
+    "uncertain",
   ] as const)("passes %s through to the semantic director with no animation alias collapse", (gestureIntent) => {
     const body = {
       setMotionConversationPhase: vi.fn(),

@@ -14,7 +14,15 @@ export type GroundedAgentState =
   | "surprised";
 
 /** Semantic body intent resolved to a concrete motion by the runtime. */
-export type StateExpressionGestureIntent = "agree" | "consider" | "reassure" | "emphasize" | "none";
+export type StateExpressionGestureIntent =
+  | "agree"
+  | "consider"
+  | "reassure"
+  | "emphasize"
+  | "celebrate"
+  | "sad"
+  | "uncertain"
+  | "none";
 
 /**
  * Semantic state expression relative to remote speech start.

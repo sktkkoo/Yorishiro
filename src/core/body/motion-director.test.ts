@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { createSeededMotionRandom, DEFAULT_MOTION_CATALOG } from "./motion-catalog";
+import {
+  createSeededMotionRandom,
+  DEFAULT_MOTION_CATALOG,
+  type MotionCatalogEntry,
+} from "./motion-catalog";
 import { type MotionDecision, MotionDirector, type MotionDirectorContext } from "./motion-director";
 
 const idle: MotionDirectorContext = { enabled: true, context: "idle", intent: "neutral" };
@@ -19,6 +23,98 @@ function advance(
 }
 
 describe("MotionDirector", () => {
+  const finiteEntry: MotionCatalogEntry = {
+    ...DEFAULT_MOTION_CATALOG[0],
+    id: "reviewed-once",
+    animation: "anim:reviewed-once",
+    contexts: ["speech", "idle"],
+    intents: ["explain", "emphasize", "celebrate", "neutral"],
+    playback: "once",
+    speed: 1,
+  };
+
+  it("excludes finite explanation beats before baseline ranking without consuming their history", () => {
+    const loops = DEFAULT_MOTION_CATALOG.filter((entry) => entry.intents.includes("explain"));
+    const finite = Array.from({ length: 6 }, (_, index) => ({
+      ...finiteEntry,
+      id: `beat-${index}`,
+      animation: `anim:beat-${index}`,
+    }));
+    const director = new MotionDirector({
+      catalog: [...finite, ...loops],
+      initialDelayMs: 0,
+      random: () => 0,
+    });
+    expect(
+      director
+        .update(0, speaking)
+        ?.candidates.map((entry) => entry.id)
+        .sort(),
+    ).toEqual(loops.map((entry) => entry.id).sort());
+    expect(director.getSnapshot().history.every((entry) => !entry.id.startsWith("beat-"))).toBe(
+      true,
+    );
+    expect(director.request({ context: "speech", intent: "emphasize" })?.options.loop).toBe(false);
+
+    const finiteOnly = new MotionDirector({ catalog: finite, initialDelayMs: 0 });
+    expect(advance(finiteOnly, 30_000, speaking)).toEqual([]);
+    expect(finiteOnly.getSnapshot().history).toEqual([]);
+    expect(finiteOnly.request({ context: "speech", intent: "explain" })?.animation).toMatch(
+      /^anim:beat-/,
+    );
+  });
+
+  it.each([
+    undefined,
+    9_000,
+  ])("preserves a reviewed one-shot's natural end or explicit %s ms budget when scoring and playing", (maxDurationMs) => {
+    const director = new MotionDirector({
+      catalog: [{ ...finiteEntry, maxDurationMs }],
+      evaluateTransition: (_animation, options) => {
+        expect(options).toMatchObject({ loop: false, transition: "immediate", speed: 1 });
+        expect(options.maxDurationMs).toBe(maxDurationMs);
+        return { cost: 0, startTimeSec: 0 };
+      },
+    });
+    const decision = director.request({ context: "speech", intent: "celebrate" });
+    expect(decision?.options).toMatchObject({ loop: false, startTimeSec: 0 });
+    expect(decision?.options.maxDurationMs).toBe(maxDurationMs);
+  });
+
+  it("keeps idle one-shots finite and declines an entry that would skip the authored beginning", () => {
+    const director = new MotionDirector({ catalog: [finiteEntry] });
+    const decision = director.request({ context: "idle", intent: "neutral" });
+    expect(decision?.options).toMatchObject({ loop: false, transition: "immediate" });
+    expect(decision?.options.maxDurationMs).toBeUndefined();
+    const incompatible = new MotionDirector({
+      catalog: [finiteEntry],
+      evaluateTransition: () => ({ cost: 0, startTimeSec: 2 }),
+    });
+    expect(incompatible.request({ context: "idle", intent: "neutral" })).toBeNull();
+    expect(incompatible.getSnapshot().history).toEqual([]);
+  });
+
+  it("retains priority, cue cooldown, no-repeat and clip cooldown for finite entries", () => {
+    const director = new MotionDirector({
+      catalog: [finiteEntry, { ...finiteEntry, id: "second", animation: "anim:second" }],
+      random: () => 0,
+      initialDelayMs: 0,
+    });
+    expect(advance(director, 3_000, { ...idle, blocked: true })).toEqual([]);
+    const query = { context: "speech", intent: "celebrate" } as const;
+    const first = director.request(query);
+    expect(first).not.toBeNull();
+    expect(director.request(query)).toBeNull();
+    advance(director, 2_400, { ...idle, blocked: true });
+    const second = director.request(query);
+    expect(second?.animation).not.toBe(first?.animation);
+    expect(second).not.toBeNull();
+    advance(director, 2_400, { ...idle, blocked: true });
+    expect(director.request(query)).toBeNull();
+    advance(director, 25_200, { ...idle, blocked: true });
+    expect(director.request(query)?.animation).toBe(first?.animation);
+  });
+
   it("prefers a compatible initial posture without bypassing real selection history", () => {
     const director = new MotionDirector({
       random: () => 0,

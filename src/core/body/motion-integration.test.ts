@@ -896,6 +896,27 @@ describe("recorded motion Body integration", () => {
     expect(play).toHaveBeenCalledOnce();
   });
 
+  it("prepares only the finite variant of reviewed once-only idle and explanation entries", async () => {
+    const once = {
+      ...DEFAULT_MOTION_CATALOG[0],
+      animation: "anim:reviewed-once",
+      playback: "once" as const,
+      contexts: ["idle", "speech"] as const,
+      intents: ["neutral", "explain"] as const,
+    };
+    // Override enumeration for this preload test without admitting a fixture to
+    // the production semantic pool or modifying the shared catalog entries.
+    vi.spyOn(DEFAULT_MOTION_CATALOG, Symbol.iterator).mockImplementation(() =>
+      [once][Symbol.iterator](),
+    );
+    const preload = vi.spyOn(AnimationPlayer.prototype, "preload").mockResolvedValue(true);
+    const { body } = createBody();
+    await body.prepareMotionLibrary();
+    expect(preload.mock.calls.filter(([animation]) => animation === once.animation)).toEqual([
+      [once.animation, { mask: "upper-body", loop: false }],
+    ]);
+  });
+
   it("does not issue ambient motion while assets are loading or continue preload after disposal", async () => {
     const pending = deferred<boolean>();
     const preload = vi.spyOn(AnimationPlayer.prototype, "preload").mockReturnValue(pending.promise);

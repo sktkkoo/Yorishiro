@@ -10,6 +10,36 @@ import {
 } from "./motion-catalog";
 
 describe("local semantic motion catalog", () => {
+  it.each([
+    "celebrate",
+    "sad",
+    "uncertain",
+  ] as const)("keeps %s unassigned until an explicitly reviewed contextual recording is registered", (intent) => {
+    expect(retrieveMotionCandidates({ context: "speech", intent }, { nowMs: 0 })).toEqual([]);
+    const reviewed: MotionCatalogEntry = {
+      ...DEFAULT_MOTION_CATALOG[0],
+      id: `reviewed-${intent}`,
+      contexts: ["speech"],
+      intents: [intent],
+      playback: "once",
+    };
+    expect(
+      retrieveMotionCandidates(
+        { context: "speech", intent },
+        { nowMs: 0, catalog: [reviewed] },
+      ).map((entry) => entry.id),
+    ).toEqual([reviewed.id]);
+    expect(
+      retrieveMotionCandidates(
+        { context: "speech", intent: "explain" },
+        { nowMs: 0, catalog: [reviewed] },
+      ),
+    ).toEqual([]);
+    expect(
+      retrieveMotionCandidates({ context: "idle", intent }, { nowMs: 0, catalog: [reviewed] }),
+    ).toEqual([]);
+  });
+
   it("limits automatic idle to the reviewed quiet recordings, keeping the rare survey separate", () => {
     const idle = DEFAULT_MOTION_CATALOG.filter((entry) => entry.contexts.includes("idle"));
     expect(idle.map((entry) => entry.animation).sort()).toEqual([

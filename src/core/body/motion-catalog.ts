@@ -13,7 +13,10 @@ export type MotionIntent =
   | "agree"
   | "consider"
   | "reassure"
-  | "emphasize";
+  | "emphasize"
+  | "celebrate"
+  | "sad"
+  | "uncertain";
 
 export type MotionContext = "idle" | "speech";
 export type MotionFeatures = readonly [number, number, number, number, number, number];
@@ -28,6 +31,10 @@ export interface MotionCatalogEntry {
   readonly weight: number;
   readonly speed: number;
   readonly cooldownMs: number;
+  /** Reviewed finite acting: start at zero, never use as a looping explanation baseline. */
+  readonly playback?: "once";
+  /** Optional reviewed finite exit budget. Once-only clips otherwise keep their natural end. */
+  readonly maxDurationMs?: number;
 }
 
 export interface SemanticMotionQuery {
@@ -135,6 +142,9 @@ const INTENT_FEATURES: Readonly<Record<MotionIntent, MotionFeatures>> = {
   consider: [0.8, 0.8, 1, 0.45, 0.2, 0.3],
   reassure: [1, 0.65, 0.5, 1, 0.1, 0.2],
   emphasize: [0.35, 0.9, 0.25, 0.6, 1, 0.65],
+  celebrate: [0.15, 0.7, 0.1, 1, 1, 0.9],
+  sad: [0.8, 0.35, 0.8, 0.3, 0.1, 0.15],
+  uncertain: [0.65, 0.8, 1, 0.35, 0.2, 0.3],
 };
 
 export interface MotionRetrievalOptions {
