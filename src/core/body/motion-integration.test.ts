@@ -245,6 +245,76 @@ describe("recorded motion Body integration", () => {
     }
   });
 
+  it("backs off an incompatible rare survey entry and retries it without another full wait", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    mockPerformanceLibrary();
+    const evaluate = vi.mocked(AnimationPlayer.prototype.evaluateTransition).mockReturnValue(null);
+    const { sha, base } = mockStandingBase();
+    const play = vi.spyOn(AnimationPlayer.prototype, "play").mockResolvedValue(playback());
+    const { body } = createBody(sha);
+    body.setMotionIntensity(0.95);
+    await body.initializeRecordedBody();
+    await body.prepareMotionLibrary();
+
+    advance(body, 181);
+    expect(play).not.toHaveBeenCalled();
+    expect(evaluate).toHaveBeenCalledExactlyOnceWith("/animations/recorded-idle/survey.vrma", {
+      loop: false,
+      mask: "upper-body",
+      transition: "immediate",
+      speed: 1,
+      weight: 0.95,
+      fadeInMs: 800,
+      fadeOutMs: 800,
+    });
+    advance(body, 1.3);
+    expect(evaluate).toHaveBeenCalledOnce();
+    evaluate.mockReturnValue({ cost: 0, startTimeSec: 0 });
+    advance(body, 0.3);
+    await flush();
+    expect(evaluate).toHaveBeenCalledTimes(2);
+    expect(play).toHaveBeenCalledOnce();
+    expect(body.getMotionSnapshot().active?.animation).toBe(
+      "/animations/recorded-idle/survey.vrma",
+    );
+    expect(base.stop).not.toHaveBeenCalled();
+    expect(base.cancel).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    "mouth",
+    "expression",
+  ] as const)("does not count ungrounded %s ownership toward the rare idle wait", async (owner) => {
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    mockPerformanceLibrary();
+    const { sha } = mockStandingBase();
+    const play = vi.spyOn(AnimationPlayer.prototype, "play").mockResolvedValue(playback());
+    const { body } = createBody(sha);
+    body.setMotionIntensity(0.95);
+    await body.initializeRecordedBody();
+    await body.prepareMotionLibrary();
+    let release: () => void;
+    if (owner === "mouth") {
+      body.setLipSyncSource({
+        isMouthActive: () => true,
+        sampleMouth: () => ({ ...ZERO_MOUTH }),
+      });
+      release = () => body.setLipSyncSource(null);
+    } else {
+      const expression = body.acquireSpeechStateExpression({ preset: "neutral" });
+      release = () => expression.release();
+    }
+    advance(body, 181);
+    expect(play).not.toHaveBeenCalled();
+    release();
+    advance(body, 179);
+    expect(play).not.toHaveBeenCalled();
+    advance(body, 2);
+    await flush();
+    expect(play).toHaveBeenCalledOnce();
+    expect(play.mock.calls[0][0]).toBe("/animations/recorded-idle/survey.vrma");
+  });
+
   it.each([
     3, 25,
   ])("resumes explanation as a real %ss finite gesture finishes, without adding idle settling", async (duration) => {
@@ -678,6 +748,30 @@ describe("recorded motion Body integration", () => {
     expect(preload).toHaveBeenCalledOnce();
     advance(body, 5);
     expect(play).not.toHaveBeenCalled();
+  });
+
+  it("does not start the survey preload after disposal during the last catalog load", async () => {
+    const pending = deferred<boolean>();
+    const last = DEFAULT_MOTION_CATALOG[DEFAULT_MOTION_CATALOG.length - 1];
+    const preload = vi
+      .spyOn(AnimationPlayer.prototype, "preload")
+      .mockImplementation((animation, options) =>
+        animation === last.animation && options?.loop === false
+          ? pending.promise
+          : Promise.resolve(options?.mask !== "lower-body"),
+      );
+    const { body } = createBody();
+    const loading = body.prepareMotionLibrary();
+    for (let i = 0; i < DEFAULT_MOTION_CATALOG.length; i++) await flush();
+    expect(preload).toHaveBeenLastCalledWith(last.animation, { mask: "upper-body", loop: false });
+    const calls = preload.mock.calls.length;
+    body.dispose();
+    pending.resolve(true);
+    await loading;
+    expect(preload).toHaveBeenCalledTimes(calls);
+    expect(
+      preload.mock.calls.some(([ref]) => ref === "/animations/recorded-idle/survey.vrma"),
+    ).toBe(false);
   });
 
   it("retains a safe quiet recording through listening and thinking without unsafe substitutions", async () => {
