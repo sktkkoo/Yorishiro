@@ -5869,17 +5869,19 @@ function App() {
           .catch(() => undefined);
       }}
     >
-      {screenSharing.active &&
-      cameraPreviewVisible &&
-      screenSharing.cameraStream &&
-      cameraPreviewWindow.inlineVisible ? (
+      {screenSharing.active && cameraPreviewVisible && cameraPreviewWindow.inlineVisible ? (
         <CameraPreview
-          stream={screenSharing.cameraStream}
+          stream={
+            screenSharing.screenPreviewFrame ? undefined : (screenSharing.cameraStream ?? undefined)
+          }
+          imageDataUrl={screenSharing.screenPreviewFrame?.imageDataUrl}
           opening={cameraPreviewWindow.opening}
           error={cameraPreviewWindow.error}
           onDetach={() => void cameraPreviewWindow.detach().catch(() => {})}
           lastCapturedAt={screenSharing.lastCapturedAt}
-          lastSharedAt={screenSharing.lastObservedAt}
+          lastSharedAt={
+            screenSharing.screenPreviewFrame?.lastSharedAt ?? screenSharing.lastObservedAt
+          }
           language={appLanguage.resolved}
           onStop={screenSharing.stop}
         />
@@ -5895,6 +5897,7 @@ function App() {
           error={screenPreviewWindow.error}
           onDetach={() => void screenPreviewWindow.detach().catch(() => {})}
           lastCapturedAt={screenSharing.screenPreviewFrame.lastCapturedAt}
+          lastSharedAt={screenSharing.screenPreviewFrame.lastSharedAt}
           language={appLanguage.resolved}
           onStop={screenSharing.stop}
         />
@@ -5943,6 +5946,7 @@ function App() {
               pointersEnabled={screenPointerSettings.enabled}
               pointersReady={screenPointerSettings.ready}
               intervalSeconds={screenSharing.intervalSeconds}
+              contactSheetFrameCount={screenSharing.contactSheetFrameCount}
               sources={screenSharing.sources}
               sourceId={screenSharing.sourceId}
               sourceKind={screenSharing.sourceKind}
@@ -5964,6 +5968,7 @@ function App() {
               lastObservedAt={screenSharing.lastObservedAt}
               language={appLanguage.resolved}
               onIntervalChange={screenSharing.setIntervalSeconds}
+              onContactSheetFrameCountChange={screenSharing.setContactSheetFrameCount}
               onSourceChange={screenSharing.setSourceId}
               onStart={() => void screenSharing.start()}
               onStop={screenSharing.stop}

@@ -58,6 +58,8 @@ pub enum ScreenSourceKind {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ScreenSharingSnapshot {
+    #[serde(default)]
+    ui_colors: std::collections::BTreeMap<String, String>,
     revision: String,
     pointer_revision: String,
     available: bool,
@@ -76,6 +78,8 @@ pub struct ScreenSharingSnapshot {
     region: Option<crate::screen_capture::ScreenCaptureRegion>,
     source_id: Option<u32>,
     interval_seconds: u16,
+    #[serde(default = "default_contact_sheet_frame_count")]
+    contact_sheet_frame_count: u8,
     has_error: bool,
     permission_kind: Option<crate::media_permissions::MediaPermissionKind>,
     last_observed_at: Option<u64>,
@@ -86,8 +90,19 @@ fn default_preview_visible() -> bool {
     true
 }
 
+fn default_contact_sheet_frame_count() -> u8 {
+    16
+}
+
 impl ScreenSharingSnapshot {
     fn validate(&self) -> Result<(), String> {
+        if self.ui_colors.len() > 20
+            || self.ui_colors.iter().any(|(key, value)| {
+                !key.starts_with("--yorishiro-") || key.len() > 64 || value.len() > 128
+            })
+        {
+            return Err("Invalid auxiliary UI colors".into());
+        }
         if self.revision.is_empty()
             || self.revision.len() > 80
             || self.pointer_revision.is_empty()
@@ -97,6 +112,9 @@ impl ScreenSharingSnapshot {
         }
         if !(10..=180).contains(&self.interval_seconds) {
             return Err("Viewing interval must be between 10 and 180 seconds".into());
+        }
+        if !matches!(self.contact_sheet_frame_count, 4 | 9 | 16 | 25) {
+            return Err("Contact sheet frame count must be 4, 9, 16, or 25".into());
         }
         if self.sources.len() > 64 || self.sources.iter().any(|source| source.name.len() > 800) {
             return Err("Invalid display list".into());
@@ -141,6 +159,10 @@ pub enum ScreenSharingAction {
     SetInterval {
         #[serde(rename = "intervalSeconds")]
         interval_seconds: u16,
+    },
+    SetContactSheetFrameCount {
+        #[serde(rename = "contactSheetFrameCount")]
+        contact_sheet_frame_count: u8,
     },
 }
 
@@ -275,6 +297,11 @@ fn validate_action(
         {
             Err("Viewing interval must be between 10 and 180 seconds".into())
         }
+        ScreenSharingAction::SetContactSheetFrameCount {
+            contact_sheet_frame_count,
+        } if !matches!(contact_sheet_frame_count, 4 | 9 | 16 | 25) => {
+            Err("Contact sheet frame count must be 4, 9, 16, or 25".into())
+        }
         _ => Ok(()),
     }
 }
@@ -398,6 +425,7 @@ mod tests {
         PublishedSnapshot {
             version: 7,
             snapshot: ScreenSharingSnapshot {
+                ui_colors: Default::default(),
                 revision: "main-owner-revision".into(),
                 pointer_revision: "pointer-owner-revision".into(),
                 available: true,
@@ -415,6 +443,7 @@ mod tests {
                 region: None,
                 source_id: Some(12),
                 interval_seconds: 30,
+                contact_sheet_frame_count: 16,
                 has_error: false,
                 permission_kind: None,
                 last_observed_at: None,

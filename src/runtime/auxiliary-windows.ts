@@ -31,6 +31,7 @@ export function resolveWindowView(label: string, search: string) {
 }
 
 export interface ScreenSharingSnapshot {
+  readonly uiColors?: Record<string, string>;
   readonly permissionKind?: MediaPermissionKind;
   readonly previewVisible?: boolean;
   readonly revision: string;
@@ -47,6 +48,7 @@ export interface ScreenSharingSnapshot {
   readonly region?: ScreenCaptureRegion | null;
   readonly sourceId: number | null;
   readonly intervalSeconds: number;
+  readonly contactSheetFrameCount?: number;
   readonly hasError: boolean;
   readonly lastObservedAt: number | null;
   readonly language: "en" | "ja";
@@ -65,7 +67,8 @@ export type ScreenSharingAuxiliaryAction =
   | { readonly type: "select-region" }
   | { readonly type: "select-source"; readonly sourceId: number }
   | { readonly type: "set-pointers-enabled"; readonly enabled: boolean }
-  | { readonly type: "set-interval"; readonly intervalSeconds: number };
+  | { readonly type: "set-interval"; readonly intervalSeconds: number }
+  | { readonly type: "set-contact-sheet-frame-count"; readonly contactSheetFrameCount: number };
 
 export interface RoutedAuxiliaryAction {
   readonly revision: string;
@@ -78,6 +81,7 @@ export function isPointerSettingsAction(action: ScreenSharingAuxiliaryAction): b
 }
 
 export interface ScreenSharingAuxiliaryModel {
+  readonly uiColors?: Record<string, string>;
   readonly previewVisible?: boolean;
   readonly setPreviewVisible?: (visible: boolean) => void;
   readonly ownerKey: string;
@@ -92,6 +96,7 @@ export interface ScreenSharingAuxiliaryModel {
   readonly region?: ScreenCaptureRegion | null;
   readonly sourceId: number | null;
   readonly intervalSeconds: number;
+  readonly contactSheetFrameCount?: number;
   readonly error?: string;
   readonly lastObservedAt?: number;
   readonly language: string;
@@ -106,6 +111,7 @@ export interface ScreenSharingAuxiliaryModel {
   readonly selectRegion?: () => Promise<void>;
   readonly setSourceId: (id: number) => void;
   readonly setIntervalSeconds: (seconds: number) => void;
+  readonly setContactSheetFrameCount?: (count: number) => void;
 }
 
 /** Copy known public fields only. In particular, errors may contain provider details. */
@@ -116,6 +122,7 @@ export function createScreenSharingSnapshot(
 ): ScreenSharingSnapshot {
   return {
     revision,
+    uiColors: model.uiColors,
     pointerRevision,
     available: model.available,
     active: model.active,
@@ -130,6 +137,7 @@ export function createScreenSharingSnapshot(
     region: model.region ?? null,
     sourceId: model.sourceId,
     intervalSeconds: model.intervalSeconds,
+    contactSheetFrameCount: model.contactSheetFrameCount ?? 16,
     hasError: Boolean(model.error),
     lastObservedAt: model.lastObservedAt ?? null,
     language: model.language.startsWith("ja") ? "ja" : "en",
@@ -148,6 +156,7 @@ export function createAuxiliarySnapshotPublisher(
   publish: (snapshot: ScreenSharingSnapshot) => Promise<void>,
 ): (snapshot: ScreenSharingSnapshot) => Promise<void> {
   let legacySchema = false;
+  const unsupported = new Set<string>();
   const legacySnapshot = (snapshot: ScreenSharingSnapshot): ScreenSharingSnapshot => {
     const { screenSourceKind, region: _region, ...legacy } = snapshot;
     // A legacy auxiliary view must never offer a restricted selection as a display.
@@ -156,13 +165,22 @@ export function createAuxiliarySnapshotPublisher(
       : legacy;
   };
   return async (snapshot) => {
-    if (legacySchema) return publish(legacySnapshot(snapshot));
-    try {
-      await publish(snapshot);
-    } catch (error) {
-      if (!/unknown field [`'"](?:region|screenSourceKind)[`'"]/.test(String(error))) throw error;
-      legacySchema = true;
-      await publish(legacySnapshot(snapshot));
+    for (;;) {
+      const compatible = { ...(legacySchema ? legacySnapshot(snapshot) : snapshot) };
+      if (unsupported.has("contactSheetFrameCount")) delete compatible.contactSheetFrameCount;
+      if (unsupported.has("uiColors")) delete compatible.uiColors;
+      try {
+        await publish(compatible);
+        return;
+      } catch (error) {
+        const field =
+          /unknown field [`'"](region|screenSourceKind|contactSheetFrameCount|uiColors)[`'"]/.exec(
+            String(error),
+          )?.[1];
+        if (!field || unsupported.has(field)) throw error;
+        unsupported.add(field);
+        if (field === "region" || field === "screenSourceKind") legacySchema = true;
+      }
     }
   };
 }
@@ -384,6 +402,14 @@ export class ScreenSharingAuxiliaryHost {
         )
           return false;
         model.setIntervalSeconds(action.intervalSeconds);
+        break;
+      case "set-contact-sheet-frame-count":
+        if (
+          !model.setContactSheetFrameCount ||
+          ![4, 9, 16, 25].includes(action.contactSheetFrameCount)
+        )
+          return false;
+        model.setContactSheetFrameCount(action.contactSheetFrameCount);
         break;
     }
     return true;

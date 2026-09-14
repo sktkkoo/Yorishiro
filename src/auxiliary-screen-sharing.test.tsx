@@ -39,6 +39,7 @@ beforeEach(() => {
       sourceId: 1,
       screenSourceKind: "display",
       intervalSeconds: 30,
+      contactSheetFrameCount: 16,
       hasError: false,
       lastObservedAt: null,
       language: "en",
@@ -55,6 +56,25 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("independent screen-sharing controls", () => {
+  it("commits the selected frame count rather than its slider index and applies the main theme", async () => {
+    state = {
+      ...state,
+      snapshot: { ...state.snapshot, uiColors: { "--yorishiro-accent": "#dab878" } },
+    };
+    vi.mocked(readAuxiliarySnapshot).mockResolvedValue(state);
+    render(<AuxiliaryScreenSharing />);
+    const slider = await screen.findByRole("slider", { name: "Frames per send" });
+    fireEvent.change(slider, { target: { value: "1" } });
+    fireEvent.pointerUp(slider);
+    await waitFor(() =>
+      expect(requestAuxiliaryAction).toHaveBeenCalledWith(1, {
+        type: "set-contact-sheet-frame-count",
+        contactSheetFrameCount: 9,
+      }),
+    );
+    expect(document.documentElement.style.getPropertyValue("--yorishiro-accent")).toBe("#dab878");
+    document.documentElement.style.removeProperty("--yorishiro-accent");
+  });
   it("disables the action while region selection is pending", async () => {
     state = { ...state, snapshot: { ...state.snapshot, screenSourceKind: "region", busy: true } };
     vi.mocked(readAuxiliarySnapshot).mockResolvedValue(state);
@@ -290,7 +310,7 @@ describe("independent screen-sharing controls", () => {
   it("keeps keyboard focus during passive updates and commits a dragged interval once", async () => {
     render(<AuxiliaryScreenSharing />);
     const interval = (await screen.findByRole("slider", {
-      name: "Update interval",
+      name: "Send interval",
     })) as HTMLInputElement;
     expect(interval.min).toBe("10");
     expect(interval.max).toBe("180");
@@ -344,7 +364,7 @@ describe("independent screen-sharing controls", () => {
     const toggle = (await screen.findByRole("switch", {
       name: "Agent pointing (experimental)",
     })) as HTMLInputElement;
-    const interval = screen.getByRole("slider", { name: "Update interval" });
+    const interval = screen.getByRole("slider", { name: "Send interval" });
     fireEvent.change(interval, { target: { value: "20" } });
     fireEvent.pointerUp(interval);
     expect(toggle.disabled).toBe(false);

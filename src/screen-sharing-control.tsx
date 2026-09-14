@@ -3,6 +3,7 @@ import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from
 import type { ScreenCaptureRegion, ScreenSourceKind } from "./bindings/tauri-commands";
 import { CameraPreviewToggle } from "./camera-preview-toggle";
 import { MediaPermissionHelp } from "./media-permission-help";
+import { CONTACT_SHEET_FRAME_COUNTS } from "./runtime/contact-sheet-settings";
 import { getMediaPermissionKind } from "./runtime/media-permissions";
 import {
   formatSharingInterval,
@@ -31,11 +32,13 @@ export interface ScreenSharingControlProps {
   readonly pointersEnabled: boolean;
   readonly pointersReady: boolean;
   readonly intervalSeconds: number;
+  readonly contactSheetFrameCount?: number;
   readonly sources: readonly { readonly id: number; readonly name: string }[];
   readonly sourceId: number | null;
   readonly error?: string;
   readonly lastObservedAt?: number;
   readonly onIntervalChange: (value: number) => void;
+  readonly onContactSheetFrameCountChange?: (value: number) => void;
   readonly onSourceChange: (id: number) => void;
   readonly onStart: () => void;
   readonly onStop: () => void;
@@ -57,7 +60,8 @@ const strings = {
     chooseDisplay: "Choose a display",
     noDisplays: "No displays available",
     refresh: "Refresh displays",
-    interval: "Update interval",
+    interval: "Send interval",
+    frameCount: "Frames per send",
     hint: "Shorter intervals use more tokens.",
     seconds: (value: number) => formatSharingInterval(value, "en"),
     unavailable: "Select an agent that supports screen sharing to start.",
@@ -76,7 +80,8 @@ const strings = {
     chooseDisplay: "画面を選択",
     noDisplays: "共有できる画面がありません",
     refresh: "画面一覧を更新",
-    interval: "更新間隔",
+    interval: "送信間隔",
+    frameCount: "送信コマ数",
     hint: "間隔が短いほどトークン消費が増えます。",
     seconds: (value: number) => formatSharingInterval(value, "ja"),
     unavailable: "画面共有に対応するエージェントを選択してください。",
@@ -125,11 +130,13 @@ export function ScreenSharingControl({
   pointersEnabled,
   pointersReady,
   intervalSeconds,
+  contactSheetFrameCount = 16,
   sources,
   sourceId,
   error,
   lastObservedAt,
   onIntervalChange,
+  onContactSheetFrameCountChange,
   onSourceChange,
   onStart,
   onStop,
@@ -155,6 +162,7 @@ export function ScreenSharingControl({
   const titleId = useId();
   const displayId = useId();
   const intervalId = useId();
+  const frameCountId = useId();
   const isJapanese = language.startsWith("ja");
   const baseLabels = strings[isJapanese ? "ja" : "en"];
   const camera = sourceKind === "camera";
@@ -499,6 +507,34 @@ export function ScreenSharingControl({
               <p className="screen-sharing-description screen-sharing-interval-hint">
                 {labels.hint}
               </p>
+              {onContactSheetFrameCountChange ? (
+                <>
+                  <div className="screen-sharing-interval-heading">
+                    <label className="screen-sharing-label" htmlFor={frameCountId}>
+                      {labels.frameCount}
+                    </label>
+                    <output htmlFor={frameCountId}>{contactSheetFrameCount}</output>
+                  </div>
+                  <input
+                    id={frameCountId}
+                    className="screen-sharing-slider"
+                    type="range"
+                    min={0}
+                    max={CONTACT_SHEET_FRAME_COUNTS.length - 1}
+                    step={1}
+                    value={CONTACT_SHEET_FRAME_COUNTS.indexOf(
+                      contactSheetFrameCount as (typeof CONTACT_SHEET_FRAME_COUNTS)[number],
+                    )}
+                    aria-label={labels.frameCount}
+                    aria-valuetext={String(contactSheetFrameCount)}
+                    onChange={(event) =>
+                      onContactSheetFrameCountChange(
+                        CONTACT_SHEET_FRAME_COUNTS[Number(event.currentTarget.value)],
+                      )
+                    }
+                  />
+                </>
+              ) : null}
               {onPreviewVisibleChange ? (
                 <CameraPreviewToggle
                   visible={previewVisible}

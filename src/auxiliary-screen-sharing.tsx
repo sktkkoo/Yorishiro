@@ -11,6 +11,7 @@ import {
   requestAuxiliaryAction,
   type ScreenSharingAuxiliaryAction,
 } from "./runtime/auxiliary-windows";
+import { CONTACT_SHEET_FRAME_COUNTS } from "./runtime/contact-sheet-settings";
 import {
   formatSharingInterval,
   MAX_SHARING_INTERVAL_SECONDS,
@@ -29,7 +30,8 @@ const text = {
     display: "Display",
     noDisplays: "No displays available",
     refresh: "Refresh displays",
-    interval: "Update interval",
+    interval: "Send interval",
+    frameCount: "Frames per send",
     hint: "Shorter intervals use more tokens.",
     seconds: (value: number) => formatSharingInterval(value, "en"),
     unavailable: "Choose an agent that supports screen sharing in the main window.",
@@ -45,7 +47,8 @@ const text = {
     display: "画面選択",
     noDisplays: "共有できる画面がありません",
     refresh: "画面一覧を更新",
-    interval: "更新間隔",
+    interval: "送信間隔",
+    frameCount: "送信コマ数",
     hint: "間隔が短いほどトークン消費が増えます。",
     seconds: (value: number) => formatSharingInterval(value, "ja"),
     unavailable: "メインウィンドウで画面共有に対応するエージェントを選択してください。",
@@ -65,6 +68,7 @@ export default function AuxiliaryScreenSharing() {
   const [actionError, setActionError] = useState<string>();
   const [requesting, setRequesting] = useState(false);
   const [intervalDraft, setIntervalDraft] = useState(30);
+  const [frameCountDraft, setFrameCountDraft] = useState(16);
   const [pointerDraft, setPointerDraft] = useState<{
     enabled: boolean;
     pointerRevision: string;
@@ -75,6 +79,15 @@ export default function AuxiliaryScreenSharing() {
   const requestingRef = useRef(false);
   const state = published?.snapshot;
   const publishedInterval = state?.intervalSeconds;
+  const publishedFrameCount = state?.contactSheetFrameCount;
+  const uiColors = state?.uiColors;
+  useEffect(() => {
+    if (!uiColors) return;
+    for (const [key, value] of Object.entries(uiColors)) {
+      if (key.startsWith("--yorishiro-") && value)
+        document.documentElement.style.setProperty(key, value);
+    }
+  }, [uiColors]);
   const language = state?.language ?? (navigator.language.startsWith("ja") ? "ja" : "en");
   const japanese = language === "ja";
   const camera = state?.sourceKind === "camera";
@@ -130,6 +143,10 @@ export default function AuxiliaryScreenSharing() {
   useEffect(() => {
     if (publishedInterval !== undefined) setIntervalDraft(publishedInterval);
   }, [publishedInterval]);
+
+  useEffect(() => {
+    if (publishedFrameCount !== undefined) setFrameCountDraft(publishedFrameCount);
+  }, [publishedFrameCount]);
 
   const request = async (action: ScreenSharingAuxiliaryAction) => {
     const current = latest.current;
@@ -191,6 +208,12 @@ export default function AuxiliaryScreenSharing() {
     const intervalSeconds = Number(value);
     if (intervalSeconds !== state.intervalSeconds) {
       void request({ type: "set-interval", intervalSeconds });
+    }
+  };
+  const commitFrameCount = (value: string) => {
+    const frameCount = CONTACT_SHEET_FRAME_COUNTS[Number(value)];
+    if (frameCount !== state.contactSheetFrameCount) {
+      void request({ type: "set-contact-sheet-frame-count", contactSheetFrameCount: frameCount });
     }
   };
 
@@ -309,6 +332,31 @@ export default function AuxiliaryScreenSharing() {
             onBlur={(event) => commitInterval(event.currentTarget.value)}
           />
           <p className="screen-sharing-description screen-sharing-interval-hint">{labels.hint}</p>
+          <div className="screen-sharing-interval-heading">
+            <label className="screen-sharing-label" htmlFor="contact-sheet-frame-count">
+              {labels.frameCount}
+            </label>
+            <output htmlFor="contact-sheet-frame-count">{frameCountDraft}</output>
+          </div>
+          <input
+            id="contact-sheet-frame-count"
+            className="screen-sharing-slider"
+            type="range"
+            min={0}
+            max={CONTACT_SHEET_FRAME_COUNTS.length - 1}
+            step={1}
+            value={CONTACT_SHEET_FRAME_COUNTS.indexOf(
+              frameCountDraft as (typeof CONTACT_SHEET_FRAME_COUNTS)[number],
+            )}
+            aria-valuetext={String(frameCountDraft)}
+            disabled={requesting || publishedFrameCount === undefined}
+            onChange={(event) =>
+              setFrameCountDraft(CONTACT_SHEET_FRAME_COUNTS[Number(event.currentTarget.value)])
+            }
+            onPointerUp={(event) => commitFrameCount(event.currentTarget.value)}
+            onKeyUp={(event) => commitFrameCount(event.currentTarget.value)}
+            onBlur={(event) => commitFrameCount(event.currentTarget.value)}
+          />
           {
             <CameraPreviewToggle
               visible={state.previewVisible ?? true}
