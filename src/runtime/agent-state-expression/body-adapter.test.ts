@@ -1,10 +1,10 @@
 import type { MotionHandle } from "@yorishiro/sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { SpeechStateExpressionHandle } from "../../core/body";
+import type { SemanticMotionHandle, SpeechStateExpressionHandle } from "../../core/body";
 import { createBodyStateExpressionAdapter } from "./body-adapter";
 import type { StateExpressionCue } from "./types";
 
-function motionHandle(): MotionHandle {
+function motionHandle(overrides: Partial<SemanticMotionHandle> = {}): SemanticMotionHandle {
   return {
     source: "system",
     priority: "speech-expression",
@@ -15,6 +15,7 @@ function motionHandle(): MotionHandle {
     isActive: () => true,
     isPreempted: () => false,
     completion: new Promise(() => {}),
+    ...overrides,
   };
 }
 
@@ -41,6 +42,79 @@ afterEach(() => {
 });
 
 describe("createBodyStateExpressionAdapter", () => {
+  it("keeps only a reviewed short motion through natural audio end, then forgets its completed owner", async () => {
+    let finish!: () => void;
+    const motion = motionHandle({
+      finishAfterSpeech: true,
+      completion: new Promise((resolve) => {
+        finish = () => resolve({ reason: "completed" });
+      }),
+    });
+    const state = stateHandle();
+    const body = {
+      setMotionConversationPhase: vi.fn(),
+      acquireSemanticMotion: vi.fn(() => motion),
+      acquireSpeechStateExpression: vi.fn(() => state),
+    };
+    const adapter = createBodyStateExpressionAdapter(() => body);
+    adapter.onCue(cue(), { scheduledForMs: 0, firedAtMs: 0, lateByMs: 0 });
+    adapter.onRelease("u1", "completed");
+    adapter.onConversationPhaseChange?.("idle");
+    expect(state.release).toHaveBeenCalledOnce();
+    expect(motion.release).not.toHaveBeenCalled();
+    finish();
+    await motion.completion;
+    adapter.onConversationPhaseChange?.("assistant-speaking");
+    adapter.onRelease("u1", "cancelled");
+    expect(motion.release).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    "user-speaking",
+    "assistant-responding",
+    "assistant-speaking",
+    "interrupted",
+    "disconnected",
+  ] as const)("releases a completed-audio recovery on %s without touching a later cue", (phase) => {
+    const motion = motionHandle({ finishAfterSpeech: true });
+    const next = motionHandle({ finishAfterSpeech: true });
+    const body = {
+      setMotionConversationPhase: vi.fn(),
+      acquireSemanticMotion: vi.fn().mockReturnValueOnce(motion).mockReturnValueOnce(next),
+      acquireSpeechStateExpression: vi.fn(() => stateHandle()),
+    };
+    const adapter = createBodyStateExpressionAdapter(() => body);
+    adapter.onCue(cue(), { scheduledForMs: 0, firedAtMs: 0, lateByMs: 0 });
+    adapter.onRelease("u1", "completed");
+    adapter.onConversationPhaseChange?.(phase);
+    expect(motion.release).toHaveBeenCalledExactlyOnceWith(180);
+    adapter.onCue(cue({ utteranceId: "u2" }), {
+      scheduledForMs: 0,
+      firedAtMs: 0,
+      lateByMs: 0,
+    });
+    adapter.onRelease("u1", "cancelled");
+    expect(next.release).not.toHaveBeenCalled();
+    adapter.onRelease("u2", "cancelled");
+    expect(next.release).toHaveBeenCalledExactlyOnceWith(180);
+  });
+
+  it.each([
+    "cancelled",
+    "replaced",
+  ] as const)("does not grant a reviewed motion a recovery tail on %s audio", (reason) => {
+    const motion = motionHandle({ finishAfterSpeech: true });
+    const body = {
+      setMotionConversationPhase: vi.fn(),
+      acquireSemanticMotion: vi.fn(() => motion),
+      acquireSpeechStateExpression: vi.fn(() => stateHandle()),
+    };
+    const adapter = createBodyStateExpressionAdapter(() => body);
+    adapter.onCue(cue(), { scheduledForMs: 0, firedAtMs: 0, lateByMs: 0 });
+    adapter.onRelease("u1", reason);
+    expect(motion.release).toHaveBeenCalledExactlyOnceWith(180);
+  });
+
   it("forwards grounded conversation phase changes without requesting a speech gesture", () => {
     const body = {
       setMotionConversationPhase: vi.fn(),

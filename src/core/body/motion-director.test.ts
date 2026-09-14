@@ -33,6 +33,27 @@ describe("MotionDirector", () => {
     speed: 1,
   };
 
+  it("grants post-audio completion only to an explicitly reviewed speech one-shot", () => {
+    for (const playback of [undefined, "once"] as const) {
+      for (const context of ["idle", "speech"] as const) {
+        const director = new MotionDirector({
+          catalog: [{ ...finiteEntry, playback, finishAfterSpeech: true }],
+        });
+        const decision = director.request({
+          context,
+          intent: context === "speech" ? "celebrate" : "neutral",
+        });
+        expect(decision?.finishAfterSpeech).toBe(
+          playback === "once" && context === "speech" ? true : undefined,
+        );
+      }
+    }
+    const unreviewed = new MotionDirector({ catalog: [finiteEntry] });
+    expect(
+      unreviewed.request({ context: "speech", intent: "celebrate" })?.finishAfterSpeech,
+    ).toBeUndefined();
+  });
+
   it("excludes finite explanation beats before baseline ranking without consuming their history", () => {
     const loops = DEFAULT_MOTION_CATALOG.filter((entry) => entry.intents.includes("explain"));
     const finite = Array.from({ length: 6 }, (_, index) => ({

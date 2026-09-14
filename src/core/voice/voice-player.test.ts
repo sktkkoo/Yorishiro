@@ -112,7 +112,7 @@ const flushPlaybackStart = async (): Promise<void> => {
 };
 
 function speechLifecycle() {
-  return { onPrepared: vi.fn(), onStarted: vi.fn(), onEnded: vi.fn() };
+  return { onPrepared: vi.fn(), onStarted: vi.fn(), onEnded: vi.fn(), onInvalidated: vi.fn() };
 }
 
 function groundedSpeechLifecycle() {
@@ -130,6 +130,7 @@ function groundedSpeechLifecycle() {
       onPrepared: vi.fn(bridge.onPrepared),
       onStarted: vi.fn(bridge.onStarted),
       onEnded: vi.fn(bridge.onEnded),
+      onInvalidated: vi.fn(bridge.onInvalidated),
     },
   };
 }
@@ -408,6 +409,32 @@ describe("VoicePlayer (engine あり — Web Audio)", () => {
     expect(lifecycle.onEnded).toHaveBeenCalledWith(utteranceId, "completed");
     expect(mockInvoke).not.toHaveBeenCalledWith("tts_speak", expect.anything());
     player.dispose();
+  });
+
+  it.each([
+    "silence",
+    "dispose",
+    "disable",
+  ] as const)("invalidates only the completed speech recovery on %s after its audio operation is gone", async (action) => {
+    const { lifecycle, release, phases } = groundedSpeechLifecycle();
+    const player = new VoicePlayer("Kyoko", createMockEngine(), lifecycle);
+    const api = player.createVoiceAPI();
+    const handle = api.say("成功しましたね。");
+    await flushPlaybackStart();
+    const id = lifecycle.onPrepared.mock.calls[0][0];
+    const source = mockAudioContext.createBufferSource.mock.results[0].value;
+    source.onended?.();
+    await handle.completion;
+    release.mockClear();
+    const phaseCount = phases.length;
+    if (action === "silence") api.silence();
+    else if (action === "dispose") player.dispose();
+    else player.setPlaybackEnabled(false);
+    expect(release).toHaveBeenCalledExactlyOnceWith(id, "cancelled");
+    expect(phases).toHaveLength(phaseCount);
+    expect(lifecycle.onEnded).toHaveBeenCalledExactlyOnceWith(id, "completed");
+    player.dispose();
+    expect(release).toHaveBeenCalledOnce();
   });
 
   it("supersedes pending synthesis so a late old result cannot start sound or gestures", async () => {

@@ -26,6 +26,8 @@ export interface VoiceSpeechLifecycleCallbacks {
   readonly onPrepared: (utteranceId: string, text: string) => void;
   readonly onStarted: (utteranceId: string, startedAtMs: number) => void;
   readonly onEnded: (utteranceId: string, reason: VoiceSpeechEndReason) => void;
+  /** Explicit silence/disposal/owner loss also cancels a just-completed visual recovery. */
+  readonly onInvalidated?: () => void;
 }
 
 let nextSpeechUtteranceId = 1;
@@ -631,6 +633,7 @@ export class VoicePlayer {
   }
 
   private cancelOperations(reason: VoiceCancellationReason): void {
+    this.notifySpeechLifecycle(() => this.speechLifecycle?.onInvalidated?.());
     for (const operation of this.operations) operation.cancel(reason);
   }
 

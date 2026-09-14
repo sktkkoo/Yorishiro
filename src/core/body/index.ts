@@ -132,6 +132,11 @@ export interface SpeechStateExpressionHandle {
   release(): void;
 }
 
+/** Internal speech ownership metadata; ordinary SDK motion handles are unchanged. */
+export interface SemanticMotionHandle extends SdkMotionHandle {
+  readonly finishAfterSpeech?: true;
+}
+
 interface SpeechStateExpressionLayer extends SpeechStateExpressionRequest {
   readonly id: number;
 }
@@ -1373,7 +1378,7 @@ export class Body {
     readonly intensity?: number;
     readonly source: MotionSource;
     readonly priority: MotionPriority;
-  }): SdkMotionHandle | null {
+  }): SemanticMotionHandle | null {
     if (
       this.disposed ||
       !this.motionLibraryEnabled ||
@@ -1389,15 +1394,18 @@ export class Body {
       intensity: request.intensity,
     });
     if (!decision) return null;
-    const handle = this.acquireMotionSlot({
-      source: request.source,
-      priority: request.priority,
-      animation: decision.animation,
-      options: {
-        ...decision.options,
-        weight: decision.options.weight * Math.min(1, this.motionIntensity),
-      },
-    });
+    const handle: SemanticMotionHandle = {
+      ...this.acquireMotionSlot({
+        source: request.source,
+        priority: request.priority,
+        animation: decision.animation,
+        options: {
+          ...decision.options,
+          weight: decision.options.weight * Math.min(1, this.motionIntensity),
+        },
+      }),
+      ...(decision.finishAfterSpeech ? { finishAfterSpeech: true } : {}),
+    };
     this.semanticMotionHandles.add(handle);
     void handle.completion.then(({ reason }) => {
       this.semanticMotionHandles.delete(handle);

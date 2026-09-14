@@ -1,5 +1,4 @@
-import type { MotionHandle } from "@yorishiro/sdk";
-import type { Body, SpeechStateExpressionHandle } from "../../core/body";
+import type { Body, SemanticMotionHandle, SpeechStateExpressionHandle } from "../../core/body";
 import type { SpeechMicroexpressionParams } from "../../core/body/speech-microexpression-system";
 import type { StateExpressionSchedulerCallbacks } from "./scheduler";
 import type { GroundedAgentState, StateExpressionCue } from "./types";
@@ -12,8 +11,9 @@ type StateExpressionBody = Pick<
 interface OwnedStateExpression {
   readonly body: StateExpressionBody;
   state: SpeechStateExpressionHandle | null;
-  motion: MotionHandle | null;
+  motion: SemanticMotionHandle | null;
   releaseTimer: ReturnType<typeof globalThis.setTimeout> | null;
+  audioCompleted: boolean;
 }
 
 const MICROEXPRESSION_PROFILES: Readonly<
@@ -36,18 +36,36 @@ export function createBodyStateExpressionAdapter(
 ): StateExpressionSchedulerCallbacks {
   const ownedByUtterance = new Map<string, OwnedStateExpression>();
 
-  const release = (utteranceId: string): void => {
+  const release = (utteranceId: string, completed = false): void => {
     const owned = ownedByUtterance.get(utteranceId);
     if (!owned) return;
-    ownedByUtterance.delete(utteranceId);
     if (owned.releaseTimer !== null) globalThis.clearTimeout(owned.releaseTimer);
+    owned.releaseTimer = null;
     owned.state?.release();
+    owned.state = null;
+    if (completed && owned.motion?.finishAfterSpeech && owned.motion.isActive()) {
+      // Only an explicitly reviewed short one-shot owns this recovery tail.
+      // Keep the scheduler handle until its authored end; cancellation still wins.
+      owned.audioCompleted = true;
+      return;
+    }
+    ownedByUtterance.delete(utteranceId);
     owned.motion?.release(180);
   };
 
+  const releaseCompletedMotions = (): void => {
+    for (const [utteranceId, owned] of ownedByUtterance) {
+      if (owned.audioCompleted) release(utteranceId);
+    }
+  };
+
   return {
-    onConversationPhaseChange: (phase) => getBody()?.setMotionConversationPhase(phase),
+    onConversationPhaseChange: (phase) => {
+      if (phase !== "idle") releaseCompletedMotions();
+      getBody()?.setMotionConversationPhase(phase);
+    },
     onCue: (cue) => {
+      releaseCompletedMotions();
       const body = getBody();
       if (!body) {
         release(cue.utteranceId);
@@ -67,14 +85,20 @@ export function createBodyStateExpressionAdapter(
       });
       const replacement = acquireGesture(body, cue);
       // Facial updates and gesture cooldowns do not cancel an authored motion.
-      // `none` means no additional gesture; audio end remains the cancellation
-      // boundary. The player bounds long recordings separately from face expiry.
+      // `none` means no additional gesture. The player bounds long recordings
+      // separately from face expiry; reviewed short one-shots can finish a return.
       const canContinue = previous?.body === body && previous.motion?.isActive();
       const motion = replacement ?? (canContinue ? previous.motion : null);
       previous?.state?.release();
       if (previous?.motion !== motion) previous?.motion?.release(180);
 
-      const owned: OwnedStateExpression = { body, state, motion, releaseTimer: null };
+      const owned: OwnedStateExpression = {
+        body,
+        state,
+        motion,
+        releaseTimer: null,
+        audioCompleted: false,
+      };
       ownedByUtterance.set(cue.utteranceId, owned);
       if (motion && motion !== previous?.motion) {
         void motion.completion.then(() => {
@@ -94,7 +118,7 @@ export function createBodyStateExpressionAdapter(
         }, cue.durationMs);
       }
     },
-    onRelease: (utteranceId) => release(utteranceId),
+    onRelease: (utteranceId, reason) => release(utteranceId, reason === "completed"),
   };
 }
 
@@ -114,7 +138,10 @@ function subtleProfile(
   };
 }
 
-function acquireGesture(body: StateExpressionBody, cue: StateExpressionCue): MotionHandle | null {
+function acquireGesture(
+  body: StateExpressionBody,
+  cue: StateExpressionCue,
+): SemanticMotionHandle | null {
   if (!cue.gestureIntent || cue.gestureIntent === "none") return null;
   return body.acquireSemanticMotion({
     source: "system",

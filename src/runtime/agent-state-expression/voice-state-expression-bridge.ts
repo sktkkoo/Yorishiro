@@ -25,9 +25,17 @@ export function createVoiceStateExpressionBridge(
   const prepared = new Map<string, readonly StateExpressionCue[]>();
   let activeId: string | null = null;
   let pendingId: string | null = null;
+  let completedId: string | null = null;
+
+  const releaseCompleted = (reason: "cancelled" | "replaced"): void => {
+    const id = completedId;
+    completedId = null;
+    if (id !== null) callbacks.onRelease(id, reason);
+  };
 
   return {
     onPrepared: (utteranceId, text) => {
+      releaseCompleted("replaced");
       const resolution = resolveAssistantTranscriptDelta(createStateExpressionResolverState(), {
         utteranceId,
         delta: text,
@@ -58,13 +66,18 @@ export function createVoiceStateExpressionBridge(
       if (wasPending) pendingId = null;
       if (activeId === utteranceId) {
         activeId = null;
-        if (reason === "completed") scheduler.completeUtterance(utteranceId);
-        else scheduler.cancelUtterance(utteranceId);
+        if (reason === "completed") {
+          completedId = utteranceId;
+          scheduler.completeUtterance(utteranceId);
+        } else scheduler.cancelUtterance(utteranceId);
       } else if (!wasPending) {
         return;
       }
       if (activeId !== null) return;
       callbacks.onConversationPhaseChange?.(pendingId ? "assistant-responding" : "idle");
     },
+    // Do not emit a phase here: another audio owner may already control Body.
+    // Only this bridge's most recent naturally completed utterance can be released.
+    onInvalidated: () => releaseCompleted("cancelled"),
   };
 }

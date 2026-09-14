@@ -33,6 +33,7 @@ export interface MotionDecision {
   readonly nextDueAtMs: number;
   readonly reason: "idle-dwell-elapsed" | "speech-dwell-elapsed" | "speech-intent";
   readonly candidates: readonly DirectedMotionCandidate[];
+  readonly finishAfterSpeech?: true;
 }
 
 export interface MotionTransitionEvaluation {
@@ -269,6 +270,9 @@ export class MotionDirector {
       nextDueAtMs: this.nextDueAtMs,
       reason,
       candidates,
+      ...(finiteGesture && selected.entry.playback === "once" && selected.entry.finishAfterSpeech
+        ? { finishAfterSpeech: true as const }
+        : {}),
     };
     this.history.push({
       id: selected.id,

@@ -4,11 +4,13 @@ import * as THREE from "three";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createBodyStateExpressionAdapter } from "../../runtime/agent-state-expression/body-adapter";
 import type { StateExpressionCue } from "../../runtime/agent-state-expression/types";
+import { createVoiceStateExpressionBridge } from "../../runtime/agent-state-expression/voice-state-expression-bridge";
 import type { ClaimKind, ClaimState } from "../../runtime/ui-claim-state";
 import { ZERO_MOUTH } from "../voice/mouth-values";
 import { AnimationPlayer } from "./animation-player";
 import { Body } from "./index";
-import { DEFAULT_MOTION_CATALOG } from "./motion-catalog";
+import { DEFAULT_MOTION_CATALOG, type MotionCatalogEntry } from "./motion-catalog";
+import { MotionDirector } from "./motion-director";
 
 type Playback = Awaited<ReturnType<AnimationPlayer["play"]>>;
 
@@ -98,6 +100,43 @@ function mockPerformanceLibrary() {
     .mockImplementation(async (_ref, options) => options?.mask !== "lower-body");
 }
 
+async function createReviewedSpeechBody() {
+  mockPerformanceLibrary();
+  const fixture = createBody();
+  const { body, vrm } = fixture;
+  const entry: MotionCatalogEntry = {
+    ...DEFAULT_MOTION_CATALOG[0],
+    animation: "reviewed-short.vrma",
+    contexts: ["speech"],
+    intents: ["celebrate"],
+    playback: "once",
+    finishAfterSpeech: true,
+    speed: 1,
+  };
+  const player = (body as unknown as { animationPlayer: AnimationPlayer }).animationPlayer;
+  const cache = (player as unknown as { clipCache: Map<string, THREE.AnimationClip> }).clipCache;
+  const arm = vrm.humanoid.getNormalizedBoneNode("leftLowerArm");
+  if (!arm) throw new Error("test arm required");
+  cache.set(
+    entry.animation,
+    new THREE.AnimationClip(entry.animation, 3, [
+      new THREE.QuaternionKeyframeTrack(
+        `${arm.name}.quaternion`,
+        [0, 1.5, 3],
+        [0, 0, 0, 1, Math.sin(0.2), 0, 0, Math.cos(0.2), 0, 0, 0, 1],
+      ),
+    ]),
+  );
+  // Only the physical entry evidence is mocked. Selection, scheduler ownership,
+  // clip clock, authored completion, and Body updates are real.
+  (body as unknown as { motionDirector: MotionDirector }).motionDirector = new MotionDirector({
+    catalog: [entry],
+    evaluateTransition: (animation, options) => player.evaluateTransition(animation, options),
+  });
+  await body.prepareMotionLibrary();
+  return { ...fixture, entry, adapter: createBodyStateExpressionAdapter(() => body) };
+}
+
 function mockSurveyOnlyLibrary() {
   mockPerformanceLibrary();
   return vi
@@ -164,6 +203,90 @@ function cue(overrides: Partial<StateExpressionCue> = {}): StateExpressionCue {
 }
 
 describe("recorded motion Body integration", () => {
+  it("lets a real short clip return after Kyoko's measured single-sentence audio end without idle stealing it", async () => {
+    vi.useFakeTimers();
+    try {
+      const { body, entry, adapter } = await createReviewedSpeechBody();
+      let now = 0;
+      const bridge = createVoiceStateExpressionBridge(adapter, {
+        now: () => now,
+        setTimeout: (callback, delay) => setTimeout(callback, delay),
+        clearTimeout: (timer) => clearTimeout(timer as ReturnType<typeof setTimeout>),
+      });
+      const acquire = vi.spyOn(body, "acquireSemanticMotion");
+      const tick = async (durationMs: number) => {
+        for (let remaining = durationMs; remaining > 0; ) {
+          const deltaMs = Math.min(1000 / 60, remaining);
+          now += deltaMs;
+          vi.advanceTimersByTime(deltaMs);
+          body.update(deltaMs / 1000, now / 1000);
+          await flush();
+          remaining -= deltaMs;
+        }
+      };
+      bridge.onPrepared("kyoko", "成功しましたね。");
+      await tick(5_000);
+      expect(acquire).not.toHaveBeenCalled();
+      bridge.onStarted("kyoko", now);
+      // Recorded locally: 1,216.625 ms WAV, resolver cue at 650 ms.
+      await tick(1_216.625);
+      const handle = acquire.mock.results[0]?.value;
+      expect(handle?.finishAfterSpeech).toBe(true);
+      bridge.onEnded("kyoko", "completed");
+      await tick(2_000);
+      expect(body.getMotionSnapshot().active?.animation).toBe(entry.animation);
+      expect(handle?.isActive()).toBe(true);
+      await tick(500);
+      await expect(handle?.completion).resolves.toEqual({ reason: "completed" });
+      expect(body.getMotionSnapshot().active).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it.each([
+    "user-speaking",
+    "interrupted",
+    "manual",
+    "claim",
+    "new-speech",
+    "stop",
+  ] as const)("still preempts a real reviewed recovery on %s", async (action) => {
+    const { body, claims, entry, adapter } = await createReviewedSpeechBody();
+    adapter.onConversationPhaseChange?.("assistant-speaking");
+    const acquire = vi.spyOn(body, "acquireSemanticMotion");
+    adapter.onCue(
+      { utteranceId: "short", atMs: 0, state: "appreciative", gestureIntent: "celebrate" },
+      { scheduledForMs: 0, firedAtMs: 0, lateByMs: 0 },
+    );
+    await flush();
+    const handle = acquire.mock.results[0].value;
+    advance(body, 0.5);
+    adapter.onRelease("short", "completed");
+    adapter.onConversationPhaseChange?.("idle");
+    expect(handle?.isActive()).toBe(true);
+    if (action === "manual") {
+      body.acquireMotionSlot({
+        source: "mcp",
+        priority: "mcp-conscious",
+        animation: entry.animation,
+      });
+    } else if (action === "claim") {
+      claims.claim("animation");
+      advance(body, 1 / 60);
+    } else if (action === "new-speech") {
+      adapter.onConversationPhaseChange?.("assistant-responding");
+    } else if (action === "stop") {
+      adapter.onRelease("short", "cancelled");
+    } else {
+      adapter.onConversationPhaseChange?.(action);
+    }
+    await expect(handle?.completion).resolves.toEqual({
+      reason: action === "manual" ? "preempted" : "cancelled",
+    });
+    expect(handle?.isActive()).toBe(false);
+  });
+
   it("keeps supporting legs through terminal activity and upper-body persona reactions, then yields to a claim", async () => {
     const { sha, base } = mockStandingBase();
     const { body, claims } = createBody(sha);

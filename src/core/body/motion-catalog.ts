@@ -35,6 +35,8 @@ export interface MotionCatalogEntry {
   readonly playback?: "once";
   /** Optional reviewed finite exit budget. Once-only clips otherwise keep their natural end. */
   readonly maxDurationMs?: number;
+  /** Only reviewed short speech one-shots may finish their return after normal audio end. */
+  readonly finishAfterSpeech?: true;
 }
 
 export interface SemanticMotionQuery {

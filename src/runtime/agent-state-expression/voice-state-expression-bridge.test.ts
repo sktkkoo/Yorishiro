@@ -41,6 +41,43 @@ function setup() {
 }
 
 describe("local TTS state expression bridge", () => {
+  it("invalidates a completed recovery once without cancelling a later utterance or resetting its phase", () => {
+    const { clock, callbacks, bridge } = setup();
+    bridge.onPrepared("old", "はい。");
+    bridge.onStarted("old", clock.now());
+    clock.advance(300);
+    bridge.onEnded("old", "completed");
+    callbacks.onRelease.mockClear();
+    const phaseCount = callbacks.onConversationPhaseChange.mock.calls.length;
+    bridge.onInvalidated?.();
+    bridge.onInvalidated?.();
+    expect(callbacks.onRelease).toHaveBeenCalledExactlyOnceWith("old", "cancelled");
+    expect(callbacks.onConversationPhaseChange).toHaveBeenCalledTimes(phaseCount);
+    bridge.onPrepared("new", "大丈夫。");
+    bridge.onStarted("new", clock.now());
+    callbacks.onRelease.mockClear();
+    bridge.onEnded("old", "completed");
+    bridge.onEnded("old", "disposed");
+    bridge.onInvalidated?.();
+    expect(callbacks.onRelease).not.toHaveBeenCalled();
+    expect(callbacks.onConversationPhaseChange).toHaveBeenLastCalledWith("assistant-speaking");
+  });
+
+  it("replaces a completed recovery during new synthesis without invalidating the new pending owner", () => {
+    const { clock, callbacks, bridge } = setup();
+    bridge.onPrepared("old", "はい。");
+    bridge.onStarted("old", clock.now());
+    bridge.onEnded("old", "completed");
+    callbacks.onRelease.mockClear();
+    bridge.onPrepared("new", "大丈夫。");
+    expect(callbacks.onRelease).toHaveBeenCalledExactlyOnceWith("old", "replaced");
+    bridge.onInvalidated?.();
+    bridge.onEnded("old", "stopped");
+    expect(callbacks.onRelease).toHaveBeenCalledOnce();
+    bridge.onStarted("new", clock.now());
+    expect(callbacks.onConversationPhaseChange).toHaveBeenLastCalledWith("assistant-speaking");
+  });
+
   it("grounds neutral explanatory motion in real audio ownership for the entire spoken paragraph", () => {
     const { clock, callbacks, bridge } = setup();
     bridge.onPrepared(
