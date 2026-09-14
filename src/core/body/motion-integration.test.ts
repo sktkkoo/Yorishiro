@@ -98,6 +98,15 @@ function mockPerformanceLibrary() {
     .mockImplementation(async (_ref, options) => options?.mask !== "lower-body");
 }
 
+function mockSurveyOnlyLibrary() {
+  mockPerformanceLibrary();
+  return vi
+    .mocked(AnimationPlayer.prototype.evaluateTransition)
+    .mockImplementation((ref) =>
+      ref === "/animations/recorded-idle/survey.vrma" ? { cost: 0, startTimeSec: 0 } : null,
+    );
+}
+
 function mockStandingBase() {
   const sha = "a".repeat(64);
   vi.stubGlobal(
@@ -128,6 +137,7 @@ function mockStandingBase() {
     paused: false,
     setPaused: vi.fn(),
     setUpperWeight: vi.fn(),
+    setAxialStrength: vi.fn(),
   };
   const playBase = vi.spyOn(AnimationPlayer.prototype, "playRecordedBase").mockResolvedValue(base);
   return { sha, base, playBase };
@@ -190,7 +200,7 @@ describe("recorded motion Body integration", () => {
     "animation-claim",
   ] as const)("keeps a rare finite survey separate from the body base, then yields to %s", async (interruption) => {
     vi.spyOn(Math, "random").mockReturnValue(0.999);
-    mockPerformanceLibrary();
+    mockSurveyOnlyLibrary();
     const { sha, base, playBase } = mockStandingBase();
     const survey = playback();
     const play = vi.spyOn(AnimationPlayer.prototype, "play").mockResolvedValue(survey);
@@ -258,7 +268,10 @@ describe("recorded motion Body integration", () => {
 
     advance(body, 181);
     expect(play).not.toHaveBeenCalled();
-    expect(evaluate).toHaveBeenCalledExactlyOnceWith("/animations/recorded-idle/survey.vrma", {
+    const surveyEvaluations = () =>
+      evaluate.mock.calls.filter(([ref]) => ref === "/animations/recorded-idle/survey.vrma");
+    expect(surveyEvaluations()).toHaveLength(1);
+    expect(surveyEvaluations()[0][1]).toEqual({
       loop: false,
       mask: "upper-body",
       transition: "immediate",
@@ -268,11 +281,13 @@ describe("recorded motion Body integration", () => {
       fadeOutMs: 800,
     });
     advance(body, 1.3);
-    expect(evaluate).toHaveBeenCalledOnce();
-    evaluate.mockReturnValue({ cost: 0, startTimeSec: 0 });
+    expect(surveyEvaluations()).toHaveLength(1);
+    evaluate.mockImplementation((ref) =>
+      ref === "/animations/recorded-idle/survey.vrma" ? { cost: 0, startTimeSec: 0 } : null,
+    );
     advance(body, 0.3);
     await flush();
-    expect(evaluate).toHaveBeenCalledTimes(2);
+    expect(surveyEvaluations()).toHaveLength(2);
     expect(play).toHaveBeenCalledOnce();
     expect(body.getMotionSnapshot().active?.animation).toBe(
       "/animations/recorded-idle/survey.vrma",
@@ -286,7 +301,7 @@ describe("recorded motion Body integration", () => {
     "expression",
   ] as const)("does not count ungrounded %s ownership toward the rare idle wait", async (owner) => {
     vi.spyOn(Math, "random").mockReturnValue(0);
-    mockPerformanceLibrary();
+    mockSurveyOnlyLibrary();
     const { sha } = mockStandingBase();
     const play = vi.spyOn(AnimationPlayer.prototype, "play").mockResolvedValue(playback());
     const { body } = createBody(sha);
@@ -313,6 +328,86 @@ describe("recorded motion Body integration", () => {
     await flush();
     expect(play).toHaveBeenCalledOnce();
     expect(play.mock.calls[0][0]).toBe("/animations/recorded-idle/survey.vrma");
+  });
+
+  it("varies safe upper-body recordings briefly with quiet gaps while the recorded legs continue", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    mockPerformanceLibrary();
+    const { sha, base, playBase } = mockStandingBase();
+    const first = playback();
+    const second = playback();
+    const play = vi
+      .spyOn(AnimationPlayer.prototype, "play")
+      .mockResolvedValueOnce(first)
+      .mockResolvedValueOnce(second);
+    const { body } = createBody(sha);
+    await body.initializeRecordedBody();
+    await body.prepareMotionLibrary();
+
+    advance(body, 24);
+    expect(play).not.toHaveBeenCalled();
+    advance(body, 1.1);
+    await flush();
+    expect(play).toHaveBeenCalledOnce();
+    expect(play.mock.calls[0][0]).toBe("anim:Idle");
+    expect(play.mock.calls[0][1]).toMatchObject({ loop: true, mask: "upper-body" });
+    advance(body, 7.8);
+    expect(first.stop).not.toHaveBeenCalled();
+    advance(body, 0.3);
+    await flush();
+    expect(first.stop).toHaveBeenCalledExactlyOnceWith(800);
+    expect(body.getMotionSnapshot().active).toBeNull();
+
+    advance(body, 24);
+    expect(play).toHaveBeenCalledOnce();
+    advance(body, 1.2);
+    await flush();
+    expect(play).toHaveBeenCalledTimes(2);
+    expect(play.mock.calls[1][0]).toBe("anim:VRMA_06_HandOnHip");
+    expect(play.mock.calls[1][1]).toMatchObject({ loop: true, mask: "upper-body" });
+    advance(body, 8.1);
+    await flush();
+    expect(second.stop).toHaveBeenCalledExactlyOnceWith(800);
+    expect(body.getMotionSnapshot().active).toBeNull();
+    expect(playBase).toHaveBeenCalledOnce();
+    expect(base.stop).not.toHaveBeenCalled();
+    expect(base.cancel).not.toHaveBeenCalled();
+    expect(body.getRecordedBodySnapshot().active?.id).toBe("standing");
+  });
+
+  it("forwards quiet Normal and Over axial gains without relinquishing or restarting the body base", async () => {
+    const { sha, base, playBase } = mockStandingBase();
+    const { body } = createBody(sha);
+    await body.initializeRecordedBody();
+    expect(base.setAxialStrength).toHaveBeenLastCalledWith({ torso: 0.18, head: 0.06 }, 0);
+    body.setMotionIntensity(3);
+    body.update(0, 0);
+    expect(base.setAxialStrength.mock.lastCall?.[0]).toEqual({ torso: 0.18, head: 0.06 });
+    advance(body, 0.1);
+    expect(base.setAxialStrength.mock.lastCall?.[0].torso).toBeGreaterThan(0.18);
+    expect(base.setAxialStrength.mock.lastCall?.[0].torso).toBeLessThan(0.65);
+    advance(body, 1.9);
+    expect(base.setAxialStrength.mock.lastCall?.[0]).toEqual({
+      torso: expect.closeTo(0.65, 5),
+      head: expect.closeTo(0.45, 5),
+    });
+    body.setMotionIntensity(0);
+    advance(body, 2);
+    expect(base.setAxialStrength.mock.lastCall?.[0]).toEqual({
+      torso: expect.closeTo(0, 5),
+      head: expect.closeTo(0, 5),
+    });
+    expect(base.setPaused).toHaveBeenLastCalledWith(true);
+    body.setMotionIntensity(0.95);
+    advance(body, 2);
+    expect(base.setPaused).toHaveBeenLastCalledWith(false);
+    expect(base.setAxialStrength.mock.lastCall?.[0]).toEqual({
+      torso: expect.closeTo(0.171, 5),
+      head: expect.closeTo(0.057, 5),
+    });
+    expect(playBase).toHaveBeenCalledOnce();
+    expect(base.stop).not.toHaveBeenCalled();
+    expect(base.cancel).not.toHaveBeenCalled();
   });
 
   it.each([
