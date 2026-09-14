@@ -59,6 +59,14 @@ export interface MotionOptions {
   readonly weight?: number;
   readonly loop?: boolean;
   readonly speed?: number;
+  /** Match entry pose and velocity for continuous motions; gestures keep their beginning. */
+  readonly transition?: "matched" | "immediate";
+  readonly mask?: "upper-body" | "full-body";
+  /** Default in-place; preserve reviewed hips XYZ only for full-body, immediate one-shots. */
+  readonly rootMotion?: "in-place" | "preserve";
+  readonly maxTransitionDelayMs?: number;
+  /** Bound a non-looping performance at a nearby quiet exit; shorter clips keep their ending. */
+  readonly maxDurationMs?: number;
 }
 
 /** Scheduler への motion 依頼。priority と animation 識別子を含む。 */
@@ -119,7 +127,7 @@ export interface MotionHandle {
  */
 export interface MotionSchedulerCallbacks {
   readonly onActivate: (req: MotionRequest) => Promise<void>;
-  readonly onDeactivate: (fadeMs: number) => void;
+  readonly onDeactivate: (fadeMs: number, replacing?: boolean) => void;
   readonly now: () => number;
 }
 
@@ -180,6 +188,11 @@ export class MotionScheduler {
     slot.resolveCompletion({ reason: "cancelled" });
   }
 
+  /** Allocation-free ownership check for the render loop. */
+  getActivePriority(): MotionPriority | null {
+    return this.currentSlot?.state === "active" ? this.currentSlot.request.priority : null;
+  }
+
   /** 現 active 状態の snapshot（read-only）。observability 用。 */
   getSnapshot(): MotionSnapshot {
     const slot = this.currentSlot;
@@ -206,7 +219,7 @@ export class MotionScheduler {
     }
     slot.state = "preempted";
     this.currentSlot = null;
-    this.callbacks.onDeactivate(fadeMs);
+    this.callbacks.onDeactivate(fadeMs, true);
     slot.resolveCompletion({ reason: "preempted" });
   }
 

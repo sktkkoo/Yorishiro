@@ -1,0 +1,355 @@
+{
+  "method": "Real Yori normalized target bones, Three mixer snapshots at 60 Hz after applyVrmRestPose. Existing upper-body runtime tracks/loop conditioning; no feet/contact or semantic-boundary inference. Four source phases, steady and half-fade into a different weighted recording, all nine catalog candidates. Exact current catalog weights at intensity 0.5 for both baseline and finite; finite uses entry0 without a semantic-boundary claim. Cost statistics describe the unconstrained best entry; acceptance searches all mechanically allowed entries against the limits. Cooldown/history and semantic eligibility are not simulated in this mechanical audit.",
+  "modelSha256": "739a1515cffe09c17a535eb52a11f88640fc7728b86b9e4c74f00c353437b7cd",
+  "sources": [
+    {
+      "id": "idle-balance",
+      "animation": "anim:Idle",
+      "sha256": "5315fecbd472d5b3a11a3cb324db93a6c6538b41229feb5b6468356a1a7481b5"
+    },
+    {
+      "id": "idle-orient",
+      "animation": "anim:Idle Looking Around",
+      "sha256": "40247c98b0cbcb95ed8eac967058f01e99349aedc8863aff3a988191bf1caf8d"
+    },
+    {
+      "id": "idle-survey",
+      "animation": "anim:Idle Looking Around 2",
+      "sha256": "ee2087ae63feea5e80208bf4a91ee8da4b56a6271cecd092d7884598926230fd"
+    },
+    {
+      "id": "idle-observe",
+      "animation": "anim:Idle Watching Something",
+      "sha256": "9f52404a23e41caeeb40041062277df2e4250f6fbb137d325d58cbbdd11cf007"
+    },
+    {
+      "id": "idle-rest-hand",
+      "animation": "anim:VRMA_06_HandOnHip",
+      "sha256": "a2c86633690e911cf935c5b8cae6553aea0445567f88c2861f7597fc1bf08af1"
+    },
+    {
+      "id": "speech-appreciate",
+      "animation": "anim:Thankful",
+      "sha256": "43d31a6707d8a41ffd4476b047cd3529e53284ae42a14983d55918c2411df0a4"
+    },
+    {
+      "id": "speech-conversation",
+      "animation": "anim:Idle Conversation",
+      "sha256": "d1f91d4ab36ed844e9815f2f168303d4a110d62f82348274350c52954f7ae49a"
+    },
+    {
+      "id": "speech-chat",
+      "animation": "anim:Idle Chatting",
+      "sha256": "af077b1dde763e6e8187c6bb6aac1c16e0b90cdd53e3a759d51a3aff08ea8d01"
+    },
+    {
+      "id": "speech-animated",
+      "animation": "anim:Idle Chatting 2",
+      "sha256": "be06904eabb75f4cf3133d0c2b7ef1bf9249712fc60f761b8b1a5890fecc452d"
+    }
+  ],
+  "limits": {
+    "poseRmsRad": 0.65,
+    "maxBodyAngleRad": 1.2,
+    "velocityRmsRadSec": 2.5,
+    "cost": 0.75
+  },
+  "summary": {
+    "count": 949,
+    "accepted": 720,
+    "cost": {
+      "min": 5.209625523323529e-7,
+      "p50": 0.12229744880116811,
+      "p95": 0.4133517639933044,
+      "max": 0.738243465747927
+    },
+    "poseRmsRad": {
+      "min": 1.5563755269858047e-8,
+      "p50": 0.3153129615269168,
+      "p95": 0.6143360083056694,
+      "max": 0.8565019400048365
+    },
+    "maxBodyAngleRad": {
+      "min": 2.9802322387695312e-8,
+      "p50": 0.8577650958267291,
+      "p95": 1.4940590341050028,
+      "max": 2.2528509469928233
+    },
+    "velocityRmsRadSec": {
+      "min": 0.002528606280784826,
+      "p50": 0.3778852827777726,
+      "p95": 0.9449624088281385,
+      "max": 1.3891469948706605
+    }
+  },
+  "speechBaselineAvailability": {
+    "states": 73,
+    "withCompatibleCandidate": 71,
+    "blockedStates": [
+      {
+        "from": "idle-rest-hand",
+        "phase": 0.1,
+        "state": "steady"
+      },
+      {
+        "from": "idle-rest-hand",
+        "phase": 0.25,
+        "state": "steady"
+      }
+    ]
+  },
+  "byState": {
+    "rest": {
+      "count": 13,
+      "accepted": 11,
+      "cost": {
+        "min": 0.018664411026207903,
+        "p50": 0.09601615825133726,
+        "p95": 0.19571979137040907,
+        "max": 0.19571979137040907
+      },
+      "poseRmsRad": {
+        "min": 0.13356641042550468,
+        "p50": 0.3070455561241791,
+        "p95": 0.44190023636605974,
+        "max": 0.44190023636605974
+      },
+      "maxBodyAngleRad": {
+        "min": 0.20409742933538672,
+        "p50": 0.5612697468494476,
+        "p95": 1.392859624275036,
+        "max": 1.392859624275036
+      },
+      "velocityRmsRadSec": {
+        "min": 0.045212278975858444,
+        "p50": 0.10045973621569172,
+        "p95": 0.569299487872946,
+        "max": 0.569299487872946
+      }
+    },
+    "steady": {
+      "count": 468,
+      "accepted": 306,
+      "cost": {
+        "min": 5.209625523323529e-7,
+        "p50": 0.15276119959263837,
+        "p95": 0.45817042161437377,
+        "max": 0.738243465747927
+      },
+      "poseRmsRad": {
+        "min": 1.5563755269858047e-8,
+        "p50": 0.37150848742724824,
+        "p95": 0.6631324911146536,
+        "max": 0.8565019400048365
+      },
+      "maxBodyAngleRad": {
+        "min": 2.9802322387695312e-8,
+        "p50": 1.0728057062394476,
+        "p95": 1.5546665711487708,
+        "max": 2.2528509469928233
+      },
+      "velocityRmsRadSec": {
+        "min": 0.002528606280784826,
+        "p50": 0.2627896011622365,
+        "p95": 1.0231253744517264,
+        "max": 1.3891469948706605
+      }
+    },
+    "half-fade": {
+      "count": 468,
+      "accepted": 403,
+      "cost": {
+        "min": 0.0030389809404399006,
+        "p50": 0.10566238568751433,
+        "p95": 0.22926908036396157,
+        "max": 0.3705350879078634
+      },
+      "poseRmsRad": {
+        "min": 0.039322830632919005,
+        "p50": 0.28672750263259783,
+        "p95": 0.4317512242450074,
+        "max": 0.5565037156252903
+      },
+      "maxBodyAngleRad": {
+        "min": 0.06682189099093645,
+        "p50": 0.7172220554130702,
+        "p95": 1.3491229166297916,
+        "max": 1.8069509996981947
+      },
+      "velocityRmsRadSec": {
+        "min": 0.12741730556937933,
+        "p50": 0.4458926428100602,
+        "p95": 0.8345571199666992,
+        "max": 1.0253563423614984
+      }
+    }
+  },
+  "byTarget": {
+    "idle-balance": {
+      "count": 73,
+      "accepted": 57
+    },
+    "idle-orient": {
+      "count": 73,
+      "accepted": 66
+    },
+    "idle-survey": {
+      "count": 73,
+      "accepted": 69
+    },
+    "idle-observe": {
+      "count": 73,
+      "accepted": 18
+    },
+    "idle-rest-hand": {
+      "count": 73,
+      "accepted": 62
+    },
+    "speech-appreciate": {
+      "count": 146,
+      "accepted": 115
+    },
+    "speech-conversation": {
+      "count": 146,
+      "accepted": 79
+    },
+    "speech-chat": {
+      "count": 146,
+      "accepted": 127
+    },
+    "speech-animated": {
+      "count": 146,
+      "accepted": 127
+    }
+  },
+  "rejectedExamples": [
+    {
+      "from": "idle-survey",
+      "phase": 0.5,
+      "state": "steady",
+      "to": "speech-conversation",
+      "finite": true,
+      "weight": 0.85,
+      "accepted": false,
+      "selectedCost": null,
+      "selectedStartTimeSec": null,
+      "cost": 0.7110650774596474,
+      "startTimeSec": 0,
+      "poseRmsRad": 0.8418152474333687,
+      "maxBodyAngleRad": 2.2528509469928233,
+      "velocityRmsRadSec": 0.1736435518650068
+    },
+    {
+      "from": "idle-survey",
+      "phase": 0.75,
+      "state": "steady",
+      "to": "speech-conversation",
+      "finite": true,
+      "weight": 0.85,
+      "accepted": false,
+      "selectedCost": null,
+      "selectedStartTimeSec": null,
+      "cost": 0.738243465747927,
+      "startTimeSec": 0,
+      "poseRmsRad": 0.8565019400048365,
+      "maxBodyAngleRad": 2.2489566159013097,
+      "velocityRmsRadSec": 0.24103662885229538
+    },
+    {
+      "from": "idle-survey",
+      "phase": 0.75,
+      "state": "steady",
+      "to": "idle-observe",
+      "finite": false,
+      "weight": 0.88,
+      "accepted": false,
+      "selectedCost": null,
+      "selectedStartTimeSec": null,
+      "cost": 0.7118725137060707,
+      "startTimeSec": 17.597321578149515,
+      "poseRmsRad": 0.8419355797833766,
+      "maxBodyAngleRad": 2.1920433148871563,
+      "velocityRmsRadSec": 0.19419684603837326
+    },
+    {
+      "from": "idle-survey",
+      "phase": 0.5,
+      "state": "steady",
+      "to": "idle-observe",
+      "finite": false,
+      "weight": 0.88,
+      "accepted": false,
+      "selectedCost": null,
+      "selectedStartTimeSec": null,
+      "cost": 0.6823210678304042,
+      "startTimeSec": 17.597321578149515,
+      "poseRmsRad": 0.8257893267660504,
+      "maxBodyAngleRad": 2.188424989415005,
+      "velocityRmsRadSec": 0.07009418928105705
+    },
+    {
+      "from": "idle-survey",
+      "phase": 0.25,
+      "state": "steady",
+      "to": "speech-conversation",
+      "finite": true,
+      "weight": 0.85,
+      "accepted": false,
+      "selectedCost": null,
+      "selectedStartTimeSec": null,
+      "cost": 0.642015428970465,
+      "startTimeSec": 0,
+      "poseRmsRad": 0.798319023891648,
+      "maxBodyAngleRad": 2.180382523021617,
+      "velocityRmsRadSec": 0.24243981374640852
+    },
+    {
+      "from": "idle-survey",
+      "phase": 0.25,
+      "state": "steady",
+      "to": "idle-observe",
+      "finite": false,
+      "weight": 0.88,
+      "accepted": false,
+      "selectedCost": null,
+      "selectedStartTimeSec": null,
+      "cost": 0.6113963293770275,
+      "startTimeSec": 17.597321578149515,
+      "poseRmsRad": 0.780495469631125,
+      "maxBodyAngleRad": 2.103721219158727,
+      "velocityRmsRadSec": 0.16670150202971365
+    },
+    {
+      "from": "idle-survey->speech-chat",
+      "phase": 0.25,
+      "state": "half-fade",
+      "to": "speech-conversation",
+      "finite": true,
+      "weight": 0.85,
+      "accepted": false,
+      "selectedCost": null,
+      "selectedStartTimeSec": null,
+      "cost": 0.3530860148420657,
+      "startTimeSec": 0,
+      "poseRmsRad": 0.5496422140557601,
+      "maxBodyAngleRad": 1.8069509996981947,
+      "velocityRmsRadSec": 0.7982751042869534
+    },
+    {
+      "from": "idle-survey->speech-chat",
+      "phase": 0.5,
+      "state": "half-fade",
+      "to": "speech-conversation",
+      "finite": true,
+      "weight": 0.85,
+      "accepted": false,
+      "selectedCost": null,
+      "selectedStartTimeSec": null,
+      "cost": 0.36064129333129386,
+      "startTimeSec": 0,
+      "poseRmsRad": 0.5521978326762292,
+      "maxBodyAngleRad": 1.7737286011514455,
+      "velocityRmsRadSec": 0.8345571199666992
+    }
+  ]
+}

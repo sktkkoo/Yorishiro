@@ -6,6 +6,113 @@ import {
 } from "./resolver";
 
 describe("resolveAssistantTranscriptDelta", () => {
+  it.each([
+    ["やった！", "celebrate", "appreciative"],
+    ["ついにテストが成功しました！", "celebrate", "appreciative"],
+    ["大成功です。", "celebrate", "appreciative"],
+    ["成功しましたね。", "celebrate", "appreciative"],
+    ["本当に嬉しいです！", "celebrate", "appreciative"],
+    ["We did it!", "celebrate", "appreciative"],
+    ["I'm thrilled!", "celebrate", "appreciative"],
+    ["とても悲しいです。", "sad", "concerned"],
+    ["それは悲しいですね。", "sad", "concerned"],
+    ["残念です。", "sad", "concerned"],
+    ["がっかりしました。", "sad", "concerned"],
+    ["落ち込んでいます。", "sad", "concerned"],
+    ["I'm disappointed.", "sad", "concerned"],
+    ["まだ分かりません。", "uncertain", "considering"],
+    ["確信がありません。", "uncertain", "considering"],
+    ["現時点では判断できません。", "uncertain", "considering"],
+    ["どちらとも言えません。", "uncertain", "considering"],
+    ["I'm not sure.", "uncertain", "considering"],
+    ["I don't know yet.", "uncertain", "considering"],
+  ] as const)("grounds the explicit declaration %s in %s", (delta, gestureIntent, state) => {
+    const pending = resolveAssistantTranscriptDelta(createStateExpressionResolverState(), {
+      utteranceId: "explicit",
+      delta,
+      phase: "assistant-responding",
+    });
+    const done = finishAssistantTranscript(pending.state, {
+      utteranceId: "explicit",
+      phase: "assistant-responding",
+    });
+    expect([...pending.cues, ...done.cues]).toEqual([
+      expect.objectContaining({ gestureIntent, state }),
+    ]);
+  });
+
+  it.each([
+    "ありがとうございます。",
+    "ありがとう、嬉しいです。",
+    "問題を確認します。",
+    "すみません、調べます。",
+    "失敗しました。修正します。",
+    "不確実なリスクを確認します。",
+    "成功しませんでした。",
+    "成功したとは言えません。",
+    "本当に嬉しいわけではありません。",
+    "悲しくありません。",
+    "悲しいとは思いません。",
+    "がっかりしたわけではありません。",
+    "残念ではありません。",
+    "残念ですが、まずは確認します。",
+    "確信がないわけではありません。",
+    "まだ分からないとは言っていません。",
+    "成功したらお知らせします。",
+    "悲しいと感じたら相談してください。",
+    "成功しましたか？",
+    "本当に嬉しいですか？",
+    "まだ分かりませんか？",
+    "『大成功です』という表示を確認します。",
+    "「やった！本当に嬉しいです！」と書いてください。",
+    "「まだ分かりません。悲しいです。」という返答の例です。",
+    '"We did it!" is an example, not a result.',
+    "'I'm disappointed.' is a quoted sentence.",
+    "`まだ分かりません。`を削除しました。",
+    "「やった！本当に嬉しいです！",
+    "We did not succeed.",
+    "I'm not sad.",
+    "I'm not uncertain.",
+    "If we succeeded, we could continue.",
+  ])("does not infer salient acting from courtesy, negation, questions or quoted %s", (delta) => {
+    const pending = resolveAssistantTranscriptDelta(createStateExpressionResolverState(), {
+      utteranceId: "not-a-declaration",
+      delta,
+      phase: "assistant-speaking",
+    });
+    const done = finishAssistantTranscript(pending.state, {
+      utteranceId: "not-a-declaration",
+      phase: "assistant-speaking",
+    });
+    expect(
+      [...pending.cues, ...done.cues].some((cue) =>
+        ["celebrate", "sad", "uncertain"].includes(cue.gestureIntent ?? "none"),
+      ),
+    ).toBe(false);
+  });
+
+  it("preserves quoted declarations and explicit acting across every transcript chunk boundary", () => {
+    const text = "「やった！悲しいです。」は引用です。まだ分かりません。ついに成功しました！";
+    const input = { utteranceId: "quoted-chunks", phase: "assistant-speaking" } as const;
+    const whole = resolveAssistantTranscriptDelta(createStateExpressionResolverState(), {
+      ...input,
+      delta: text,
+    });
+    expect(whole.cues.map((cue) => cue.gestureIntent)).toEqual(["uncertain", "celebrate"]);
+    for (let splitAt = 1; splitAt < text.length; splitAt++) {
+      const first = resolveAssistantTranscriptDelta(createStateExpressionResolverState(), {
+        ...input,
+        delta: text.slice(0, splitAt),
+      });
+      const second = resolveAssistantTranscriptDelta(first.state, {
+        ...input,
+        delta: text.slice(splitAt),
+      });
+      expect([...first.cues, ...second.cues]).toEqual(whole.cues);
+      expect(second.state).toEqual(whole.state);
+    }
+  });
+
   it("chunk 境界をまたぐ節を agree cue へ決定論的に解決する", () => {
     const first = resolveAssistantTranscriptDelta(createStateExpressionResolverState(), {
       utteranceId: "utterance-1",
@@ -72,6 +179,17 @@ describe("resolveAssistantTranscriptDelta", () => {
         intensity: "small",
       }),
     ]);
+  });
+
+  it("leaves ordinary Japanese explanation emotion-free for the audio-grounded conversation baseline", () => {
+    const result = resolveAssistantTranscriptDelta(createStateExpressionResolverState(), {
+      utteranceId: "explanation",
+      delta:
+        "設定画面には三つの項目があります。左側の一覧から対象を選択できます。保存すると変更が反映されます。",
+      phase: "assistant-speaking",
+    });
+    expect(result.cues).toEqual([]);
+    expect(result.state.elapsedSpeechMs).toBe(4_500);
   });
 
   it("transcript done で句点のない末尾を flush する", () => {

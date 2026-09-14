@@ -1127,6 +1127,7 @@ export interface BodyLike {
   readonly acquireExpressionSlot: Body["acquireExpressionSlot"];
   readonly getExpressionSlots: Body["getExpressionSlots"];
   readonly getMotionSnapshot: Body["getMotionSnapshot"];
+  readonly getRecordedBodySnapshot?: Body["getRecordedBodySnapshot"];
   readonly acquireMotionSlot: Body["acquireMotionSlot"];
   readonly getExpressionIntentSnapshot?: Body["getExpressionIntentSnapshot"];
   readonly getExpressionIntentDebugView?: Body["getExpressionIntentDebugView"];
@@ -1200,6 +1201,7 @@ export interface StateGetResult {
    * （VRM 未 load）の場合は `{ active: null, preempted: [] }` を返す。
    */
   readonly motion: MotionSnapshot;
+  readonly recordedBody?: ReturnType<Body["getRecordedBodySnapshot"]>;
   readonly ui: {
     readonly sidebar: { readonly width: number };
     readonly terminal: { readonly opacity: number };
@@ -1298,6 +1300,7 @@ export function createStateGetHandler(deps: StateGetDeps) {
       expressions,
       expressionIntents,
       motion,
+      ...(body?.getRecordedBodySnapshot ? { recordedBody: body.getRecordedBodySnapshot() } : {}),
       ui: {
         sidebar: { width: deps.getSidebarWidth() },
         terminal: { opacity: deps.getTerminalOpacity() },

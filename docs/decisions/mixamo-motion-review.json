@@ -1,0 +1,140 @@
+{
+  "schemaVersion": 1,
+  "source": "Adobe Mixamo; user-provided downloads",
+  "targetModelSha256": "739a1515cffe09c17a535eb52a11f88640fc7728b86b9e4c74f00c353437b7cd",
+  "recordings": [
+    {
+      "file": "Sad Idle.vrma",
+      "sha256": "ac02f349aafe3cc64fea6c72898ce3dd6bf24b02d6f1940b040de04024011d6b",
+      "sourceFile": "Sad Idle.fbx",
+      "sourceSha256": "f2aeb3d91d83113363efef245776ec2ff53992d0ac16b41dd620a703e1c07c23",
+      "durationSec": 2.799999952316284,
+      "usage": "manual-only",
+      "automaticAdmission": "Not admitted: its foot action requires full-body playback, but return to the D/A base fails the entry contact-position gate before fade validation. Upper-body substitution is not appropriate.",
+      "returnContactResidualMm": {
+        "leftFoot": 57.78,
+        "leftToes": 50.81,
+        "rightFoot": 57.54,
+        "rightToes": 45.53
+      },
+      "returnContactHorizontalLimitMm": 10
+    },
+    {
+      "file": "Fist Pump.vrma",
+      "sha256": "9bd1b7745794bd06e73af1d37c67c28e4c7e8a576c7e8fa3c4e0778e021cea2f",
+      "sourceFile": "Fist Pump.fbx",
+      "sourceSha256": "20679c51027d9c2215edaca1681cd53ac55c6fb2cfc3119ebefd4a8d27b87e5f",
+      "durationSec": 3.799999952316284,
+      "usage": "contextual",
+      "automaticAdmission": "Reviewed on Yori with the continuing D/A lower-body recording; existing entry gate retained.",
+      "contexts": [
+        "speech"
+      ],
+      "intents": [
+        "celebrate"
+      ],
+      "mask": "upper-body",
+      "loop": false,
+      "physicalEntrySamplesAccepted": 66,
+      "physicalEntrySamplesTested": 66
+    },
+    {
+      "file": "Thoughtful Head Shake.vrma",
+      "sha256": "06bd35f1f9578253464b6babff107e27f29225f9a685bb30ca5557d2158da848",
+      "sourceFile": "Thoughtful Head Shake.fbx",
+      "sourceSha256": "28474981675659a419d67b7b4c9026328cdb630f6901183d2474219900cd28c7",
+      "durationSec": 3.066666603088379,
+      "usage": "contextual",
+      "automaticAdmission": "Reviewed on Yori with the continuing D/A lower-body recording; existing entry gate retained.",
+      "contexts": [
+        "speech"
+      ],
+      "intents": [
+        "consider",
+        "uncertain"
+      ],
+      "mask": "upper-body",
+      "loop": false,
+      "physicalEntrySamplesAccepted": 66,
+      "physicalEntrySamplesTested": 66
+    },
+    {
+      "file": "Shrugging.vrma",
+      "sha256": "1b58f03fa3cebee66816600ff42ec8e9455001618bf5adde2c73b285a71fc667",
+      "sourceFile": "Shrugging.fbx",
+      "sourceSha256": "8c2f00a6c67ec135f1a5cc98f8ca55c5b28dd5f629b5407be7a370ee9f0e170e",
+      "durationSec": 2,
+      "usage": "contextual",
+      "automaticAdmission": "Reviewed on Yori with the continuing D/A lower-body recording; existing entry gate retained.",
+      "contexts": [
+        "speech"
+      ],
+      "intents": [
+        "uncertain"
+      ],
+      "mask": "upper-body",
+      "loop": false,
+      "physicalEntrySamplesAccepted": 66,
+      "physicalEntrySamplesTested": 66,
+      "maxWeight": 0.8,
+      "reviewNote": "Unattenuated left upper-arm entry exceeded the existing 1.2 rad joint limit. A clip-specific maximum weight of 0.8 passed all sampled entries and retained the shrug in visual review; no gate relaxation."
+    },
+    {
+      "file": "Hands Forward Gesture.vrma",
+      "sha256": "232c2d63f01385f0b0c1ccdf265d9008a6bd10b8c453712a639250eb5aee4308",
+      "sourceFile": "Hands Forward Gesture.fbx",
+      "sourceSha256": "730fdc5741dc9bca58b4189a3d273e6fe661c9bd2c7fd514af78c16642c9838b",
+      "durationSec": 3.0999999046325684,
+      "usage": "contextual",
+      "automaticAdmission": "Reviewed on Yori with the continuing D/A lower-body recording; existing entry gate retained.",
+      "contexts": [
+        "speech"
+      ],
+      "intents": [
+        "emphasize"
+      ],
+      "mask": "upper-body",
+      "loop": false,
+      "physicalEntrySamplesAccepted": 66,
+      "physicalEntrySamplesTested": 66
+    },
+    {
+      "file": "Texting While Standing.vrma",
+      "sha256": "b67a0d8029df0aac55f7de7b455ac528aefa469aae0468e593df4c8a7952100c",
+      "sourceFile": "Texting While Standing.fbx",
+      "sourceSha256": "f2aa04ed79ea929344b5344bf1dfc84f792b0abb66d28c9eb275ecceead4ebb2",
+      "durationSec": 23.566667556762695,
+      "usage": "manual-only",
+      "automaticAdmission": "Not admitted without a phone prop: the complete performance takes out, uses, and puts away a phone."
+    },
+    {
+      "file": "Warrior Idle.vrma",
+      "sha256": "7ce88e4cbb5591da1964d45a182180522150b7b277a5292b8d6390cd75ed4d42",
+      "sourceFile": "Warrior Idle.fbx",
+      "sourceSha256": "fc918df6793089bb301ef414a87159cb366a18f8f741abae7c8fee7a68c01996",
+      "durationSec": 13.300000190734863,
+      "usage": "manual-only",
+      "automaticAdmission": "Full 13.3-second source retained for explicit use; the reviewed stretch below supplies the occasional idle performance."
+    },
+    {
+      "file": "Warrior Stretch.vrma",
+      "sha256": "5327a29d61afa3d001fdd37daf100d1f20776257af05dc3d37e34405e99c9ce1",
+      "sourceFile": "Warrior Idle.fbx",
+      "sourceSha256": "fc918df6793089bb301ef414a87159cb366a18f8f741abae7c8fee7a68c01996",
+      "durationSec": 5,
+      "usage": "occasional",
+      "automaticAdmission": "Reviewed arms-down to chest-opening to arms-down slice, over the continuing D/A lower body.",
+      "contexts": [
+        "idle"
+      ],
+      "mask": "upper-body",
+      "loop": false,
+      "sourceIntervalSec": [
+        5,
+        10
+      ],
+      "physicalEntrySamplesAccepted": 66,
+      "physicalEntrySamplesTested": 66
+    }
+  ]
+}

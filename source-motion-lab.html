@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Yorishiro · Source Motion Review</title>
+    <style>
+      * { box-sizing: border-box; }
+      body { margin: 0; background: #131720; color: #e7e9ef; font: 14px system-ui, sans-serif; }
+      header, nav, footer { padding: 18px 32px; }
+      h1 { margin: 0 0 8px; font-size: 23px; }
+      p { margin: 0; color: #aab7cc; line-height: 1.6; }
+      nav { display: flex; align-items: center; gap: 12px; }
+      button { color: inherit; background: #252d3c; border: 1px solid #43506a; border-radius: 7px; padding: 8px 14px; cursor: pointer; }
+      input { flex: 1; accent-color: #9ab9ef; }
+      main { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 0 32px; }
+      article { background: #1b2130; border-radius: 14px; overflow: hidden; }
+      h2 { margin: 0; padding: 14px 18px; font-size: 15px; }
+      canvas { display: block; width: 100%; height: 66vh; min-height: 360px; }
+      .caption { padding: 10px 18px; min-height: 54px; font-size: 12px; line-height: 1.6; color: #aab7cc; }
+    </style>
+  </head>
+  <body>
+    <header><h1>Yorishiro · Source Motion Review</h1><p id="status">Loading the same Yori model and Conversation recording…</p></header>
+    <nav><button id="play" type="button">Play</button><button id="restart" type="button">Restart</button><input id="time" type="range" min="0" max="1" step="0.0166666667" value="0" aria-label="Recording time" /><output id="clock">0.00 s</output></nav>
+    <main>
+      <article><h2 id="left-title">Current converted recording</h2><canvas id="converted"></canvas><p class="caption" id="left-caption">Full-body rotations from the current VRMA. Hips translation is absent in this file.</p></article>
+      <article><h2 id="right-title">Original FBX · new conversion candidate</h2><canvas id="source"></canvas><p class="caption" id="right-caption">Original full-body and finger recording, including hips movement. Quality review pending.</p></article>
+    </main>
+    <footer><p id="comparison-note">Same avatar, camera and lighting. New clip time zero is FBX time 0.1 s; the current conversion aligns approximately to that point. Both use full weight and playback speed 1, with no procedural body overlays, masks or loop repair. This compares conversion paths; it is not an Animates comparison or a production quality approval.</p></footer>
+    <script type="module" src="/src/dev/source-motion-lab.ts"></script>
+  </body>
+</html>

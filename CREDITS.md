@@ -115,6 +115,8 @@ Third-party assets stored outside the repo (`../Yorishiro-assets/animations/`) a
 - Source: Animations from [Adobe Mixamo](https://www.mixamo.com/) converted to VRMA format.
 - Terms: Subject to the Mixamo ToS. Signed-in users may use animations in personal and commercial projects. Redistribution of files as standalone assets is not permitted — placing raw files in a public git repo is not permitted; embedding in an application bundle is permitted.
 
+**User-provided imports received 2026-09-15:** `Warrior Idle.fbx`, `Sad Idle.fbx`, `Fist Pump.fbx`, `Thoughtful Head Shake.fbx`, `Shrugging.fbx`, `Hands Forward Gesture.fbx`, and `Texting While Standing.fbx`, declared by the user as Adobe Mixamo downloads. The user placed the originals in the external `Yorishiro-assets/sources/` directory. Source and converted hashes, original 30 Hz timing, body/finger rotations, and hips translation were verified without modifying those originals. The [import and license record](docs/decisions/mixamo-idle-import.md) links conversion evidence and the separate target-model/automatic-use review. Source fidelity alone does not establish suitability for automatic idle or conversation. These animation assets do not inherit Yorishiro's software license; Adobe's asset terms apply separately. This provenance credit does not assert an Adobe attribution requirement.
+
 ### Sound
 
 Bundled ambient audio, referenced by scene packs via `sound:<name>`. The per-file list and licenses are maintained in [`bundled-packs/shared/sounds/README.md`](bundled-packs/shared/sounds/README.md).

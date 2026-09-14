@@ -1,0 +1,398 @@
+/** Bounded, one-time quaternion analysis for local motion matching. No service or model required. */
+import * as THREE from "three";
+
+export interface MotionJointSamples {
+  readonly name: string;
+  readonly weight: number;
+  readonly poses: Float32Array;
+  /** Local angular velocity, radians/second, including direction. */
+  readonly velocities: Float32Array;
+}
+
+export interface MotionTransitionProfile {
+  readonly duration: number;
+  readonly sampleCount: number;
+  readonly sampleInterval: number;
+  readonly joints: readonly MotionJointSamples[];
+  readonly energy: Float32Array;
+  readonly entryCandidates: readonly number[];
+}
+
+/** A post-mixer local pose, before gaze/breathing overlays. Buffers are reused. */
+export interface MotionPoseJoint {
+  readonly pose: Float32Array;
+  readonly restPose: Float32Array;
+  /** Angular velocity in the bone parent's axes, shared by both compared poses. */
+  readonly velocity: Float32Array;
+  velocityValid: boolean;
+}
+
+export interface MotionEntryMeasurement {
+  readonly cost: number;
+  readonly startTimeSec: number;
+  readonly poseRmsRad: number;
+  readonly maxBodyAngleRad: number;
+  readonly velocityRmsRadSec: number;
+}
+
+/** Gross local discontinuity guards; see the reproducible catalog audit. */
+export const UPPER_BODY_TRANSITION_LIMITS = {
+  poseRmsRad: 0.65,
+  maxBodyAngleRad: 1.2,
+  velocityRmsRadSec: 2.5,
+  cost: 0.75,
+} as const;
+
+/**
+ * Compare the actual mixed pose with the candidate at its requested contribution.
+ * This measures local rotation continuity only: neither foot contact nor an
+ * authored preparation/recovery boundary can be inferred from these samples.
+ * Missing tracks fail closed instead of silently comparing a smaller skeleton.
+ */
+export function measureMotionEntry(
+  current: ReadonlyMap<string, MotionPoseJoint>,
+  target: MotionTransitionProfile,
+  opts: { weight: number; speed: number; matched: boolean; loop: boolean },
+  limits?: Readonly<Omit<MotionEntryMeasurement, "startTimeSec">>,
+): MotionEntryMeasurement | null {
+  if (
+    !target.joints.length ||
+    !(target.duration > 0) ||
+    !Number.isFinite(opts.weight) ||
+    opts.weight <= 0 ||
+    opts.weight > 1 ||
+    !Number.isFinite(opts.speed) ||
+    opts.speed <= 0
+  )
+    return null;
+  for (const joint of target.joints) {
+    const pose = current.get(joint.name);
+    if (!pose || !isFiniteQuaternion(pose.pose) || !isFiniteQuaternion(pose.restPose)) return null;
+  }
+  const rest = new THREE.Quaternion();
+  const source = new THREE.Quaternion();
+  const destination = new THREE.Quaternion();
+  const before = new THREE.Quaternion();
+  const after = new THREE.Quaternion();
+  const rotation = new THREE.Quaternion();
+  let best: MotionEntryMeasurement | null = null;
+  const lastEntry = opts.loop
+    ? target.duration - target.sampleInterval
+    : Math.max(0, target.duration - 0.4);
+  for (const index of opts.matched ? target.entryCandidates : [0]) {
+    const startTimeSec = index * target.sampleInterval;
+    if (startTimeSec > lastEntry) continue;
+    let poseSquared = 0;
+    let velocitySquared = 0;
+    let totalWeight = 0;
+    let velocityWeight = 0;
+    let maxBodyAngleRad = 0;
+    for (const joint of target.joints) {
+      const snapshot = current.get(joint.name);
+      if (!snapshot) return null;
+      rest.fromArray(snapshot.restPose).normalize();
+      source.fromArray(snapshot.pose).normalize();
+      destination.fromArray(joint.poses, index * 4).normalize();
+      destination.slerp(rest, 1 - opts.weight);
+      const angle = source.angleTo(destination);
+      poseSquared += joint.weight * angle * angle;
+      totalWeight += joint.weight;
+      // Fingers contribute collectively, without any one finger imposing the
+      // same hard pose limit as a shoulder, wrist or torso joint.
+      if (joint.weight >= 0.5) maxBodyAngleRad = Math.max(maxBodyAngleRad, angle);
+      if (snapshot.velocityValid) {
+        const beforeIndex = Math.max(0, index - 1);
+        const afterIndex = Math.min(target.sampleCount - 1, index + 1);
+        before.fromArray(joint.poses, beforeIndex * 4).normalize();
+        before.slerp(rest, 1 - opts.weight);
+        after.fromArray(joint.poses, afterIndex * 4).normalize();
+        after.slerp(rest, 1 - opts.weight);
+        rotation.copy(before).invert().premultiply(after).normalize();
+        if (rotation.w < 0) rotation.set(-rotation.x, -rotation.y, -rotation.z, -rotation.w);
+        const sinHalf = Math.hypot(rotation.x, rotation.y, rotation.z);
+        const dt = (afterIndex - beforeIndex) * target.sampleInterval;
+        const factor =
+          sinHalf > 1e-7 && dt > 0
+            ? (2 * Math.atan2(sinHalf, rotation.w) * opts.speed) / (sinHalf * dt)
+            : 0;
+        const dx = snapshot.velocity[0] - rotation.x * factor;
+        const dy = snapshot.velocity[1] - rotation.y * factor;
+        const dz = snapshot.velocity[2] - rotation.z * factor;
+        velocitySquared += joint.weight * (dx * dx + dy * dy + dz * dz);
+        velocityWeight += joint.weight;
+      }
+    }
+    const poseMean = poseSquared / totalWeight;
+    const velocityMean = velocityWeight > 0 ? velocitySquared / velocityWeight : 0;
+    const cost = poseMean + 0.08 * velocityMean;
+    if (!Number.isFinite(cost)) continue;
+    if (!best || cost < best.cost) {
+      const measurement = {
+        cost,
+        startTimeSec,
+        poseRmsRad: Math.sqrt(poseMean),
+        maxBodyAngleRad,
+        velocityRmsRadSec: Math.sqrt(velocityMean),
+      };
+      if (
+        limits &&
+        (measurement.poseRmsRad > limits.poseRmsRad ||
+          measurement.maxBodyAngleRad > limits.maxBodyAngleRad ||
+          measurement.velocityRmsRadSec > limits.velocityRmsRadSec ||
+          measurement.cost > limits.cost)
+      )
+        continue;
+      best = measurement;
+    }
+  }
+  return best;
+}
+
+const MAX_SAMPLES = 240;
+const MAX_CANDIDATES = 48;
+
+/**
+ * Close a non-cyclic recording without changing the original one-shot clip.
+ * The tail approaches the first pose with the first angular velocity. Quintic
+ * blending has zero first/second derivatives at its endpoints, so it does not
+ * introduce a velocity kick where correction starts or where the loop wraps.
+ * Only the tail is resampled (at most 64 intervals); the authored prefix stays.
+ */
+export function conditionMotionLoop(clip: THREE.AnimationClip): THREE.AnimationClip {
+  if (!Number.isFinite(clip.duration)) throw new RangeError("Motion loop duration must be finite");
+  // Very short clips cannot accommodate a useful transition window.
+  if (clip.duration < 0.12) return clip;
+  const duration = clip.duration;
+  const tailDuration = Math.min(0.8, Math.max(0.4, duration * 0.12), duration * 0.45);
+  const tailStart = duration - tailDuration;
+  const tailSamples = Math.min(64, Math.max(12, Math.ceil(tailDuration * 90)));
+  const derivativeDt = Math.min(1 / 120, duration / 100);
+  const first = new THREE.Quaternion();
+  const next = new THREE.Quaternion();
+  const delta = new THREE.Quaternion();
+  const original = new THREE.Quaternion();
+  const target = new THREE.Quaternion();
+  const axis = new THREE.Vector3();
+  const tracks = clip.tracks.map((track) => {
+    if (!track.name.endsWith(".quaternion") || track.getValueSize() !== 4) return track;
+    const interpolant = rotationInterpolant(track);
+    readFiniteQuaternion(first, interpolant.evaluate(0));
+    readFiniteQuaternion(next, interpolant.evaluate(derivativeDt));
+    delta.copy(first).invert().multiply(next).normalize();
+    if (delta.w < 0) delta.set(-delta.x, -delta.y, -delta.z, -delta.w);
+    const sinHalf = Math.hypot(delta.x, delta.y, delta.z);
+    const initialSpeed = (2 * Math.atan2(sinHalf, delta.w)) / derivativeDt;
+    if (sinHalf > 1e-8) axis.set(delta.x / sinHalf, delta.y / sinHalf, delta.z / sinHalf);
+    else axis.set(1, 0, 0);
+    const times: number[] = [];
+    const values: number[] = [];
+    for (let i = 0; i < track.times.length && track.times[i] < tailStart; i++) {
+      times.push(track.times[i]);
+      // Preserve valid prefix keys exactly; sanitize malformed rotations instead
+      // of allowing a zero/NaN quaternion to poison the entire mixer binding.
+      const offset = i * 4;
+      if (isFiniteQuaternion(track.values, offset)) {
+        for (let k = 0; k < 4; k++) values.push(track.values[offset + k]);
+      } else values.push(0, 0, 0, 1);
+    }
+    for (let i = 0; i <= tailSamples; i++) {
+      const t = i / tailSamples;
+      const time = tailStart + t * tailDuration;
+      readFiniteQuaternion(original, interpolant.evaluate(time));
+      target.setFromAxisAngle(axis, initialSpeed * (time - duration)).premultiply(first);
+      const blend = t * t * t * (t * (t * 6 - 15) + 10);
+      original.slerp(target, blend).normalize();
+      times.push(time);
+      values.push(original.x, original.y, original.z, original.w);
+    }
+    return new THREE.QuaternionKeyframeTrack(track.name, times, values);
+  });
+  return new THREE.AnimationClip(`${clip.name}:seamless`, duration, tracks, clip.blendMode);
+}
+
+/** Analyze the already-retargeted clip, so every comparison uses the same avatar's local bones. */
+export function analyzeMotionClip(
+  clip: THREE.AnimationClip,
+  jointWeights: ReadonlyMap<string, number> = new Map(),
+): MotionTransitionProfile {
+  const duration = Math.max(0, clip.duration);
+  const sampleCount = Math.max(2, Math.min(MAX_SAMPLES, Math.ceil(duration * 30) + 1));
+  const sampleInterval = duration / (sampleCount - 1);
+  const energy = new Float32Array(sampleCount);
+  const joints: MotionJointSamples[] = [];
+  const previous = new THREE.Quaternion();
+  const next = new THREE.Quaternion();
+  const rotation = new THREE.Quaternion();
+  let totalWeight = 0;
+
+  for (const track of clip.tracks) {
+    if (!track.name.endsWith(".quaternion") || track.getValueSize() !== 4) continue;
+    const interpolant = rotationInterpolant(track);
+    const poses = new Float32Array(sampleCount * 4);
+    const velocities = new Float32Array(sampleCount * 3);
+    const weight = jointWeights.get(track.name) ?? 1;
+    for (let i = 0; i < sampleCount; i++) {
+      const sample = interpolant.evaluate(i * sampleInterval);
+      readFiniteQuaternion(previous, sample).toArray(poses, i * 4);
+    }
+    for (let i = 0; i < sampleCount; i++) {
+      const before = Math.max(0, i - 1);
+      const after = Math.min(sampleCount - 1, i + 1);
+      previous.fromArray(poses, before * 4);
+      next.fromArray(poses, after * 4);
+      rotation.copy(previous).invert().multiply(next).normalize();
+      // q and -q represent the same pose; always use the shortest angular displacement.
+      if (rotation.w < 0) rotation.set(-rotation.x, -rotation.y, -rotation.z, -rotation.w);
+      const sinHalf = Math.hypot(rotation.x, rotation.y, rotation.z);
+      const dt = (after - before) * sampleInterval;
+      const factor =
+        sinHalf > 1e-7 && dt > 0 ? (2 * Math.atan2(sinHalf, rotation.w)) / (sinHalf * dt) : 0;
+      velocities[i * 3] = rotation.x * factor;
+      velocities[i * 3 + 1] = rotation.y * factor;
+      velocities[i * 3 + 2] = rotation.z * factor;
+      energy[i] += weight * (sinHalf * factor) ** 2;
+    }
+    totalWeight += weight;
+    joints.push({ name: track.name, weight, poses, velocities });
+  }
+  if (totalWeight > 0) {
+    for (let i = 0; i < sampleCount; i++) energy[i] /= totalWeight;
+  }
+
+  // Keep local low-velocity windows plus coverage throughout the clip. Coverage
+  // matters when two clips share a moving pose but have different resting poses.
+  const minima: number[] = [];
+  for (let i = 1; i < sampleCount - 1; i++) {
+    if (energy[i] < energy[i - 1] && energy[i] <= energy[i + 1]) minima.push(i);
+  }
+  minima.sort((a, b) => energy[a] - energy[b]);
+  const candidates = new Set<number>([0]);
+  for (const i of minima.slice(0, MAX_CANDIDATES / 2)) candidates.add(i);
+  for (let i = 0; i < MAX_CANDIDATES / 2; i++) {
+    candidates.add(Math.round((i * (sampleCount - 1)) / (MAX_CANDIDATES / 2 - 1)));
+  }
+  return {
+    duration,
+    sampleCount,
+    sampleInterval,
+    joints,
+    energy,
+    entryCandidates: [...candidates].sort((a, b) => a - b),
+  };
+}
+
+/** Choose a compatible entry phase. Explicit gestures should start at zero instead. */
+export function findMatchedEntry(
+  source: MotionTransitionProfile,
+  sourceTime: number,
+  target: MotionTransitionProfile,
+  opts: {
+    sourceSpeed?: number;
+    targetSpeed?: number;
+    loop?: boolean;
+    minRemainingSec?: number;
+  } = {},
+): number {
+  if (!source.joints.length || !target.joints.length || target.duration <= 0) return 0;
+  const sourceIndex = sampleIndex(source, sourceTime);
+  const targetByName = new Map(target.joints.map((joint) => [joint.name, joint]));
+  const pairs = source.joints.flatMap((joint) => {
+    const other = targetByName.get(joint.name);
+    return other ? [{ source: joint, target: other }] : [];
+  });
+  if (pairs.length === 0) return 0;
+  const sourceSpeed = opts.sourceSpeed ?? 1;
+  const targetSpeed = opts.targetSpeed ?? 1;
+  const lastEntry = opts.loop
+    ? target.duration - target.sampleInterval
+    : Math.max(0, target.duration - (opts.minRemainingSec ?? 0.4));
+  let bestCost = Infinity;
+  let bestTime = 0;
+  for (const index of target.entryCandidates) {
+    const time = index * target.sampleInterval;
+    if (time > lastEntry) continue;
+    let cost = 0;
+    let weight = 0;
+    for (const pair of pairs) {
+      const a = pair.source;
+      const b = pair.target;
+      let dot = 0;
+      for (let k = 0; k < 4; k++) dot += a.poses[sourceIndex * 4 + k] * b.poses[index * 4 + k];
+      const angle = 2 * Math.acos(Math.min(1, Math.abs(dot)));
+      let velocityDifference = 0;
+      for (let k = 0; k < 3; k++) {
+        const difference =
+          a.velocities[sourceIndex * 3 + k] * sourceSpeed -
+          b.velocities[index * 3 + k] * targetSpeed;
+        velocityDifference += difference * difference;
+      }
+      cost += a.weight * (angle * angle + 0.08 * velocityDifference);
+      weight += a.weight;
+    }
+    cost = cost / Math.max(weight, 1e-6) + 0.005 * target.energy[index] * targetSpeed ** 2;
+    if (cost < bestCost) {
+      bestCost = cost;
+      bestTime = time;
+    }
+  }
+  return bestTime;
+}
+
+/** Find a quieter outgoing window inside a strictly bounded response delay. */
+export function findTransitionDelay(
+  profile: MotionTransitionProfile,
+  time: number,
+  maxDelaySec: number,
+  speed = 1,
+  loop = true,
+): number {
+  if (maxDelaySec <= 0 || speed <= 0 || profile.duration <= 0) return 0;
+  const startEnergy = profile.energy[sampleIndex(profile, time)];
+  let bestEnergy = startEnergy;
+  let delay = 0;
+  // A fixed upper bound also handles an extreme QA delay without expensive scans.
+  for (let i = 1; i <= 24; i++) {
+    const candidateDelay = (maxDelaySec * i) / 24;
+    const candidateTime = time + candidateDelay * speed;
+    if (!loop && candidateTime >= profile.duration) break;
+    const wrappedTime = loop ? candidateTime % profile.duration : candidateTime;
+    const energy = profile.energy[sampleIndex(profile, wrappedTime)];
+    // Require a useful reduction. Tiny noise should not add conversational latency.
+    if (energy + startEnergy * 0.12 < bestEnergy) {
+      bestEnergy = energy;
+      delay = candidateDelay;
+    }
+  }
+  return delay;
+}
+
+function sampleIndex(profile: MotionTransitionProfile, time: number): number {
+  if (profile.sampleInterval <= 0) return 0;
+  return Math.max(0, Math.min(profile.sampleCount - 1, Math.round(time / profile.sampleInterval)));
+}
+
+function rotationInterpolant(track: THREE.KeyframeTrack): THREE.Interpolant {
+  // Three defines this factory at runtime, but @types/three omits the member.
+  return (
+    track as THREE.KeyframeTrack & {
+      createInterpolant: (result: Float32Array) => THREE.Interpolant;
+    }
+  ).createInterpolant(new Float32Array(4));
+}
+
+function isFiniteQuaternion(values: ArrayLike<number>, offset = 0): boolean {
+  let lengthSq = 0;
+  for (let i = 0; i < 4; i++) {
+    const value = values[offset + i];
+    if (!Number.isFinite(value)) return false;
+    lengthSq += value * value;
+  }
+  return lengthSq > 1e-12 && Number.isFinite(lengthSq);
+}
+
+function readFiniteQuaternion(
+  target: THREE.Quaternion,
+  values: ArrayLike<number>,
+): THREE.Quaternion {
+  return isFiniteQuaternion(values) ? target.fromArray(values).normalize() : target.identity();
+}

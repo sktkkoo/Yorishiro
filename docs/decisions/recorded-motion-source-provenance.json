@@ -1,0 +1,94 @@
+{
+  "schemaVersion": 1,
+  "retrievedAtUtc": "2026-09-13T15:13:44.345493+00:00",
+  "publisher": "Rokoko",
+  "pack": "10 Free Everyday Idle Animations",
+  "officialPage": "https://www.rokoko.com/resources/rokoko-mocap-10-free-everyday-idle-animations",
+  "publicArchiveUrl": "https://media.rokoko.com/EVERYDAY-IDLES-MOCAP.zip",
+  "archiveBytes": 8695149,
+  "archiveSha256": "ce239abe239a264cc6567be14a53a973fa719a759095eece0cddb7cc3f16fa37",
+  "provenanceRecord": "CREDITS.md, Rokoko 10 Free Everyday Idle Animations section",
+  "licenseEvidence": {
+    "officialPageStatement": "Full-body motion capture including fingers; Mixamo-skeleton FBX; 30 FPS; personal and commercial project use.",
+    "archiveLicenseOrReadme": false,
+    "distributionTermsRecord": "See existing CREDITS.md and its Rokoko Asset terms source. Source FBX and archive remain outside Git; this file contains metadata only."
+  },
+  "inspection": {
+    "regularFbxFiles": 10,
+    "macosMetadataExcluded": true,
+    "archiveTraversalAndSymlinkCheckPassed": true,
+    "filesExecuted": false
+  },
+  "files": [
+    {
+      "file": "Idle_Pointing_MIXAMO_769.fbx",
+      "bytes": 1609520,
+      "sha256": "ad532d98416c41626f4e48b7ee73c8b99501deb5f466a36d9ba0c8e8ea87a3f3",
+      "existingConvertedVrmA": "Idle Pointing.vrma",
+      "mappingBasis": "Pack filename correspondence and repository CREDITS; motion-equivalence audit is separate."
+    },
+    {
+      "file": "Idle_LookingAround_MIXAMO_769.fbx",
+      "bytes": 2215120,
+      "sha256": "0c967adac22b5b2337c26ea36272b6ef089f4ea2be22e873caceeab496ead595",
+      "existingConvertedVrmA": "Idle Looking Around.vrma",
+      "mappingBasis": "Pack filename correspondence and repository CREDITS; motion-equivalence audit is separate."
+    },
+    {
+      "file": "Idle_WatchingSomething_Loop_MIXAMO_769_segment.fbx",
+      "bytes": 1940144,
+      "sha256": "e8ffd7bca7a2a9cc3efd017a2596edba4c9bae734da788b974d80b0a38475dec",
+      "existingConvertedVrmA": "Idle Watching Something.vrma",
+      "mappingBasis": "Pack filename correspondence and repository CREDITS; motion-equivalence audit is separate."
+    },
+    {
+      "file": "Idle_Conversation_Loop_MIXAMO_769_segment-2.fbx",
+      "bytes": 1880368,
+      "sha256": "67892a332df013461020b839c165a04bdc8e20552344d098962e587826dcd556",
+      "existingConvertedVrmA": "Idle Conversation.vrma",
+      "mappingBasis": "Pack filename correspondence and repository CREDITS; motion-equivalence audit is separate."
+    },
+    {
+      "file": "Idle_Arguing_MIXAMO_WHS.fbx",
+      "bytes": 2749312,
+      "sha256": "2cb49710fc3933ce3a0cb64be7097fcfffa5dd8fa5d30ad2847767b3b70d19ec",
+      "existingConvertedVrmA": "Idle Arguing.vrma",
+      "mappingBasis": "Pack filename correspondence and repository CREDITS; motion-equivalence audit is separate."
+    },
+    {
+      "file": "Idle_ListeningtoMusic_MIXAMO_WHS.fbx",
+      "bytes": 2547104,
+      "sha256": "0a33fe960fc8a7681a80c74e8f61d016df362f8111b66cc15a59fe1e012abfde",
+      "existingConvertedVrmA": "Idle Listening To Music.vrma",
+      "mappingBasis": "Pack filename correspondence and repository CREDITS; motion-equivalence audit is separate."
+    },
+    {
+      "file": "Idle_LeaningonWall_MIXAMO_WHS.fbx",
+      "bytes": 2121680,
+      "sha256": "ef4efae417a62eff031ab779922d480a59d5b3562ccce81c3dfa62d893fb6078",
+      "existingConvertedVrmA": "Idle Leaning On Wall.vrma",
+      "mappingBasis": "Pack filename correspondence and repository CREDITS; motion-equivalence audit is separate."
+    },
+    {
+      "file": "Idle_LookingAround02_MIXAMO_769.fbx",
+      "bytes": 2216848,
+      "sha256": "6e93af2bed87b64cd4ec1a8a76070cb4834a3644991569bb8c48acfb708a86ef",
+      "existingConvertedVrmA": "Idle Looking Around 2.vrma",
+      "mappingBasis": "Pack filename correspondence and repository CREDITS; motion-equivalence audit is separate."
+    },
+    {
+      "file": "Idle_Chatting02_MIXAMO_WHS.fbx",
+      "bytes": 2579328,
+      "sha256": "a0956bced339998764d88013df009a290a627e60890b6e20fc29cef82053bd46",
+      "existingConvertedVrmA": "Idle Chatting 2.vrma",
+      "mappingBasis": "Pack filename correspondence and repository CREDITS; motion-equivalence audit is separate."
+    },
+    {
+      "file": "Idle_Chatting_MIXAMO_WHS.fbx",
+      "bytes": 1955456,
+      "sha256": "a8a7bd0b65a65ffe2fd65f50f339c96250fb24fd3895c38d63df581d9594db2c",
+      "existingConvertedVrmA": "Idle Chatting.vrma",
+      "mappingBasis": "Pack filename correspondence and repository CREDITS; motion-equivalence audit is separate."
+    }
+  ]
+}

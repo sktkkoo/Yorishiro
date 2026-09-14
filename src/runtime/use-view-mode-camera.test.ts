@@ -2,11 +2,15 @@
 import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { useViewModeCamera } from "./use-view-mode-camera";
-import { entryCameraForViewMode, type WindowedViewMode } from "./view-mode-framing";
+import {
+  defaultCameraForCharacter,
+  entryCameraForViewMode,
+  type WindowedViewMode,
+} from "./view-mode-framing";
 
 function cameraRuntime() {
   let anchorY = 1.2;
-  let camera = { x: 0, y: 1.35, z: 1.1 };
+  let camera = defaultCameraForCharacter();
   const setTarget = vi.fn();
   const release = vi.fn();
   const runtime = {
@@ -35,7 +39,7 @@ function cameraRuntime() {
       anchorY = y;
     },
     initializeLoadedCamera: () => {
-      camera = { x: 0, y: anchorY - 0.05, z: 1.1 };
+      camera = defaultCameraForCharacter({ x: 0, y: anchorY });
     },
   };
 }

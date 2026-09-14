@@ -1,0 +1,2695 @@
+{
+  "schemaVersion": 1,
+  "generator": "scripts/adapt-recorded-contacts.mjs",
+  "sourceContactReport": "docs/decisions/recorded-contact-candidates.json",
+  "sourceConversionReport": "docs/decisions/source-faithful-library-metrics.json",
+  "scope": "Offline exact-Yori target support validation. Numerical accepted does not mean runtime transition, semantic, or Animates comparative quality approval. Around playback is restricted to allowedPlaybackWindows. Chatting is stance-incompatible with Around.",
+  "validationEvidence": {
+    "independentSampleHz": 120,
+    "chattingMatchesFinalBrowserReview": {
+      "file": ".motion-review/chatting-contact-qa/observations.json",
+      "checkedJointPositions": 108,
+      "maxPositionDifferenceMetres": 0
+    },
+    "aroundMatchesDiagnosticReviewedAnimationKeys": {
+      "file": ".motion-review/source-assets/prepared/Idle Looking Around.yori-contact.diagnostic.vrma",
+      "sha256": "a09b1adfc3dab4ead558621d3ff1cd5e33bb1ecbab605059ea3ad7a53e61e572",
+      "comparison": "All humanoid rotation and translation key times and values exactly equal; metadata differs"
+    },
+    "failClosedChecks": [
+      "Missing source hash",
+      "Mismatched source hash",
+      "Reviewed unit with a different source",
+      "Output aliases source input",
+      "Default 8 degree budget rejects Around",
+      "Watching has no eligible double-support interval"
+    ],
+    "aroundAdditionalVisual": {
+      "file": ".motion-review/around-units-qa/observations.json",
+      "capturedAdaptedSha256": "acdd8a2ebf2507dbac7412f976b54668896dd7cb0ecc5ea505047520ba8974cd",
+      "earlyFrames": 206,
+      "lateFrames": 186,
+      "framesPerSec": 24,
+      "errors": 0,
+      "limits": "Selected start/middle/end and intermediate images inspected. Whole continuous human viewing remains outstanding; clothing partly hides knee contours."
+    }
+  },
+  "results": [
+    {
+      "input": {
+        "file": ".motion-review/source-assets/prepared/Idle Looking Around.vrma",
+        "sha256": "511897677730015f7a7c5308ab1a15edf9cf05454ceea1755a143e49f1e15661"
+      },
+      "target": {
+        "file": "public/models/Yori.vrm",
+        "sha256": "739a1515cffe09c17a535eb52a11f88640fc7728b86b9e4c74f00c353437b7cd"
+      },
+      "output": {
+        "file": ".motion-review/source-assets/prepared/Idle Looking Around.yori-contact.vrma",
+        "sha256": "cbd3ef8c5caa58634fa71b8bf6b63f9e5fe00845d1cfc1bcf2d576c3a0894bef",
+        "bytes": 1108148
+      },
+      "durationSec": 33.66649627685547,
+      "sampleHz": 60,
+      "rampSec": 0.35,
+      "minimumSupportSec": 2,
+      "maximumSourceSupportExcursionMetres": 0.015,
+      "bounds": {
+        "rootCorrectionMetres": 0.03,
+        "independentAnkleMetres": 0.015,
+        "localRotationDegrees": 13.1,
+        "reachPaddingMetres": 0.005,
+        "reachProjectionMetres": 0.01,
+        "soleErrorMetres": 0.0005,
+        "contactCenterErrorMetres": 0.0005,
+        "footWorldRotationDegrees": 0.05
+      },
+      "defaultBounds": {
+        "rootCorrectionMetres": 0.03,
+        "independentAnkleMetres": 0.015,
+        "localRotationDegrees": 8,
+        "reachPaddingMetres": 0.005,
+        "reachProjectionMetres": 0.01,
+        "soleErrorMetres": 0.0005,
+        "contactCenterErrorMetres": 0.0005,
+        "footWorldRotationDegrees": 0.05
+      },
+      "accepted": true,
+      "numericalValidated": true,
+      "budgetExceeded": false,
+      "reason": "Numerical target-support checks passed; visual review and cross-clip compatibility remain separate",
+      "reviewedUnit": {
+        "id": "around-idle",
+        "sourceSha256": "511897677730015f7a7c5308ab1a15edf9cf05454ceea1755a143e49f1e15661",
+        "windows": [
+          {
+            "id": "around-idle-early",
+            "startSec": 7.08333333,
+            "endSec": 15.66666667
+          },
+          {
+            "id": "around-idle-middle",
+            "startSec": 15.66666667,
+            "endSec": 23.36666667
+          }
+        ],
+        "localRotationDegrees": 13.1,
+        "review": "Actual Yori front/oblique samples checked; a continuous 24 fps comparison artifact is retained. No new inversion or crouch in reviewed samples. Knee contour is partly hidden by clothing. Playback is limited to the listed units and still requires runtime blend/contact gates."
+      },
+      "allowedPlaybackWindows": [
+        {
+          "id": "around-idle-early",
+          "startSec": 7.08333333,
+          "endSec": 15.66666667,
+          "feet": "both"
+        },
+        {
+          "id": "around-idle-middle",
+          "startSec": 15.66666667,
+          "endSec": 23.36666667,
+          "feet": "both"
+        }
+      ],
+      "fullySupportedBothWindows": [
+        {
+          "startSec": 4.883333329999999,
+          "endSec": 31.76666667,
+          "feet": "both"
+        }
+      ],
+      "rootReachPaddingMetres": 0,
+      "corrections": {
+        "maxRootCorrectionMetres": 0.017281598154088938,
+        "maxReachProjectionMetres": 0.004808532005893596,
+        "maxIndependentAnkleCorrectionMetres": 0.011727901680983447,
+        "maxAnkleSolveErrorMetres": 1.7546860027958768e-10,
+        "minimumAuthoredPoleAgreement": 0.9999999999999997,
+        "maxLocalRotationChangesDegrees": {
+          "leftUpperLeg": 6.7188050861289925,
+          "leftLowerLeg": 12.950281771894753,
+          "leftFoot": 6.257802383223496,
+          "rightUpperLeg": 6.222673589809096,
+          "rightLowerLeg": 11.88132620414134,
+          "rightFoot": 5.673011442940251
+        },
+        "maxUnsupportedLocalRotationChangeDegrees": 2.9575586669421963e-06,
+        "worstLocalRotationAtSec": {
+          "rightLowerLeg": 26.633333206176758,
+          "leftLowerLeg": 26.799999237060547,
+          "rightUpperLeg": 26.633333206176758,
+          "rightFoot": 26.633333206176758,
+          "leftFoot": 26.799999237060547,
+          "leftUpperLeg": 26.799999237060547
+        },
+        "worstRootCorrection": {
+          "timeSec": 32.29999923706055,
+          "delta": [
+            -0.01563424038503479,
+            -0.006769453680038014,
+            -0.0028980440328223445
+          ],
+          "weights": [
+            1,
+            0
+          ]
+        }
+      },
+      "validation": {
+        "sampleHz": 120,
+        "evaluatedFrames": 4041,
+        "fullSupportFootSamples": 6602,
+        "maxSoleClearanceMetres": 0.00012572105441493482,
+        "maxSolePenetrationMetres": 0.00026198621152308325,
+        "maxContactCenterErrorMetres": 1.5665737453598757e-05,
+        "maxWorldFootRotationChangeDegrees": 0.001050273460346734,
+        "maxUnsupportedLegRotationChangeDegrees": 5.678718022833445e-05,
+        "minimumKneeBendDegrees": 0.8482632359539934,
+        "minimumAdjacentPoleDot": 0.9989429205354529,
+        "upperBodyAndFingerTracksExactlyPreserved": true,
+        "allValuesFinite": true,
+        "maxHipVelocityChangeMetresPerSec": 0.13318563307761197,
+        "maxAdaptedHipSpeedMetresPerSec": 0.8475684487617949
+      },
+      "hipMotion": [
+        {
+          "axis": "x",
+          "sourceRangeMetres": 0.1558382585644722,
+          "adaptedRangeMetres": 0.14849428087472916,
+          "correlation": 0.9950323337674396,
+          "meanOffsetMetres": -0.0011248361331927664,
+          "timeVaryingCorrectionRangeMetres": 0.023076023906469345
+        },
+        {
+          "axis": "y",
+          "sourceRangeMetres": 0.03615051507949829,
+          "adaptedRangeMetres": 0.03543257713317871,
+          "correlation": 0.7399310935963569,
+          "meanOffsetMetres": -0.0052313179252685416,
+          "timeVaryingCorrectionRangeMetres": 0.012226879596710205
+        },
+        {
+          "axis": "z",
+          "sourceRangeMetres": 0.4703320562839508,
+          "adaptedRangeMetres": 0.4703320562839508,
+          "correlation": 0.9996292582322797,
+          "meanOffsetMetres": -0.001347437562206899,
+          "timeVaryingCorrectionRangeMetres": 0.010076075792312622
+        }
+      ],
+      "supportWindowMotion": [
+        {
+          "startSec": 4.883333329999999,
+          "endSec": 31.76666667,
+          "sampleCount": 3227,
+          "hipMotion": [
+            {
+              "axis": "x",
+              "sourceRangeMetres": 0.10201223858407701,
+              "adaptedRangeMetres": 0.08866925071581161,
+              "correlation": 0.9983370613558867,
+              "meanOffsetMetres": -0.0008474506100170486,
+              "timeVaryingCorrectionRangeMetres": 0.013374078575375425
+            },
+            {
+              "axis": "y",
+              "sourceRangeMetres": 0.010561227105001292,
+              "adaptedRangeMetres": 0.015146255354692384,
+              "correlation": 0.5900819071233505,
+              "meanOffsetMetres": -0.0061936034155508635,
+              "timeVaryingCorrectionRangeMetres": 0.010474204725279712
+            },
+            {
+              "axis": "z",
+              "sourceRangeMetres": 0.0678037988347377,
+              "adaptedRangeMetres": 0.06347764796479433,
+              "correlation": 0.9969647065456549,
+              "meanOffsetMetres": -0.001593120091383099,
+              "timeVaryingCorrectionRangeMetres": 0.007711022662463651
+            }
+          ],
+          "speeds": {
+            "hips": {
+              "source": {
+                "p95MetresPerSec": 0.06403707568734938,
+                "maxMetresPerSec": 0.11690132346505049
+              },
+              "adapted": {
+                "p95MetresPerSec": 0.05440979028252054,
+                "maxMetresPerSec": 0.10103320145548082
+              }
+            },
+            "leftLowerLeg": {
+              "source": {
+                "p95MetresPerSec": 0.06970073670843607,
+                "maxMetresPerSec": 0.2340062047079134
+              },
+              "adapted": {
+                "p95MetresPerSec": 0.03492306078311191,
+                "maxMetresPerSec": 0.2533580638097995
+              }
+            },
+            "rightLowerLeg": {
+              "source": {
+                "p95MetresPerSec": 0.05397810719579564,
+                "maxMetresPerSec": 0.10598784359811812
+              },
+              "adapted": {
+                "p95MetresPerSec": 0.04922501859794298,
+                "maxMetresPerSec": 0.0846263795622119
+              }
+            },
+            "leftFoot": {
+              "source": {
+                "p95MetresPerSec": 0.015341577616929133,
+                "maxMetresPerSec": 0.040839641503298586
+              },
+              "adapted": {
+                "p95MetresPerSec": 0.0013533691192993123,
+                "maxMetresPerSec": 0.002586892315071137
+              }
+            },
+            "rightFoot": {
+              "source": {
+                "p95MetresPerSec": 0.010698039201213887,
+                "maxMetresPerSec": 0.022575369519777164
+              },
+              "adapted": {
+                "p95MetresPerSec": 0.0019762905758325343,
+                "maxMetresPerSec": 0.013210567607104423
+              }
+            },
+            "leftToes": {
+              "source": {
+                "p95MetresPerSec": 0.013942397487527963,
+                "maxMetresPerSec": 0.040838848615481926
+              },
+              "adapted": {
+                "p95MetresPerSec": 0.002610812541475944,
+                "maxMetresPerSec": 0.0054272420112188415
+              }
+            },
+            "rightToes": {
+              "source": {
+                "p95MetresPerSec": 0.009715841270253834,
+                "maxMetresPerSec": 0.01927110653015164
+              },
+              "adapted": {
+                "p95MetresPerSec": 0.001978942305452091,
+                "maxMetresPerSec": 0.013054624663593925
+              }
+            }
+          },
+          "kneeBendDegrees": {
+            "left": {
+              "source": {
+                "min": 2.276903675892214,
+                "max": 14.900000382186676
+              },
+              "adapted": {
+                "min": 0.8482632359540503,
+                "max": 5.812359532316435
+              }
+            },
+            "right": {
+              "source": {
+                "min": 6.3073346504372125,
+                "max": 18.25693579029371
+              },
+              "adapted": {
+                "min": 12.786704335248203,
+                "max": 25.22063831493668
+              }
+            }
+          }
+        }
+      ],
+      "reviewedUnitMotions": [
+        {
+          "id": "around-idle-early",
+          "startSec": 7.08333333,
+          "endSec": 15.66666667,
+          "sampleCount": 1031,
+          "hipMotion": [
+            {
+              "axis": "x",
+              "sourceRangeMetres": 0.09017405174338178,
+              "adaptedRangeMetres": 0.07861017416218492,
+              "correlation": 0.9997831506948163,
+              "meanOffsetMetres": -0.0004882227677721132,
+              "timeVaryingCorrectionRangeMetres": 0.011636782052363612
+            },
+            {
+              "axis": "y",
+              "sourceRangeMetres": 0.006993353364293853,
+              "adaptedRangeMetres": 0.005156874608246542,
+              "correlation": 0.0854667617098204,
+              "meanOffsetMetres": -0.00790476475540658,
+              "timeVaryingCorrectionRangeMetres": 0.007685482039337721
+            },
+            {
+              "axis": "z",
+              "sourceRangeMetres": 0.028253182520476122,
+              "adaptedRangeMetres": 0.02760702151469016,
+              "correlation": 0.9953822449305312,
+              "meanOffsetMetres": -0.002520628403192393,
+              "timeVaryingCorrectionRangeMetres": 0.00408659940583897
+            }
+          ],
+          "speeds": {
+            "hips": {
+              "source": {
+                "p95MetresPerSec": 0.08557785360828161,
+                "maxMetresPerSec": 0.11690132346505049
+              },
+              "adapted": {
+                "p95MetresPerSec": 0.07501639993464078,
+                "maxMetresPerSec": 0.10103320145548082
+              }
+            },
+            "leftLowerLeg": {
+              "source": {
+                "p95MetresPerSec": 0.0679267394764061,
+                "maxMetresPerSec": 0.19905705841048005
+              },
+              "adapted": {
+                "p95MetresPerSec": 0.041004356760219615,
+                "maxMetresPerSec": 0.055286237069629235
+              }
+            },
+            "rightLowerLeg": {
+              "source": {
+                "p95MetresPerSec": 0.06285385419313953,
+                "maxMetresPerSec": 0.08398961991928526
+              },
+              "adapted": {
+                "p95MetresPerSec": 0.05675609715839031,
+                "maxMetresPerSec": 0.07634785424049928
+              }
+            },
+            "leftFoot": {
+              "source": {
+                "p95MetresPerSec": 0.01581449370971366,
+                "maxMetresPerSec": 0.028798319841638484
+              },
+              "adapted": {
+                "p95MetresPerSec": 0.0017890150663119112,
+                "maxMetresPerSec": 0.002586892315071137
+              }
+            },
+            "rightFoot": {
+              "source": {
+                "p95MetresPerSec": 0.013580573795655632,
+                "maxMetresPerSec": 0.01947553115217427
+              },
+              "adapted": {
+                "p95MetresPerSec": 0.0020817127774572755,
+                "maxMetresPerSec": 0.0031669309704948495
+              }
+            },
+            "leftToes": {
+              "source": {
+                "p95MetresPerSec": 0.013952715992531952,
+                "maxMetresPerSec": 0.028180657296817478
+              },
+              "adapted": {
+                "p95MetresPerSec": 0.0033666917689215677,
+                "maxMetresPerSec": 0.0054272420112188415
+              }
+            },
+            "rightToes": {
+              "source": {
+                "p95MetresPerSec": 0.01080175770386169,
+                "maxMetresPerSec": 0.014802767650886032
+              },
+              "adapted": {
+                "p95MetresPerSec": 0.002053388938465967,
+                "maxMetresPerSec": 0.0028449487732422553
+              }
+            }
+          },
+          "kneeBendDegrees": {
+            "left": {
+              "source": {
+                "min": 2.2769037092854205,
+                "max": 8.275381224653188
+              },
+              "adapted": {
+                "min": 0.8487778871880778,
+                "max": 0.8492245566313272
+              }
+            },
+            "right": {
+              "source": {
+                "min": 8.355395951792161,
+                "max": 18.25693579029371
+              },
+              "adapted": {
+                "min": 16.013220647365813,
+                "max": 25.22063831493668
+              }
+            }
+          }
+        },
+        {
+          "id": "around-idle-middle",
+          "startSec": 15.66666667,
+          "endSec": 23.36666667,
+          "sampleCount": 924,
+          "hipMotion": [
+            {
+              "axis": "x",
+              "sourceRangeMetres": 0.040434426532427986,
+              "adaptedRangeMetres": 0.03588609088794735,
+              "correlation": 0.9998734337680051,
+              "meanOffsetMetres": -0.0014180951116077607,
+              "timeVaryingCorrectionRangeMetres": 0.004570753188816815
+            },
+            {
+              "axis": "y",
+              "sourceRangeMetres": 0.004944622200129256,
+              "adaptedRangeMetres": 0.0027613631286785845,
+              "correlation": 0.35101839439385873,
+              "meanOffsetMetres": -0.006332973525957852,
+              "timeVaryingCorrectionRangeMetres": 0.004523335079408719
+            },
+            {
+              "axis": "z",
+              "sourceRangeMetres": 0.021446451106523046,
+              "adaptedRangeMetres": 0.02083235890526544,
+              "correlation": 0.9937871548437865,
+              "meanOffsetMetres": -0.0017235440751167397,
+              "timeVaryingCorrectionRangeMetres": 0.0023330895287770326
+            }
+          ],
+          "speeds": {
+            "hips": {
+              "source": {
+                "p95MetresPerSec": 0.03989326832832406,
+                "maxMetresPerSec": 0.06044248647844024
+              },
+              "adapted": {
+                "p95MetresPerSec": 0.035882962389905716,
+                "maxMetresPerSec": 0.05330062321380473
+              }
+            },
+            "leftLowerLeg": {
+              "source": {
+                "p95MetresPerSec": 0.023342189377226163,
+                "maxMetresPerSec": 0.035778005682998604
+              },
+              "adapted": {
+                "p95MetresPerSec": 0.01879162411500162,
+                "maxMetresPerSec": 0.028449869137279316
+              }
+            },
+            "rightLowerLeg": {
+              "source": {
+                "p95MetresPerSec": 0.035326301993826664,
+                "maxMetresPerSec": 0.056760154457408514
+              },
+              "adapted": {
+                "p95MetresPerSec": 0.031258079975753035,
+                "maxMetresPerSec": 0.039388843852946866
+              }
+            },
+            "leftFoot": {
+              "source": {
+                "p95MetresPerSec": 0.007512600661836307,
+                "maxMetresPerSec": 0.009393849501844978
+              },
+              "adapted": {
+                "p95MetresPerSec": 0.0009423417717958782,
+                "maxMetresPerSec": 0.0012547382672189235
+              }
+            },
+            "rightFoot": {
+              "source": {
+                "p95MetresPerSec": 0.00694052084026875,
+                "maxMetresPerSec": 0.011052396011340787
+              },
+              "adapted": {
+                "p95MetresPerSec": 0.0007829605461028785,
+                "maxMetresPerSec": 0.0016341833235579675
+              }
+            },
+            "leftToes": {
+              "source": {
+                "p95MetresPerSec": 0.00652857657227124,
+                "maxMetresPerSec": 0.008298850615354863
+              },
+              "adapted": {
+                "p95MetresPerSec": 0.0017818092211969538,
+                "maxMetresPerSec": 0.0026367846352655603
+              }
+            },
+            "rightToes": {
+              "source": {
+                "p95MetresPerSec": 0.0062272471507070016,
+                "maxMetresPerSec": 0.009356124873915087
+              },
+              "adapted": {
+                "p95MetresPerSec": 0.000931128337645716,
+                "maxMetresPerSec": 0.0015810107067201888
+              }
+            }
+          },
+          "kneeBendDegrees": {
+            "left": {
+              "source": {
+                "min": 2.276903675892214,
+                "max": 2.276964732257028
+              },
+              "adapted": {
+                "min": 0.8492237762266939,
+                "max": 0.8492245571639501
+              }
+            },
+            "right": {
+              "source": {
+                "min": 7.992248873174759,
+                "max": 12.608152752367602
+              },
+              "adapted": {
+                "min": 17.20609518948544,
+                "max": 21.99427151168618
+              }
+            }
+          }
+        }
+      ],
+      "boundaries": [
+        {
+          "timeSec": 15.66666667,
+          "fullySupportedBoth": true,
+          "joints": {
+            "hips": {
+              "position": [
+                0.014150228128736786,
+                0.905263185688957,
+                -0.23954051748653082
+              ],
+              "localRotation": [
+                0.02909881253707731,
+                0.04423385633484334,
+                -0.00796459413768132,
+                0.9985655663515053
+              ],
+              "worldRotation": [
+                -0.00796459413768132,
+                0.9985655663515053,
+                -0.029098812537077315,
+                -0.04423385633484328
+              ],
+              "linearVelocity": [
+                -0.001975031954578711,
+                -0.0004899446187623114,
+                0.0007443008051589018
+              ],
+              "angularVelocity": [
+                -0.00340750242253001,
+                -0.011217010265578833,
+                0.004494476500436462
+              ]
+            },
+            "leftFoot": {
+              "position": [
+                0.04553379253225472,
+                0.11631100612220746,
+                -0.3909833404502009
+              ],
+              "localRotation": [
+                0.07768492311636677,
+                0.06607132459945353,
+                -0.010968274141604192,
+                0.9947257560495921
+              ],
+              "worldRotation": [
+                -0.01595245831030758,
+                0.9808690039271896,
+                -0.005293795393726902,
+                -0.1939419808578592
+              ],
+              "linearVelocity": [
+                -9.794263830132379e-05,
+                2.7417442629575244e-05,
+                3.1636045916274137e-06
+              ],
+              "angularVelocity": [
+                -0.0011942048245105158,
+                0.0018248299873037666,
+                0.0005224755973274258
+              ]
+            },
+            "leftToes": {
+              "position": [
+                0.08501263365790121,
+                0.06165800392550077,
+                -0.29931807567777774
+              ],
+              "localRotation": [
+                -0.008355616548689765,
+                -2.406358321279294e-08,
+                -5.3472007316029034e-08,
+                0.9999650912267327
+              ],
+              "worldRotation": [
+                -0.014331449181238007,
+                0.9808789997318528,
+                0.00290216544182742,
+                -0.19406847988571926
+              ],
+              "linearVelocity": [
+                9.788523362864178e-05,
+                0.00015751126347719253,
+                -3.6128191005515398e-06
+              ],
+              "angularVelocity": [
+                9.609001014534144e-07,
+                0.0018622500251054025,
+                3.1218266660296774e-05
+              ]
+            },
+            "rightFoot": {
+              "position": [
+                -0.14340354359749058,
+                0.1168580250643605,
+                -0.2801194833741833
+              ],
+              "localRotation": [
+                0.06576101866103527,
+                -0.028883900957046786,
+                -0.025482785581939293,
+                0.9970916890282214
+              ],
+              "worldRotation": [
+                0.034043934627383206,
+                0.99406615567161,
+                0.002152546089361539,
+                0.10329015058894056
+              ],
+              "linearVelocity": [
+                0.0001589706120325253,
+                5.9550869805361563e-05,
+                -2.4331972513504102e-05
+              ],
+              "angularVelocity": [
+                -0.0010188950223948673,
+                -0.00036024135547550794,
+                -0.005068289673185978
+              ]
+            },
+            "rightToes": {
+              "position": [
+                -0.16750903615482532,
+                0.06093791451060403,
+                -0.18399499754585946
+              ],
+              "localRotation": [
+                -0.0013500056490282906,
+                2.2348274755631303e-08,
+                3.416000807129145e-08,
+                0.9999990887419579
+              ],
+              "worldRotation": [
+                0.03390449522699215,
+                0.9940623450168663,
+                0.0034945433427166967,
+                0.10333599367982771
+              ],
+              "linearVelocity": [
+                -0.00015907938523630278,
+                0.00027966226015392815,
+                2.396170232732556e-05
+              ],
+              "angularVelocity": [
+                0.0009650399731789918,
+                -0.0005011218347539435,
+                -0.004648838956403596
+              ]
+            }
+          }
+        },
+        {
+          "timeSec": 23.36666667,
+          "fullySupportedBoth": true,
+          "joints": {
+            "hips": {
+              "position": [
+                0.015174290590337956,
+                0.905277132967163,
+                -0.24619852024425493
+              ],
+              "localRotation": [
+                0.03839187721091304,
+                -0.07471246016966983,
+                0.007892355371996172,
+                0.9964345551948205
+              ],
+              "worldRotation": [
+                0.007892355371996174,
+                0.9964345551948206,
+                -0.038391877210913035,
+                0.07471246016966988
+              ],
+              "linearVelocity": [
+                0.0037519976928936157,
+                0.00015020626249474277,
+                0.0013469380872056169
+              ],
+              "angularVelocity": [
+                0.01083529879846926,
+                -0.02185081961699411,
+                -0.010711908844175555
+              ]
+            },
+            "leftFoot": {
+              "position": [
+                0.04517850682124003,
+                0.11683851934223005,
+                -0.3912175744776805
+              ],
+              "localRotation": [
+                0.08945077117152633,
+                0.09927413840383034,
+                -0.026493033760342812,
+                0.9906772048165687
+              ],
+              "worldRotation": [
+                -0.028598281350266517,
+                0.9813114842222924,
+                -0.009354442087652702,
+                -0.19005894783061697
+              ],
+              "linearVelocity": [
+                -3.434588129569622e-05,
+                -2.1874101719944328e-05,
+                -3.3870766624757005e-06
+              ],
+              "angularVelocity": [
+                -0.0014193441183908478,
+                0.0016879433897663773,
+                -0.0016261819489292377
+              ]
+            },
+            "leftToes": {
+              "position": [
+                0.08536792334278691,
+                0.06350712843335089,
+                -0.2990838463705555
+              ],
+              "localRotation": [
+                -0.014829345082624477,
+                -3.6888481392470344e-08,
+                -8.357318545249399e-08,
+                0.999890039216519
+              ],
+              "worldRotation": [
+                -0.025776769293820112,
+                0.9813423033133584,
+                0.0051988101059819245,
+                -0.19046210716540912
+              ],
+              "linearVelocity": [
+                3.444343070091645e-05,
+                4.3544824711030636e-05,
+                4.476581555446201e-06
+              ],
+              "angularVelocity": [
+                -0.0007984194374494663,
+                0.001724313115517691,
+                -0.001879342547212627
+              ]
+            },
+            "rightFoot": {
+              "position": [
+                -0.14392418085216035,
+                0.11657474473759044,
+                -0.2802411707420869
+              ],
+              "localRotation": [
+                0.04678127584077753,
+                -0.009107411028946284,
+                -0.03314402615661825,
+                0.9983135984374791
+              ],
+              "worldRotation": [
+                0.023308758250642995,
+                0.9942979075135995,
+                0.0008027984361367594,
+                0.10405637134535106
+              ],
+              "linearVelocity": [
+                4.881071992590968e-05,
+                -5.214886782734259e-05,
+                5.566665198797655e-06
+              ],
+              "angularVelocity": [
+                -0.001093411349530819,
+                -0.0031179290723720617,
+                0.0036322791937969563
+              ]
+            },
+            "rightToes": {
+              "position": [
+                -0.1669884044079173,
+                0.06063437882632409,
+                -0.18387329557084842
+              ],
+              "localRotation": [
+                -0.0016148639777133714,
+                5.9298456637302937e-08,
+                3.122670708289158e-09,
+                0.9999986961063149
+              ],
+              "worldRotation": [
+                0.023140694030023373,
+                0.9942953207421575,
+                0.0024084549704396145,
+                0.10409381717813151
+              ],
+              "linearVelocity": [
+                -4.8458452792113336e-05,
+                -3.0554216818719573e-05,
+                -5.177175000370698e-06
+              ],
+              "angularVelocity": [
+                -0.0007853870958106576,
+                -0.003134967158546203,
+                0.0036960733223114204
+              ]
+            }
+          }
+        },
+        {
+          "timeSec": 7.08333333,
+          "fullySupportedBoth": true,
+          "joints": {
+            "hips": {
+              "position": [
+                0.03190652351384018,
+                0.9002107382342991,
+                -0.23149371201186103
+              ],
+              "localRotation": [
+                0.03869971356154379,
+                -0.11445018469978097,
+                0.013397092565794749,
+                0.9925845078899953
+              ],
+              "worldRotation": [
+                0.013397092565794752,
+                0.9925845078899952,
+                -0.038699713561543794,
+                0.11445018469978104
+              ],
+              "linearVelocity": [
+                -0.004326966099462211,
+                -0.00031828912510965617,
+                0.0033259423685714786
+              ],
+              "angularVelocity": [
+                0.0348192468878516,
+                -0.07809057205265424,
+                -0.004937093216854165
+              ]
+            },
+            "leftFoot": {
+              "position": [
+                0.04539837315006118,
+                0.11661387381267135,
+                -0.39125290734633794
+              ],
+              "localRotation": [
+                0.10449926613869627,
+                0.10529474185877324,
+                -0.029232155920422328,
+                0.9885031116661254
+              ],
+              "worldRotation": [
+                -0.024424732213882656,
+                0.9814136150613405,
+                -0.009223606814580232,
+                -0.19012015596943188
+              ],
+              "linearVelocity": [
+                -2.8119827081839177e-05,
+                0.0001370015435830861,
+                -8.961314483135306e-05
+              ],
+              "angularVelocity": [
+                -0.0006750809472420812,
+                -0.0036251902210853847,
+                0.007293693942248522
+              ]
+            },
+            "leftToes": {
+              "position": [
+                0.08514805138081807,
+                0.06307551949081386,
+                -0.29904847139776636
+              ],
+              "localRotation": [
+                -0.013850470360775554,
+                -1.130854722919354e-08,
+                -2.6370704420772884e-08,
+                0.9999040776348422
+              ],
+              "worldRotation": [
+                -0.021789161735433667,
+                0.9814472283448759,
+                0.004370323412480072,
+                -0.1904402023688762
+              ],
+              "linearVelocity": [
+                2.811391252549449e-05,
+                0.0004891689819441526,
+                9.062971843331706e-05
+              ],
+              "angularVelocity": [
+                0.002504731773178551,
+                -0.003475111162458232,
+                0.006017191199564232
+              ]
+            },
+            "rightFoot": {
+              "position": [
+                -0.14359258767552913,
+                0.11655622178412328,
+                -0.279872024624356
+              ],
+              "localRotation": [
+                0.05100488791700392,
+                0.0053854383016994105,
+                -0.04569374004327673,
+                0.9976380007716876
+              ],
+              "worldRotation": [
+                0.022256696861649137,
+                0.9938542393170176,
+                0.005770428297731035,
+                0.10828246669549868
+              ],
+              "linearVelocity": [
+                -0.0001410406892660073,
+                -0.00022911609452668207,
+                -4.4569461584706987e-05
+              ],
+              "angularVelocity": [
+                -0.004065648662779306,
+                -0.005938515897326462,
+                0.014936417778498145
+              ]
+            },
+            "rightToes": {
+              "position": [
+                -0.16732000587883067,
+                0.05963487192215414,
+                -0.18424242739194766
+              ],
+              "localRotation": [
+                0.003331336726095909,
+                4.1486754534461233e-08,
+                -1.3691587734728929e-08,
+                0.9999944510824126
+              ],
+              "worldRotation": [
+                0.0226172848723286,
+                0.9938679525384808,
+                0.0024595325910763003,
+                0.10820768014057748
+              ],
+              "linearVelocity": [
+                0.000141262388578249,
+                -0.00019472244034950546,
+                4.5947047331849004e-05
+              ],
+              "angularVelocity": [
+                -0.0033003420079754766,
+                -0.005974807921046976,
+                0.015100221652224544
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "input": {
+        "file": ".motion-review/source-assets/prepared/Idle Chatting 2.vrma",
+        "sha256": "b0c1a26c46e24e03b9fef3b5c61977fea814921f2293527cb3f0706ed39fd4d2"
+      },
+      "target": {
+        "file": "public/models/Yori.vrm",
+        "sha256": "739a1515cffe09c17a535eb52a11f88640fc7728b86b9e4c74f00c353437b7cd"
+      },
+      "output": {
+        "file": ".motion-review/source-assets/prepared/Idle Chatting 2.yori-contact.vrma",
+        "sha256": "16d38f2314ef65cd59f3e4bf8f795956ea7f0d8f32200f6bc1f8fca9c239a775",
+        "bytes": 1366200
+      },
+      "durationSec": 41.73303985595703,
+      "sampleHz": 60,
+      "rampSec": 0.35,
+      "minimumSupportSec": 2,
+      "maximumSourceSupportExcursionMetres": 0.015,
+      "bounds": {
+        "rootCorrectionMetres": 0.03,
+        "independentAnkleMetres": 0.015,
+        "localRotationDegrees": 8,
+        "reachPaddingMetres": 0.005,
+        "reachProjectionMetres": 0.01,
+        "soleErrorMetres": 0.0005,
+        "contactCenterErrorMetres": 0.0005,
+        "footWorldRotationDegrees": 0.05
+      },
+      "defaultBounds": {
+        "rootCorrectionMetres": 0.03,
+        "independentAnkleMetres": 0.015,
+        "localRotationDegrees": 8,
+        "reachPaddingMetres": 0.005,
+        "reachProjectionMetres": 0.01,
+        "soleErrorMetres": 0.0005,
+        "contactCenterErrorMetres": 0.0005,
+        "footWorldRotationDegrees": 0.05
+      },
+      "accepted": true,
+      "numericalValidated": true,
+      "budgetExceeded": false,
+      "reason": "Numerical target-support checks passed; visual review and cross-clip compatibility remain separate",
+      "reviewedUnit": null,
+      "allowedPlaybackWindows": null,
+      "fullySupportedBothWindows": [
+        {
+          "startSec": 2.58333333,
+          "endSec": 39.16666667,
+          "feet": "both"
+        }
+      ],
+      "rootReachPaddingMetres": 0,
+      "corrections": {
+        "maxRootCorrectionMetres": 0.01529455233663712,
+        "maxReachProjectionMetres": 0,
+        "maxIndependentAnkleCorrectionMetres": 0.005618640790571482,
+        "maxAnkleSolveErrorMetres": 5.347902362062199e-16,
+        "minimumAuthoredPoleAgreement": 0.9999999999999996,
+        "maxLocalRotationChangesDegrees": {
+          "leftUpperLeg": 0.689492097328614,
+          "leftLowerLeg": 1.6382082618598126,
+          "leftFoot": 0.9627687106180076,
+          "rightUpperLeg": 1.1227748029950106,
+          "rightLowerLeg": 2.455881838563567,
+          "rightFoot": 1.3341596253811645
+        },
+        "maxUnsupportedLocalRotationChangeDegrees": 2.9575586669421963e-06,
+        "worstLocalRotationAtSec": {
+          "leftLowerLeg": 20.066667556762695,
+          "rightUpperLeg": 20.066667556762695,
+          "leftFoot": 20.066667556762695,
+          "leftUpperLeg": 20.200000762939453,
+          "rightLowerLeg": 20.066667556762695,
+          "rightFoot": 20.066667556762695
+        },
+        "worstRootCorrection": {
+          "timeSec": 39.733333587646484,
+          "delta": [
+            -0.013267558321418835,
+            -0.007608819845592817,
+            -3.298368073384461e-05
+          ],
+          "weights": [
+            1,
+            0
+          ]
+        }
+      },
+      "validation": {
+        "sampleHz": 120,
+        "evaluatedFrames": 5009,
+        "fullSupportFootSamples": 8930,
+        "maxSoleClearanceMetres": 4.1798900609989615e-05,
+        "maxSolePenetrationMetres": 3.8874967131882386e-05,
+        "maxContactCenterErrorMetres": 4.5276259715455574e-05,
+        "maxWorldFootRotationChangeDegrees": 0.0002715053891005457,
+        "maxUnsupportedLegRotationChangeDegrees": 5.6478272151436414e-05,
+        "minimumKneeBendDegrees": 2.2768883911968203,
+        "minimumAdjacentPoleDot": 0.9999399228322463,
+        "upperBodyAndFingerTracksExactlyPreserved": true,
+        "allValuesFinite": true,
+        "maxHipVelocityChangeMetresPerSec": 0.08253387087475623,
+        "maxAdaptedHipSpeedMetresPerSec": 0.6832121101790974
+      },
+      "hipMotion": [
+        {
+          "axis": "x",
+          "sourceRangeMetres": 0.15480832755565643,
+          "adaptedRangeMetres": 0.13632692769169807,
+          "correlation": 0.9969750656035338,
+          "meanOffsetMetres": 0.0011791228310090128,
+          "timeVaryingCorrectionRangeMetres": 0.021294213831424713
+        },
+        {
+          "axis": "y",
+          "sourceRangeMetres": 0.07429492473602295,
+          "adaptedRangeMetres": 0.07977443933486938,
+          "correlation": 0.99461901921421,
+          "meanOffsetMetres": -0.0036214910986624993,
+          "timeVaryingCorrectionRangeMetres": 0.008770167827606201
+        },
+        {
+          "axis": "z",
+          "sourceRangeMetres": 0.3006622791290283,
+          "adaptedRangeMetres": 0.29626399278640747,
+          "correlation": 0.9993731790564097,
+          "meanOffsetMetres": -0.0012468421571978916,
+          "timeVaryingCorrectionRangeMetres": 0.015222996473312378
+        }
+      ],
+      "supportWindowMotion": [
+        {
+          "startSec": 2.58333333,
+          "endSec": 39.16666667,
+          "sampleCount": 4391,
+          "hipMotion": [
+            {
+              "axis": "x",
+              "sourceRangeMetres": 0.053090579647855324,
+              "adaptedRangeMetres": 0.045321020364509884,
+              "correlation": 0.9983211017147839,
+              "meanOffsetMetres": 0.0014108787421433667,
+              "timeVaryingCorrectionRangeMetres": 0.008286792071747769
+            },
+            {
+              "axis": "y",
+              "sourceRangeMetres": 0.0742949127614001,
+              "adaptedRangeMetres": 0.07977442553756098,
+              "correlation": 0.9995744534878873,
+              "meanOffsetMetres": -0.003931027085958272,
+              "timeVaryingCorrectionRangeMetres": 0.006387650941302669
+            },
+            {
+              "axis": "z",
+              "sourceRangeMetres": 0.12018822706548574,
+              "adaptedRangeMetres": 0.10540328407913785,
+              "correlation": 0.9972679314352683,
+              "meanOffsetMetres": -0.0014954935888735754,
+              "timeVaryingCorrectionRangeMetres": 0.014898622282766338
+            }
+          ],
+          "speeds": {
+            "hips": {
+              "source": {
+                "p95MetresPerSec": 0.08852094438386202,
+                "maxMetresPerSec": 0.28215431466170093
+              },
+              "adapted": {
+                "p95MetresPerSec": 0.08028142285458952,
+                "maxMetresPerSec": 0.27295281415940514
+              }
+            },
+            "leftLowerLeg": {
+              "source": {
+                "p95MetresPerSec": 0.0880897951737926,
+                "maxMetresPerSec": 0.4129913521434839
+              },
+              "adapted": {
+                "p95MetresPerSec": 0.08263425642707863,
+                "maxMetresPerSec": 0.4036694503628394
+              }
+            },
+            "rightLowerLeg": {
+              "source": {
+                "p95MetresPerSec": 0.08305402452151964,
+                "maxMetresPerSec": 0.4452875418915077
+              },
+              "adapted": {
+                "p95MetresPerSec": 0.07895023355513335,
+                "maxMetresPerSec": 0.42224546677942143
+              }
+            },
+            "leftFoot": {
+              "source": {
+                "p95MetresPerSec": 0.012182762387106907,
+                "maxMetresPerSec": 0.07736660764008792
+              },
+              "adapted": {
+                "p95MetresPerSec": 0.0019040563299644302,
+                "maxMetresPerSec": 0.007236661335473494
+              }
+            },
+            "rightFoot": {
+              "source": {
+                "p95MetresPerSec": 0.012674838187538624,
+                "maxMetresPerSec": 0.04978154553478436
+              },
+              "adapted": {
+                "p95MetresPerSec": 0.0013288675118933988,
+                "maxMetresPerSec": 0.006724784331869958
+              }
+            },
+            "leftToes": {
+              "source": {
+                "p95MetresPerSec": 0.011622426066822206,
+                "maxMetresPerSec": 0.07787959384035091
+              },
+              "adapted": {
+                "p95MetresPerSec": 0.0030615469602910408,
+                "maxMetresPerSec": 0.013865067945583074
+              }
+            },
+            "rightToes": {
+              "source": {
+                "p95MetresPerSec": 0.01246647905028318,
+                "maxMetresPerSec": 0.05106550494656648
+              },
+              "adapted": {
+                "p95MetresPerSec": 0.0026944390654782603,
+                "maxMetresPerSec": 0.01181762990764508
+              }
+            }
+          },
+          "kneeBendDegrees": {
+            "left": {
+              "source": {
+                "min": 11.914155067149807,
+                "max": 48.27265660332546
+              },
+              "adapted": {
+                "min": 10.919598893014154,
+                "max": 47.949523588223684
+              }
+            },
+            "right": {
+              "source": {
+                "min": 10.09627335571119,
+                "max": 49.279242766375916
+              },
+              "adapted": {
+                "min": 11.585625245495294,
+                "max": 49.50093821784634
+              }
+            }
+          }
+        }
+      ],
+      "boundaries": [
+        {
+          "timeSec": 8.41666667,
+          "fullySupportedBoth": true,
+          "joints": {
+            "hips": {
+              "position": [
+                -0.0012636352449738202,
+                0.9083847998672834,
+                -0.2466173167337171
+              ],
+              "localRotation": [
+                0.018776602731164396,
+                -0.015417078696287886,
+                0.014231696029284376,
+                0.9996035272559208
+              ],
+              "worldRotation": [
+                0.014231696029284374,
+                0.9996035272559209,
+                -0.018776602731164393,
+                0.015417078696287946
+              ],
+              "linearVelocity": [
+                -0.00033215641818748975,
+                0.00028967467328168666,
+                -0.0014819006907485785
+              ],
+              "angularVelocity": [
+                0.012352040438543068,
+                0.0010183018428276413,
+                0.006557578669906599
+              ]
+            },
+            "leftFoot": {
+              "position": [
+                0.07257615131888284,
+                0.11654379969173617,
+                -0.35416163758429386
+              ],
+              "localRotation": [
+                0.10833610000748826,
+                0.03697192354226695,
+                0.00014426195174478275,
+                0.9934265677407875
+              ],
+              "worldRotation": [
+                -0.024925255005186605,
+                0.9869783156506273,
+                -0.006601155410429883,
+                -0.15877330016606894
+              ],
+              "linearVelocity": [
+                8.665860905532833e-05,
+                3.039433620455507e-05,
+                -6.468064035703248e-05
+              ],
+              "angularVelocity": [
+                -0.0014028571905068256,
+                -0.0015763066055587993,
+                -0.0004586131889598087
+              ]
+            },
+            "leftToes": {
+              "position": [
+                0.10642058215895886,
+                0.06236619377628936,
+                -0.2599948078090617
+              ],
+              "localRotation": [
+                -0.010648889700620563,
+                6.746826127238443e-08,
+                -1.4720730093690103e-07,
+                0.9999432989665554
+              ],
+              "worldRotation": [
+                -0.02323322720164241,
+                0.9869926335546666,
+                0.0039094637930969746,
+                -0.15902979140862533
+              ],
+              "linearVelocity": [
+                -8.662375151347538e-05,
+                0.0001469754483451963,
+                6.467200319271539e-05
+              ],
+              "angularVelocity": [
+                -0.00026404664244823154,
+                -0.001506421854229184,
+                -0.0008291913693386279
+              ]
+            },
+            "rightFoot": {
+              "position": [
+                -0.10549278500468252,
+                0.11652654853969291,
+                -0.3346804947780321
+              ],
+              "localRotation": [
+                0.08084042372572503,
+                -0.014504997588690503,
+                -0.008557006797456596,
+                0.996584772395939
+              ],
+              "worldRotation": [
+                0.023212682814579586,
+                0.995702878682482,
+                -0.004423477564535795,
+                0.08953983239991244
+              ],
+              "linearVelocity": [
+                -1.480295320488518e-06,
+                -2.7063666784289825e-05,
+                3.363201546924457e-05
+              ],
+              "angularVelocity": [
+                0.001259019740679713,
+                6.661611902169793e-05,
+                -6.436182680516225e-05
+              ]
+            },
+            "rightToes": {
+              "position": [
+                -0.1257506222475105,
+                0.0615480037483967,
+                -0.237135479762347
+              ],
+              "localRotation": [
+                -0.006469143197817234,
+                5.0856607466771945e-08,
+                -1.0536787528012079e-07,
+                0.9999790748742058
+              ],
+              "worldRotation": [
+                0.0226328463984344,
+                0.9957106665838523,
+                0.0020179512478609133,
+                0.08968807383262604
+              ],
+              "linearVelocity": [
+                1.479255404834929e-06,
+                -0.0001485709346116333,
+                -3.4237559480845005e-05
+              ],
+              "angularVelocity": [
+                6.538611346792666e-05,
+                0.00012010221181739752,
+                -0.0002940341599824285
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "input": {
+        "file": ".motion-review/source-assets/prepared/Idle Chatting.vrma",
+        "sha256": "d485a7dabb21d4b8809433a23ddf68a43ba5a31761d7106925c6bd8917e56e0d"
+      },
+      "target": {
+        "file": "public/models/Yori.vrm",
+        "sha256": "739a1515cffe09c17a535eb52a11f88640fc7728b86b9e4c74f00c353437b7cd"
+      },
+      "output": {
+        "file": ".motion-review/source-assets/prepared/Idle Chatting.yori-contact.vrma",
+        "sha256": "70555477cdc5eed8d64910847e69c2f02266746688f5ec20772a6775dbbf5830",
+        "bytes": 884628
+      },
+      "durationSec": 26.733266830444336,
+      "sampleHz": 60,
+      "rampSec": 0.35,
+      "minimumSupportSec": 2,
+      "maximumSourceSupportExcursionMetres": 0.015,
+      "bounds": {
+        "rootCorrectionMetres": 0.03,
+        "independentAnkleMetres": 0.015,
+        "localRotationDegrees": 8,
+        "reachPaddingMetres": 0.005,
+        "reachProjectionMetres": 0.01,
+        "soleErrorMetres": 0.0005,
+        "contactCenterErrorMetres": 0.0005,
+        "footWorldRotationDegrees": 0.05
+      },
+      "defaultBounds": {
+        "rootCorrectionMetres": 0.03,
+        "independentAnkleMetres": 0.015,
+        "localRotationDegrees": 8,
+        "reachPaddingMetres": 0.005,
+        "reachProjectionMetres": 0.01,
+        "soleErrorMetres": 0.0005,
+        "contactCenterErrorMetres": 0.0005,
+        "footWorldRotationDegrees": 0.05
+      },
+      "accepted": true,
+      "numericalValidated": true,
+      "budgetExceeded": false,
+      "reason": "Numerical target-support checks passed; visual review and cross-clip compatibility remain separate",
+      "reviewedUnit": null,
+      "allowedPlaybackWindows": null,
+      "fullySupportedBothWindows": [
+        {
+          "startSec": 3.68333333,
+          "endSec": 16.233333329999997,
+          "feet": "both"
+        },
+        {
+          "startSec": 19.41666667,
+          "endSec": 24.46666667,
+          "feet": "both"
+        }
+      ],
+      "rootReachPaddingMetres": 0,
+      "corrections": {
+        "maxRootCorrectionMetres": 0.027813031183408086,
+        "maxReachProjectionMetres": 0,
+        "maxIndependentAnkleCorrectionMetres": 0.008192086113413967,
+        "maxAnkleSolveErrorMetres": 9.389544444503505e-10,
+        "minimumAuthoredPoleAgreement": 0.9999999999999997,
+        "maxLocalRotationChangesDegrees": {
+          "leftUpperLeg": 0.6611114775451197,
+          "leftLowerLeg": 1.5667579787624684,
+          "leftFoot": 1.2566973753067447,
+          "rightUpperLeg": 0.5439560279705448,
+          "rightLowerLeg": 1.6664338919354866,
+          "rightFoot": 1.3152628209597135
+        },
+        "maxUnsupportedLocalRotationChangeDegrees": 3.4150945850063755e-06,
+        "worstLocalRotationAtSec": {
+          "leftLowerLeg": 23.733333587646484,
+          "rightUpperLeg": 10.566666603088379,
+          "leftFoot": 22.866666793823242,
+          "leftUpperLeg": 10.533333778381348,
+          "rightFoot": 22.96666717529297,
+          "rightLowerLeg": 22.933332443237305
+        },
+        "worstRootCorrection": {
+          "timeSec": 17.799999237060547,
+          "delta": [
+            0.027042696147504583,
+            -0.006158753071602669,
+            -0.0020801560725089985
+          ],
+          "weights": [
+            0,
+            1
+          ]
+        }
+      },
+      "validation": {
+        "sampleHz": 120,
+        "evaluatedFrames": 3209,
+        "fullSupportFootSamples": 4743,
+        "maxSoleClearanceMetres": 2.9173024777101933e-05,
+        "maxSolePenetrationMetres": 2.5177749866269562e-05,
+        "maxContactCenterErrorMetres": 2.0995478614849665e-05,
+        "maxWorldFootRotationChangeDegrees": 0.0005998402439492909,
+        "maxUnsupportedLegRotationChangeDegrees": 5.569850709424504e-05,
+        "minimumKneeBendDegrees": 2.2769228791744354,
+        "minimumAdjacentPoleDot": 0.9999540988774518,
+        "upperBodyAndFingerTracksExactlyPreserved": true,
+        "allValuesFinite": true,
+        "maxHipVelocityChangeMetresPerSec": 0.1311397764123352,
+        "maxAdaptedHipSpeedMetresPerSec": 0.6592185218745111
+      },
+      "hipMotion": [
+        {
+          "axis": "x",
+          "sourceRangeMetres": 0.2557583674788475,
+          "adaptedRangeMetres": 0.20926545932888985,
+          "correlation": 0.9953891941457294,
+          "meanOffsetMetres": -0.0001898377498695536,
+          "timeVaryingCorrectionRangeMetres": 0.0467764213681221
+        },
+        {
+          "axis": "y",
+          "sourceRangeMetres": 0.042851150035858154,
+          "adaptedRangeMetres": 0.04859030246734619,
+          "correlation": 0.9630966355203666,
+          "meanOffsetMetres": -0.0037030683832272038,
+          "timeVaryingCorrectionRangeMetres": 0.0066516318623803805
+        },
+        {
+          "axis": "z",
+          "sourceRangeMetres": 0.32457566261291504,
+          "adaptedRangeMetres": 0.32457566261291504,
+          "correlation": 0.9991411998176741,
+          "meanOffsetMetres": -0.0008348721060753572,
+          "timeVaryingCorrectionRangeMetres": 0.016183100640773773
+        }
+      ],
+      "supportWindowMotion": [
+        {
+          "startSec": 3.68333333,
+          "endSec": 16.233333329999997,
+          "sampleCount": 1506,
+          "hipMotion": [
+            {
+              "axis": "x",
+              "sourceRangeMetres": 0.07727819725866684,
+              "adaptedRangeMetres": 0.06576443206082054,
+              "correlation": 0.999079974729121,
+              "meanOffsetMetres": -0.000362082233672123,
+              "timeVaryingCorrectionRangeMetres": 0.012334613507441666
+            },
+            {
+              "axis": "y",
+              "sourceRangeMetres": 0.0036350021190150184,
+              "adaptedRangeMetres": 0.0044027564497517435,
+              "correlation": 0.7737695649324808,
+              "meanOffsetMetres": -0.004378566489342872,
+              "timeVaryingCorrectionRangeMetres": 0.0027150354493268303
+            },
+            {
+              "axis": "z",
+              "sourceRangeMetres": 0.03781849231449427,
+              "adaptedRangeMetres": 0.03476421773947147,
+              "correlation": 0.9990996781060564,
+              "meanOffsetMetres": -0.002446137002812515,
+              "timeVaryingCorrectionRangeMetres": 0.0034951395390946105
+            }
+          ],
+          "speeds": {
+            "hips": {
+              "source": {
+                "p95MetresPerSec": 0.06887564035865779,
+                "maxMetresPerSec": 0.13962325309125384
+              },
+              "adapted": {
+                "p95MetresPerSec": 0.061009264977038215,
+                "maxMetresPerSec": 0.11731010793589398
+              }
+            },
+            "leftLowerLeg": {
+              "source": {
+                "p95MetresPerSec": 0.05251376104329371,
+                "maxMetresPerSec": 0.0891801945391541
+              },
+              "adapted": {
+                "p95MetresPerSec": 0.042435615668673134,
+                "maxMetresPerSec": 0.06739900188884348
+              }
+            },
+            "rightLowerLeg": {
+              "source": {
+                "p95MetresPerSec": 0.04471653888962629,
+                "maxMetresPerSec": 0.08788794226859731
+              },
+              "adapted": {
+                "p95MetresPerSec": 0.043257624444642144,
+                "maxMetresPerSec": 0.08245857581406604
+              }
+            },
+            "leftFoot": {
+              "source": {
+                "p95MetresPerSec": 0.01234778498380256,
+                "maxMetresPerSec": 0.028213369045237545
+              },
+              "adapted": {
+                "p95MetresPerSec": 0.0015880252903068787,
+                "maxMetresPerSec": 0.004042967636641731
+              }
+            },
+            "rightFoot": {
+              "source": {
+                "p95MetresPerSec": 0.014797864312763689,
+                "maxMetresPerSec": 0.029472171661660794
+              },
+              "adapted": {
+                "p95MetresPerSec": 0.003548983491279646,
+                "maxMetresPerSec": 0.008321556266812347
+              }
+            },
+            "leftToes": {
+              "source": {
+                "p95MetresPerSec": 0.011070041829106354,
+                "maxMetresPerSec": 0.0214817725379159
+              },
+              "adapted": {
+                "p95MetresPerSec": 0.0018051427270134909,
+                "maxMetresPerSec": 0.004795546638557248
+              }
+            },
+            "rightToes": {
+              "source": {
+                "p95MetresPerSec": 0.014529830530686124,
+                "maxMetresPerSec": 0.027351674959988914
+              },
+              "adapted": {
+                "p95MetresPerSec": 0.003721564015611644,
+                "maxMetresPerSec": 0.011299349929948015
+              }
+            }
+          },
+          "kneeBendDegrees": {
+            "left": {
+              "source": {
+                "min": 18.00295423401164,
+                "max": 21.376219529688655
+              },
+              "adapted": {
+                "min": 17.326337405300677,
+                "max": 21.040185054394385
+              }
+            },
+            "right": {
+              "source": {
+                "min": 21.26245961484409,
+                "max": 24.091324232012568
+              },
+              "adapted": {
+                "min": 21.778856672847184,
+                "max": 24.413080276895926
+              }
+            }
+          }
+        },
+        {
+          "startSec": 19.41666667,
+          "endSec": 24.46666667,
+          "sampleCount": 606,
+          "hipMotion": [
+            {
+              "axis": "x",
+              "sourceRangeMetres": 0.020758078261760515,
+              "adaptedRangeMetres": 0.01855960843368805,
+              "correlation": 0.9963661528747813,
+              "meanOffsetMetres": -0.010157840869110979,
+              "timeVaryingCorrectionRangeMetres": 0.00323837634720385
+            },
+            {
+              "axis": "y",
+              "sourceRangeMetres": 0.005741946695780098,
+              "adaptedRangeMetres": 0.006615748076033268,
+              "correlation": 0.9699154229306207,
+              "meanOffsetMetres": -0.0038146221551068615,
+              "timeVaryingCorrectionRangeMetres": 0.0011695612738645833
+            },
+            {
+              "axis": "z",
+              "sourceRangeMetres": 0.02435544382455923,
+              "adaptedRangeMetres": 0.022389717914598567,
+              "correlation": 0.9972871247483999,
+              "meanOffsetMetres": 0.0022761204175540117,
+              "timeVaryingCorrectionRangeMetres": 0.0042708880313259145
+            }
+          ],
+          "speeds": {
+            "hips": {
+              "source": {
+                "p95MetresPerSec": 0.06258810137346142,
+                "maxMetresPerSec": 0.2209331838813249
+              },
+              "adapted": {
+                "p95MetresPerSec": 0.05611491128325049,
+                "maxMetresPerSec": 0.19390896291520268
+              }
+            },
+            "leftLowerLeg": {
+              "source": {
+                "p95MetresPerSec": 0.04369202156381345,
+                "maxMetresPerSec": 0.1032707962232103
+              },
+              "adapted": {
+                "p95MetresPerSec": 0.03931266968911122,
+                "maxMetresPerSec": 0.07705894956872063
+              }
+            },
+            "rightLowerLeg": {
+              "source": {
+                "p95MetresPerSec": 0.055215895031736954,
+                "maxMetresPerSec": 0.18034338796433735
+              },
+              "adapted": {
+                "p95MetresPerSec": 0.05378729651980221,
+                "maxMetresPerSec": 0.1654768992032781
+              }
+            },
+            "leftFoot": {
+              "source": {
+                "p95MetresPerSec": 0.01048252979245898,
+                "maxMetresPerSec": 0.036089629763652355
+              },
+              "adapted": {
+                "p95MetresPerSec": 0.0014457559955766838,
+                "maxMetresPerSec": 0.004047175186892468
+              }
+            },
+            "rightFoot": {
+              "source": {
+                "p95MetresPerSec": 0.015483418144254647,
+                "maxMetresPerSec": 0.032748732614744626
+              },
+              "adapted": {
+                "p95MetresPerSec": 0.005125620288090406,
+                "maxMetresPerSec": 0.02215754784107113
+              }
+            },
+            "leftToes": {
+              "source": {
+                "p95MetresPerSec": 0.009688281547243525,
+                "maxMetresPerSec": 0.02827864268638589
+              },
+              "adapted": {
+                "p95MetresPerSec": 0.0017221973837196652,
+                "maxMetresPerSec": 0.005948013278593107
+              }
+            },
+            "rightToes": {
+              "source": {
+                "p95MetresPerSec": 0.014565705093124184,
+                "maxMetresPerSec": 0.033412738242559484
+              },
+              "adapted": {
+                "p95MetresPerSec": 0.00518341046565208,
+                "maxMetresPerSec": 0.010806943685119643
+              }
+            }
+          },
+          "kneeBendDegrees": {
+            "left": {
+              "source": {
+                "min": 17.6286196703023,
+                "max": 21.124149692848135
+              },
+              "adapted": {
+                "min": 16.477753940168895,
+                "max": 20.526842268518692
+              }
+            },
+            "right": {
+              "source": {
+                "min": 21.45877569032234,
+                "max": 28.60683632493061
+              },
+              "adapted": {
+                "min": 22.967732818220043,
+                "max": 29.074090004819766
+              }
+            }
+          }
+        }
+      ],
+      "boundaries": [
+        {
+          "timeSec": 4.36666667,
+          "fullySupportedBoth": true,
+          "joints": {
+            "hips": {
+              "position": [
+                0.13050149243897452,
+                0.8932639957231527,
+                -0.22976717162963547
+              ],
+              "localRotation": [
+                0.03234637281835118,
+                -0.04094483344430177,
+                -0.026224308472869846,
+                0.998293302804759
+              ],
+              "worldRotation": [
+                -0.026224308472869846,
+                0.998293302804759,
+                -0.03234637281835118,
+                0.04094483344430183
+              ],
+              "linearVelocity": [
+                0.012584041799542573,
+                -0.0004202132523411852,
+                -0.015518829024383845
+              ],
+              "angularVelocity": [
+                -0.014378113075590305,
+                0.0471455801228313,
+                -0.004762296124722665
+              ]
+            },
+            "leftFoot": {
+              "position": [
+                0.13118062221710847,
+                0.11550162327807134,
+                -0.3511057104524873
+              ],
+              "localRotation": [
+                0.1310637561403756,
+                0.09260889794780697,
+                -0.04191931259484159,
+                0.9861483940456653
+              ],
+              "worldRotation": [
+                -0.004135724601675698,
+                0.9971877397145362,
+                -0.004704556900593267,
+                -0.07468182301874067
+              ],
+              "linearVelocity": [
+                0.00020828252208947648,
+                -0.0003145073497201455,
+                -0.0001370883264806209
+              ],
+              "angularVelocity": [
+                -0.0060896376434266646,
+                0.004116895398287183,
+                -0.014738110193360422
+              ]
+            },
+            "leftToes": {
+              "position": [
+                0.14640730870191,
+                0.060171393364254276,
+                -0.2528470518624505
+              ],
+              "localRotation": [
+                -0.005005037253903107,
+                -2.9940720239788436e-08,
+                -6.548485358043519e-08,
+                0.9999874747225996
+              ],
+              "worldRotation": [
+                -0.003761952935730565,
+                0.997198798109227,
+                0.0002864688260484665,
+                -0.07470155751545195
+              ],
+              "linearVelocity": [
+                -0.0002026327856041631,
+                5.945813754057154e-05,
+                0.00013716000431428937
+              ],
+              "angularVelocity": [
+                -0.002322746784556934,
+                0.0041460244607181476,
+                -0.015306529831770424
+              ]
+            },
+            "rightFoot": {
+              "position": [
+                -0.06448777677304392,
+                0.1177270470624916,
+                -0.3369805914323697
+              ],
+              "localRotation": [
+                0.09247574988047315,
+                -0.04834759742378488,
+                -0.05417159171998349,
+                0.993064038296582
+              ],
+              "worldRotation": [
+                0.050082086460293995,
+                0.9818327980682858,
+                0.012571040950985792,
+                0.18258726730687713
+              ],
+              "linearVelocity": [
+                0.0004935338052277948,
+                -1.4061436042211295e-05,
+                7.18728547077738e-05
+              ],
+              "angularVelocity": [
+                0.0017533128256593212,
+                -0.0010959789371250946,
+                -0.015624751082755916
+              ]
+            },
+            "rightToes": {
+              "position": [
+                -0.10534250309876725,
+                0.06107153316820857,
+                -0.24715245333655556
+              ],
+              "localRotation": [
+                0.0032232686994566715,
+                7.045844497909678e-08,
+                1.8045592826331807e-08,
+                0.9999948052559502
+              ],
+              "worldRotation": [
+                0.050670370952321846,
+                0.9818682295020711,
+                0.009406271545133555,
+                0.18242482138580174
+              ],
+              "linearVelocity": [
+                -0.0004901742371165896,
+                0.00046679600757477025,
+                -7.224192480892096e-05
+              ],
+              "angularVelocity": [
+                0.005423241964883363,
+                -0.0015021359764594256,
+                -0.014215727393460486
+              ]
+            }
+          }
+        },
+        {
+          "timeSec": 11.35,
+          "fullySupportedBoth": true,
+          "joints": {
+            "hips": {
+              "position": [
+                0.12741881673386643,
+                0.8931927684025012,
+                -0.2316776036181111
+              ],
+              "localRotation": [
+                0.03958756893707552,
+                -0.05084952565254365,
+                -0.02375579721726126,
+                0.9976386180502115
+              ],
+              "worldRotation": [
+                -0.02375579721726126,
+                0.9976386180502116,
+                -0.03958756893707551,
+                0.05084952565254371
+              ],
+              "linearVelocity": [
+                -0.0016861929328050155,
+                -0.0008046518994176313,
+                -0.008080940884584347
+              ],
+              "angularVelocity": [
+                -0.03347257623782579,
+                0.0204588758339832,
+                -0.014631463397004229
+              ]
+            },
+            "leftFoot": {
+              "position": [
+                0.13090579752300602,
+                0.11557321063299958,
+                -0.3510695997075291
+              ],
+              "localRotation": [
+                0.13394747068225737,
+                0.08736110541194686,
+                -0.04082662686419173,
+                0.9862856071635238
+              ],
+              "worldRotation": [
+                -0.006110254607851046,
+                0.997050534412068,
+                -0.00466651156264551,
+                -0.07636177241966491
+              ],
+              "linearVelocity": [
+                -0.0001480216836552501,
+                -8.89052575958666e-05,
+                -8.105163675554045e-05
+              ],
+              "angularVelocity": [
+                -0.004342518974424154,
+                0.004929118192832281,
+                -0.0033965564074676454
+              ]
+            },
+            "leftToes": {
+              "position": [
+                0.1466821554111573,
+                0.06026878034017355,
+                -0.252883160555747
+              ],
+              "localRotation": [
+                -0.005130738482990903,
+                -3.321381952297112e-08,
+                -7.26303933349788e-08,
+                0.999986837674683
+              ],
+              "worldRotation": [
+                -0.005718454469474322,
+                0.9970613556515082,
+                0.0004491611550228758,
+                -0.07639208466270599
+              ],
+              "linearVelocity": [
+                0.00014810624762274526,
+                0.0002838859116957743,
+                8.134536423121581e-05
+              ],
+              "angularVelocity": [
+                -0.000666919472049623,
+                0.004972599947147293,
+                -0.003964919352560047
+              ]
+            },
+            "rightFoot": {
+              "position": [
+                -0.06429161079947623,
+                0.1172794688843265,
+                -0.3370723032331781
+              ],
+              "localRotation": [
+                0.09505951107032153,
+                -0.049434064068514055,
+                -0.05100276802061791,
+                0.9929343786570071
+              ],
+              "worldRotation": [
+                0.05139348760200094,
+                0.981575205139941,
+                0.00994340093883539,
+                0.18376603294503402
+              ],
+              "linearVelocity": [
+                -4.1087756591231656e-05,
+                0.000534347108660546,
+                9.35754199260561e-05
+              ],
+              "angularVelocity": [
+                0.007092938191158509,
+                0.005087972828774262,
+                -0.006684566083572489
+              ]
+            },
+            "rightToes": {
+              "position": [
+                -0.10553866689559606,
+                0.061202278022436954,
+                -0.24706075208568118
+              ],
+              "localRotation": [
+                0.00035735708107886724,
+                1.0004230496721358e-07,
+                -1.154493012698283e-08,
+                0.9999999361479512
+              ],
+              "worldRotation": [
+                0.05145914208657823,
+                0.9815787147868004,
+                0.009592630473717617,
+                0.18374755730023024
+              ],
+              "linearVelocity": [
+                4.203687374360294e-05,
+                0.0001716194338408181,
+                -9.43127201402714e-05
+              ],
+              "angularVelocity": [
+                0.0032084116711709617,
+                0.00551715897793992,
+                -0.008190384678034242
+              ]
+            }
+          }
+        },
+        {
+          "timeSec": 19.41666667,
+          "fullySupportedBoth": true,
+          "joints": {
+            "hips": {
+              "position": [
+                0.12146759685448405,
+                0.88889991627954,
+                -0.234897024180845
+              ],
+              "localRotation": [
+                0.03486780985891616,
+                -0.017716005025823597,
+                -0.0492508261570646,
+                0.998020408170301
+              ],
+              "worldRotation": [
+                -0.04925082615706461,
+                0.9980204081703009,
+                -0.03486780985891617,
+                0.01771600502582366
+              ],
+              "linearVelocity": [
+                0.1845611871628008,
+                -0.008942666428795551,
+                -0.0574863994612717
+              ],
+              "angularVelocity": [
+                0.27929155550613316,
+                -0.18657511128842677,
+                -0.0982972892450644
+              ]
+            },
+            "leftFoot": {
+              "position": [
+                0.11314476005138971,
+                0.11564169333576302,
+                -0.3449180029765727
+              ],
+              "localRotation": [
+                0.13347976124199565,
+                0.07527395745829847,
+                -0.04144598212558007,
+                0.9873192063527338
+              ],
+              "worldRotation": [
+                0.003063671491097053,
+                0.9956055198884203,
+                -0.0040110524415063065,
+                -0.09351028896872533
+              ],
+              "linearVelocity": [
+                0.003692841794542755,
+                0.00035081188448861985,
+                -0.001594161336791002
+              ],
+              "angularVelocity": [
+                -0.03533967403554683,
+                -0.07540804184203323,
+                -0.007432437465469257
+              ]
+            },
+            "leftToes": {
+              "position": [
+                0.1312557329824852,
+                0.06005418026858958,
+                -0.24729591857948738
+              ],
+              "localRotation": [
+                -0.0037060490548911384,
+                -8.258593210704993e-08,
+                -1.7916957827002464e-07,
+                0.9999931325766012
+              ],
+              "worldRotation": [
+                0.003410025456145283,
+                0.9956135560724381,
+                -0.00032124549870116153,
+                -0.09349821117279344
+              ],
+              "linearVelocity": [
+                -0.004081795688628775,
+                0.0036661335832560015,
+                0.001736002843447758
+              ],
+              "angularVelocity": [
+                -0.0025933086728930146,
+                -0.07563780798306059,
+                -0.01363462786609988
+              ]
+            },
+            "rightFoot": {
+              "position": [
+                -0.06496892131217923,
+                0.1187335362650912,
+                -0.33696752858128476
+              ],
+              "localRotation": [
+                0.11588387724992669,
+                -0.03628703326802338,
+                -0.04089216200019816,
+                0.9917570313827268
+              ],
+              "worldRotation": [
+                0.056665752621167326,
+                0.9830124930969872,
+                0.01747605791724493,
+                0.17369518788612237
+              ],
+              "linearVelocity": [
+                0.004861430389420384,
+                0.020408724773122215,
+                0.006562349038085431
+              ],
+              "angularVelocity": [
+                0.24856498443596628,
+                0.02847863810941208,
+                -0.2140992396475723
+              ]
+            },
+            "rightToes": {
+              "position": [
+                -0.1048613852276572,
+                0.061355464454300984,
+                -0.24716553244777006
+              ],
+              "localRotation": [
+                0.00411311889498645,
+                -2.640529211503781e-09,
+                1.526725970977467e-08,
+                0.9999915410907012
+              ],
+              "worldRotation": [
+                0.05737971730402125,
+                0.9830760576637199,
+                0.013432665331713115,
+                0.17346064796533933
+              ],
+              "linearVelocity": [
+                -0.0048657493473350235,
+                0.006628099660039953,
+                -0.006563758836075446
+              ],
+              "angularVelocity": [
+                0.24309301795591232,
+                0.0291692740961298,
+                -0.21609684647914454
+              ]
+            }
+          }
+        },
+        {
+          "timeSec": 24.46666667,
+          "fullySupportedBoth": true,
+          "joints": {
+            "hips": {
+              "position": [
+                0.12019992634465773,
+                0.8927349453986748,
+                -0.22618257115825943
+              ],
+              "localRotation": [
+                0.030766771418457628,
+                -0.063052980501231,
+                -0.02455478374093492,
+                0.9972335684391255
+              ],
+              "worldRotation": [
+                -0.024554783740934918,
+                0.9972335684391254,
+                -0.030766771418457635,
+                0.06305298050123107
+              ],
+              "linearVelocity": [
+                -0.011795837659615676,
+                0.00020019312621634173,
+                0.034757003252589326
+              ],
+              "angularVelocity": [
+                0.028938128384654687,
+                0.002018472756854913,
+                0.004537480575154621
+              ]
+            },
+            "leftFoot": {
+              "position": [
+                0.113062870636284,
+                0.11557213770013347,
+                -0.3449694356076859
+              ],
+              "localRotation": [
+                0.13259419043546727,
+                0.09260843732432927,
+                -0.04993528504411129,
+                0.9855703553306947
+              ],
+              "worldRotation": [
+                -0.006267664864403167,
+                0.996000389929986,
+                -0.004335433654304845,
+                -0.08902327589733257
+              ],
+              "linearVelocity": [
+                -0.0004634485433752375,
+                0.000273563499023648,
+                6.883209985320385e-05
+              ],
+              "angularVelocity": [
+                0.001795930087764006,
+                0.0020348943053362023,
+                0.013202553090780281
+              ]
+            },
+            "leftToes": {
+              "position": [
+                0.13133763888992725,
+                0.06021948465742101,
+                -0.2472444799518022
+              ],
+              "localRotation": [
+                -0.004887738739273663,
+                -6.311374595339753e-08,
+                -1.3751262070002627e-07,
+                0.9999880549336545
+              ],
+              "worldRotation": [
+                -0.005832604718679387,
+                0.9960096878629813,
+                0.0005328204603300384,
+                -0.08905278495161947
+              ],
+              "linearVelocity": [
+                0.0004661981978843198,
+                0.0003392846301533885,
+                -6.775633851153036e-05
+              ],
+              "angularVelocity": [
+                0.0023957403454189516,
+                0.0020422459386797193,
+                0.01309393187122929
+              ]
+            },
+            "rightFoot": {
+              "position": [
+                -0.06438389389508847,
+                0.11734798169408184,
+                -0.33717855909903505
+              ],
+              "localRotation": [
+                0.1038810253238427,
+                -0.054807438092824824,
+                -0.03947415296978156,
+                0.9922936402873328
+              ],
+              "worldRotation": [
+                0.056276386673622614,
+                0.9820315910112604,
+                0.009869580653374312,
+                0.1798597062617981
+              ],
+              "linearVelocity": [
+                -0.00021226947260922875,
+                -0.0004152793655987322,
+                2.1939188219467635e-05
+              ],
+              "angularVelocity": [
+                -0.005516602726844545,
+                -0.004134049470573828,
+                0.006898965365256498
+              ]
+            },
+            "rightToes": {
+              "position": [
+                -0.10544641198383142,
+                0.06147725440546842,
+                -0.2469544949476749
+              ],
+              "localRotation": [
+                -0.000374066426796226,
+                2.1790378720942594e-08,
+                4.01253443663109e-08,
+                0.9999999300371508
+              ],
+              "worldRotation": [
+                0.05620914244801415,
+                0.9820278320878648,
+                0.010236933454337353,
+                0.17988072299031593
+              ],
+              "linearVelocity": [
+                -0.00019981212195819856,
+                -0.00020085858256844755,
+                0.00016038724942658367
+              ],
+              "angularVelocity": [
+                -0.0029867696226300432,
+                -0.0044477261723613526,
+                0.007856795477948148
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "input": {
+        "file": ".motion-review/source-assets/prepared/Idle Watching Something.vrma",
+        "sha256": "e47274efedd40accf4a6fa26b2a80e588d17c604ac375d4b7680ea08b1199cf7"
+      },
+      "target": {
+        "file": "public/models/Yori.vrm",
+        "sha256": "739a1515cffe09c17a535eb52a11f88640fc7728b86b9e4c74f00c353437b7cd"
+      },
+      "output": null,
+      "durationSec": 26.966596603393555,
+      "sampleHz": 60,
+      "rampSec": 0.35,
+      "minimumSupportSec": 2,
+      "maximumSourceSupportExcursionMetres": 0.015,
+      "bounds": {
+        "rootCorrectionMetres": 0.03,
+        "independentAnkleMetres": 0.015,
+        "localRotationDegrees": 8,
+        "reachPaddingMetres": 0.005,
+        "reachProjectionMetres": 0.01,
+        "soleErrorMetres": 0.0005,
+        "contactCenterErrorMetres": 0.0005,
+        "footWorldRotationDegrees": 0.05
+      },
+      "defaultBounds": {
+        "rootCorrectionMetres": 0.03,
+        "independentAnkleMetres": 0.015,
+        "localRotationDegrees": 8,
+        "reachPaddingMetres": 0.005,
+        "reachProjectionMetres": 0.01,
+        "soleErrorMetres": 0.0005,
+        "contactCenterErrorMetres": 0.0005,
+        "footWorldRotationDegrees": 0.05
+      },
+      "accepted": false,
+      "numericalValidated": false,
+      "budgetExceeded": false,
+      "reason": "No validated double-support window; no automatic full-body asset",
+      "reviewedUnit": null,
+      "allowedPlaybackWindows": null,
+      "fullySupportedBothWindows": [],
+      "rootReachPaddingMetres": 0,
+      "corrections": {
+        "maxRootCorrectionMetres": 0.016933833440809166,
+        "maxReachProjectionMetres": 0,
+        "maxIndependentAnkleCorrectionMetres": 0.004089610096813292,
+        "maxAnkleSolveErrorMetres": 3.176770830354169e-16,
+        "minimumAuthoredPoleAgreement": 0.9999999999999998,
+        "maxLocalRotationChangesDegrees": {
+          "leftUpperLeg": 1.7075472925031877e-06,
+          "leftLowerLeg": 1.7075472925031877e-06,
+          "leftFoot": 1.7075472925031877e-06,
+          "rightUpperLeg": 1.4738455518968485,
+          "rightLowerLeg": 2.871489080598138,
+          "rightFoot": 1.5323561956260003
+        },
+        "maxUnsupportedLocalRotationChangeDegrees": 2.4148365394514667e-06,
+        "worstLocalRotationAtSec": {
+          "leftUpperLeg": 0.10000000149011612,
+          "leftFoot": 0.21666666865348816,
+          "rightFoot": 26.600000381469727,
+          "rightLowerLeg": 26.600000381469727,
+          "leftLowerLeg": 0.699999988079071,
+          "rightUpperLeg": 24.733333587646484
+        },
+        "worstRootCorrection": {
+          "timeSec": 25.46666717529297,
+          "delta": [
+            0.006830449570477459,
+            -0.013822780108382338,
+            0.007002172787181182
+          ],
+          "weights": [
+            0,
+            1
+          ]
+        }
+      },
+      "validation": {
+        "sampleHz": 120,
+        "evaluatedFrames": 3237,
+        "fullSupportFootSamples": 183,
+        "maxSoleClearanceMetres": 3.3499528656491615e-07,
+        "maxSolePenetrationMetres": 6.143614108915496e-07,
+        "maxContactCenterErrorMetres": 6.724555039498295e-07,
+        "maxWorldFootRotationChangeDegrees": 0.0001687882643882563,
+        "maxUnsupportedLegRotationChangeDegrees": 3.120656550389813e-05,
+        "minimumKneeBendDegrees": 2.3453841811461302,
+        "minimumAdjacentPoleDot": 0.9999980850473509,
+        "upperBodyAndFingerTracksExactlyPreserved": true,
+        "allValuesFinite": true,
+        "maxHipVelocityChangeMetresPerSec": 0.08759344986713126,
+        "maxAdaptedHipSpeedMetresPerSec": 0.2571207959935143
+      },
+      "hipMotion": [
+        {
+          "axis": "x",
+          "sourceRangeMetres": 0.21059898287057877,
+          "adaptedRangeMetres": 0.21059898287057877,
+          "correlation": 0.9997771709698853
+        },
+        {
+          "axis": "y",
+          "sourceRangeMetres": 0.020416080951690674,
+          "adaptedRangeMetres": 0.020416080951690674,
+          "correlation": 0.8435372287384725
+        },
+        {
+          "axis": "z",
+          "sourceRangeMetres": 0.20816697273403406,
+          "adaptedRangeMetres": 0.2083795629441738,
+          "correlation": 0.9996267600195134
+        }
+      ],
+      "supportWindowMotion": [],
+      "boundaries": []
+    }
+  ],
+  "excludedUnitReview": {
+    "source": "Idle Looking Around",
+    "startSec": 23.36666667,
+    "endSec": 31.11666667,
+    "reason": "Recorded upward pointing visible around24.62s. Physically compatible but not semantically suitable for spontaneous idle. Original upper-body acting is retained; this unit is excluded instead of suppressing the gesture.",
+    "motionMetrics": {
+      "id": "around-idle-late",
+      "startSec": 23.36666667,
+      "endSec": 31.11666667,
+      "sampleCount": 930,
+      "hipMotion": [
+        {
+          "axis": "x",
+          "sourceRangeMetres": 0.03322016548210765,
+          "adaptedRangeMetres": 0.027519360631919444,
+          "correlation": 0.9940591658964028,
+          "meanOffsetMetres": 0.00026069706405272737,
+          "timeVaryingCorrectionRangeMetres": 0.0073419180770835125
+        },
+        {
+          "axis": "y",
+          "sourceRangeMetres": 0.010095356422487378,
+          "adaptedRangeMetres": 0.010460853272884263,
+          "correlation": 0.9150740841839803,
+          "meanOffsetMetres": -0.003549201970134308,
+          "timeVaryingCorrectionRangeMetres": 0.0038658975495293735
+        },
+        {
+          "axis": "z",
+          "sourceRangeMetres": 0.03631451590848639,
+          "adaptedRangeMetres": 0.03456368895579123,
+          "correlation": 0.9956660275757381,
+          "meanOffsetMetres": 0.0002721166669941155,
+          "timeVaryingCorrectionRangeMetres": 0.00521206445318384
+        }
+      ],
+      "speeds": {
+        "hips": {
+          "source": {
+            "p95MetresPerSec": 0.04304549819340073,
+            "maxMetresPerSec": 0.06466310277248193
+          },
+          "adapted": {
+            "p95MetresPerSec": 0.03746237078702529,
+            "maxMetresPerSec": 0.05188671679552255
+          }
+        },
+        "leftLowerLeg": {
+          "source": {
+            "p95MetresPerSec": 0.12545594200469926,
+            "maxMetresPerSec": 0.2340062047079134
+          },
+          "adapted": {
+            "p95MetresPerSec": 0.048309686153117065,
+            "maxMetresPerSec": 0.2533580638097995
+          }
+        },
+        "rightLowerLeg": {
+          "source": {
+            "p95MetresPerSec": 0.04904534520410729,
+            "maxMetresPerSec": 0.10598784359811812
+          },
+          "adapted": {
+            "p95MetresPerSec": 0.05397280155185672,
+            "maxMetresPerSec": 0.0846263795622119
+          }
+        },
+        "leftFoot": {
+          "source": {
+            "p95MetresPerSec": 0.020642135423770882,
+            "maxMetresPerSec": 0.040839641503298586
+          },
+          "adapted": {
+            "p95MetresPerSec": 0.001150049172202417,
+            "maxMetresPerSec": 0.002020763102831029
+          }
+        },
+        "rightFoot": {
+          "source": {
+            "p95MetresPerSec": 0.010995435146187591,
+            "maxMetresPerSec": 0.022575369519777164
+          },
+          "adapted": {
+            "p95MetresPerSec": 0.002739703631134785,
+            "maxMetresPerSec": 0.013210567607104423
+          }
+        },
+        "leftToes": {
+          "source": {
+            "p95MetresPerSec": 0.020338200545466433,
+            "maxMetresPerSec": 0.040838848615481926
+          },
+          "adapted": {
+            "p95MetresPerSec": 0.002479662664972528,
+            "maxMetresPerSec": 0.004490556658180866
+          }
+        },
+        "rightToes": {
+          "source": {
+            "p95MetresPerSec": 0.011090705221840158,
+            "maxMetresPerSec": 0.01927110653015164
+          },
+          "adapted": {
+            "p95MetresPerSec": 0.0026264847667057806,
+            "maxMetresPerSec": 0.013054624663593925
+          }
+        }
+      },
+      "kneeBendDegrees": {
+        "left": {
+          "source": {
+            "min": 2.276903715999282,
+            "max": 14.900000382186676
+          },
+          "adapted": {
+            "min": 0.8482632359540503,
+            "max": 5.812359532316435
+          }
+        },
+        "right": {
+          "source": {
+            "min": 6.3073346504372125,
+            "max": 12.635387758754348
+          },
+          "adapted": {
+            "min": 12.786704335248203,
+            "max": 19.372293872836963
+          }
+        }
+      }
+    },
+    "visualEvidence": ".motion-review/around-units-qa/B-comparison.mp4"
+  }
+}

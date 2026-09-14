@@ -10,6 +10,7 @@ import {
   type StateExpressionSchedulerCallbacks,
   type StateExpressionSchedulerOptions,
 } from "./scheduler";
+import type { StateExpressionConversationPhase } from "./types";
 
 export interface RealtimeStateExpressionControllerOptions {
   readonly scheduler?: StateExpressionSchedulerOptions;
@@ -55,9 +56,10 @@ export class RealtimeStateExpressionController {
   private responseItemId: string | null = null;
   private readonly invalidatedItemIds = new Set<string>();
   private completionTimer: unknown | null = null;
+  private conversationPhase: StateExpressionConversationPhase = "idle";
 
   constructor(
-    callbacks: StateExpressionSchedulerCallbacks,
+    private readonly callbacks: StateExpressionSchedulerCallbacks,
     options: RealtimeStateExpressionControllerOptions = {},
     private readonly clock: StateExpressionClock = browserClock,
   ) {
@@ -99,9 +101,10 @@ export class RealtimeStateExpressionController {
       this.responseItemId = null;
       return false;
     }
-    if (this.responsePhase === "user-speaking") this.responsePhase = "open";
+    this.responsePhase = "open";
     this.responseItemId = itemId;
     this.assistantBoundaryAccepted = true;
+    this.notifyAssistantPhase();
     return true;
   }
 
@@ -126,6 +129,7 @@ export class RealtimeStateExpressionController {
     if (this.responsePhase === "user-speaking") return;
     if (this.itemBoundaryMode && !this.assistantBoundaryAccepted) return;
     this.responsePhase = "open";
+    this.notifyAssistantPhase();
 
     const utteranceId = this.ensureAssistantUtterance();
     const resolution = resolveAssistantTranscriptDelta(this.resolverState, {
@@ -194,6 +198,9 @@ export class RealtimeStateExpressionController {
           this.bindCurrentUtteranceToAudio();
         }
       }
+      if (this.responsePhase === "open" && this.audioGeneration === this.responseGeneration) {
+        this.notifyAssistantPhase();
+      }
       return;
     }
 
@@ -224,6 +231,7 @@ export class RealtimeStateExpressionController {
     this.responseItemId = null;
     this.pendingAudioGeneration = null;
     this.pendingAudioItemId = null;
+    this.setConversationPhase("disconnected");
   }
 
   private ensureAssistantUtterance(): string {
@@ -255,6 +263,7 @@ export class RealtimeStateExpressionController {
     if (!this.remoteSpeechActive && this.audioGeneration === this.responseGeneration) {
       this.resetRemoteSpeech();
     }
+    this.setConversationPhase("idle");
   }
 
   private resetUtterance(): void {
@@ -275,6 +284,9 @@ export class RealtimeStateExpressionController {
 
   private beginUserInterruption(_itemId: string | null): void {
     if (this.userTranscriptPending) return;
+    const interruptsAssistant =
+      this.conversationPhase === "assistant-responding" ||
+      this.conversationPhase === "assistant-speaking";
     this.responseGeneration++;
     this.responsePhase = "user-speaking";
     this.userTranscriptPending = true;
@@ -288,12 +300,17 @@ export class RealtimeStateExpressionController {
     this.assistantBoundaryAccepted = !this.itemBoundaryMode;
     this.scheduler.cancelAll();
     this.resetUtterance();
+    if (interruptsAssistant) this.setConversationPhase("interrupted");
+    this.setConversationPhase("user-speaking");
   }
 
   private finishUserTranscript(): void {
     if (!this.userTranscriptPending) this.beginUserInterruption(null);
     this.userTranscriptPending = false;
-    if (this.responsePhase === "user-speaking") this.responsePhase = "awaiting-assistant";
+    if (this.responsePhase === "user-speaking") {
+      this.responsePhase = "awaiting-assistant";
+      this.setConversationPhase("assistant-responding");
+    }
   }
 
   private claimAudioAnchor(startedAtMs: number, itemId: string | null): void {
@@ -303,6 +320,7 @@ export class RealtimeStateExpressionController {
     this.audioGeneration = this.responseGeneration;
     this.audioItemId = itemId;
     this.bindCurrentUtteranceToAudio();
+    if (this.responsePhase === "open") this.notifyAssistantPhase();
   }
 
   private bindCurrentUtteranceToAudio(): void {
@@ -317,6 +335,24 @@ export class RealtimeStateExpressionController {
     this.scheduler.startUtterance(this.utteranceId, this.speechStartedAtMs);
     this.utteranceSpeechStarted = true;
     this.speechAnchorClaimed = true;
+    this.notifyAssistantPhase();
+  }
+
+  private notifyAssistantPhase(): void {
+    if (this.responsePhase === "user-speaking") return;
+    // Stale interrupted audio may still be audible. Only the current response's
+    // observed playout can promote responding to speaking.
+    this.setConversationPhase(
+      this.remoteSpeechActive && this.audioGeneration === this.responseGeneration
+        ? "assistant-speaking"
+        : "assistant-responding",
+    );
+  }
+
+  private setConversationPhase(phase: StateExpressionConversationPhase): void {
+    if (this.conversationPhase === phase) return;
+    this.conversationPhase = phase;
+    this.callbacks.onConversationPhaseChange?.(phase);
   }
 
   private hasRetainedAudioAnchor(): boolean {

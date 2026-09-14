@@ -274,7 +274,7 @@ describe("MotionScheduler", () => {
     h.scheduler.request(mcpReq); // higher, preempts persona
 
     expect(h.onDeactivate).toHaveBeenCalledTimes(1);
-    expect(h.onDeactivate).toHaveBeenCalledWith(250);
+    expect(h.onDeactivate).toHaveBeenCalledWith(250, true);
   });
 
   it("sequence: persona -> mcp preempts -> mcp release -> snapshot null (stop model, no resume)", async () => {

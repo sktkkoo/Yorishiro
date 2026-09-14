@@ -11,14 +11,13 @@ import { TweenManager } from "../../core/tween/tween-manager";
 import { getOrInit } from "../hot-data";
 import { KEYS } from "../module-registry/keys";
 import { type ClaimState, getClaimState } from "../ui-claim-state";
+import { DEFAULT_CAMERA_HEAD_OFFSET, defaultCameraForCharacter } from "../view-mode-framing";
 import { getVrmCache } from "../vrm-cache";
 import { CameraModulationRegistry } from "./camera-modulation";
 import { R3fHost } from "./r3f-host";
 import { R3fRuntimeRoot } from "./r3f-runtime-root";
+import { RenderCadence } from "./render-cadence";
 import type { FixedCameraHandle, ThreeRuntime } from "./types";
-
-const DEFAULT_RENDER_FPS = 30;
-const MIN_RENDER_FRAME_INTERVAL_MS = 1000 / DEFAULT_RENDER_FPS;
 
 /**
  * ThreeRuntime implementation. See types.ts for the contract.
@@ -61,7 +60,7 @@ class ThreeRuntimeImpl implements ThreeRuntime {
   private trackHead: THREE.Object3D | null = null;
   private loadToken = 0;
   private readonly tweenManager = new TweenManager();
-  private readonly cameraBase = { x: 0, y: 1.35, z: 1.1 };
+  private readonly cameraBase = { ...defaultCameraForCharacter() };
   private fixedCamera: {
     readonly token: symbol;
     readonly previousBase: { x: number; y: number; z: number };
@@ -80,7 +79,7 @@ class ThreeRuntimeImpl implements ThreeRuntime {
   private renderPaused = false;
   private rafId: number | null = null;
   private layoutRefreshFramesRemaining = 0;
-  private lastRenderAtMs = -Infinity;
+  private readonly renderCadence = new RenderCadence();
 
   constructor() {
     this.claimState = getClaimState();
@@ -104,8 +103,8 @@ class ThreeRuntimeImpl implements ThreeRuntime {
     // Lighting は scene pack が専有する。ThreeRuntime は light を持たない。
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(35, 1, 0.1, 20);
-    this.camera.position.set(0, 1.35, 1.1);
-    this.camera.lookAt(0, 1.35, 0);
+    this.camera.position.set(this.cameraBase.x, this.cameraBase.y, this.cameraBase.z);
+    this.camera.lookAt(0, this.cameraBase.y, 0);
     this.baseFov = this.camera.fov;
 
     // ── Renderer ──────────────────────────────────────────────────
@@ -147,7 +146,7 @@ class ThreeRuntimeImpl implements ThreeRuntime {
     this.updatePlaceholderRect();
     this.handleResize();
     this.clock.getDelta();
-    this.lastRenderAtMs = -Infinity;
+    this.renderCadence.reset();
     this.startRenderLoop();
   }
 
@@ -180,82 +179,82 @@ class ThreeRuntimeImpl implements ThreeRuntime {
       try {
         const buffer = await getVrmCache().getBytes(url);
         if (myToken !== this.loadToken) return;
+        // Contact-prepared recordings are qualified against the exact target,
+        // including its shoes. Other avatars retain the generic motion library.
+        const modelSha256 = globalThis.crypto?.subtle
+          ? Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", buffer)), (byte) =>
+              byte.toString(16).padStart(2, "0"),
+            ).join("")
+          : undefined;
+        if (myToken !== this.loadToken) return;
 
-        await new Promise<void>((resolve, reject) => {
-          this.loader.parse(
-            buffer,
-            "",
-            (gltf) => {
-              if (myToken !== this.loadToken) {
-                resolve();
-                return;
-              }
-              const vrm = gltf.userData.vrm as VRM;
-              if (!vrm) {
-                console.warn("[three-runtime] GLTF did not contain VRM payload:", url);
-                resolve();
-                return;
-              }
+        const gltf = await this.loader.parseAsync(buffer, "");
+        if (myToken !== this.loadToken) {
+          return;
+        }
+        const vrm = gltf.userData.vrm as VRM;
+        if (!vrm) {
+          console.warn("[three-runtime] GLTF did not contain VRM payload:", url);
+          return;
+        }
 
-              VRMUtils.rotateVRM0(vrm);
-              applyVrmRestPose(vrm);
-              vrm.humanoid?.update();
+        VRMUtils.rotateVRM0(vrm);
+        applyVrmRestPose(vrm);
+        vrm.humanoid?.update();
 
-              // BlendShapeMaster に wired されていない orphan morph (Hana Tool /
-              // Perfect Sync 系) を synthetic VRMExpression として登録し、
-              // expressionManager.setValue(<morph名>, w) で駆動可能にする。
-              // Body 構築前に必ず終わらせる（slot mixer が name を resolve する前提のため）。
-              const orphans = registerOrphanMorphs(vrm);
-              if (orphans.registered.length > 0) {
-                console.debug(
-                  `[three-runtime] registered ${orphans.registered.length} orphan morphs as synthetic expressions`,
-                );
-              }
-
-              this.scene.add(vrm.scene);
-              this.currentVrm = vrm;
-              this.currentBody = new Body(
-                vrm,
-                this.devLogRef.current ?? undefined,
-                this.claimState,
-              );
-              this.currentBody.setMotionIntensity(this.motionIntensity);
-
-              vrm.scene.updateWorldMatrix(true, true);
-              vrm.update(0);
-
-              const headBone = vrm.humanoid?.getNormalizedBoneNode("head");
-              this.trackHead = headBone ?? null;
-
-              const headPos = this.characterAnchorWorldPos;
-              if (headBone) headBone.getWorldPosition(headPos);
-              else headPos.set(0, 1.6, 0);
-
-              const targetY = headPos.y - 0.05;
-              if (!this.fixedCamera) {
-                this.cameraBase.x = 0;
-                this.cameraBase.y = targetY;
-                this.cameraBase.z = 1.1;
-                this.camera.position.set(0, targetY, 1.1);
-                this.camera.lookAt(0, targetY, 0);
-              }
-              // 新しい姿は背丈が違う。切替経路（お別れの暗転中 / 設定画面の
-              // live 差し替え）を問わず、ロード時は追従を ON に戻して頭位置の
-              // 構図から始める。ここは即時スナップなので、暗転中なら
-              // カーテンが明けた瞬間から構図が決まっている。
-              if (!this.fixedCamera) this.cameraTrackingEnabled = true;
-
-              this.bodyListenerRef.current?.(this.currentBody);
-              this.updatePlaceholderRect();
-              this.handleResize();
-              this.clock.getDelta();
-              this.lastRenderAtMs = -Infinity;
-              this.startRenderLoop();
-              resolve();
-            },
-            (err) => reject(err),
+        // BlendShapeMaster に wired されていない orphan morph (Hana Tool /
+        // Perfect Sync 系) を synthetic VRMExpression として登録し、
+        // expressionManager.setValue(<morph名>, w) で駆動可能にする。
+        // Body 構築前に必ず終わらせる（slot mixer が name を resolve する前提のため）。
+        const orphans = registerOrphanMorphs(vrm);
+        if (orphans.registered.length > 0) {
+          console.debug(
+            `[three-runtime] registered ${orphans.registered.length} orphan morphs as synthetic expressions`,
           );
+        }
+
+        const body = new Body(vrm, this.devLogRef.current ?? undefined, this.claimState, {
+          modelSha256,
         });
+        body.setMotionIntensity(this.motionIntensity);
+        await body.initializeRecordedBody();
+        if (myToken !== this.loadToken) {
+          body.dispose();
+          VRMUtils.deepDispose(vrm.scene);
+          return;
+        }
+        this.scene.add(vrm.scene);
+        this.currentVrm = vrm;
+        this.currentBody = body;
+
+        vrm.scene.updateWorldMatrix(true, true);
+        vrm.update(0);
+
+        const headBone = vrm.humanoid?.getNormalizedBoneNode("head");
+        this.trackHead = headBone ?? null;
+
+        const headPos = this.characterAnchorWorldPos;
+        if (headBone) headBone.getWorldPosition(headPos);
+        else headPos.set(0, 1.6, 0);
+
+        const framing = defaultCameraForCharacter(headPos);
+        if (!this.fixedCamera) {
+          Object.assign(this.cameraBase, framing);
+          this.camera.position.set(framing.x, framing.y, framing.z);
+          this.camera.lookAt(framing.x, framing.y, 0);
+        }
+        // 新しい姿は背丈が違う。切替経路（お別れの暗転中 / 設定画面の
+        // live 差し替え）を問わず、ロード時は追従を ON に戻して頭位置に
+        // 合わせた上半身の構図から始める。ここは即時スナップなので、暗転中なら
+        // カーテンが明けた瞬間から構図が決まっている。
+        if (!this.fixedCamera) this.cameraTrackingEnabled = true;
+
+        this.bodyListenerRef.current?.(this.currentBody);
+        this.updatePlaceholderRect();
+        this.handleResize();
+        this.clock.getDelta();
+        this.renderCadence.reset();
+        this.startRenderLoop();
       } catch (err) {
         if (myToken !== this.loadToken) return;
         console.error("[three-runtime] VRM load failed:", err);
@@ -414,7 +413,7 @@ class ThreeRuntimeImpl implements ThreeRuntime {
       this.stopRenderLoop();
     } else {
       this.clock.getDelta();
-      this.lastRenderAtMs = -Infinity;
+      this.renderCadence.reset();
       this.startRenderLoop();
     }
   }
@@ -450,7 +449,7 @@ class ThreeRuntimeImpl implements ThreeRuntime {
     this.rafId = null;
   }
 
-  private readonly tick = (): void => {
+  private readonly tick = (frameTimeMs: number): void => {
     this.rafId = null;
 
     // pause / detach / document hidden 中は必要な処理だけ残し、不要な次フレームを予約しない。
@@ -481,7 +480,14 @@ class ThreeRuntimeImpl implements ThreeRuntime {
     // これが「UI を動かすとシーンが消える」class のバグの根本対処。
     const resizedThisFrame = this.handleResize();
     const shouldRenderThisFrame =
-      this.shouldRenderScene() && (this.shouldRenderAt(now) || resizedThisFrame);
+      this.shouldRenderScene() &&
+      this.renderCadence.takeFrame(
+        // Use the display timestamp for cadence, not variable callback-arrival
+        // latency. Body and tweens below still consume actual elapsed time.
+        frameTimeMs,
+        this.currentBody?.hasActiveRecordedPerformance() ?? false,
+        resizedThisFrame,
+      );
 
     if (shouldRenderThisFrame) {
       const delta = this.clock.getDelta();
@@ -496,7 +502,7 @@ class ThreeRuntimeImpl implements ThreeRuntime {
         // Step 1: Base — VRM head tracking（claim 未取得時のみ）
         if (this.trackHead && this.cameraTrackingEnabled && !cameraClaimed) {
           this.trackHead.getWorldPosition(this.headWorldPos);
-          const desiredY = this.headWorldPos.y - 0.05;
+          const desiredY = this.headWorldPos.y - DEFAULT_CAMERA_HEAD_OFFSET;
           this.cameraBase.y += (desiredY - this.cameraBase.y) * Math.min(1.5 * delta, 1);
         }
 
@@ -523,11 +529,11 @@ class ThreeRuntimeImpl implements ThreeRuntime {
 
         // Step 3: lookAt — modulation 適用後の position から target を見る
         if (this.cameraTrackingEnabled && !cameraClaimed) {
-          this.camera.lookAt(0, this.camera.position.y, 0);
+          // Keep the initial horizontal framing; do not chase each head sway.
+          this.camera.lookAt(this.cameraBase.x, this.camera.position.y, 0);
         }
       }
 
-      this.lastRenderAtMs = now;
       if (!this.r3fHost.advance(now)) {
         this.renderer.render(this.scene, this.camera);
       }
@@ -547,10 +553,6 @@ class ThreeRuntimeImpl implements ThreeRuntime {
     return !document.hidden;
   }
 
-  private shouldRenderAt(nowMs: number): boolean {
-    return nowMs - this.lastRenderAtMs >= MIN_RENDER_FRAME_INTERVAL_MS - 0.5;
-  }
-
   private readonly handleVisibilityChange = (): void => {
     if (document.hidden) {
       this.stopRenderLoop();
@@ -559,7 +561,7 @@ class ThreeRuntimeImpl implements ThreeRuntime {
     }
     this.updatePlaceholderRect();
     this.clock.getDelta();
-    this.lastRenderAtMs = -Infinity;
+    this.renderCadence.reset();
     this.startRenderLoop();
   };
 

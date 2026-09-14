@@ -48,6 +48,41 @@ function mockVrm(): {
 const DT = 1 / 60;
 
 describe("ProceduralBones breathing offsets", () => {
+  it("retains authored spine, head and arm motion at partial clip weight", () => {
+    const { vrm, getBone } = mockVrm();
+    const bones = new ProceduralBones(() => 0.5);
+    bones.bindVrm(vrm);
+    const authored = new Map<VRMHumanBoneName, THREE.Quaternion>();
+    for (const name of ["spine", "head", "leftUpperArm", "rightUpperArm"] as const) {
+      getBone(name).rotation.set(0.25, 0.2, 0.4);
+      authored.set(name, getBone(name).quaternion.clone());
+    }
+    for (let frame = 0; frame < 300; frame++) {
+      // Real mixers write an absolute pose before each procedural overlay.
+      bones.restoreBaseRotations();
+      for (const [name, quaternion] of authored) getBone(name).quaternion.copy(quaternion);
+      bones.update(DT, frame * DT, 0.15);
+      for (const [name, quaternion] of authored) {
+        expect(getBone(name).quaternion.angleTo(quaternion)).toBeLessThan(0.04);
+      }
+    }
+    bones.restoreBaseRotations();
+    for (const [name, quaternion] of authored) {
+      expect(getBone(name).quaternion.angleTo(quaternion)).toBeLessThan(1e-6);
+    }
+  });
+
+  it("does not restore a stale arm pose after another animation owner replaces it", () => {
+    const { vrm, getBone } = mockVrm();
+    const bones = new ProceduralBones(() => 0.5);
+    bones.bindVrm(vrm);
+    bones.update(DT, 0, 1);
+    getBone("leftUpperArm").rotation.set(0.3, 0.2, 0.1);
+    const replacement = getBone("leftUpperArm").quaternion.clone();
+    bones.restoreBaseRotations();
+    expect(getBone("leftUpperArm").quaternion.angleTo(replacement)).toBeLessThan(1e-6);
+  });
+
   it("chestPitch が spine.rotation.x に weight 込みで加算される", () => {
     const base = mockVrm();
     const withBreath = mockVrm();

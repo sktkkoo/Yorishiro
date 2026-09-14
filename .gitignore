@@ -54,3 +54,6 @@ docs/superpowers/
 
 # Generated API docs (typedoc / cargo doc output)
 docs/api/
+
+# Local motion reviews may contain third-party application captures.
+.motion-review/

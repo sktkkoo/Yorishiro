@@ -142,6 +142,7 @@ import {
 } from "./i18n/strings";
 import { useReloadCurtain } from "./reload-curtain";
 import { createBodyStateExpressionAdapter } from "./runtime/agent-state-expression";
+import { createVoiceStateExpressionBridge } from "./runtime/agent-state-expression/voice-state-expression-bridge";
 import { type AmbientAudioRuntime, initAmbientAudio } from "./runtime/ambient-audio";
 import {
   type AmbientUiPackEntry,
@@ -1401,7 +1402,13 @@ function App() {
     registerVoiceFragment();
 
     const effectDispatcher = new EffectDispatcher();
-    const voicePlayer = new VoicePlayer("Kyoko", new SayTtsEngine());
+    const voicePlayer = new VoicePlayer(
+      "Kyoko",
+      new SayTtsEngine(),
+      createVoiceStateExpressionBridge(
+        createBodyStateExpressionAdapter(() => getThreeRuntime().getBody()),
+      ),
+    );
     const voiceApi = voicePlayer.createVoiceAPI();
     const voicePlaybackLeaseSync = new VoicePlaybackLeaseSync(voicePlayer, {
       registerOwner: () => invoke<string>("mcp_voice_playback_register_owner"),
@@ -4341,6 +4348,7 @@ function App() {
           // instead of a reflex the moment the VRM appears on screen.
           setTimeout(() => {
             bodyRef.current?.createCharacterAPI().play("anim:VRMA_small_nod", {
+              mask: "upper-body",
               fadeInMs: 1200,
               fadeOutMs: 800,
               weight: 0.8,

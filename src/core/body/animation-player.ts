@@ -1,29 +1,38 @@
 /**
- * AnimationPlayer — VRMA clip loading and playback via Three.js AnimationMixer.
- *
- * Manages a single AnimationMixer bound to a VRM scene. Supports:
- * - Clip loading from .vrma files (cached by ref)
- * - Fade-in / fade-out
- * - Loop / one-shot
- * - Weight control per action
- *
- * Priority arbitration は本層では行わない。`MotionScheduler` (上位 layer) が
- * priority queue を管理し、本 player は callback 経由で driven される
- * 純粋な playback primitive。
- *
- * Three.js-dependent — not unit-testable without mocks.
+ * VRMA playback primitive. The scheduler owns priority; this layer owns clip
+ * preparation, phase-compatible transitions, and the lifetime of mixer actions.
+ * Analysis runs once per retargeted clip. update() does no feature allocation.
  */
-
-import type { VRM } from "@pixiv/three-vrm";
-import { createVRMAnimationClip, VRMAnimationLoaderPlugin } from "@pixiv/three-vrm-animation";
+import { type VRM, VRMHumanBoneName } from "@pixiv/three-vrm";
+import {
+  createVRMAnimationClip,
+  type VRMAnimation,
+  VRMAnimationLoaderPlugin,
+} from "@pixiv/three-vrm-animation";
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import type { SubsystemLog } from "../dev-log";
+import {
+  analyzeMotionClip,
+  conditionMotionLoop,
+  findMatchedEntry,
+  findTransitionDelay,
+  type MotionPoseJoint,
+  type MotionTransitionProfile,
+  measureMotionEntry,
+  UPPER_BODY_TRANSITION_LIMITS,
+} from "./motion-transition";
+import {
+  type RecordedBaseHandle,
+  type RecordedBaseOptions,
+  RecordedBasePlayer,
+} from "./recorded-base-player";
+import {
+  calibrateQuietIdleUpperBodyClip,
+  calibrateStandingIdleClip,
+  groundStandingIdleClip,
+} from "./standing-idle-grounding";
 
-/**
- * Alias table: persona animation ref name → actual VRMA file name (without .vrma).
- * Persona uses semantic names; this table maps them to available assets.
- */
 const ANIM_ALIAS: Record<string, string> = {
   VRMA_small_nod: "Thankful",
   VRMA_head_tilt_down: "Leaning",
@@ -33,27 +42,72 @@ const ANIM_ALIAS: Record<string, string> = {
   VRMA_gun_fire: "VRMA_04_GunFire",
 };
 
-/** Resolved animation action with metadata. */
+export interface AnimationPlayOptions {
+  fadeInMs?: number;
+  fadeOutMs?: number;
+  weight?: number;
+  loop?: boolean;
+  speed?: number;
+  /** Only matched idle motifs may enter in the middle of a clip. */
+  transition?: "matched" | "immediate";
+  mask?: "upper-body" | "lower-body" | "full-body";
+  /** Preserve reviewed hips XYZ only for full-body, immediate, non-looping performances. */
+  rootMotion?: "in-place" | "preserve";
+  /** Internal mixer ownership. Public motion requests remain on the performance layer. */
+  layer?: "foundation" | "performance";
+  /** Explicit phase override for deterministic visual comparisons. */
+  startTimeSec?: number;
+  /** Upper bound on waiting for a quieter outgoing pose (default: 180 ms). */
+  maxTransitionDelayMs?: number;
+  /** Cap long one-shots at a quiet exit within another 500 ms; looping recordings ignore this. */
+  maxDurationMs?: number;
+  /** Checked after loading and after transition waits. False rejects with AbortError. */
+  isCurrent?: () => boolean;
+}
+
+interface WeightRamp {
+  from: number;
+  to: number;
+  start: number;
+  duration: number;
+}
 interface ActiveAnimation {
   readonly id: number;
   readonly ref: string;
   readonly action: THREE.AnimationAction;
-  readonly startedAt: number;
+  readonly layer: "foundation" | "performance";
+  readonly profile: MotionTransitionProfile;
   readonly loop: boolean;
-  /** Fade duration applied when a non-looping action reaches its last frame. */
   readonly autoFadeOutMs: number;
-  completionResolve: (() => void) | null;
-  completionReject: ((err: unknown) => void) | null;
+  readonly completion: ReturnType<typeof createDeferred>;
+  readonly stopped: ReturnType<typeof createDeferred>;
+  ramp?: WeightRamp;
+  stopAt?: number;
+  maxDurationAt?: number;
+}
+interface TransitionWait {
+  readonly until: number;
+  readonly isCurrent: () => boolean;
+  readonly resolve: () => void;
 }
 
-/**
- * Default auto-fadeOut for non-looping animations after completion.
- * Non-loop actions with `clampWhenFinished = true` otherwise hold their final
- * pose on bones that procedural-bones doesn't override (lower arms, hands,
- * fingers, upperArm .y), leaving a visible residue until the next clip fires.
- */
-const DEFAULT_AUTO_FADE_OUT_MS = 400;
+interface PoseSnapshotBinding {
+  readonly node: THREE.Object3D;
+  readonly sample: MotionPoseJoint;
+}
 
+const DEFAULT_AUTO_FADE_OUT_MS = 400;
+const LOWER_BODY_BONES: ReadonlySet<string> = new Set([
+  "hips",
+  "leftUpperLeg",
+  "rightUpperLeg",
+  "leftLowerLeg",
+  "rightLowerLeg",
+  "leftFoot",
+  "rightFoot",
+  "leftToes",
+  "rightToes",
+]);
 let nextAnimId = 1;
 
 export class AnimationPlayer {
@@ -61,291 +115,782 @@ export class AnimationPlayer {
   private readonly vrm: VRM;
   private readonly loader: GLTFLoader;
   private readonly clipCache = new Map<string, THREE.AnimationClip>();
+  private readonly pendingLoads = new Map<string, Promise<THREE.AnimationClip | null>>();
+  private readonly sourceAnimations = new Map<string, VRMAnimation>();
+  private readonly pendingSources = new Map<string, Promise<VRMAnimation | null>>();
+  private readonly maskedClips = new WeakMap<
+    THREE.AnimationClip,
+    Map<NonNullable<AnimationPlayOptions["mask"]>, THREE.AnimationClip>
+  >();
+  private readonly loopClips = new WeakMap<THREE.AnimationClip, THREE.AnimationClip>();
+  private readonly standingClips = new WeakMap<THREE.AnimationClip, THREE.AnimationClip>();
+  private readonly quietIdleClips = new WeakMap<THREE.AnimationClip, THREE.AnimationClip>();
+  private readonly standingUpperRest = new Map<string, Float32Array>();
+  private readonly groundedClips = new WeakMap<THREE.AnimationClip, THREE.AnimationClip>();
+  private readonly profiles = new WeakMap<THREE.AnimationClip, MotionTransitionProfile>();
+  private readonly preparedProfiles = new Map<string, MotionTransitionProfile>();
+  private readonly poseSnapshot = new Map<string, MotionPoseJoint>();
+  private readonly poseBindings: PoseSnapshotBinding[] = [];
+  private readonly snapshotPrevious = new THREE.Quaternion();
+  private readonly snapshotCurrent = new THREE.Quaternion();
+  private readonly snapshotDelta = new THREE.Quaternion();
+  private hasPoseSample = false;
   private readonly active = new Map<number, ActiveAnimation>();
+  private readonly transitionWaits = new Set<TransitionWait>();
   private readonly devLog?: SubsystemLog;
   private readonly beforeActionPlay?: () => void;
+  private generation = 0;
+  private recordedBaseGeneration = 0;
+  private recordedBase?: RecordedBasePlayer;
+  private canInitializeRecordedBase = true;
 
   constructor(vrm: VRM, devLog?: SubsystemLog, beforeActionPlay?: () => void) {
     this.vrm = vrm;
     this.devLog = devLog;
     this.beforeActionPlay = beforeActionPlay;
+    const nodes = new Set<THREE.Object3D>();
+    if (vrm.humanoid) {
+      for (const name of Object.values(VRMHumanBoneName)) {
+        if (LOWER_BODY_BONES.has(name)) continue;
+        const node = vrm.humanoid.getNormalizedBoneNode(name);
+        if (node) nodes.add(node);
+      }
+    } else vrm.scene.traverse((node) => nodes.add(node));
+    for (const node of nodes) {
+      const pose = new Float32Array(node.quaternion.toArray());
+      const sample: MotionPoseJoint = {
+        pose,
+        restPose: pose.slice(),
+        velocity: new Float32Array(3),
+        velocityValid: false,
+      };
+      this.poseBindings.push({ node, sample });
+      // Keep a separate immutable reference: transition restPose can be refreshed
+      // later as mixer bindings change, while quiet standing calibration cannot.
+      const standingRest = pose.slice();
+      if (node.name) this.standingUpperRest.set(`${node.name}.quaternion`, standingRest);
+      this.standingUpperRest.set(`${node.uuid}.quaternion`, standingRest);
+      if (node.name) this.poseSnapshot.set(`${node.name}.quaternion`, sample);
+      this.poseSnapshot.set(`${node.uuid}.quaternion`, sample);
+    }
     this.mixer = new THREE.AnimationMixer(vrm.scene);
     this.loader = new GLTFLoader();
     this.loader.register((parser) => new VRMAnimationLoaderPlugin(parser));
-
-    // Listen for action completion
-    this.mixer.addEventListener("finished", (e) => {
-      const finishedAction = e.action as THREE.AnimationAction;
+    this.mixer.addEventListener("finished", (event) => {
       for (const anim of this.active.values()) {
-        if (anim.action === finishedAction) {
-          anim.completionResolve?.();
-          if (anim.loop) {
-            this.active.delete(anim.id);
-          } else {
-            // Auto fade-out so the final-frame pose doesn't linger on bones
-            // procedural-bones leaves alone (hands, fingers, upperArm.y, etc.).
-            const fadeSec = anim.autoFadeOutMs / 1000;
-            if (fadeSec > 0) {
-              anim.action.fadeOut(fadeSec);
-              setTimeout(() => {
-                // Only stop if this entry is still the active one; it may have
-                // been replaced or cancelled during the fade window.
-                if (this.active.get(anim.id) === anim) {
-                  anim.action.stop();
-                  this.active.delete(anim.id);
-                }
-              }, anim.autoFadeOutMs);
-            } else {
-              anim.action.stop();
-              this.active.delete(anim.id);
-            }
-          }
-          break;
-        }
+        if (anim.action !== event.action) continue;
+        anim.completion.resolve();
+        // Do not extend a fade already requested by a replacement or stop().
+        if (anim.stopAt === undefined) this.fadeAndStop(anim, anim.autoFadeOutMs);
+        break;
       }
     });
   }
 
-  /** Advance the mixer. Call from Body.update(). */
+  /** Fade deadlines use animation time; pausing rendering cannot leave ghost actions. */
   update(delta: number): void {
+    if (!Number.isFinite(delta) || delta < 0) return;
+    this.canInitializeRecordedBase = false;
+    const time = this.mixer.time + delta;
+    for (const anim of this.active.values()) this.updateWeight(anim, time);
+    this.recordedBase?.beforeUpdate(time, this.getLayerEffectiveWeight("performance"));
     this.mixer.update(delta);
-  }
-
-  /**
-   * Play an animation. Returns an ID and a completion promise.
-   * The animation ref is resolved to a .vrma file path.
-   */
-  async play(
-    ref: string,
-    opts: {
-      fadeInMs?: number;
-      fadeOutMs?: number;
-      weight?: number;
-      loop?: boolean;
-      speed?: number;
-    } = {},
-  ): Promise<{
-    id: number;
-    completion: Promise<void>;
-    setWeight: (w: number, fadeMs?: number) => void;
-    stop: (fadeMs?: number) => Promise<void>;
-    cancel: () => void;
-  }> {
-    const clip = await this.loadClip(ref);
-    if (!clip) {
-      throw new Error(`animation not found: ${ref}`);
-    }
-
-    const action = this.mixer.clipAction(clip);
-    const id = nextAnimId++;
-
-    // 直前まで active だった「別の」AnimationAction を crossFadeFrom の source に
-    // するため探す。MotionScheduler は single-active model なので通常 0 or 1
-    // entry。同じ action instance が再 play される replay case は除外（同 action
-    // への crossFade は意味がない）。複数残っていたら最新 (= 最大 id) を選ぶ。
-    let prevActive: ActiveAnimation | null = null;
+    this.recordedBase?.afterUpdate();
+    this.captureMixedPose(delta);
     for (const anim of this.active.values()) {
-      if (anim.action === action) continue;
-      if (!prevActive || anim.id > prevActive.id) {
-        prevActive = anim;
+      if (anim.maxDurationAt !== undefined && this.mixer.time >= anim.maxDurationAt) {
+        anim.maxDurationAt = undefined;
+        // Completion follows natural one-shots: release ownership as the final
+        // fade begins. An earlier replacement/stop already owns its deadline.
+        if (anim.stopAt === undefined) {
+          anim.completion.resolve();
+          this.fadeAndStop(anim, anim.autoFadeOutMs);
+        }
+      }
+      if (anim.stopAt !== undefined && this.mixer.time >= anim.stopAt) this.disposeAnimation(anim);
+    }
+    for (const wait of this.transitionWaits) {
+      if (!wait.isCurrent() || this.mixer.time >= wait.until) {
+        this.transitionWaits.delete(wait);
+        wait.resolve();
       }
     }
+  }
 
-    // reset() calls stopFading()/stopWarping() internally, which clobbers any
-    // fadeIn scheduled before it. Reset first, then configure, then fade, then
-    // play — this keeps the fadeIn's weight ramp intact.
+  /** Load, retarget, mask and analyze before a scheduler commits to a replacement. */
+  async preload(
+    ref: string,
+    opts: Pick<
+      AnimationPlayOptions,
+      "mask" | "loop" | "isCurrent" | "rootMotion" | "transition" | "layer"
+    > = {},
+  ): Promise<boolean> {
+    try {
+      this.assertRootMotionOptions(opts);
+      const clip = await this.loadClip(ref, opts.rootMotion);
+      if (opts.isCurrent && !opts.isCurrent()) return false;
+      if (!clip) return false;
+      this.prepareClip(clip, opts.mask, opts.loop, ref, opts.rootMotion);
+      return true;
+    } catch {
+      // Invalid root preservation or standing preparation must fail closed.
+      // The caller can retain its existing pose when a reviewed variant is unavailable.
+      return false;
+    }
+  }
+
+  /** Dedicated reviewed full-body preparation; public preserve restrictions remain unchanged. */
+  async preloadRecordedBase(ref: string): Promise<boolean> {
+    try {
+      const clip = await this.loadClip(ref, "preserve");
+      if (!clip) return false;
+      this.getRecordedBase().prepare(clip);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async playRecordedBase(ref: string, opts: RecordedBaseOptions): Promise<RecordedBaseHandle> {
+    const generation = this.generation;
+    const request = ++this.recordedBaseGeneration;
+    const current = () =>
+      generation === this.generation &&
+      request === this.recordedBaseGeneration &&
+      (opts.isCurrent?.() ?? true);
+    const clip = await this.loadClip(ref, "preserve");
+    this.assertCurrent(current);
+    if (!clip) throw new Error(`animation not found: ${ref}`);
+    if (
+      opts.initialPose &&
+      (!this.canInitializeRecordedBase || this.activeCount !== 0 || (opts.fadeInMs ?? 800) !== 0)
+    )
+      throw new Error(
+        "Recorded base initial pose is only allowed before the player's first playback or update",
+      );
+    const handle = this.getRecordedBase().play(clip, {
+      ...opts,
+      onCommit: () => {
+        this.assertCurrent(current);
+        opts.onCommit?.();
+        this.assertCurrent(current);
+        // Only retire a legacy lower owner after the entire incoming gate passes.
+        // Leaving one active would normalize both layers and change foot paths.
+        for (const anim of this.active.values()) {
+          if (
+            anim.layer === "foundation" ||
+            anim.action.getClip().tracks.some((track) => {
+              const binding = THREE.PropertyBinding.parseTrackName(track.name);
+              return [...LOWER_BODY_BONES].some((name) => {
+                const node = this.vrm.humanoid?.getNormalizedBoneNode(name as VRMHumanBoneName);
+                return node && (binding.nodeName === node.name || binding.nodeName === node.uuid);
+              });
+            })
+          )
+            throw new Error("Recorded base requires exclusive lower-body ownership");
+        }
+        this.beforeActionPlay?.();
+        this.assertCurrent(current);
+      },
+    });
+    this.canInitializeRecordedBase = false;
+    if (opts.initialPose) {
+      this.recordedBase?.beforeUpdate(this.mixer.time, 0);
+      this.mixer.update(0);
+      this.recordedBase?.afterUpdate();
+      this.captureMixedPose(0);
+    }
+    this.devLog?.write({
+      phase: "transition",
+      note: `recorded base ${ref}`,
+      data: {
+        startTimeSec: opts.startTimeSec,
+        endTimeSec: opts.endTimeSec,
+        fadeInMs: opts.fadeInMs ?? 800,
+      },
+    });
+    return handle;
+  }
+
+  private getRecordedBase(): RecordedBasePlayer {
+    this.recordedBase ??= new RecordedBasePlayer(this.mixer, this.vrm);
+    return this.recordedBase;
+  }
+
+  /** No loading, preparation or live pose mutation on the director's decision path. */
+  evaluateTransition(
+    ref: string,
+    opts: Pick<AnimationPlayOptions, "mask" | "loop" | "weight" | "speed" | "transition">,
+  ): { cost: number; startTimeSec: number } | null {
+    if (opts.mask !== "upper-body") return null;
+    const profile = this.preparedProfiles.get(this.profileKey(ref, opts.mask, opts.loop));
+    if (!profile) return null;
+    const result = measureMotionEntry(
+      this.recordedBase?.transitionPose(this.poseSnapshot) ?? this.poseSnapshot,
+      profile,
+      {
+        weight: opts.weight ?? 0.7,
+        speed: opts.speed ?? 1,
+        matched: opts.transition === "matched",
+        loop: opts.loop ?? false,
+      },
+      UPPER_BODY_TRANSITION_LIMITS,
+    );
+    // Local continuity rejection limits, calibrated against the installed Yori
+    // catalog. They are not a perceptual score or a full-body contact guarantee.
+    if (!result) return null;
+    return { cost: result.cost, startTimeSec: result.startTimeSec };
+  }
+
+  async play(ref: string, opts: AnimationPlayOptions = {}) {
+    this.assertRootMotionOptions(opts);
+    const generation = this.generation;
+    const isCurrent = () => generation === this.generation && (opts.isCurrent?.() ?? true);
+    const loadedClip = await this.loadClip(ref, opts.rootMotion);
+    this.assertCurrent(isCurrent);
+    if (!loadedClip) throw new Error(`animation not found: ${ref}`);
+    const { clip, profile } = this.prepareClip(
+      loadedClip,
+      opts.mask,
+      opts.loop,
+      ref,
+      opts.rootMotion,
+    );
+    const layer = opts.layer ?? "performance";
+    let previous = this.latestAnimation(layer);
+    if (previous && opts.transition === "matched" && opts.startTimeSec === undefined) {
+      const delay = findTransitionDelay(
+        previous.profile,
+        previous.action.time,
+        Math.min(0.5, Math.max(0, (opts.maxTransitionDelayMs ?? 180) / 1000)),
+        previous.action.getEffectiveTimeScale(),
+        previous.loop,
+      );
+      if (delay > 0) {
+        await new Promise<void>((resolve) => {
+          this.transitionWaits.add({ until: this.mixer.time + delay, isCurrent, resolve });
+        });
+        this.assertCurrent(isCurrent);
+        previous = this.latestAnimation(layer);
+      }
+    }
+    // A fresh action identity lets the same clip replay while its old action fades.
+    // Share immutable tracks; clone only the clip wrapper, not all keyframes.
+    const playbackClip = new THREE.AnimationClip(
+      clip.name,
+      clip.duration,
+      clip.tracks,
+      clip.blendMode,
+    );
+    const action = this.mixer.clipAction(playbackClip);
+    const id = nextAnimId++;
+    const speed = finiteOr(opts.speed, 1);
     action.reset();
     action.setLoop(opts.loop ? THREE.LoopRepeat : THREE.LoopOnce, opts.loop ? Infinity : 1);
     action.clampWhenFinished = !opts.loop;
-    action.setEffectiveWeight(opts.weight ?? 0.7);
-    if (opts.speed !== undefined) action.setEffectiveTimeScale(opts.speed);
-
-    const fadeInSec = (opts.fadeInMs ?? 200) / 1000;
-
-    // AnimationMixer saves the current bone transforms as the state it restores
-    // when the last action stops. Remove procedural overlays immediately before
-    // activation so a transient gaze/head offset cannot become that base.
-    this.beforeActionPlay?.();
-
-    if (prevActive && fadeInSec > 0) {
-      // Synchronized crossfade: prev の weight を duration で 0 へ、self の weight
-      // を同 duration で 1 へ。total weight が 1.0 を維持されるので、独立 fadeIn +
-      // fadeOut で出る overshoot (~1.2) と「motion 混ざる」 blend が消える。
-      // warp=true で time-scale も補間 → 動作速度が違う clip 間も滑らか。
-      // prev の AnimationAction は fade 完了後 weight 0 で contribution なし、
-      // 既存の auto-fadeOut / stop 機構で自然 cleanup されるので明示 delete 不要。
-      action.play();
-      action.crossFadeFrom(prevActive.action, fadeInSec, true);
-    } else {
-      // 前 active なし、または fadeIn 0 の即時 swap。既存 path を維持。
-      if (fadeInSec > 0) action.fadeIn(fadeInSec);
-      action.play();
-    }
-
-    const { promise: completion, resolve, reject } = createDeferred();
-
+    action.setEffectiveTimeScale(speed);
+    action.time = Math.max(
+      0,
+      Math.min(
+        clip.duration,
+        opts.startTimeSec ??
+          (previous && opts.transition === "matched"
+            ? findMatchedEntry(previous.profile, previous.action.time, profile, {
+                sourceSpeed: previous.action.getEffectiveTimeScale(),
+                targetSpeed: speed,
+                loop: opts.loop,
+              })
+            : 0),
+      ),
+    );
+    const weight = clampWeight(opts.weight ?? 0.7);
+    const fadeSec = Math.max(0, finiteOr(opts.fadeInMs, 200)) / 1000;
     const anim: ActiveAnimation = {
       id,
       ref,
       action,
-      startedAt: performance.now(),
+      layer,
+      profile,
       loop: opts.loop ?? false,
-      autoFadeOutMs: opts.fadeOutMs ?? DEFAULT_AUTO_FADE_OUT_MS,
-      completionResolve: resolve,
-      completionReject: reject,
+      autoFadeOutMs: Math.max(0, finiteOr(opts.fadeOutMs, DEFAULT_AUTO_FADE_OUT_MS)),
+      completion: createDeferred(),
+      stopped: createDeferred(),
     };
+    const capSec = finiteOr(opts.maxDurationMs, 0) / 1000;
+    const remainingSec = speed > 0 ? (clip.duration - action.time) / speed : Infinity;
+    if (!anim.loop && capSec > 0 && capSec < remainingSec) {
+      const capPhase = action.time + capSec * speed;
+      const exitDelay = findTransitionDelay(profile, capPhase, 0.5, speed, false);
+      anim.maxDurationAt = this.mixer.time + capSec + exitDelay;
+    }
+    action.setEffectiveWeight(fadeSec > 0 ? 0 : weight);
+    if (fadeSec > 0) anim.ramp = { from: 0, to: weight, start: this.mixer.time, duration: fadeSec };
+    // Clear procedural offsets before Three captures its restoration pose.
+    this.beforeActionPlay?.();
+    // Three captures its original binding value only when the first action
+    // activates it. Keep the same rest reference for weighted pose comparison.
+    for (const joint of profile.joints) {
+      const sample = this.poseSnapshot.get(joint.name);
+      if (!sample) continue;
+      const alreadyBound =
+        this.recordedBase?.hasUpperBinding(joint.name) ||
+        [...this.active.values()].some((outgoing) =>
+          outgoing.profile.joints.some((other) => this.poseSnapshot.get(other.name) === sample),
+        );
+      if (!alreadyBound) {
+        const binding = this.poseBindings.find((item) => item.sample === sample);
+        binding?.node.quaternion.toArray(sample.restPose);
+      }
+    }
+    // Activate incoming bindings before retiring a zero-fade action.
+    action.play();
+    this.canInitializeRecordedBase = false;
+    for (const outgoing of this.active.values()) {
+      if (outgoing.layer === layer) this.fadeAndStop(outgoing, fadeSec * 1000);
+    }
     this.active.set(id, anim);
-
+    this.devLog?.write({
+      phase: "transition",
+      note: `play ${ref}`,
+      data: {
+        from: previous?.ref ?? null,
+        entrySec: action.time,
+        transition: opts.transition ?? "immediate",
+        mask: opts.mask ?? "full-body",
+        rootMotion: opts.rootMotion ?? "in-place",
+        layer,
+        grounded:
+          layer === "foundation" && clip.tracks.some((track) => track.name.endsWith(".position")),
+        fadeSec,
+      },
+    });
     return {
       id,
-      completion,
-      setWeight: (w: number, fadeMs?: number) => {
+      completion: anim.completion.promise,
+      setWeight: (value: number, fadeMs = 0) => {
         if (!this.active.has(id)) return;
-        if (fadeMs && fadeMs > 0) {
-          // Three.js doesn't have setWeight with fade natively,
-          // so we do an immediate set
-          action.setEffectiveWeight(w);
-        } else {
-          action.setEffectiveWeight(w);
+        const to = clampWeight(value);
+        if (fadeMs > 0)
+          anim.ramp = {
+            from: action.getEffectiveWeight(),
+            to,
+            start: this.mixer.time,
+            duration: fadeMs / 1000,
+          };
+        else {
+          anim.ramp = undefined;
+          action.setEffectiveWeight(to);
         }
       },
-      stop: async (fadeMs?: number) => {
-        if (!this.active.has(id)) return;
-        const fadeSec = (fadeMs ?? 200) / 1000;
-        if (fadeSec > 0) {
-          action.fadeOut(fadeSec);
-          // Wait for fade to complete
-          await new Promise<void>((r) => setTimeout(r, fadeMs ?? 200));
-        }
-        action.stop();
-        this.active.delete(id);
-        resolve();
+      stop: (fadeMs = 200): Promise<void> => {
+        if (this.active.has(id)) this.fadeAndStop(anim, fadeMs);
+        return anim.stopped.promise;
       },
-      cancel: () => {
-        if (!this.active.has(id)) return;
-        action.stop();
-        this.active.delete(id);
-        resolve();
-      },
+      cancel: () => this.disposeAnimation(anim),
     };
   }
 
-  /** Stop all playing animations. */
-  stopAll(fadeMs?: number): void {
+  /** Invalidate pending plays; keep fading actions tracked until they really stop. */
+  stopAll(fadeMs = 0): void {
+    this.generation++;
+    this.recordedBaseGeneration++;
+    this.recordedBase?.stopAll(fadeMs);
+    for (const wait of this.transitionWaits) wait.resolve();
+    this.transitionWaits.clear();
+    for (const anim of this.active.values()) this.fadeAndStop(anim, fadeMs);
+  }
+
+  /** Discard outgoing tails before a pose owner freezes the mixer clock. */
+  retireFadingActions(): void {
+    this.recordedBase?.retireFadingActions();
     for (const anim of this.active.values()) {
-      if (fadeMs && fadeMs > 0) {
-        anim.action.fadeOut(fadeMs / 1000);
-      } else {
-        anim.action.stop();
-      }
-      anim.completionResolve?.();
+      if (anim.stopAt !== undefined) this.disposeAnimation(anim);
     }
-    this.active.clear();
   }
 
-  /** Number of currently playing animations. */
   get activeCount(): number {
-    return this.active.size;
+    return this.active.size + (this.recordedBase?.activeCount ?? 0);
+  }
+  hasActiveRecordedBase(): boolean {
+    return this.recordedBase?.hasMotion ?? false;
+  }
+  getTotalEffectiveWeight(): number {
+    return Math.min(
+      1,
+      this.getLayerEffectiveWeight("performance") + (this.recordedBase?.upperWeight ?? 0),
+    );
   }
 
-  /**
-   * Sum of effective weights across all active actions, clamped to [0, 1].
-   * Drives complementary blending with ProceduralBones: when VRMA weight rises,
-   * procedural fades back so it doesn't overwrite clip-controlled bones.
-   */
-  getTotalEffectiveWeight(): number {
+  /** Lower-body contribution, separate from upper-body procedural attenuation. */
+  getFoundationEffectiveWeight(): number {
+    return Math.min(
+      1,
+      this.getLayerEffectiveWeight("foundation") + (this.recordedBase?.lowerWeight ?? 0),
+    );
+  }
+
+  private getLayerEffectiveWeight(layer: "foundation" | "performance"): number {
     let total = 0;
     for (const anim of this.active.values()) {
+      if (anim.layer !== layer) continue;
       total += anim.action.getEffectiveWeight();
       if (total >= 1) return 1;
     }
     return total;
   }
-
-  // ── Internals ─────────────────────────────────────────
-
-  /**
-   * Resolve an animation ref to a file path and load the clip.
-   * Caches by ref for reuse.
-   *
-   * Ref format: "anim:VRMA_small_nod" → looks for matching .vrma file
-   * in the bundled animations directory.
-   */
-  private async loadClip(ref: string): Promise<THREE.AnimationClip | null> {
-    const cached = this.clipCache.get(ref);
-    if (cached) return cached;
-
-    const path = this.resolveRefToPath(ref);
-    if (!path) {
-      console.warn(`[AnimationPlayer] unknown animation ref: ${ref}`);
-      return null;
+  private latestAnimation(layer: "foundation" | "performance"): ActiveAnimation | undefined {
+    let latest: ActiveAnimation | undefined;
+    for (const anim of this.active.values()) {
+      if (anim.layer === layer && (!latest || anim.id > latest.id)) latest = anim;
     }
+    return latest;
+  }
+  private captureMixedPose(delta: number): void {
+    const reliableDelta = this.hasPoseSample && delta >= 1 / 240 && delta <= 0.1;
+    for (const { node, sample } of this.poseBindings) {
+      this.snapshotPrevious.fromArray(sample.pose).normalize();
+      this.snapshotCurrent.copy(node.quaternion).normalize();
+      sample.velocityValid = reliableDelta;
+      if (reliableDelta) {
+        this.snapshotDelta
+          .copy(this.snapshotPrevious)
+          .invert()
+          .premultiply(this.snapshotCurrent)
+          .normalize();
+        if (this.snapshotDelta.w < 0) {
+          this.snapshotDelta.set(
+            -this.snapshotDelta.x,
+            -this.snapshotDelta.y,
+            -this.snapshotDelta.z,
+            -this.snapshotDelta.w,
+          );
+        }
+        const sinHalf = Math.hypot(
+          this.snapshotDelta.x,
+          this.snapshotDelta.y,
+          this.snapshotDelta.z,
+        );
+        const factor =
+          sinHalf > 1e-7 ? (2 * Math.atan2(sinHalf, this.snapshotDelta.w)) / (sinHalf * delta) : 0;
+        sample.velocity[0] = this.snapshotDelta.x * factor;
+        sample.velocity[1] = this.snapshotDelta.y * factor;
+        sample.velocity[2] = this.snapshotDelta.z * factor;
+      } else sample.velocity.fill(0);
+      this.snapshotCurrent.toArray(sample.pose);
+    }
+    this.hasPoseSample = true;
+  }
 
-    try {
-      const gltf = await this.loader.loadAsync(path);
-      const vrmAnimations = gltf.userData.vrmAnimations;
-      if (!vrmAnimations || vrmAnimations.length === 0) {
-        console.warn(`[AnimationPlayer] no VRM animations in: ${path}`);
-        return null;
+  private profileKey(
+    ref: string,
+    mask: AnimationPlayOptions["mask"],
+    loop = false,
+    rootMotion: AnimationPlayOptions["rootMotion"] = "in-place",
+  ): string {
+    return JSON.stringify([ref, mask ?? "full-body", loop, rootMotion]);
+  }
+  private updateWeight(anim: ActiveAnimation, time: number): void {
+    const ramp = anim.ramp;
+    if (!ramp) return;
+    const t = Math.max(0, Math.min(1, (time - ramp.start) / ramp.duration));
+    // Zero endpoint slopes avoid the velocity kick from linear fade weights.
+    // Authored timeScale is never warped by unrelated clip durations.
+    const eased = t * t * (3 - 2 * t);
+    anim.action.setEffectiveWeight(ramp.from + (ramp.to - ramp.from) * eased);
+    if (t >= 1) anim.ramp = undefined;
+  }
+  private fadeAndStop(anim: ActiveAnimation, fadeMs: number): void {
+    if (!this.active.has(anim.id)) return;
+    const duration = Math.max(0, finiteOr(fadeMs, 0)) / 1000;
+    if (duration === 0) {
+      this.disposeAnimation(anim);
+      return;
+    }
+    const stopAt = this.mixer.time + duration;
+    // Repeated stop requests cannot indefinitely postpone cleanup.
+    if (anim.stopAt !== undefined && anim.stopAt <= stopAt) return;
+    anim.stopAt = stopAt;
+    anim.ramp = { from: anim.action.getEffectiveWeight(), to: 0, start: this.mixer.time, duration };
+  }
+  private disposeAnimation(anim: ActiveAnimation): void {
+    if (this.active.get(anim.id) !== anim) return;
+    this.active.delete(anim.id);
+    anim.action.stop();
+    this.mixer.uncacheClip(anim.action.getClip());
+    anim.completion.resolve();
+    anim.stopped.resolve();
+  }
+  private assertCurrent(isCurrent: () => boolean): void {
+    if (!isCurrent()) throw new DOMException("Animation request was superseded", "AbortError");
+  }
+  private prepareClip(
+    loaded: THREE.AnimationClip,
+    mask: AnimationPlayOptions["mask"],
+    loop = false,
+    ref?: string,
+    rootMotion: AnimationPlayOptions["rootMotion"] = "in-place",
+  ) {
+    let clip = loaded;
+    if (mask === "upper-body" || mask === "lower-body") {
+      const cache = this.maskedClips.get(loaded);
+      const cached = cache?.get(mask);
+      if (cached) clip = cached;
+      else {
+        const lowerBodyNodes = new Set<string>();
+        for (const boneName of Object.values(VRMHumanBoneName)) {
+          if (!LOWER_BODY_BONES.has(boneName)) continue;
+          const node = this.vrm.humanoid?.getNormalizedBoneNode(boneName);
+          if (node) {
+            lowerBodyNodes.add(node.name);
+            lowerBodyNodes.add(node.uuid);
+          }
+        }
+        clip = new THREE.AnimationClip(
+          `${loaded.name}:${mask}`,
+          loaded.duration,
+          loaded.tracks.filter((track) => {
+            const binding = THREE.PropertyBinding.parseTrackName(track.name);
+            const lowerBody =
+              lowerBodyNodes.has(binding.nodeName) || lowerBodyNodes.has(binding.objectIndex ?? "");
+            return mask === "lower-body"
+              ? lowerBody && track.name.endsWith(".quaternion")
+              : !lowerBody;
+          }),
+          loaded.blendMode,
+        );
+        if (cache) cache.set(mask, clip);
+        else this.maskedClips.set(loaded, new Map([[mask, clip]]));
       }
-      const clip = createVRMAnimationClip(vrmAnimations[0], this.vrm);
+    }
+    let standingCalibrationApplied = false;
+    if (mask === "upper-body" && loop && ref === "anim:Idle") {
+      let calibrated = this.quietIdleClips.get(clip);
+      if (!calibrated) {
+        calibrated = calibrateQuietIdleUpperBodyClip(clip, this.standingUpperRest);
+        this.quietIdleClips.set(clip, calibrated);
+      }
+      if (calibrated === clip)
+        throw new Error("Unable to calibrate reviewed quiet Idle upper body");
+      clip = calibrated;
+    }
+    if (mask === "lower-body" && ref === "anim:Idle") {
+      let calibrated = this.standingClips.get(clip);
+      if (!calibrated) {
+        calibrated = calibrateStandingIdleClip(clip, this.vrm);
+        this.standingClips.set(clip, calibrated);
+      }
+      if (calibrated === clip) throw new Error("Unable to calibrate reviewed standing Idle");
+      standingCalibrationApplied = calibrated !== clip;
+      clip = calibrated;
+    }
+    if (loop) {
+      const cached = this.loopClips.get(clip);
+      if (cached) clip = cached;
+      else {
+        const conditioned = conditionMotionLoop(clip);
+        this.loopClips.set(clip, conditioned);
+        clip = conditioned;
+      }
+    }
+    if (standingCalibrationApplied) {
+      let grounded = this.groundedClips.get(clip);
+      if (!grounded) {
+        // Compute compensation after quaternion seam conditioning so the last
+        // fraction of the loop uses the same measured foot trajectory too.
+        grounded = groundStandingIdleClip(clip, this.vrm);
+        this.groundedClips.set(clip, grounded);
+      }
+      const hips = this.vrm.humanoid.getNormalizedBoneNode("hips");
+      const groundingTrack = hips && `${hips.name || hips.uuid}.position`;
+      if (
+        grounded === clip ||
+        !groundingTrack ||
+        !grounded.tracks.some(
+          (track) => track.name === groundingTrack && track.getValueSize() === 3,
+        )
+      ) {
+        throw new Error("Unable to ground reviewed standing Idle");
+      }
+      clip = grounded;
+    }
+    let profile = this.profiles.get(clip);
+    if (!profile) {
+      const weights = new Map<string, number>();
+      for (const boneName of Object.values(VRMHumanBoneName)) {
+        const node = this.vrm.humanoid?.getNormalizedBoneNode(boneName);
+        if (!node) continue;
+        const weight = /Thumb|Index|Middle|Ring|Little/.test(boneName) ? 0.08 : 1;
+        weights.set(`${node.name}.quaternion`, weight);
+        weights.set(`${node.uuid}.quaternion`, weight);
+      }
+      profile = analyzeMotionClip(clip, weights);
+      this.profiles.set(clip, profile);
+    }
+    if (ref) this.preparedProfiles.set(this.profileKey(ref, mask, loop, rootMotion), profile);
+    return { clip, profile };
+  }
+  private assertRootMotionOptions(opts: AnimationPlayOptions): void {
+    if (opts.rootMotion !== "preserve") return;
+    if (
+      opts.loop ||
+      (opts.mask !== undefined && opts.mask !== "full-body") ||
+      opts.layer === "foundation" ||
+      opts.transition === "matched"
+    ) {
+      // Quaternion seam conditioning/matching cannot guarantee root closure or
+      // contacts. Reviewed one-shots are the only supported first integration.
+      throw new Error(
+        "rootMotion preserve requires a full-body, immediate, non-looping performance",
+      );
+    }
+  }
+  private async loadClip(
+    ref: string,
+    rootMotion: AnimationPlayOptions["rootMotion"] = "in-place",
+  ): Promise<THREE.AnimationClip | null> {
+    const key = rootMotion === "in-place" ? ref : JSON.stringify([ref, rootMotion]);
+    const cached = this.clipCache.get(key);
+    if (cached) return cached;
+    const pending = this.pendingLoads.get(key);
+    if (pending) return pending;
+    const path = this.resolveRefToPath(ref);
+    if (!path) return null;
+    const loading = this.fetchClip(ref, path, key, rootMotion);
+    this.pendingLoads.set(key, loading);
+    try {
+      return await loading;
+    } finally {
+      this.pendingLoads.delete(key);
+    }
+  }
+  private async loadSource(ref: string, path: string): Promise<VRMAnimation | null> {
+    const cached = this.sourceAnimations.get(ref);
+    if (cached) return cached;
+    const pending = this.pendingSources.get(ref);
+    if (pending) return pending;
+    const loading = this.loader.loadAsync(path).then((gltf) => {
+      const animation: VRMAnimation | undefined = gltf.userData.vrmAnimations?.[0];
+      if (animation) this.sourceAnimations.set(ref, animation);
+      return animation ?? null;
+    });
+    this.pendingSources.set(ref, loading);
+    try {
+      return await loading;
+    } finally {
+      this.pendingSources.delete(ref);
+    }
+  }
+  private async fetchClip(
+    ref: string,
+    path: string,
+    key: string,
+    rootMotion: AnimationPlayOptions["rootMotion"],
+  ): Promise<THREE.AnimationClip | null> {
+    try {
+      const source = await this.loadSource(ref, path);
+      if (!source) return null;
+      const preserve = rootMotion === "preserve";
+      const translation = new Map<"hips", THREE.VectorKeyframeTrack>();
+      if (preserve) {
+        if (
+          !source.restHipsPosition.toArray().every(Number.isFinite) ||
+          source.restHipsPosition.y < 1e-3
+        ) {
+          throw new Error("rootMotion preserve requires finite positive source rest hips height");
+        }
+        const sourceHips = source.humanoidTracks.translation.get("hips");
+        validateHipsTranslation(sourceHips, source.duration);
+        translation.set("hips", sourceHips);
+        const targetHeight = this.vrm.humanoid?.normalizedRestPose?.hips?.position?.[1];
+        if (
+          !this.vrm.humanoid?.getNormalizedBoneNode("hips")?.name ||
+          !Number.isFinite(targetHeight) ||
+          (targetHeight ?? 0) < 1e-3
+        ) {
+          throw new Error("rootMotion preserve requires finite positive target rest hips height");
+        }
+      }
+      // Remove unsupported translations before retargeting. Old converter clips
+      // have zero rest hips height; stripping later would first produce NaNs.
+      // The parsed source remains immutable so policy variants cannot contaminate each other.
+      const animation: VRMAnimation = {
+        ...source,
+        humanoidTracks: {
+          ...source.humanoidTracks,
+          translation,
+        },
+      };
+      const clip = createVRMAnimationClip(animation, this.vrm);
+      const hips = this.vrm.humanoid?.getNormalizedBoneNode("hips");
+      const hipsTrackName = hips && `${hips.name}.position`;
+      clip.tracks = clip.tracks.filter(
+        (track) =>
+          !track.name.endsWith(".scale") &&
+          (!track.name.endsWith(".position") || (preserve && track.name === hipsTrackName)),
+      );
+      if (preserve) {
+        validateHipsTranslation(
+          clip.tracks.find((track) => track.name === hipsTrackName),
+          clip.duration,
+        );
+      }
+      this.prepareClip(clip, "full-body", false, ref, rootMotion);
+      this.clipCache.set(key, clip);
       this.devLog?.write({
         phase: "load",
         note: `loaded ${ref}`,
-        data: {
-          tracks: clip.tracks.length,
-          durationSec: clip.duration,
-          trackNames: clip.tracks.map((t) => t.name),
-        },
+        data: { tracks: clip.tracks.length, durationSec: clip.duration, rootMotion },
       });
-      stripRootMotion(clip);
-      this.clipCache.set(ref, clip);
       return clip;
-    } catch (err) {
-      console.warn(`[AnimationPlayer] failed to load ${path}:`, err);
+    } catch (error) {
+      if (rootMotion === "preserve") throw error;
+      console.warn(`[AnimationPlayer] failed to load ${path}:`, error);
       return null;
     }
   }
-
-  /**
-   * Map animation ref string to asset path.
-   * Refs are resolved via an alias table first, then by direct name.
-   * Files are served from /animations/ (public/ directory).
-   */
   private resolveRefToPath(ref: string): string | null {
     if (ref.startsWith("anim:")) {
-      const name = ref.slice(5); // strip "anim:" prefix
-      const mapped = ANIM_ALIAS[name] ?? name;
-      return `/animations/${mapped}.vrma`;
+      const name = ref.slice(5);
+      return `/animations/${ANIM_ALIAS[name] ?? name}.vrma`;
     }
-    if (ref.endsWith(".vrma")) {
-      return ref;
-    }
-    return null;
+    return ref.endsWith(".vrma") ? ref : null;
   }
 }
 
-/**
- * Remove position and scale tracks from the clip to prevent VRMA animations
- * from moving/scaling the character off-screen.
- * Keeps only rotation (.quaternion) and morph target tracks.
- */
-function stripRootMotion(clip: THREE.AnimationClip): void {
-  clip.tracks = clip.tracks.filter(
-    (track) => !track.name.endsWith(".position") && !track.name.endsWith(".scale"),
-  );
+function validateHipsTranslation(
+  track: THREE.KeyframeTrack | undefined,
+  duration: number,
+): asserts track is THREE.KeyframeTrack {
+  if (
+    !track ||
+    track.getValueSize() !== 3 ||
+    !Number.isFinite(duration) ||
+    duration <= 0 ||
+    track.times.length === 0 ||
+    track.values.length !== track.times.length * 3 ||
+    !track.values.every(Number.isFinite) ||
+    !track.times.every(
+      (time, index, times) =>
+        Number.isFinite(time) &&
+        time >= 0 &&
+        time <= duration + 1e-5 &&
+        (index === 0 || time > times[index - 1]),
+    )
+  ) {
+    throw new Error("rootMotion preserve requires a finite hips XYZ track with increasing times");
+  }
 }
 
-function createDeferred(): {
-  promise: Promise<void>;
-  resolve: () => void;
-  reject: (err: unknown) => void;
-} {
-  let resolve!: () => void;
-  let reject!: (err: unknown) => void;
-  const promise = new Promise<void>((res, rej) => {
+function finiteOr(value: number | undefined, fallback: number): number {
+  return value !== undefined && Number.isFinite(value) ? value : fallback;
+}
+function clampWeight(value: number): number {
+  return Math.max(0, Math.min(1, finiteOr(value, 0.7)));
+}
+function createDeferred(): { promise: Promise<void>; resolve: () => void } {
+  let resolve = () => {};
+  const promise = new Promise<void>((res) => {
     resolve = res;
-    reject = rej;
   });
-  return { promise, resolve, reject };
+  return { promise, resolve };
 }

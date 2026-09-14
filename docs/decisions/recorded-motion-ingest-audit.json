@@ -1,0 +1,907 @@
+{
+  "schemaVersion": 1,
+  "method": {
+    "sourcePage": "https://www.rokoko.com/resources/rokoko-mocap-10-free-everyday-idle-animations",
+    "sourceArchive": "https://media.rokoko.com/EVERYDAY-IDLES-MOCAP.zip",
+    "unitDefinition": "https://help.autodesk.com/cloudhelp/2020/ENU/FBX-API-Reference/cpp_ref/class_fbx_system_unit.html",
+    "sourceLoader": "Three.js r183 FBXLoader; source bones evaluated in their loaded rest hierarchy",
+    "normalizedRotation": "parent rest world quaternion * source local animation quaternion * inverse(bone rest world quaternion), matching installed three-vrm-animation rest-basis conversion",
+    "timing": "Reciprocal median positive key interval, not guaranteed uniform export FPS; duplicates are counted separately.",
+    "rotationComparison": "120 times within [0.5, minDuration-0.5]; shortest quaternion angle. Constant source offset searched within +/-0.2 sec using body bones, no time scaling or per-bone fitting.",
+    "units": {
+      "position": "metres (FBX UnitScaleFactor / 100)",
+      "rotation": "degrees",
+      "time": "seconds"
+    },
+    "limitations": [
+      "This audits data retention and a diagnostic orientation comparison, not perceived naturalness, feet on the target avatar, or superiority over Animates.",
+      "A best-fit time offset is not proof of the original converter settings; source pairs are identified by official filenames and repository credits, not a retained conversion manifest.",
+      "The first source keys include a rest/reference pose and duplicate times. The 0.06-second exclusion only reports post-prefix ranges; it is not an approved clip in-point.",
+      "No missing root movement is reconstructed from existing VRMA. No original source, converted asset, or production code is changed."
+    ]
+  },
+  "clips": [
+    {
+      "sourceFile": "Idle_LookingAround_MIXAMO_769.fbx",
+      "sourceSha256": "0c967adac22b5b2337c26ea36272b6ef089f4ea2be22e873caceeab496ead595",
+      "convertedFile": "Idle Looking Around.vrma",
+      "convertedSha256": "40247c98b0cbcb95ed8eac967058f01e99349aedc8863aff3a988191bf1caf8d",
+      "source": {
+        "durationSec": 33.7664948,
+        "unitScaleFactor": 1,
+        "metresPerUnit": 0.01,
+        "restHipsWorldMetres": [
+          0,
+          0.8902914,
+          0
+        ],
+        "mappedBoneCount": 52,
+        "fingerBoneCount": 30,
+        "rotationTiming": {
+          "trackCount": 52,
+          "totalKeys": 52702,
+          "maxKeysPerTrack": 1014,
+          "medianPositiveKeyIntervalSec": 0.0333333,
+          "reciprocalMedianIntervalHz": 30.0000286,
+          "duplicateOrReversedTimeCount": 26
+        },
+        "hipPositionTiming": {
+          "trackCount": 1,
+          "totalKeys": 1013,
+          "maxKeysPerTrack": 1013,
+          "medianPositiveKeyIntervalSec": 0.0333333,
+          "reciprocalMedianIntervalHz": 30.0000286,
+          "duplicateOrReversedTimeCount": 0
+        },
+        "hipPositionRangeMetres": {
+          "keys": 1013,
+          "min": [
+            -0.1553476,
+            0.8518273,
+            -0.133259
+          ],
+          "max": [
+            0,
+            0.8902914,
+            0.3222705
+          ],
+          "range": [
+            0.1553476,
+            0.0384641,
+            0.4555295
+          ]
+        },
+        "hipPositionRangeAfterReferencePrefixMetres": {
+          "keys": 1012,
+          "min": [
+            -0.1553476,
+            0.8518273,
+            -0.133259
+          ],
+          "max": [
+            -0.0044115,
+            0.8868467,
+            0.3222705
+          ],
+          "range": [
+            0.1509361,
+            0.0350194,
+            0.4555295
+          ]
+        },
+        "firstHipKeyTimesSec": [
+          0,
+          0.0666667,
+          0.1,
+          0.1333333
+        ],
+        "firstHipKeyPositionsMetres": [
+          0,
+          0.8902914,
+          0,
+          -0.0856413,
+          0.8850799,
+          0.2499051,
+          -0.0854648,
+          0.885234,
+          0.2485323,
+          -0.085296,
+          0.8853324,
+          0.2460123
+        ],
+        "initialPose": [
+          {
+            "timeSec": 0,
+            "normalizedBodyAngleFromRestRmsDegrees": 7e-7
+          },
+          {
+            "timeSec": 0.0333333,
+            "normalizedBodyAngleFromRestRmsDegrees": 17.155592
+          },
+          {
+            "timeSec": 0.0666667,
+            "normalizedBodyAngleFromRestRmsDegrees": 28.8350958
+          },
+          {
+            "timeSec": 0.1,
+            "normalizedBodyAngleFromRestRmsDegrees": 34.2198796
+          }
+        ]
+      },
+      "converted": {
+        "durationSec": 33.6800003,
+        "restHipsWorld": [
+          0,
+          0,
+          0
+        ],
+        "rotationTiming": {
+          "trackCount": 52,
+          "totalKeys": 21944,
+          "maxKeysPerTrack": 422,
+          "medianPositiveKeyIntervalSec": 0.0799999,
+          "reciprocalMedianIntervalHz": 12.5000119,
+          "duplicateOrReversedTimeCount": 0
+        },
+        "fingerRotationTrackCount": 30,
+        "hipTranslationTrackCount": 0
+      },
+      "rotationDiagnostic": {
+        "bodyBoneCount": 22,
+        "fingerBoneCount": 30,
+        "unalignedBody": {
+          "sampleBonePairs": 2640,
+          "rmsDegrees": 2.062989,
+          "p95Degrees": 3.9303971
+        },
+        "bestConstantSourceOffsetSec": 0.1,
+        "alignedBody": {
+          "sampleBonePairs": 2640,
+          "rmsDegrees": 0.3272856,
+          "p95Degrees": 0.4348978
+        },
+        "alignedFingers": {
+          "sampleBonePairs": 3600,
+          "rmsDegrees": 0.1968993,
+          "p95Degrees": 0.1985819
+        },
+        "searchReachedBoundary": false
+      }
+    },
+    {
+      "sourceFile": "Idle_LookingAround02_MIXAMO_769.fbx",
+      "sourceSha256": "6e93af2bed87b64cd4ec1a8a76070cb4834a3644991569bb8c48acfb708a86ef",
+      "convertedFile": "Idle Looking Around 2.vrma",
+      "convertedSha256": "ee2087ae63feea5e80208bf4a91ee8da4b56a6271cecd092d7884598926230fd",
+      "source": {
+        "durationSec": 33.3998375,
+        "unitScaleFactor": 1,
+        "metresPerUnit": 0.01,
+        "restHipsWorldMetres": [
+          0,
+          0.8902914,
+          0
+        ],
+        "mappedBoneCount": 52,
+        "fingerBoneCount": 30,
+        "rotationTiming": {
+          "trackCount": 52,
+          "totalKeys": 52129,
+          "maxKeysPerTrack": 1003,
+          "medianPositiveKeyIntervalSec": 0.0333333,
+          "reciprocalMedianIntervalHz": 30.0000286,
+          "duplicateOrReversedTimeCount": 25
+        },
+        "hipPositionTiming": {
+          "trackCount": 1,
+          "totalKeys": 1002,
+          "maxKeysPerTrack": 1002,
+          "medianPositiveKeyIntervalSec": 0.0333333,
+          "reciprocalMedianIntervalHz": 30.0000286,
+          "duplicateOrReversedTimeCount": 0
+        },
+        "hipPositionRangeMetres": {
+          "keys": 1002,
+          "min": [
+            -0.262929,
+            0.8302055,
+            -0.4874065
+          ],
+          "max": [
+            0,
+            0.8902914,
+            0.2751384
+          ],
+          "range": [
+            0.262929,
+            0.060086,
+            0.7625449
+          ]
+        },
+        "hipPositionRangeAfterReferencePrefixMetres": {
+          "keys": 1001,
+          "min": [
+            -0.262929,
+            0.8302055,
+            -0.4874065
+          ],
+          "max": [
+            -0.0054034,
+            0.8854263,
+            0.2751384
+          ],
+          "range": [
+            0.2575256,
+            0.0552208,
+            0.7625449
+          ]
+        },
+        "firstHipKeyTimesSec": [
+          0,
+          0.0666667,
+          0.1,
+          0.1333333
+        ],
+        "firstHipKeyPositionsMetres": [
+          0,
+          0.8902914,
+          0,
+          -0.0672213,
+          0.8806745,
+          0.1845441,
+          -0.0672138,
+          0.8807693,
+          0.183737,
+          -0.067079,
+          0.8808873,
+          0.1827958
+        ],
+        "initialPose": [
+          {
+            "timeSec": 0,
+            "normalizedBodyAngleFromRestRmsDegrees": 7e-7
+          },
+          {
+            "timeSec": 0.0333333,
+            "normalizedBodyAngleFromRestRmsDegrees": 17.0047238
+          },
+          {
+            "timeSec": 0.0666667,
+            "normalizedBodyAngleFromRestRmsDegrees": 28.4555279
+          },
+          {
+            "timeSec": 0.1,
+            "normalizedBodyAngleFromRestRmsDegrees": 33.9853956
+          }
+        ]
+      },
+      "converted": {
+        "durationSec": 33.2799988,
+        "restHipsWorld": [
+          0,
+          0,
+          0
+        ],
+        "rotationTiming": {
+          "trackCount": 52,
+          "totalKeys": 21684,
+          "maxKeysPerTrack": 417,
+          "medianPositiveKeyIntervalSec": 0.0799999,
+          "reciprocalMedianIntervalHz": 12.5000119,
+          "duplicateOrReversedTimeCount": 0
+        },
+        "fingerRotationTrackCount": 30,
+        "hipTranslationTrackCount": 0
+      },
+      "rotationDiagnostic": {
+        "bodyBoneCount": 22,
+        "fingerBoneCount": 30,
+        "unalignedBody": {
+          "sampleBonePairs": 2640,
+          "rmsDegrees": 2.6087496,
+          "p95Degrees": 4.8314651
+        },
+        "bestConstantSourceOffsetSec": 0.0966667,
+        "alignedBody": {
+          "sampleBonePairs": 2640,
+          "rmsDegrees": 0.3436529,
+          "p95Degrees": 0.5651343
+        },
+        "alignedFingers": {
+          "sampleBonePairs": 3600,
+          "rmsDegrees": 0.2254725,
+          "p95Degrees": 0.2723034
+        },
+        "searchReachedBoundary": false
+      }
+    },
+    {
+      "sourceFile": "Idle_WatchingSomething_Loop_MIXAMO_769_segment.fbx",
+      "sourceSha256": "e8ffd7bca7a2a9cc3efd017a2596edba4c9bae734da788b974d80b0a38475dec",
+      "convertedFile": "Idle Watching Something.vrma",
+      "convertedSha256": "9f52404a23e41caeeb40041062277df2e4250f6fbb137d325d58cbbdd11cf007",
+      "source": {
+        "durationSec": 27.066597,
+        "unitScaleFactor": 1,
+        "metresPerUnit": 0.01,
+        "restHipsWorldMetres": [
+          0,
+          0.8902914,
+          0
+        ],
+        "mappedBoneCount": 52,
+        "fingerBoneCount": 30,
+        "rotationTiming": {
+          "trackCount": 52,
+          "totalKeys": 42249,
+          "maxKeysPerTrack": 813,
+          "medianPositiveKeyIntervalSec": 0.0333333,
+          "reciprocalMedianIntervalHz": 30.0000286,
+          "duplicateOrReversedTimeCount": 25
+        },
+        "hipPositionTiming": {
+          "trackCount": 1,
+          "totalKeys": 812,
+          "maxKeysPerTrack": 812,
+          "medianPositiveKeyIntervalSec": 0.0333333,
+          "reciprocalMedianIntervalHz": 30.0000286,
+          "duplicateOrReversedTimeCount": 0
+        },
+        "hipPositionRangeMetres": {
+          "keys": 812,
+          "min": [
+            -0.1071305,
+            0.8700854,
+            -0.0002851
+          ],
+          "max": [
+            0.0968406,
+            0.8902914,
+            0.2013303
+          ],
+          "range": [
+            0.203971,
+            0.020206,
+            0.2016155
+          ]
+        },
+        "hipPositionRangeAfterReferencePrefixMetres": {
+          "keys": 811,
+          "min": [
+            -0.1071305,
+            0.8700854,
+            -0.0002851
+          ],
+          "max": [
+            0.0968406,
+            0.8898592,
+            0.2013303
+          ],
+          "range": [
+            0.203971,
+            0.0197737,
+            0.2016155
+          ]
+        },
+        "firstHipKeyTimesSec": [
+          0,
+          0.0666667,
+          0.1,
+          0.1333333
+        ],
+        "firstHipKeyPositionsMetres": [
+          0,
+          0.8902914,
+          0,
+          -0.0133726,
+          0.8864679,
+          0.1861077,
+          -0.0121482,
+          0.8864462,
+          0.1862297,
+          -0.0108204,
+          0.8864252,
+          0.186388
+        ],
+        "initialPose": [
+          {
+            "timeSec": 0,
+            "normalizedBodyAngleFromRestRmsDegrees": 7e-7
+          },
+          {
+            "timeSec": 0.0333333,
+            "normalizedBodyAngleFromRestRmsDegrees": 15.5716653
+          },
+          {
+            "timeSec": 0.0666667,
+            "normalizedBodyAngleFromRestRmsDegrees": 26.3027368
+          },
+          {
+            "timeSec": 0.1,
+            "normalizedBodyAngleFromRestRmsDegrees": 31.1497296
+          }
+        ]
+      },
+      "converted": {
+        "durationSec": 26.9599991,
+        "restHipsWorld": [
+          0,
+          0,
+          0
+        ],
+        "rotationTiming": {
+          "trackCount": 52,
+          "totalKeys": 17576,
+          "maxKeysPerTrack": 338,
+          "medianPositiveKeyIntervalSec": 0.0799999,
+          "reciprocalMedianIntervalHz": 12.5000119,
+          "duplicateOrReversedTimeCount": 0
+        },
+        "fingerRotationTrackCount": 30,
+        "hipTranslationTrackCount": 0
+      },
+      "rotationDiagnostic": {
+        "bodyBoneCount": 22,
+        "fingerBoneCount": 30,
+        "unalignedBody": {
+          "sampleBonePairs": 2640,
+          "rmsDegrees": 0.7460197,
+          "p95Degrees": 1.5245051
+        },
+        "bestConstantSourceOffsetSec": 0.0966667,
+        "alignedBody": {
+          "sampleBonePairs": 2640,
+          "rmsDegrees": 0.0715807,
+          "p95Degrees": 0.1136928
+        },
+        "alignedFingers": {
+          "sampleBonePairs": 3600,
+          "rmsDegrees": 0.1126294,
+          "p95Degrees": 0.1621829
+        },
+        "searchReachedBoundary": false
+      }
+    },
+    {
+      "sourceFile": "Idle_Conversation_Loop_MIXAMO_769_segment-2.fbx",
+      "sourceSha256": "67892a332df013461020b839c165a04bdc8e20552344d098962e587826dcd556",
+      "convertedFile": "Idle Conversation.vrma",
+      "convertedSha256": "d1f91d4ab36ed844e9815f2f168303d4a110d62f82348274350c52954f7ae49a",
+      "source": {
+        "durationSec": 25.2666245,
+        "unitScaleFactor": 1,
+        "metresPerUnit": 0.01,
+        "restHipsWorldMetres": [
+          0,
+          0.8902914,
+          0
+        ],
+        "mappedBoneCount": 52,
+        "fingerBoneCount": 30,
+        "rotationTiming": {
+          "trackCount": 52,
+          "totalKeys": 39441,
+          "maxKeysPerTrack": 759,
+          "medianPositiveKeyIntervalSec": 0.0333333,
+          "reciprocalMedianIntervalHz": 30.0000286,
+          "duplicateOrReversedTimeCount": 25
+        },
+        "hipPositionTiming": {
+          "trackCount": 1,
+          "totalKeys": 758,
+          "maxKeysPerTrack": 758,
+          "medianPositiveKeyIntervalSec": 0.0333333,
+          "reciprocalMedianIntervalHz": 30.0000286,
+          "duplicateOrReversedTimeCount": 0
+        },
+        "hipPositionRangeMetres": {
+          "keys": 758,
+          "min": [
+            -0.0635552,
+            0.8752374,
+            -0.1120248
+          ],
+          "max": [
+            0.032664,
+            0.8902914,
+            0
+          ],
+          "range": [
+            0.0962192,
+            0.015054,
+            0.1120248
+          ]
+        },
+        "hipPositionRangeAfterReferencePrefixMetres": {
+          "keys": 757,
+          "min": [
+            -0.0635552,
+            0.8752374,
+            -0.1120248
+          ],
+          "max": [
+            0.032664,
+            0.8874777,
+            -0.0686937
+          ],
+          "range": [
+            0.0962192,
+            0.0122403,
+            0.0433311
+          ]
+        },
+        "firstHipKeyTimesSec": [
+          0,
+          0.0666667,
+          0.1,
+          0.1333333
+        ],
+        "firstHipKeyPositionsMetres": [
+          0,
+          0.8902914,
+          0,
+          0.032664,
+          0.8832859,
+          -0.1010966,
+          0.031295,
+          0.8836837,
+          -0.1010668,
+          0.0290638,
+          0.8841505,
+          -0.1012067
+        ],
+        "initialPose": [
+          {
+            "timeSec": 0,
+            "normalizedBodyAngleFromRestRmsDegrees": 7e-7
+          },
+          {
+            "timeSec": 0.0333333,
+            "normalizedBodyAngleFromRestRmsDegrees": 15.9171898
+          },
+          {
+            "timeSec": 0.0666667,
+            "normalizedBodyAngleFromRestRmsDegrees": 26.9560026
+          },
+          {
+            "timeSec": 0.1,
+            "normalizedBodyAngleFromRestRmsDegrees": 31.8657308
+          }
+        ]
+      },
+      "converted": {
+        "durationSec": 25.2000008,
+        "restHipsWorld": [
+          0,
+          0,
+          0
+        ],
+        "rotationTiming": {
+          "trackCount": 52,
+          "totalKeys": 16432,
+          "maxKeysPerTrack": 316,
+          "medianPositiveKeyIntervalSec": 0.0799999,
+          "reciprocalMedianIntervalHz": 12.5000119,
+          "duplicateOrReversedTimeCount": 0
+        },
+        "fingerRotationTrackCount": 30,
+        "hipTranslationTrackCount": 0
+      },
+      "rotationDiagnostic": {
+        "bodyBoneCount": 22,
+        "fingerBoneCount": 30,
+        "unalignedBody": {
+          "sampleBonePairs": 2640,
+          "rmsDegrees": 2.9277676,
+          "p95Degrees": 5.1860348
+        },
+        "bestConstantSourceOffsetSec": 0.0966667,
+        "alignedBody": {
+          "sampleBonePairs": 2640,
+          "rmsDegrees": 0.2656562,
+          "p95Degrees": 0.4521698
+        },
+        "alignedFingers": {
+          "sampleBonePairs": 3600,
+          "rmsDegrees": 0.2691135,
+          "p95Degrees": 0.5744797
+        },
+        "searchReachedBoundary": false
+      }
+    },
+    {
+      "sourceFile": "Idle_Chatting_MIXAMO_WHS.fbx",
+      "sourceSha256": "a8a7bd0b65a65ffe2fd65f50f339c96250fb24fd3895c38d63df581d9594db2c",
+      "convertedFile": "Idle Chatting.vrma",
+      "convertedSha256": "af077b1dde763e6e8187c6bb6aac1c16e0b90cdd53e3a759d51a3aff08ea8d01",
+      "source": {
+        "durationSec": 26.8332672,
+        "unitScaleFactor": 1,
+        "metresPerUnit": 0.01,
+        "restHipsWorldMetres": [
+          0,
+          0.9037808,
+          0
+        ],
+        "mappedBoneCount": 52,
+        "fingerBoneCount": 30,
+        "rotationTiming": {
+          "trackCount": 52,
+          "totalKeys": 41885,
+          "maxKeysPerTrack": 806,
+          "medianPositiveKeyIntervalSec": 0.0333333,
+          "reciprocalMedianIntervalHz": 30.0000286,
+          "duplicateOrReversedTimeCount": 25
+        },
+        "hipPositionTiming": {
+          "trackCount": 1,
+          "totalKeys": 805,
+          "maxKeysPerTrack": 805,
+          "medianPositiveKeyIntervalSec": 0.0333333,
+          "reciprocalMedianIntervalHz": 30.0000286,
+          "duplicateOrReversedTimeCount": 0
+        },
+        "hipPositionRangeMetres": {
+          "keys": 805,
+          "min": [
+            -0.1404359,
+            0.8587045,
+            -0.1067918
+          ],
+          "max": [
+            0.1110277,
+            0.9037808,
+            0.2127073
+          ],
+          "range": [
+            0.2514636,
+            0.0450763,
+            0.319499
+          ]
+        },
+        "hipPositionRangeAfterReferencePrefixMetres": {
+          "keys": 804,
+          "min": [
+            -0.1404359,
+            0.8587045,
+            -0.1067918
+          ],
+          "max": [
+            0.1110277,
+            0.9009299,
+            0.2127073
+          ],
+          "range": [
+            0.2514636,
+            0.0422253,
+            0.319499
+          ]
+        },
+        "firstHipKeyTimesSec": [
+          0,
+          0.0666667,
+          0.1,
+          0.1333333
+        ],
+        "firstHipKeyPositionsMetres": [
+          0,
+          0.9037808,
+          0,
+          -0.056196,
+          0.9009299,
+          0.2127073,
+          -0.0562727,
+          0.9008373,
+          0.2123318,
+          -0.0567771,
+          0.9006889,
+          0.211798
+        ],
+        "initialPose": [
+          {
+            "timeSec": 0,
+            "normalizedBodyAngleFromRestRmsDegrees": 7e-7
+          },
+          {
+            "timeSec": 0.0333333,
+            "normalizedBodyAngleFromRestRmsDegrees": 17.3546893
+          },
+          {
+            "timeSec": 0.0666667,
+            "normalizedBodyAngleFromRestRmsDegrees": 29.0013654
+          },
+          {
+            "timeSec": 0.1,
+            "normalizedBodyAngleFromRestRmsDegrees": 34.7376497
+          }
+        ]
+      },
+      "converted": {
+        "durationSec": 26.7199993,
+        "restHipsWorld": [
+          0,
+          0,
+          0
+        ],
+        "rotationTiming": {
+          "trackCount": 52,
+          "totalKeys": 17420,
+          "maxKeysPerTrack": 335,
+          "medianPositiveKeyIntervalSec": 0.0799999,
+          "reciprocalMedianIntervalHz": 12.5000119,
+          "duplicateOrReversedTimeCount": 0
+        },
+        "fingerRotationTrackCount": 30,
+        "hipTranslationTrackCount": 0
+      },
+      "rotationDiagnostic": {
+        "bodyBoneCount": 22,
+        "fingerBoneCount": 30,
+        "unalignedBody": {
+          "sampleBonePairs": 2640,
+          "rmsDegrees": 4.2562717,
+          "p95Degrees": 8.44311
+        },
+        "bestConstantSourceOffsetSec": 0.0966667,
+        "alignedBody": {
+          "sampleBonePairs": 2640,
+          "rmsDegrees": 0.5483227,
+          "p95Degrees": 1.0181206
+        },
+        "alignedFingers": {
+          "sampleBonePairs": 3600,
+          "rmsDegrees": 0.448663,
+          "p95Degrees": 0.9049278
+        },
+        "searchReachedBoundary": false
+      }
+    },
+    {
+      "sourceFile": "Idle_Chatting02_MIXAMO_WHS.fbx",
+      "sourceSha256": "a0956bced339998764d88013df009a290a627e60890b6e20fc29cef82053bd46",
+      "convertedFile": "Idle Chatting 2.vrma",
+      "convertedSha256": "be06904eabb75f4cf3133d0c2b7ef1bf9249712fc60f761b8b1a5890fecc452d",
+      "source": {
+        "durationSec": 41.8330383,
+        "unitScaleFactor": 1,
+        "metresPerUnit": 0.01,
+        "restHipsWorldMetres": [
+          0,
+          0.9037808,
+          0
+        ],
+        "mappedBoneCount": 52,
+        "fingerBoneCount": 30,
+        "rotationTiming": {
+          "trackCount": 52,
+          "totalKeys": 65284,
+          "maxKeysPerTrack": 1256,
+          "medianPositiveKeyIntervalSec": 0.0333328,
+          "reciprocalMedianIntervalHz": 30.0004578,
+          "duplicateOrReversedTimeCount": 24
+        },
+        "hipPositionTiming": {
+          "trackCount": 1,
+          "totalKeys": 1255,
+          "maxKeysPerTrack": 1255,
+          "medianPositiveKeyIntervalSec": 0.0333328,
+          "reciprocalMedianIntervalHz": 30.0004578,
+          "duplicateOrReversedTimeCount": 0
+        },
+        "hipPositionRangeMetres": {
+          "keys": 1255,
+          "min": [
+            -0.1309173,
+            0.8277352,
+            -0.0114127
+          ],
+          "max": [
+            0.0213086,
+            0.9037808,
+            0.2855991
+          ],
+          "range": [
+            0.1522259,
+            0.0760456,
+            0.2970118
+          ]
+        },
+        "hipPositionRangeAfterReferencePrefixMetres": {
+          "keys": 1254,
+          "min": [
+            -0.1309173,
+            0.8277352,
+            -0.0114127
+          ],
+          "max": [
+            0.0213086,
+            0.9007823,
+            0.2855991
+          ],
+          "range": [
+            0.1522259,
+            0.0730471,
+            0.2970118
+          ]
+        },
+        "firstHipKeyTimesSec": [
+          0,
+          0.0666667,
+          0.1,
+          0.1333333
+        ],
+        "firstHipKeyPositionsMetres": [
+          0,
+          0.9037808,
+          0,
+          -0.0676852,
+          0.8957374,
+          0.2855991,
+          -0.0679102,
+          0.8958063,
+          0.2841991,
+          -0.0686146,
+          0.8956635,
+          0.2817879
+        ],
+        "initialPose": [
+          {
+            "timeSec": 0,
+            "normalizedBodyAngleFromRestRmsDegrees": 7e-7
+          },
+          {
+            "timeSec": 0.0333333,
+            "normalizedBodyAngleFromRestRmsDegrees": 17.3875488
+          },
+          {
+            "timeSec": 0.0666667,
+            "normalizedBodyAngleFromRestRmsDegrees": 28.9249209
+          },
+          {
+            "timeSec": 0.1,
+            "normalizedBodyAngleFromRestRmsDegrees": 34.747219
+          }
+        ]
+      },
+      "converted": {
+        "durationSec": 41.7599983,
+        "restHipsWorld": [
+          0,
+          0,
+          0
+        ],
+        "rotationTiming": {
+          "trackCount": 52,
+          "totalKeys": 27196,
+          "maxKeysPerTrack": 523,
+          "medianPositiveKeyIntervalSec": 0.0799999,
+          "reciprocalMedianIntervalHz": 12.5000119,
+          "duplicateOrReversedTimeCount": 0
+        },
+        "fingerRotationTrackCount": 30,
+        "hipTranslationTrackCount": 0
+      },
+      "rotationDiagnostic": {
+        "bodyBoneCount": 22,
+        "fingerBoneCount": 30,
+        "unalignedBody": {
+          "sampleBonePairs": 2640,
+          "rmsDegrees": 3.5169094,
+          "p95Degrees": 7.4046147
+        },
+        "bestConstantSourceOffsetSec": 0.0966667,
+        "alignedBody": {
+          "sampleBonePairs": 2640,
+          "rmsDegrees": 0.5127428,
+          "p95Degrees": 0.9436247
+        },
+        "alignedFingers": {
+          "sampleBonePairs": 3600,
+          "rmsDegrees": 0.7708238,
+          "p95Degrees": 1.7104851
+        },
+        "searchReachedBoundary": false
+      }
+    }
+  ]
+}

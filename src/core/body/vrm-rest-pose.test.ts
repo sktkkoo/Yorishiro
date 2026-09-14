@@ -36,7 +36,7 @@ describe("applyVrmRestPose", () => {
     expect(getBone("rightHand").rotation.z).toBe(-0.2);
     expect(getBone("leftThumbMetacarpal").rotation.z).toBe(0.3);
     expect(getBone("rightThumbMetacarpal").rotation.z).toBe(-0.3);
-    expect(getBone("leftIndexProximal").rotation.x).toBe(0.25);
+    expect(getBone("leftIndexProximal").rotation.z).toBe(0.25);
   });
 
   it("writes the VRM 1.0 rest pose to normalized bones", () => {
@@ -51,7 +51,55 @@ describe("applyVrmRestPose", () => {
     expect(getBone("rightHand").rotation.z).toBe(0.2);
     expect(getBone("leftThumbMetacarpal").rotation.z).toBe(-0.3);
     expect(getBone("rightThumbMetacarpal").rotation.z).toBe(0.3);
-    expect(getBone("rightIndexProximal").rotation.x).toBe(0.25);
+    expect(getBone("rightIndexProximal").rotation.z).toBe(0.25);
+  });
+
+  it.each([
+    "0",
+    "1",
+  ] as const)("curls mirrored VRM %s fingers toward the palm instead of twisting their long axis", (version) => {
+    const { vrm, getBone } = mockVrm(version);
+    for (const side of ["left", "right"] as const) {
+      const direction = (side === "left") === (version === "1") ? 1 : -1;
+      const proximal = getBone(`${side}MiddleProximal`);
+      const intermediate = getBone(`${side}MiddleIntermediate`);
+      const distal = getBone(`${side}MiddleDistal`);
+      proximal.add(intermediate);
+      intermediate.add(distal);
+      intermediate.position.x = direction * 0.03;
+      distal.position.x = direction * 0.02;
+
+      applyVrmRestPose(vrm);
+      proximal.updateMatrixWorld(true);
+      const middlePosition = intermediate.getWorldPosition(new THREE.Vector3());
+      const distalPosition = distal.getWorldPosition(new THREE.Vector3());
+      const bend = middlePosition.angleTo(distalPosition.clone().sub(middlePosition));
+
+      expect(bend).toBeCloseTo(0.4, 6);
+      expect(distalPosition.y).toBeLessThan(-0.015);
+      expect(Math.sign(distalPosition.x)).toBe(direction);
+      expect(Math.abs(distalPosition.z)).toBeLessThan(1e-10);
+    }
+  });
+
+  it("lets an authored open-hand track replace the rest curl and restores it when stopped", () => {
+    const { vrm, getBone } = mockVrm("0");
+    const finger = getBone("leftMiddleIntermediate");
+    applyVrmRestPose(vrm);
+    const relaxed = finger.quaternion.clone();
+    const mixer = new THREE.AnimationMixer(finger);
+    const action = mixer.clipAction(
+      new THREE.AnimationClip("authored-open-palm", 1, [
+        new THREE.QuaternionKeyframeTrack(".quaternion", [0, 1], [0, 0, 0, 1, 0, 0, 0, 1]),
+      ]),
+    );
+
+    action.play();
+    mixer.update(0.25);
+    expect(finger.quaternion.angleTo(new THREE.Quaternion())).toBeLessThan(1e-10);
+
+    action.stop();
+    expect(finger.quaternion.angleTo(relaxed)).toBeLessThan(1e-10);
   });
 });
 

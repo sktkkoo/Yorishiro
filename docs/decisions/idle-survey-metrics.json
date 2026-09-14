@@ -1,0 +1,512 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "file": ".motion-review/source-assets/prepared/Idle Looking Around 2.vrma",
+    "sha256": "8dfcb799514bdf9dd4b1e739b31b67270216e09e9b81ac24ba75ea3ac3baf8d7",
+    "originalFbxSha256": "6e93af2bed87b64cd4ec1a8a76070cb4834a3644991569bb8c48acfb708a86ef"
+  },
+  "output": {
+    "file": ".motion-review/source-assets/prepared/survey.vrma",
+    "sha256": "536fdc6203a40168eb8edd8be6ec6004e7da3f2c8cdad874087be98a535bcd6a",
+    "bytes": 649600
+  },
+  "unit": {
+    "sourcePreparedSha256": "8dfcb799514bdf9dd4b1e739b31b67270216e09e9b81ac24ba75ea3ac3baf8d7",
+    "startSec": 5.800000190734863,
+    "endSec": 30.5,
+    "loop": false,
+    "publicRef": "/animations/recorded-idle/survey.vrma",
+    "scope": "Finite upper-body performance. Full source body/finger tracks and hips XYZ are retained; no target contact adaptation is implied."
+  },
+  "durationSec": 24.700000762939453,
+  "frameCount": 742,
+  "sampleHz": 30,
+  "validation": {
+    "exactAuthoredKeyValues": true,
+    "strictlyIncreasingTimes": true,
+    "rotationTracks": 52,
+    "fingerTracks": 30,
+    "hipsTranslationTracks": 1,
+    "sampleHz": 120,
+    "checkedSamples": 157198,
+    "maxRotationDegrees": 0.0005335641308310862,
+    "maxTranslationMetres": 3.919883500923486e-07
+  },
+  "targetWristReview": {
+    "modelSha256": "739a1515cffe09c17a535eb52a11f88640fc7728b86b9e4c74f00c353437b7cd",
+    "sampleHz": 120,
+    "definition": "Bend: elbow-to-wrist versus wrist-to-middle-proximal vector. Hanging: forearm vertical cosine below -.65 and wrist below head by .25m. Near-head: wrist above head-.15m. These are geometric QA proxies, not anatomical or semantic truth.",
+    "weights": [
+      {
+        "weight": 1,
+        "frames": 2965,
+        "duration": 24.700000762939453,
+        "hangingFrames": 529,
+        "maxHangingBend": {
+          "time": 21,
+          "bend": 23.046823112041864,
+          "wristY": 0.8272153295857188,
+          "headY": 1.3408811619810366,
+          "heightToHead": -0.5136658323953178,
+          "hanging": true,
+          "nearHead": false,
+          "q": [
+            0.049389884590500505,
+            -0.21187798985442935,
+            -0.04936388951402264,
+            0.9747982166209737
+          ],
+          "wristAngularSpeedDegreesPerSec": 128.15891307762715
+        },
+        "maxBend": {
+          "time": 3.1666666666666665,
+          "bend": 69.77494823839862,
+          "wristY": 1.493356772990748,
+          "headY": 1.3368556799620035,
+          "heightToHead": 0.1565010930287445,
+          "hanging": false,
+          "nearHead": true,
+          "q": [
+            -0.03816006607279815,
+            -0.2119331822731127,
+            -0.5709401184076883,
+            0.7922471311412407
+          ],
+          "wristAngularSpeedDegreesPerSec": 39.402656141307865
+        },
+        "maximumWristHeightToHead": {
+          "time": 3.3333333333333335,
+          "bend": 69.7698003441405,
+          "wristY": 1.4934990826013528,
+          "headY": 1.3367808870665874,
+          "heightToHead": 0.1567181955347654,
+          "hanging": false,
+          "nearHead": true,
+          "q": [
+            -0.03686028730980728,
+            -0.2119252603893521,
+            -0.5709080830449124,
+            0.7923338715101907
+          ],
+          "wristAngularSpeedDegreesPerSec": 2.4857475787513574
+        },
+        "nearHeadSeconds": 19.483333333333334,
+        "start": {
+          "time": 0,
+          "bend": 10.931015000556183,
+          "wristY": 0.8293420332201824,
+          "headY": 1.3463043896299185,
+          "heightToHead": -0.5169623564097361,
+          "hanging": true,
+          "nearHead": false,
+          "q": [
+            0.018777054081563643,
+            -0.10706716189556519,
+            -0.024852268766227512,
+            0.9937637595630152
+          ]
+        },
+        "end": {
+          "time": 24.7,
+          "bend": 9.767895719199574,
+          "wristY": 0.8214001030734139,
+          "headY": 1.3453964027563423,
+          "heightToHead": -0.5239962996829284,
+          "hanging": true,
+          "nearHead": false,
+          "q": [
+            0.01613712404157548,
+            -0.09893954208958157,
+            -0.044761363446485083,
+            0.9939552206116645
+          ],
+          "wristAngularSpeedDegreesPerSec": 5.962265211542038
+        },
+        "maxWristSpeed": {
+          "time": 20.65,
+          "bend": 19.432727484600584,
+          "wristY": 1.1691310286287184,
+          "headY": 1.341924833958138,
+          "heightToHead": -0.17279380532941957,
+          "hanging": false,
+          "nearHead": false,
+          "q": [
+            -0.11575344370672638,
+            -0.12600706099815145,
+            -0.17133700518054457,
+            0.9702406874092653
+          ],
+          "wristAngularSpeedDegreesPerSec": 264.32386463622447
+        }
+      },
+      {
+        "weight": 0.95,
+        "frames": 2965,
+        "duration": 24.700000762939453,
+        "hangingFrames": 531,
+        "maxHangingBend": {
+          "time": 21,
+          "bend": 21.825756159991393,
+          "wristY": 0.8252650140429205,
+          "headY": 1.3416047034037322,
+          "heightToHead": -0.5163396893608116,
+          "hanging": true,
+          "nearHead": false,
+          "q": [
+            0.046959033573027734,
+            -0.20144986613055277,
+            -0.05196814436783238,
+            0.9769913574709009
+          ],
+          "wristAngularSpeedDegreesPerSec": 121.82938193732711
+        },
+        "maxBend": {
+          "time": 3.1666666666666665,
+          "bend": 66.56451106305735,
+          "wristY": 1.4855058697420107,
+          "headY": 1.3376997252105038,
+          "heightToHead": 0.14780614453150687,
+          "hanging": false,
+          "nearHead": true,
+          "q": [
+            -0.036443635726051936,
+            -0.20240048008014208,
+            -0.5505248351844305,
+            0.8090910411835929
+          ],
+          "wristAngularSpeedDegreesPerSec": 37.50932113033689
+        },
+        "maximumWristHeightToHead": {
+          "time": 3.3333333333333335,
+          "bend": 66.55942765227952,
+          "wristY": 1.4856879876421591,
+          "headY": 1.3376322240529697,
+          "heightToHead": 0.14805576358918948,
+          "hanging": false,
+          "nearHead": true,
+          "q": [
+            -0.035202216157705364,
+            -0.2023923135162066,
+            -0.5504924648493322,
+            0.8091700696091338
+          ],
+          "wristAngularSpeedDegreesPerSec": 2.3723338598805888
+        },
+        "nearHeadSeconds": 19.441666666666666,
+        "start": {
+          "time": 0,
+          "bend": 10.244528346097683,
+          "wristY": 0.8270114935229673,
+          "headY": 1.3465447671874908,
+          "heightToHead": -0.5195332736645235,
+          "hanging": true,
+          "nearHead": false,
+          "q": [
+            0.01784327032710288,
+            -0.10174270705935834,
+            -0.028622558351527775,
+            0.9942387984874062
+          ]
+        },
+        "end": {
+          "time": 24.7,
+          "bend": 9.20722103286866,
+          "wristY": 0.820026307995903,
+          "headY": 1.3457172308274385,
+          "heightToHead": -0.5256909228315355,
+          "hanging": true,
+          "nearHead": false,
+          "q": [
+            0.015333533773692667,
+            -0.0940125890013405,
+            -0.047534911188236044,
+            0.9943173276522956
+          ],
+          "wristAngularSpeedDegreesPerSec": 5.665230537004128
+        },
+        "maxWristSpeed": {
+          "time": 20.641666666666666,
+          "bend": 20.74389407936255,
+          "wristY": 1.166173231721957,
+          "headY": 1.3426466540876345,
+          "heightToHead": -0.17647342236567742,
+          "hanging": false,
+          "nearHead": false,
+          "q": [
+            -0.11131990949178684,
+            -0.12986663632531512,
+            -0.18249381950046586,
+            0.9682140984123399
+          ],
+          "wristAngularSpeedDegreesPerSec": 251.16969185005007
+        }
+      },
+      {
+        "weight": 0.5,
+        "frames": 2965,
+        "duration": 24.700000762939453,
+        "hangingFrames": 596,
+        "maxHangingBend": {
+          "time": 21.033333333333335,
+          "bend": 11.661716331842205,
+          "wristY": 0.8078804589396484,
+          "headY": 1.3460477204877799,
+          "heightToHead": -0.5381672615481314,
+          "hanging": true,
+          "nearHead": false,
+          "q": [
+            0.025687865951271822,
+            -0.10298528515013337,
+            -0.09150348648512484,
+            0.9901319490585494
+          ],
+          "wristAngularSpeedDegreesPerSec": 58.022123637639055
+        },
+        "maxBend": {
+          "time": 3.1666666666666665,
+          "bend": 37.69807859095044,
+          "wristY": 1.1735906079506369,
+          "headY": 1.3438442016094392,
+          "heightToHead": -0.17025359365880233,
+          "hanging": false,
+          "nearHead": false,
+          "q": [
+            -0.01986378609633015,
+            -0.11031939492338959,
+            -0.3491634944757085,
+            0.9303332280592629
+          ],
+          "wristAngularSpeedDegreesPerSec": 20.01885973260067
+        },
+        "maximumWristHeightToHead": {
+          "time": 14.666666666666666,
+          "bend": 32.74006675674634,
+          "wristY": 1.184312792404332,
+          "headY": 1.3443230391990173,
+          "heightToHead": -0.16001024679468534,
+          "hanging": false,
+          "nearHead": false,
+          "q": [
+            0.009414513487422635,
+            -0.09128581265195776,
+            -0.31259162055298495,
+            0.945444205706675
+          ],
+          "wristAngularSpeedDegreesPerSec": 1.4663284342261358
+        },
+        "nearHeadSeconds": 0,
+        "start": {
+          "time": 0,
+          "bend": 5.019936040402553,
+          "wristY": 0.8091002904056773,
+          "headY": 1.3478218557577026,
+          "heightToHead": -0.5387215653520253,
+          "hanging": true,
+          "nearHead": false,
+          "q": [
+            0.009409060806406808,
+            -0.0536506649162766,
+            -0.06247919352225971,
+            0.9965587920968793
+          ]
+        },
+        "end": {
+          "time": 24.7,
+          "bend": 5.228990449580289,
+          "wristY": 0.808036578664667,
+          "headY": 1.347511316906821,
+          "heightToHead": -0.5394747382421539,
+          "hanging": true,
+          "nearHead": false,
+          "q": [
+            0.008081790079813238,
+            -0.04955087459827062,
+            -0.07241591849577342,
+            0.9961100994589231
+          ],
+          "wristAngularSpeedDegreesPerSec": 2.9855015548013646
+        },
+        "maxWristSpeed": {
+          "time": 20.641666666666666,
+          "bend": 13.114773554945334,
+          "wristY": 0.957858810393793,
+          "headY": 1.346505981801244,
+          "heightToHead": -0.388647171407451,
+          "hanging": false,
+          "nearHead": false,
+          "q": [
+            -0.05885108228536947,
+            -0.06865611134070457,
+            -0.14399442906561954,
+            0.9854382237804051
+          ],
+          "wristAngularSpeedDegreesPerSec": 132.413781176303
+        }
+      }
+    ],
+    "aroundAcceptedUnits": [
+      {
+        "name": "faithful",
+        "start": 7.08333333,
+        "end": 15.66666667,
+        "peak": {
+          "time": 8.733333330000004,
+          "bend": 15.463131973318223,
+          "wristY": 0.7949636036729542,
+          "headY": 1.3409551469554155,
+          "heightToHead": -0.5459915432824614,
+          "hanging": true,
+          "nearHead": false,
+          "q": [
+            0.005661934915250572,
+            -0.1363197224857905,
+            0.013282449375241662,
+            0.9905596661953315
+          ]
+        }
+      },
+      {
+        "name": "faithful",
+        "start": 15.66666667,
+        "end": 23.36666667,
+        "peak": {
+          "time": 23.366666669999564,
+          "bend": 14.46222764185758,
+          "wristY": 0.7992347770958782,
+          "headY": 1.3381256186778838,
+          "heightToHead": -0.5388908415820056,
+          "hanging": true,
+          "nearHead": false,
+          "q": [
+            0.012504399605184886,
+            -0.12037955091758347,
+            0.02377143139899317,
+            0.9923645110344473
+          ]
+        }
+      },
+      {
+        "name": "adapted",
+        "start": 7.08333333,
+        "end": 15.66666667,
+        "peak": {
+          "time": 8.733333330000004,
+          "bend": 15.463131973318223,
+          "wristY": 0.7861933774270009,
+          "headY": 1.3321849207094623,
+          "heightToHead": -0.5459915432824614,
+          "hanging": true,
+          "nearHead": false,
+          "q": [
+            0.005661934915250572,
+            -0.1363197224857905,
+            0.013282449375241662,
+            0.9905596661953315
+          ]
+        }
+      },
+      {
+        "name": "adapted",
+        "start": 15.66666667,
+        "end": 23.36666667,
+        "peak": {
+          "time": 23.366666669999564,
+          "bend": 14.46222764185758,
+          "wristY": 0.7937915615029539,
+          "headY": 1.3326824030849596,
+          "heightToHead": -0.5388908415820056,
+          "hanging": true,
+          "nearHead": false,
+          "q": [
+            0.012504399605184886,
+            -0.12037955091758347,
+            0.02377143139899317,
+            0.9923645110344473
+          ]
+        }
+      }
+    ],
+    "visualEvidence": ".motion-review/idle-survey-qa/observations.json",
+    "visualSamples": 6,
+    "pageErrors": 0,
+    "limits": "Static sampled images and dense FK; separate crossfades over recorded D/A, native appearance, and human comparative judgement remain required."
+  },
+  "legacyCandidateFindings": [
+    {
+      "animation": "anim:Idle Looking Around",
+      "sha256": "40247c98b0cbcb95ed8eac967058f01e99349aedc8863aff3a988191bf1caf8d",
+      "weightAtIntensity095": 0.817,
+      "lanes": [
+        {
+          "mode": "source-raw",
+          "maxBendDegrees": 80.21065291872485,
+          "maxBendTimeSec": 33.6,
+          "minBendDegrees": 6.655859037029012
+        },
+        {
+          "mode": "upper-loop-at-95-percent",
+          "maxBendDegrees": 62.89493853601795,
+          "maxBendTimeSec": 33.36666666666667,
+          "minBendDegrees": 5.001372758350879
+        }
+      ]
+    },
+    {
+      "animation": "anim:Idle Looking Around 2",
+      "sha256": "ee2087ae63feea5e80208bf4a91ee8da4b56a6271cecd092d7884598926230fd",
+      "weightAtIntensity095": 0.817,
+      "lanes": [
+        {
+          "mode": "source-raw",
+          "maxBendDegrees": 77.62106624534245,
+          "maxBendTimeSec": 33.2,
+          "minBendDegrees": 4.305449123327963
+        },
+        {
+          "mode": "upper-loop-at-95-percent",
+          "maxBendDegrees": 62.138797994544056,
+          "maxBendTimeSec": 32.96666666666667,
+          "minBendDegrees": 2.7546212319267287
+        }
+      ]
+    },
+    {
+      "animation": "anim:Idle Watching Something",
+      "sha256": "9f52404a23e41caeeb40041062277df2e4250f6fbb137d325d58cbbdd11cf007",
+      "weightAtIntensity095": 0.836,
+      "lanes": [
+        {
+          "mode": "source-raw",
+          "maxBendDegrees": 90.71033534994906,
+          "maxBendTimeSec": 19.358333333333334,
+          "minBendDegrees": 81.16937173739124
+        },
+        {
+          "mode": "upper-loop-at-95-percent",
+          "maxBendDegrees": 74.90992113466592,
+          "maxBendTimeSec": 19.358333333333334,
+          "minBendDegrees": 66.91989728165139
+        }
+      ]
+    },
+    {
+      "animation": "anim:VRMA_06_HandOnHip",
+      "sha256": "a2c86633690e911cf935c5b8cae6553aea0445567f88c2861f7597fc1bf08af1",
+      "weightAtIntensity095": 0.8075,
+      "lanes": [
+        {
+          "mode": "source-raw",
+          "maxBendDegrees": 22.993885580907488,
+          "maxBendTimeSec": 1.7333333333333334,
+          "minBendDegrees": 19.13835965550977
+        },
+        {
+          "mode": "upper-loop-at-95-percent",
+          "maxBendDegrees": 18.690942569473204,
+          "maxBendTimeSec": 1.7166666666666666,
+          "minBendDegrees": 15.520040917370236
+        }
+      ]
+    }
+  ]
+}

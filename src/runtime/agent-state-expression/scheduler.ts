@@ -1,4 +1,4 @@
-import type { StateExpressionCue } from "./types";
+import type { StateExpressionConversationPhase, StateExpressionCue } from "./types";
 
 export type StateExpressionReleaseReason = "completed" | "cancelled" | "replaced";
 
@@ -21,6 +21,8 @@ export interface StateExpressionSchedulerCallbacks {
   readonly onCue: (cue: StateExpressionCue, context: StateExpressionDispatchContext) => void;
   /** voice stop 等で、この発話が所有する expression / gesture handle を解放する。 */
   readonly onRelease: (utteranceId: string, reason: StateExpressionReleaseReason) => void;
+  /** Changes in grounded turn ownership; audio samples do not emit repeated phases. */
+  readonly onConversationPhaseChange?: (phase: StateExpressionConversationPhase) => void;
 }
 
 export interface StateExpressionSchedulerOptions {

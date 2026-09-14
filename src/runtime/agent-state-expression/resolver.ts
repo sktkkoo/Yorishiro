@@ -60,6 +60,16 @@ const EMPHASIZE_PATTERN =
 const PROGRESS_PATTERN =
   /(?:確認しました|読みました|更新しました|修正しました|実行しました|進めます|次に|これから|対応します|\b(?:checked|updated|fixed|completed|next|proceeding)\b)/iu;
 
+// Deliberately narrow declarations for salient acting. A mention of a problem,
+// thanks, or a polite apology does not justify celebrating, slumping or shrugging.
+// Affirmative endings exclude quotation suffixes, conditionals and local negation.
+const CELEBRATE_PATTERN =
+  /(?:(?:やった(?:ね)?|大成功です(?:ね|よ)?|成功しました(?:ね|よ)?|成功した(?:ね|よ)?|(?:本当に|とても|すごく)(?:嬉しい|うれしい)(?:です(?:ね|よ)?)?)|^(?:we did it|we succeeded|i(?:'m| am) (?:thrilled|so happy)))[。.!！\s]*$/iu;
+const SAD_PATTERN =
+  /(?:(?:悲しい(?:です(?:ね|よ)?)?|残念です(?:ね|よ)?|悲しくなりました|がっかり(?:しました|しています)|落ち込んでいます)|^i(?:'m| am) (?:sad|disappointed))[。.!！\s]*$/iu;
+const UNCERTAIN_PATTERN =
+  /(?:(?:まだ(?:分かりません|わかりません)|確信がありません|(?:現時点|今の情報)では判断できません|どちらとも言えません)|^i(?:'m| am) not sure|^i (?:do not|don't) know(?: yet)?)[。.!！\s]*$/iu;
+
 export function createStateExpressionResolverState(): StateExpressionResolverState {
   return INITIAL_STATE;
 }
@@ -144,9 +154,12 @@ function splitCompletedClauses(
   flushRemainder: boolean,
 ): { readonly clauses: ReadonlyArray<string>; readonly remainder: string } {
   const clauses: string[] = [];
+  // Keep quoted sentences together so chunking cannot turn a quote's second
+  // sentence into an apparently unquoted declaration.
+  const unquoted = withoutQuotedText(text);
   let start = 0;
   for (let index = 0; index < text.length; index += 1) {
-    if (!/[。！？!?\n]/u.test(text[index])) continue;
+    if (!/[。！？!?\n]/u.test(unquoted[index])) continue;
     clauses.push(text.slice(start, index + 1));
     start = index + 1;
   }
@@ -162,6 +175,19 @@ function splitCompletedClauses(
 function classifyClause(clause: string): SemanticStateExpression | null {
   const normalized = clause.trim();
   if (normalized.length === 0) return null;
+
+  const declaration = withoutQuotedText(normalized).trim();
+  if (!/[?？]/u.test(declaration)) {
+    if (CELEBRATE_PATTERN.test(declaration)) {
+      return stateExpression("appreciative", "happy", 0.6, "celebrate", "medium", 2_600);
+    }
+    if (SAD_PATTERN.test(declaration)) {
+      return stateExpression("concerned", "sad", 0.57, "sad", "small", 2_800);
+    }
+    if (UNCERTAIN_PATTERN.test(declaration)) {
+      return stateExpression("considering", "neutral", 0, "uncertain", "small", 3_200);
+    }
+  }
 
   if (APOLOGY_PATTERN.test(normalized)) {
     return stateExpression("concerned", "sad", 0.57, "none", "medium", 2_800);
@@ -194,6 +220,39 @@ function classifyClause(clause: string): SemanticStateExpression | null {
     return stateExpression("progressing", "neutral", 0, "none", "small", 2_400);
   }
   return null;
+}
+
+/** Blank quoted/code spans without changing indices or treating contractions as quotes. */
+function withoutQuotedText(text: string): string {
+  const closingQuotes: string[] = [];
+  let result = "";
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    const quoted = closingQuotes.length > 0;
+    const apostrophe =
+      character === "'" &&
+      /[\p{Letter}\p{Number}]/u.test(text[index - 1] ?? "") &&
+      /[\p{Letter}\p{Number}]/u.test(text[index + 1] ?? "");
+    if (text[index - 1] !== "\\" && !apostrophe) {
+      if (character === closingQuotes[closingQuotes.length - 1]) {
+        closingQuotes.pop();
+      } else {
+        const close =
+          character === "「"
+            ? "」"
+            : character === "『"
+              ? "』"
+              : character === "“"
+                ? "”"
+                : character === '"' || character === "'" || character === "`"
+                  ? character
+                  : null;
+        if (close) closingQuotes.push(close);
+      }
+    }
+    result += quoted || closingQuotes.length > 0 ? " " : character;
+  }
+  return result;
 }
 
 function stateExpression(

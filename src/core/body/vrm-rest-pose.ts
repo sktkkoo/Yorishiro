@@ -73,9 +73,12 @@ export function applyVrmRestPose(vrm: VRM): VrmRestPose | null {
   set("leftHand", "z", restPose.leftArm.handZ);
   set("rightHand", "z", restPose.rightArm.handZ);
 
+  // Normalized fingers extend along ±X. X rotations twist straight fingers;
+  // mirrored Z rotations curl them toward the palm. This is the mixer rest
+  // pose only: recorded finger tracks remain free to open or shape the hand.
   for (const [suffix, angle] of fingerCurl) {
-    set(`left${suffix}` as VRMHumanBoneName, "x", angle);
-    set(`right${suffix}` as VRMHumanBoneName, "x", angle);
+    set(`left${suffix}` as VRMHumanBoneName, "z", Math.sign(restPose.leftArm.handZ) * angle);
+    set(`right${suffix}` as VRMHumanBoneName, "z", Math.sign(restPose.rightArm.handZ) * angle);
   }
 
   applyThumbRestPose("left", restPose.leftArm, set);
