@@ -16,7 +16,6 @@ import {
   screenCaptureRequestPermission,
   screenCaptureSelectRegion,
 } from "../../bindings/tauri-commands";
-import { withoutInlineScreenPreview } from "../screen-preview-capture";
 import { MAX_SHARING_INTERVAL_SECONDS, MIN_SHARING_INTERVAL_SECONDS } from "../sharing-interval";
 import {
   type CameraCapture,
@@ -24,6 +23,7 @@ import {
   listCameraSources,
   openCamera,
 } from "./camera-capture";
+import { buildContactSheet, type ContactSheetSample } from "./contact-sheet";
 import type { ScreenObservationFrame, ScreenObservationResult } from "./screen-observation";
 
 export type SharingSourceKind = "screen" | "camera";
@@ -92,6 +92,7 @@ let annotationBeginQueue: Promise<void> = Promise.resolve();
 // Native owns one picker. Stop invalidates its result but cannot dismiss the
 // system interaction; a later lease must wait until that picker settles.
 let regionPickerQueue: Promise<void> = Promise.resolve();
+const CONTACT_SHEET_FRAME_COUNT = 16;
 
 // Native rotates this epoch when the main WebView reloads. One lookup per JS
 // document prevents a Start waiting on permission from borrowing a new epoch.
@@ -155,6 +156,7 @@ export function useScreenSharing({
   const owner = useRef<SharingLease | null>(null);
   const inFlight = useRef<{ lease: SharingLease; promise: Promise<void> } | null>(null);
   const lastImage = useRef<{ dataUrl: string; frameId: string } | null>(null);
+  const contactSheetSamples = useRef<ContactSheetSample[]>([]);
   const lastCaptureStartedAt = useRef<number | null>(null);
   const latest = useRef({
     screenSelectionSupported: false,
@@ -187,6 +189,7 @@ export function useScreenSharing({
     lease?.controller.abort();
     owner.current = null;
     lastImage.current = null;
+    contactSheetSamples.current = [];
     lastCaptureStartedAt.current = null;
     setActive(false);
     setBusy(false);
@@ -447,7 +450,8 @@ export function useScreenSharing({
       if (
         reason === "periodic" &&
         lastCaptureStartedAt.current !== null &&
-        now - lastCaptureStartedAt.current < latest.current.intervalSeconds * 1000
+        now - lastCaptureStartedAt.current <
+          (latest.current.intervalSeconds * 1000) / CONTACT_SHEET_FRAME_COUNT
       )
         return Promise.resolve();
       lastCaptureStartedAt.current = now;
@@ -470,13 +474,21 @@ export function useScreenSharing({
                 pointerFrameValid: false,
                 pointerEpoch: undefined,
               }
-            : await withoutInlineScreenPreview(
-                () => screenCaptureFrame(lease.sourceId, lease.shareId),
-                lease.controller.signal,
-              );
+            : await screenCaptureFrame(lease.sourceId, lease.shareId);
           captured = performance.now();
           if (!isCurrent()) return;
           if (lease.sourceKind === "camera") setLastCapturedAt(frame.capturedAt);
+          if (lease.sourceKind === "screen" || lease.sourceKind === "camera") {
+            // The preview follows the latest capture immediately. Periodic
+            // captures are buffered until the contact sheet is complete, so
+            // waiting for share() here would leave the preview stale for the
+            // first 15 frames of every batch.
+            setScreenPreviewFrame({
+              imageDataUrl: frame.dataUrl,
+              lastCapturedAt: frame.capturedAt,
+              lastSharedAt: 0,
+            });
+          }
           if (
             lease.sourceKind === "screen" &&
             lease.selection?.kind !== "display" &&
@@ -491,11 +503,33 @@ export function useScreenSharing({
               "The shared display changed. Start sharing the selected display again.",
             );
           }
+          let outgoingFrame = frame;
+          if (reason === "periodic") {
+            contactSheetSamples.current.push({
+              dataUrl: frame.dataUrl,
+              capturedAt: frame.capturedAt,
+            });
+            if (contactSheetSamples.current.length < CONTACT_SHEET_FRAME_COUNT) {
+              outcome = "shared";
+              return;
+            }
+            const sheet = await buildContactSheet(contactSheetSamples.current);
+            contactSheetSamples.current = [];
+            outgoingFrame = {
+              ...frame,
+              dataUrl: sheet.dataUrl,
+              width: sheet.width,
+              height: sheet.height,
+              frameId: crypto.randomUUID(),
+              pointersEnabled: false,
+              pointerFrameValid: false,
+            };
+          }
           // Reuse identical pixels while their native reference remains valid. A
           // replacement token (for example after sleep/expiry) must reach the agent.
           if (
-            lastImage.current?.dataUrl === frame.dataUrl &&
-            lastImage.current.frameId === frame.frameId
+            lastImage.current?.dataUrl === outgoingFrame.dataUrl &&
+            lastImage.current.frameId === outgoingFrame.frameId
           ) {
             outcome = "unchanged";
             return;
@@ -503,27 +537,27 @@ export function useScreenSharing({
           const result = await latest.current.share(
             {
               sourceKind: lease.sourceKind,
-              frameId: frame.frameId,
-              pointersEnabled: frame.pointersEnabled,
-              pointerFrameValid: frame.pointerFrameValid,
-              pointerEpoch: frame.pointerEpoch,
-              width: frame.width,
-              height: frame.height,
-              imageDataUrl: frame.dataUrl,
+              frameId: outgoingFrame.frameId,
+              pointersEnabled: outgoingFrame.pointersEnabled,
+              pointerFrameValid: outgoingFrame.pointerFrameValid,
+              pointerEpoch: outgoingFrame.pointerEpoch,
+              width: outgoingFrame.width,
+              height: outgoingFrame.height,
+              imageDataUrl: outgoingFrame.dataUrl,
               source: frame.sourceName,
-              capturedAt: new Date(frame.capturedAt).toISOString(),
+              capturedAt: new Date(outgoingFrame.capturedAt).toISOString(),
             },
             lease.controller.signal,
           );
           if (!isCurrent()) return;
           outcome = result.status;
           if (result.status === "shared") {
-            lastImage.current = { dataUrl: frame.dataUrl, frameId: frame.frameId };
-            setLastObservedAt(frame.capturedAt);
-            if (lease.sourceKind === "screen") {
+            lastImage.current = { dataUrl: outgoingFrame.dataUrl, frameId: outgoingFrame.frameId };
+            setLastObservedAt(outgoingFrame.capturedAt);
+            if (lease.sourceKind === "screen" || lease.sourceKind === "camera") {
               setScreenPreviewFrame({
-                imageDataUrl: frame.dataUrl,
-                lastCapturedAt: frame.capturedAt,
+                imageDataUrl: outgoingFrame.dataUrl,
+                lastCapturedAt: outgoingFrame.capturedAt,
                 lastSharedAt: Date.now(),
               });
             }
@@ -690,10 +724,14 @@ export function useScreenSharing({
       if (disposed) return;
       // A slow capture resumes at its next due time; no extra whole interval is
       // added because an interval tick arrived while capture was in flight.
-      const nextDue = (lastCaptureStartedAt.current ?? Date.now()) + intervalSeconds * 1000;
+      const nextDue =
+        (lastCaptureStartedAt.current ?? Date.now()) +
+        (intervalSeconds * 1000) / CONTACT_SHEET_FRAME_COUNT;
       timer = window.setTimeout(
         () => void tick(),
-        owner.current?.ready ? Math.max(0, nextDue - Date.now()) : intervalSeconds * 1000,
+        owner.current?.ready
+          ? Math.max(0, nextDue - Date.now())
+          : (intervalSeconds * 1000) / CONTACT_SHEET_FRAME_COUNT,
       );
     };
     void tick();

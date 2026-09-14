@@ -44,9 +44,28 @@
   position: relative;
   background: #000;
 }
+.camera-preview--screen .camera-preview-image,
+.camera-preview--capture-grid .camera-preview-image {
+  box-shadow: none;
+}
+.camera-preview--screen .camera-preview-image::after,
+.camera-preview--capture-grid .camera-preview-image::after {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  border: 3px solid rgb(224 168 62 / 86%);
+  content: "";
+  pointer-events: none;
+}
+.camera-preview--screen.camera-preview--sent .camera-preview-image::after,
+.camera-preview--capture-grid.camera-preview--sent .camera-preview-image::after {
+  border-color: rgb(224 74 74 / 90%);
+}
 
 .camera-preview video,
 .camera-preview img {
+  position: relative;
+  z-index: 1;
   display: block;
   width: 100%;
   max-height: 156px;
@@ -163,6 +182,28 @@ html:is([data-window-view="camera-preview"], [data-window-view="screen-preview"]
   pointer-events: none;
   box-shadow: inset 0 0 0 2px #e05b5b;
   animation: camera-preview-cue 1.2s ease-out both;
+}
+.camera-preview-capture-cue--stable {
+  display: none;
+  opacity: 1;
+  animation: none;
+}
+.camera-preview-capture-cue--queued {
+  box-shadow: inset 0 0 0 2px #e0a83e;
+}
+.camera-preview-capture-cue--sent {
+  box-shadow: inset 0 0 0 2px #4caf72;
+}
+.camera-preview-capture-status {
+  padding: 2px 5px;
+  border-radius: 3px;
+  background: rgb(0 0 0 / 72%);
+  color: #fff;
+  font-size: 10px;
+  line-height: 1.2;
+}
+.camera-preview-capture-status--header {
+  margin-right: auto;
 }
 @keyframes camera-preview-cue {
   0%,

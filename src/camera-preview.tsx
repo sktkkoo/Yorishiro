@@ -28,6 +28,7 @@ export function CameraPreview({
   onDetach,
   onAttach,
   lastCapturedAt,
+  lastSharedAt,
   language = "en",
   onStop,
 }: CameraPreviewProps) {
@@ -52,7 +53,7 @@ export function CameraPreview({
 
   return (
     <section
-      className={`camera-preview${detached ? " camera-preview--detached" : ""}`}
+      className={`camera-preview${detached ? " camera-preview--detached" : ""}${sourceKind === "screen" ? " camera-preview--screen" : ""}${imageDataUrl ? " camera-preview--capture-grid" : ""}${imageDataUrl && lastSharedAt && lastCapturedAt && lastSharedAt >= lastCapturedAt ? " camera-preview--sent" : ""}`}
       data-screen-preview-inline={sourceKind === "screen" && !detached ? "" : undefined}
       data-no-window-drag
       aria-label={
@@ -66,6 +67,17 @@ export function CameraPreview({
       }
     >
       <header data-tauri-drag-region={detached ? "" : undefined}>
+        {sourceKind === "screen" ? (
+          <span className="camera-preview-capture-status camera-preview-capture-status--header">
+            {lastSharedAt && lastCapturedAt && lastSharedAt >= lastCapturedAt
+              ? japanese
+                ? "AI送信済み"
+                : "Sent to AI"
+              : japanese
+                ? "撮影済み・送信待ち"
+                : "Captured · waiting"}
+          </span>
+        ) : null}
         {onDetach || onAttach ? (
           <button
             type="button"
@@ -150,7 +162,12 @@ export function CameraPreview({
             data-tauri-drag-region={detached ? "" : undefined}
           />
         ) : null}
-        {lastCapturedAt !== undefined && Date.now() - lastCapturedAt < 1500 ? (
+        {sourceKind === "screen" ? (
+          <span
+            className={`camera-preview-capture-cue camera-preview-capture-cue--stable ${lastSharedAt && lastCapturedAt && lastSharedAt >= lastCapturedAt ? "camera-preview-capture-cue--sent" : "camera-preview-capture-cue--queued"}`}
+            aria-hidden="true"
+          />
+        ) : lastCapturedAt !== undefined && Date.now() - lastCapturedAt < 1500 ? (
           <span key={lastCapturedAt} className="camera-preview-capture-cue" aria-hidden="true">
             <span className="camera-preview-flash" />
           </span>
