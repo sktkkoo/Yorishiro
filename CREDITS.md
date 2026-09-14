@@ -115,6 +115,8 @@ Third-party assets stored outside the repo (`../Yorishiro-assets/animations/`) a
 - Source: Animations from [Adobe Mixamo](https://www.mixamo.com/) converted to VRMA format.
 - Terms: Subject to the Mixamo ToS. Signed-in users may use animations in personal and commercial projects. Redistribution of files as standalone assets is not permitted — placing raw files in a public git repo is not permitted; embedding in an application bundle is permitted.
 
+**Pending user-provided imports (not bundled):** `Sad Idle.fbx` and `Warrior Idle.fbx`, reported by the user as downloads from Adobe Mixamo. Source bytes, hashes, conversion, and target-model review remain unverified because macOS denied access to the Downloads files. Their intended uses are a brief sad-context pose and an infrequent stretch respectively. See [the import and license record](docs/decisions/mixamo-idle-import.md). These animation assets do not inherit Yorishiro's software license; Adobe's asset terms apply separately. This provenance credit does not assert an Adobe attribution requirement.
+
 ### Sound
 
 Bundled ambient audio, referenced by scene packs via `sound:<name>`. The per-file list and licenses are maintained in [`bundled-packs/shared/sounds/README.md`](bundled-packs/shared/sounds/README.md).
