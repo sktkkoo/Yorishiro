@@ -34,6 +34,12 @@ const TEST_MOTION_PROFILE: CharacterMotionProfile = {
   ],
 };
 
+function testProgram(id: string): MotionProgram {
+  const program = TEST_MOTION_PROFILE.programs.find((item) => item.entry.id === id);
+  if (!program) throw new Error(`Missing test program ${id}`);
+  return program;
+}
+
 import { OCCASIONAL_IDLE_ANIMATIONS } from "./occasional-idle-selector";
 
 type Playback = Awaited<ReturnType<AnimationPlayer["play"]>>;
@@ -306,17 +312,14 @@ describe("recorded motion Body integration", () => {
     "disable",
     "listening",
   ] as const)("still stops retained automatic playback after a failed replacement via %s", async (stop) => {
+    mockPerformanceLibrary();
     const outgoing = playback();
     vi.spyOn(AnimationPlayer.prototype, "play")
       .mockResolvedValueOnce(outgoing)
       .mockRejectedValueOnce(new Error("missing"));
     const { body } = createBody();
-    body.acquireMotionSlot({
-      source: "idle",
-      priority: "idle-fidget",
-      animation: "anim:Idle",
-      options: { mask: "upper-body" },
-    });
+    await body.prepareMotionLibrary();
+    advance(body, 1.3);
     await flush();
     const replacement = body.acquireMotionSlot({
       source: "system",
@@ -335,6 +338,7 @@ describe("recorded motion Body integration", () => {
   });
 
   it("stops retained automatic talking on listening while a manual replacement is still loading", async () => {
+    mockPerformanceLibrary();
     const outgoing = playback();
     const incoming = deferred<Playback>();
     const manualPlayback = playback();
@@ -342,13 +346,9 @@ describe("recorded motion Body integration", () => {
       .mockResolvedValueOnce(outgoing)
       .mockReturnValueOnce(incoming.promise);
     const { body } = createBody();
+    await body.prepareMotionLibrary();
     body.setMotionConversationPhase("assistant-speaking");
-    body.acquireMotionSlot({
-      source: "idle",
-      priority: "idle-fidget",
-      animation: "talking",
-      options: { mask: "upper-body" },
-    });
+    advance(body, 1.3);
     await flush();
     const manual = body.acquireMotionSlot({
       source: "mcp",
@@ -1322,7 +1322,7 @@ describe("recorded motion Body integration", () => {
     [2, "baseline"],
     [1, "semantic"],
     [2, "semantic"],
-  ] as const)("preserves the speech hand pose at setting %s for %s playback and entry scoring", async (setting, mode) => {
+  ] as const)("uses the same authored speech strength at setting %s for %s playback and entry scoring", async (setting, mode) => {
     mockPerformanceLibrary();
     const evaluate = vi.mocked(AnimationPlayer.prototype.evaluateTransition);
     const active = playback();
@@ -1339,13 +1339,13 @@ describe("recorded motion Body integration", () => {
     await flush();
     expect(play).toHaveBeenCalledOnce();
     const [animation, options] = play.mock.calls[0];
-    expect(options?.weight).toBe(0.85);
+    expect(options?.weight).toBe(setting === 1 ? 0.85 : 1);
     expect(evaluate).toHaveBeenCalledWith(
       animation,
       expect.objectContaining({ weight: options?.weight }),
     );
     body.setMotionIntensity(setting === 1 ? 2 : 1);
-    expect(active.setWeight).toHaveBeenLastCalledWith(0.85, 350);
+    expect(active.setWeight).toHaveBeenLastCalledWith(setting === 1 ? 1 : 0.85, 350);
   });
 
   it("preserves the speech gain curve when the setting changes during loading", async () => {
@@ -1362,9 +1362,180 @@ describe("recorded motion Body integration", () => {
     const active = playback();
     pending.resolve(active);
     await flush();
-    expect(active.setWeight).toHaveBeenLastCalledWith(0.85, 350);
+    expect(active.setWeight).toHaveBeenLastCalledWith(1, 350);
     body.setMotionIntensity(1);
     expect(active.setWeight).toHaveBeenLastCalledWith(0.85, 350);
+  });
+
+  const performanceCases = [
+    ...["speech-appreciate", "speech-chat", "speech-present"].map((id) => {
+      const program = testProgram(id);
+      return { program, standard: program.entry.weight };
+    }),
+    {
+      program: testProgram("idle-balance"),
+      standard: 0.45,
+    },
+  ];
+
+  it.each(
+    performanceCases.flatMap(({ program, standard }) =>
+      [0, 0.5, 1, 1.5, 2, 3].map((setting) => ({ program, standard, setting })),
+    ),
+  )("scores and plays $program.entry.id at public setting $setting with the same weight", async ({
+    program,
+    standard,
+    setting,
+  }) => {
+    mockPerformanceLibrary();
+    const evaluate = vi.mocked(AnimationPlayer.prototype.evaluateTransition);
+    const active = playback();
+    const play = vi.spyOn(AnimationPlayer.prototype, "play").mockResolvedValue(active);
+    const { body } = createBody(undefined, { ...TEST_MOTION_PROFILE, programs: [program] });
+    await body.prepareMotionLibrary();
+    body.setMotionIntensity(setting);
+    if (program.role === "speech") {
+      body.acquireSemanticMotion({
+        ...speechRequest,
+        intent: program.entry.intents[0],
+        intensity: 0.5,
+      });
+    } else {
+      advance(body, 1.3);
+    }
+    await flush();
+    if (setting === 0) {
+      expect(play).not.toHaveBeenCalled();
+      return;
+    }
+    const expected =
+      setting <= 1 ? standard * setting : standard + (1 - standard) * Math.min(1, setting - 1);
+    expect(play).toHaveBeenCalledOnce();
+    const [animation, options] = play.mock.calls[0];
+    expect(animation).toBe(program.entry.animation);
+    expect(options?.weight).toBeCloseTo(expected);
+    expect(options?.speed).toBe(program.entry.speed);
+    expect(options?.requireCompatibleEntry).toBe(true);
+    expect(options?.getCurrentWeight?.()).toBeCloseTo(expected);
+    expect(evaluate).toHaveBeenCalledWith(
+      animation,
+      expect.objectContaining({ weight: options?.weight }),
+    );
+    body.setMotionIntensity(2);
+    expect(active.setWeight).toHaveBeenLastCalledWith(1, 350);
+    body.setMotionIntensity(1);
+    expect(active.setWeight).toHaveBeenLastCalledWith(standard, 350);
+  });
+
+  it.each([
+    0, 0.5, 1,
+  ])("reaches authored weight at Lively even with finite semantic intensity %s", async (intensity) => {
+    mockPerformanceLibrary();
+    const program = testProgram("speech-appreciate");
+    const active = playback();
+    const play = vi.spyOn(AnimationPlayer.prototype, "play").mockResolvedValue(active);
+    const { body } = createBody(undefined, { ...TEST_MOTION_PROFILE, programs: [program] });
+    await body.prepareMotionLibrary();
+    body.setMotionIntensity(2);
+    body.acquireSemanticMotion({ ...speechRequest, intensity });
+    await flush();
+    expect(play.mock.calls[0][1]?.weight).toBe(1);
+    body.setMotionIntensity(1);
+    expect(active.setWeight).toHaveBeenLastCalledWith(0.6 * (0.65 + intensity * 0.7), 350);
+  });
+
+  it("keeps a reviewed ceiling through admission, pending commit and live gain changes", async () => {
+    mockPerformanceLibrary();
+    const source = TEST_MOTION_PROFILE.programs[0];
+    const program = { ...source, entry: { ...source.entry, maxWeight: 0.8 } };
+    const pending = deferred<Playback>();
+    const play = vi.spyOn(AnimationPlayer.prototype, "play").mockReturnValue(pending.promise);
+    const { body } = createBody(undefined, { ...TEST_MOTION_PROFILE, programs: [program] });
+    await body.prepareMotionLibrary();
+    body.acquireSemanticMotion(speechRequest);
+    expect(play.mock.calls[0][1]?.weight).toBe(0.6);
+    body.setMotionIntensity(2);
+    expect(play.mock.calls[0][1]?.getCurrentWeight?.()).toBe(0.8);
+    const active = playback();
+    pending.resolve(active);
+    await flush();
+    // The player already sampled the latest weight at commit; no second fade reset.
+    expect(active.setWeight).not.toHaveBeenCalled();
+    body.setMotionIntensity(3);
+    expect(active.setWeight).toHaveBeenLastCalledWith(0.8, 350);
+    body.setMotionIntensity(1);
+    expect(active.setWeight).toHaveBeenLastCalledWith(0.6, 350);
+  });
+
+  it("does not force a full-weight Lively performance through a rejected entry", async () => {
+    mockPerformanceLibrary();
+    const evaluate = vi.mocked(AnimationPlayer.prototype.evaluateTransition).mockReturnValue(null);
+    const play = vi.spyOn(AnimationPlayer.prototype, "play").mockResolvedValue(playback());
+    const program = testProgram("speech-appreciate");
+    const { body } = createBody(undefined, { ...TEST_MOTION_PROFILE, programs: [program] });
+    await body.prepareMotionLibrary();
+    body.setMotionIntensity(2);
+    expect(body.acquireSemanticMotion(speechRequest)).toBeNull();
+    expect(evaluate).toHaveBeenCalledWith(
+      program.entry.animation,
+      expect.objectContaining({ weight: 1 }),
+    );
+    expect(play).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    0, 0.5, 1, 2, 3,
+  ])("uses matching full-weight admission and playback for a timed posture at setting %s", async (setting) => {
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    mockPerformanceLibrary();
+    const evaluate = vi.mocked(AnimationPlayer.prototype.evaluateTransition);
+    const { sha, base } = mockStandingBase();
+    const program = testProgram("idle-rest-hand");
+    const active = playback();
+    const play = vi.spyOn(AnimationPlayer.prototype, "play").mockResolvedValue(active);
+    const { body } = createBody(sha, { ...TEST_MOTION_PROFILE, programs: [program] });
+    await body.initializeRecordedBody();
+    await body.prepareMotionLibrary();
+    body.setMotionIntensity(setting);
+    advance(body, 15.1);
+    await flush();
+    if (setting === 0) {
+      expect(play).not.toHaveBeenCalled();
+      return;
+    }
+    const expected = setting <= 1 ? 0.425 * setting : 1;
+    expect(play).toHaveBeenCalledOnce();
+    expect(play.mock.calls[0][1]?.weight).toBe(expected);
+    expect(evaluate).toHaveBeenCalledWith(
+      program.entry.animation,
+      expect.objectContaining({ weight: expected }),
+    );
+    body.setMotionIntensity(2);
+    expect(active.setWeight).toHaveBeenLastCalledWith(1, 350);
+    body.setMotionIntensity(1);
+    expect(active.setWeight).toHaveBeenLastCalledWith(0.425, 350);
+    expect(base.stop).not.toHaveBeenCalled();
+    expect(base.cancel).not.toHaveBeenCalled();
+  });
+
+  it("preserves an explicit manual weight even for an automatic catalog animation", async () => {
+    mockPerformanceLibrary();
+    const active = playback();
+    const play = vi.spyOn(AnimationPlayer.prototype, "play").mockResolvedValue(active);
+    const { body } = createBody();
+    body.setMotionIntensity(2);
+    body.acquireMotionSlot({
+      source: "mcp",
+      priority: "mcp-conscious",
+      animation: "anim:Thankful",
+      options: { weight: 0.399 },
+    });
+    await flush();
+    expect(play.mock.calls[0][1]?.weight).toBe(0.399);
+    expect(play.mock.calls[0][1]?.getCurrentWeight).toBeUndefined();
+    body.setMotionIntensity(3);
+    body.setMotionIntensity(0.5);
+    expect(active.setWeight).not.toHaveBeenCalled();
   });
 
   it("preserves the real mixer's fade ramp through Body activation at unchanged motion gain", async () => {

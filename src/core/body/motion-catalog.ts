@@ -107,7 +107,7 @@ export const DEFAULT_MOTION_CATALOG: readonly MotionCatalogEntry[] = [
     contexts: ["speech"],
     intents: ["agree", "reassure"],
     features: [0.65, 0.6, 0.1, 1, 0.15, 0.3],
-    weight: 0.42,
+    weight: 0.6,
     speed: 1,
     cooldownMs: 6_000,
   },

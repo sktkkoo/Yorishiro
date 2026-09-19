@@ -91,7 +91,7 @@ import {
   type MotionCompositionPlan,
 } from "./motion-composition";
 import { MotionDirector, type MotionDirectorSnapshot } from "./motion-director";
-import { calibratedMotionIntensity } from "./motion-intensity";
+import { automaticPerformanceWeight, calibratedMotionIntensity } from "./motion-intensity";
 import {
   type CharacterMotionProfile,
   type CompiledMotionProfile,
@@ -267,7 +267,11 @@ export class Body {
   private readonly motionComposition: MotionCompositionController;
   private readonly automaticPrograms = new WeakMap<
     InternalMotionRequest,
-    { readonly program: MotionProgram; readonly expiresAtMs?: number }
+    {
+      readonly program: MotionProgram;
+      readonly baseWeight: number;
+      readonly expiresAtMs?: number;
+    }
   >();
   private readonly lastProgramPlayed = new Map<string, number>();
   private readonly previousTimedPrograms = new Map<string, string>();
@@ -522,7 +526,7 @@ export class Body {
       evaluateTransition: (animation, options) =>
         this.animationPlayer.evaluateTransition(animation, {
           ...options,
-          weight: options.weight * this.automaticMotionGain(animation),
+          weight: this.automaticMotionWeight(animation, options.weight),
         }),
     });
     this.recordedIdleFoundation = new RecordedIdleFoundation(this.animationPlayer);
@@ -546,20 +550,22 @@ export class Body {
         // MotionScheduler 側は「自然完了」として扱う。preempt / cancel の場合は
         // onDeactivate が先に handle.stop / cancel を呼び、completion を resolve させる
         // ことで本 await が抜ける（MotionScheduler の settled guard が二重 resolve を防ぐ）。
-        const gainAtActivation = this.automaticMotionGain(req.animation, req.priority);
-        let gainAtCommit = gainAtActivation;
+        const currentWeight = () =>
+          automatic
+            ? this.automaticMotionWeight(req.animation, automatic.baseWeight, req.priority)
+            : (req.options?.weight ?? 0.7);
+        let weightAtCommit = req.options?.weight ?? 0.7;
         let result: Awaited<ReturnType<AnimationPlayer["play"]>>;
         try {
           result = await this.animationPlayer.play(req.animation, {
             ...req.options,
             requireCompatibleEntry: program !== undefined,
-            getCurrentWeight:
-              program && gainAtActivation > 0
-                ? () => {
-                    gainAtCommit = this.automaticMotionGain(req.animation, req.priority);
-                    return ((req.options?.weight ?? 0.7) / gainAtActivation) * gainAtCommit;
-                  }
-                : undefined,
+            getCurrentWeight: automatic
+              ? () => {
+                  weightAtCommit = currentWeight();
+                  return weightAtCommit;
+                }
+              : undefined,
             onCommit: () => {
               if (
                 program &&
@@ -594,16 +600,8 @@ export class Body {
           result.cancel();
           return;
         }
-        if (
-          gainAtActivation > 0 &&
-          gainAtCommit !== this.automaticMotionGain(req.animation, req.priority) &&
-          (req.source === "idle" || req.priority === "speech-expression")
-        ) {
-          result.setWeight(
-            ((req.options?.weight ?? 0.7) * this.automaticMotionGain(req.animation, req.priority)) /
-              gainAtActivation,
-            350,
-          );
+        if (automatic && weightAtCommit !== currentWeight()) {
+          result.setWeight(currentWeight(), 350);
         }
         this.activeMotionPlayback = {
           animation: req.animation,
@@ -614,10 +612,7 @@ export class Body {
           cancel: result.cancel,
           setWeight: result.setWeight,
           generation,
-          automaticBaseWeight:
-            gainAtActivation > 0 && (req.source === "idle" || req.priority === "speech-expression")
-              ? (req.options?.weight ?? 0.7) / gainAtActivation
-              : null,
+          automaticBaseWeight: automatic?.baseWeight ?? null,
         };
         try {
           await result.completion;
@@ -731,8 +726,11 @@ export class Body {
     const playback = this.activeMotionPlayback;
     if (playback && playback.automaticBaseWeight !== null) {
       playback.setWeight(
-        playback.automaticBaseWeight *
-          this.automaticMotionGain(playback.animation, playback.priority),
+        this.automaticMotionWeight(
+          playback.animation,
+          playback.automaticBaseWeight,
+          playback.priority,
+        ),
         350,
       );
     }
@@ -748,11 +746,20 @@ export class Body {
     this.beatScheduler.setIntensity(this.motionIntensity);
   }
 
-  /** Quiet standing calibration must not lower a deliberate speech hand pose. */
-  private automaticMotionGain(animation: string, priority?: MotionPriority): number {
-    const gain = this.motionProfile.byAnimation.get(animation)?.composition.gain;
+  /** Preserve individual Standard poses; Lively reaches the reviewed authored ceiling. */
+  private automaticMotionWeight(
+    animation: string,
+    baseWeight: number,
+    priority?: MotionPriority,
+  ): number {
+    const program = this.motionProfile.byAnimation.get(animation);
+    const gain = program?.composition.gain;
     const speech = gain === "speech" || (gain === undefined && priority === "speech-expression");
-    return Math.min(1, speech ? this.motionIntensitySetting : this.motionIntensity);
+    return automaticPerformanceWeight(
+      this.motionIntensitySetting,
+      baseWeight * (speech ? 1 : 0.5),
+      program?.entry.maxWeight,
+    );
   }
 
   /** A failed replacement may leave an outgoing physical owner without a scheduler slot. */
@@ -1451,10 +1458,7 @@ export class Body {
       source: request.source,
       priority: request.priority,
       animation: decision.animation,
-      options: {
-        ...decision.options,
-        weight: decision.options.weight * this.automaticMotionGain(decision.animation),
-      },
+      options: decision.options,
     });
     if (!scheduled) {
       this.motionDirector.rejectDecision(decision);
@@ -1648,10 +1652,7 @@ export class Body {
       source: "idle",
       priority: "idle-fidget",
       animation: decision.animation,
-      options: {
-        ...decision.options,
-        weight: decision.options.weight * this.automaticMotionGain(decision.animation),
-      },
+      options: decision.options,
     });
     if (!handle) {
       this.motionDirector.rejectDecision(decision);
@@ -1680,12 +1681,21 @@ export class Body {
       !this.motionComposition.admits(program, this.resolveMotionComposition())
     )
       return null;
-    this.automaticPrograms.set(request, {
+    const baseWeight = request.options?.weight ?? program.entry.weight;
+    const scaledRequest: InternalMotionRequest = {
+      ...request,
+      options: {
+        ...request.options,
+        weight: this.automaticMotionWeight(request.animation, baseWeight, request.priority),
+      },
+    };
+    this.automaticPrograms.set(scaledRequest, {
       program,
+      baseWeight,
       expiresAtMs:
         ownershipDurationMs === undefined ? undefined : this.motionElapsedMs + ownershipDurationMs,
     });
-    return this.motionScheduler.request(request);
+    return this.motionScheduler.request(scaledRequest);
   }
 
   private playTimedProgram(
@@ -1709,13 +1719,14 @@ export class Body {
           transition:
             program.entry.playback === "once" ? ("immediate" as const) : ("matched" as const),
           speed: program.entry.speed,
-          weight:
-            Math.min(program.entry.maxWeight ?? 1, program.entry.weight) *
-            this.automaticMotionGain(program.entry.animation),
+          weight: Math.min(program.entry.maxWeight ?? 1, program.entry.weight),
           fadeInMs: 800,
           fadeOutMs: 800,
         };
-        const entry = this.animationPlayer.evaluateTransition(program.entry.animation, options);
+        const entry = this.animationPlayer.evaluateTransition(program.entry.animation, {
+          ...options,
+          weight: this.automaticMotionWeight(program.entry.animation, options.weight),
+        });
         return entry
           ? { program, options: { ...options, startTimeSec: entry.startTimeSec } }
           : null;

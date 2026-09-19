@@ -22,12 +22,16 @@ the former Normal values 0.18 and 0.06. Supporting recorded pelvis/leg tracks,
 source timing and contact gates remain unchanged. Clip weights retain their
 existing maximum of one and individual reviewed ceilings.
 
-Deliberate speech performances retain the previous public-setting weight curve,
-including conversational hand gestures. Both Normal and Lively therefore keep
-the reviewed 0.85 conversation weight. The quieter standing preference must not
-pull the speaker's hands down toward the rest pose. Entry evaluation, playback,
-active gain changes and pending loads use the same distinction. Zero still stops
-automatic motion; values below Normal can still attenuate speech.
+Deliberate speech performances keep their individual Normal baselines, including
+conversational hand gestures. The quieter standing preference must not pull the
+speaker's hands down toward the rest pose. The September 20 follow-up changes
+authored performance weights above Normal: Lively and Over reach full weight,
+subject to explicit reviewed ceilings. Thankful's neutral Normal baseline is
+0.6; Chatting remains 0.85 at Normal. See the
+[authored performance strength review](authored-performance-intensity-review.md)
+for interpolation, finite semantic gestures, manual overrides and validation.
+Entry evaluation, playback, active gain changes and pending loads share that
+mapping. Zero still stops automatic motion; values below Normal attenuate it.
 
 The recorded-body snapshot reports the public `intensity` and the calibrated
 `effectiveIntensity` separately. SDK, settings, MCP and saved config continue to
