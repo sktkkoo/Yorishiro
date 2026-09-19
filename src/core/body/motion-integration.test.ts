@@ -1041,6 +1041,9 @@ describe("recorded motion Body integration", () => {
   });
 
   it("still rejects incompatible or cold backgrounds after a completed speech gesture", async () => {
+    // Select Thankful so the subsequent Chatting rejection tests the physical
+    // gate rather than that same source's legitimate six-second cooldown.
+    vi.spyOn(Math, "random").mockReturnValue(0);
     mockPerformanceLibrary();
     const completed = deferred<void>();
     const play = vi
