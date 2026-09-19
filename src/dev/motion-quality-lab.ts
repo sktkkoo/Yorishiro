@@ -5,8 +5,8 @@ import { Body, type MotionConversationPhase } from "../core/body";
 import { createSeededMotionRandom, type MotionIntent } from "../core/body/motion-catalog";
 import { applyVrmRestPose } from "../core/body/vrm-rest-pose";
 import {
-  DEFAULT_CAMERA_HEAD_OFFSET,
   defaultCameraForCharacter,
+  TERMINAL_CAMERA_HEAD_OFFSET_Y,
 } from "../runtime/view-mode-framing";
 
 // Development-only observation adapter. Private player access deliberately stays
@@ -134,7 +134,7 @@ function advance(delta: number) {
   headBone.getWorldPosition(headPosition);
   const camera = cameras[2];
   camera.position.y +=
-    (headPosition.y - DEFAULT_CAMERA_HEAD_OFFSET - camera.position.y) * Math.min(1.5 * delta, 1);
+    (headPosition.y + TERMINAL_CAMERA_HEAD_OFFSET_Y - camera.position.y) * Math.min(1.5 * delta, 1);
   camera.lookAt(camera.position.x, camera.position.y, 0);
   frames.push(sample(delta));
 }

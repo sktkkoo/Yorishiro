@@ -11,7 +11,7 @@ import { TweenManager } from "../../core/tween/tween-manager";
 import { getOrInit } from "../hot-data";
 import { KEYS } from "../module-registry/keys";
 import { type ClaimState, getClaimState } from "../ui-claim-state";
-import { DEFAULT_CAMERA_HEAD_OFFSET, defaultCameraForCharacter } from "../view-mode-framing";
+import { defaultCameraForCharacter, TERMINAL_CAMERA_HEAD_OFFSET_Y } from "../view-mode-framing";
 import { getVrmCache } from "../vrm-cache";
 import { CameraModulationRegistry } from "./camera-modulation";
 import { R3fHost } from "./r3f-host";
@@ -502,7 +502,7 @@ class ThreeRuntimeImpl implements ThreeRuntime {
         // Step 1: Base — VRM head tracking（claim 未取得時のみ）
         if (this.trackHead && this.cameraTrackingEnabled && !cameraClaimed) {
           this.trackHead.getWorldPosition(this.headWorldPos);
-          const desiredY = this.headWorldPos.y - DEFAULT_CAMERA_HEAD_OFFSET;
+          const desiredY = this.headWorldPos.y + TERMINAL_CAMERA_HEAD_OFFSET_Y;
           this.cameraBase.y += (desiredY - this.cameraBase.y) * Math.min(1.5 * delta, 1);
         }
 

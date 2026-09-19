@@ -6,7 +6,8 @@ export interface ViewModeCamera {
   readonly z: number;
 }
 
-export const DEFAULT_CAMERA_HEAD_OFFSET = 0.22;
+export const TERMINAL_CAMERA_HEAD_OFFSET_Y = -0.03;
+export const TERMINAL_CAMERA_DISTANCE = 1.2;
 
 /** Terminal framing keeps the head and upper-body gestures in view. */
 export function defaultCameraForCharacter(
@@ -14,7 +15,11 @@ export function defaultCameraForCharacter(
 ): ViewModeCamera {
   const headY = characterAnchor && Number.isFinite(characterAnchor.y) ? characterAnchor.y : 1.6;
   const headX = characterAnchor && Number.isFinite(characterAnchor.x) ? characterAnchor.x : 0;
-  return { x: headX, y: headY - DEFAULT_CAMERA_HEAD_OFFSET, z: 1.6 };
+  return {
+    x: headX,
+    y: headY + TERMINAL_CAMERA_HEAD_OFFSET_Y,
+    z: TERMINAL_CAMERA_DISTANCE,
+  };
 }
 
 export type CallFramingTier = "normal" | "small-face";
