@@ -3,6 +3,7 @@ import {
   type CharacterMotionProfile,
   compileMotionProfile,
   DEFAULT_CHARACTER_MOTION_PROFILE,
+  defaultMotionProfileForAvatar,
 } from "./motion-profile";
 
 const profile = (): CharacterMotionProfile => ({
@@ -19,6 +20,27 @@ describe("character motion program admission", () => {
     expect(other.programs).toEqual([]);
     expect(other.rejections[0].reason).toBe("avatar-mismatch");
     expect(other.support).toEqual({ recorded: false, fallback: true });
+  });
+
+  it.each([
+    undefined,
+    "another-avatar",
+  ])("shares speech without Yori support/contact data for %s", (sha) => {
+    const generic = compileMotionProfile(defaultMotionProfileForAvatar(sha), sha);
+    const yori = compileMotionProfile(
+      DEFAULT_CHARACTER_MOTION_PROFILE,
+      DEFAULT_CHARACTER_MOTION_PROFILE.modelSha256,
+    );
+    expect(generic.programs.map((program) => program.entry)).toEqual(
+      yori.programs.filter((program) => program.role === "speech").map((program) => program.entry),
+    );
+    expect(generic.programs).toHaveLength(5);
+    expect(generic.rejections).toEqual([]);
+    expect(generic.support).toEqual({ recorded: false, fallback: true });
+    expect(generic.footContacts.size).toBe(0);
+    expect(defaultMotionProfileForAvatar(DEFAULT_CHARACTER_MOTION_PROFILE.modelSha256)).toBe(
+      DEFAULT_CHARACTER_MOTION_PROFILE,
+    );
   });
 
   it("rejects unsupported whole-body composition and absent authored review", () => {

@@ -68,7 +68,7 @@ function playback() {
 
 function createBody(
   modelSha256?: string,
-  motionProfile: CharacterMotionProfile = TEST_MOTION_PROFILE,
+  motionProfile: CharacterMotionProfile | null = TEST_MOTION_PROFILE,
 ) {
   const bones = new Map<VRMHumanBoneName, THREE.Object3D>();
   const scene = new THREE.Object3D();
@@ -100,7 +100,10 @@ function createBody(
     lookAt: { yaw: 0, pitch: 0, applier: { applyYawPitch: () => {} } },
     update: () => {},
   } as unknown as VRM;
-  const body = new Body(vrm, undefined, claims, { modelSha256, motionProfile });
+  const body = new Body(vrm, undefined, claims, {
+    modelSha256,
+    motionProfile: motionProfile ?? undefined,
+  });
   bodies.push(body);
   return { body, claims, vrm };
 }
@@ -454,6 +457,37 @@ describe("recorded motion Body integration", () => {
     expect(player.getTotalEffectiveWeight()).toBeLessThan(0.425 * 0.5);
     advance(body, 0.9);
     expect(player.getTotalEffectiveWeight()).toBeCloseTo(0.425);
+  });
+
+  it.each([
+    undefined,
+    "another-avatar",
+  ])("automatically speaks on a generic VRM (%s) without the Yori support bundle", async (sha) => {
+    const preload = mockPerformanceLibrary();
+    const play = vi.spyOn(AnimationPlayer.prototype, "play").mockResolvedValue(playback());
+    const { body } = createBody(sha, null);
+    body.setMotionIntensity(2);
+    await body.prepareMotionLibrary();
+    body.setMotionConversationPhase("assistant-speaking");
+    advance(body, 2);
+    await flush();
+    expect(play).toHaveBeenCalledWith(
+      "anim:Idle Chatting",
+      expect.objectContaining({ mask: "upper-body", weight: 1 }),
+    );
+    expect(body.getRecordedBodySnapshot().motionProfile).toEqual({
+      id: "generic-humanoid-speech",
+      rejectedPrograms: [],
+    });
+    expect(preload).toHaveBeenCalledWith("anim:Idle", { mask: "lower-body", loop: true });
+    expect(
+      preload.mock.calls.some(
+        ([animation]) =>
+          animation === "anim:Idle Chatting 2" ||
+          animation.includes("Shrugging") ||
+          animation.includes("HandOnHip"),
+      ),
+    ).toBe(false);
   });
 
   it("default admission preloads lower Idle independently and keeps supported listening when no upper candidate exists", async () => {

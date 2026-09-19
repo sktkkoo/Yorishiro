@@ -97,7 +97,7 @@ import {
   type CharacterMotionProfile,
   type CompiledMotionProfile,
   compileMotionProfile,
-  DEFAULT_CHARACTER_MOTION_PROFILE,
+  defaultMotionProfileForAvatar,
   type MotionProgram,
 } from "./motion-profile";
 import {
@@ -427,7 +427,7 @@ export class Body {
     this.devLog = devLog;
     this.claimState = claimState ?? getClaimState();
     this.motionProfile = compileMotionProfile(
-      motionAssets.motionProfile ?? DEFAULT_CHARACTER_MOTION_PROFILE,
+      motionAssets.motionProfile ?? defaultMotionProfileForAvatar(motionAssets.modelSha256),
       motionAssets.modelSha256,
     );
     this.motionComposition = new MotionCompositionController(this.motionProfile);

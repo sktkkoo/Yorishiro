@@ -98,6 +98,26 @@ export const DEFAULT_CHARACTER_MOTION_PROFILE: CharacterMotionProfile = {
   ],
 };
 
+/** Shared retargetable speech acting; avatar-specific stance/contact evidence is omitted. */
+export const GENERIC_HUMANOID_MOTION_PROFILE: CharacterMotionProfile = {
+  id: "generic-humanoid-speech",
+  support: { recorded: false, fallback: true },
+  cadence: DEFAULT_CHARACTER_MOTION_PROFILE.cadence,
+  programs: DEFAULT_CHARACTER_MOTION_PROFILE.programs
+    .filter((program) => program.role === "speech" && !program.composition.requiresRecordedSupport)
+    .map((program) => ({
+      ...program,
+      review: "docs/decisions/generic-humanoid-motion.md",
+    })),
+};
+
+/** Explicit caller-authored profiles still retain their own exact-avatar admission. */
+export function defaultMotionProfileForAvatar(modelSha256?: string): CharacterMotionProfile {
+  return modelSha256 === DEFAULT_CHARACTER_MOTION_PROFILE.modelSha256
+    ? DEFAULT_CHARACTER_MOTION_PROFILE
+    : GENERIC_HUMANOID_MOTION_PROFILE;
+}
+
 export interface CompiledMotionProfile {
   readonly id: string;
   readonly programs: readonly MotionProgram[];
