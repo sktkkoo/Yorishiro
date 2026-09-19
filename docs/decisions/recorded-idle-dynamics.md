@@ -1,5 +1,13 @@
 # Quiet idle, motion intensity and restored posture variety
 
+**September 19 update:** The measurements below describe the September 15
+implementation. [Terminal intensity calibration](terminal-idle-intensity-calibration.md)
+now makes Normal quieter and Lively equivalent to the previous Normal.
+The default character profile excludes upper Idle, makes HandOnHip posture-only
+with a 180-second cooldown, and removes its preferred first selection. The lower
+standing foundation remains independent. See [current orchestration](motion-orchestration.md)
+and the [quality review](motion-quality-review.md).
+
 The September 15 review found continuous head and torso swaying, little difference between Normal and Over, and reduced variety after supporting legs were introduced. The user accepts the existing recorded foot motion and occasional large performances, but wants quiet periods, different poses and coherent upper/lower balance.
 
 ## Changes

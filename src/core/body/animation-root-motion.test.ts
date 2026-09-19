@@ -2,8 +2,10 @@ import { type VRM, VRMHumanoid } from "@pixiv/three-vrm";
 import type { VRMAnimation } from "@pixiv/three-vrm-animation";
 import * as THREE from "three";
 import type { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { AnimationPlayer, type AnimationPlayOptions } from "./animation-player";
+
+afterEach(() => vi.unstubAllGlobals());
 
 // A real binary VRMA, parsed by the player's official loader plugin. Source
 // hips height 0.5 m retargets to a 1 m avatar, including all authored XYZ axes.
@@ -120,6 +122,80 @@ function sourceRig(edit?: (animation: VRMAnimation) => void, metaVersion = "1") 
 }
 
 const preserve = { rootMotion: "preserve", weight: 1, fadeInMs: 0, fadeOutMs: 0 } as const;
+
+describe("verified runtime foot contact source", () => {
+  async function contacts() {
+    const bytes = recordedVrma();
+    const digest = await crypto.subtle.digest("SHA-256", bytes);
+    return {
+      sourceSha256: [...new Uint8Array(digest)]
+        .map((value) => value.toString(16).padStart(2, "0"))
+        .join(""),
+      durationSec: 2,
+      left: [[0, 2] as const],
+      right: [[0, 2] as const],
+    };
+  }
+
+  it("preserves the verified source hips and retains contact through the outgoing fade", async () => {
+    const footContacts = await contacts();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(recordedVrma())),
+    );
+    const { player, hips } = sourceRig();
+    const first = await player.play("reviewed.vrma", {
+      footContacts,
+      weight: 0.8075,
+      fadeInMs: 200,
+    });
+    expect(player.getFootContactPlayback()).toBeNull();
+    player.update(0.3);
+    expect(hips.position.x).toBeGreaterThan(0);
+    expect(player.getFootContactPlayback()).toMatchObject({
+      id: first.id,
+      profile: footContacts,
+      strength: 1,
+    });
+    first.setWeight(0.4, 200);
+    player.update(0.1);
+    expect(player.getFootContactPlayback()?.strength).toBe(1);
+    const replacement = await player.play("other.vrma", { fadeInMs: 600 });
+    player.update(0.3);
+    expect(player.getFootContactPlayback()).toMatchObject({ id: first.id });
+    player.update(0.31);
+    expect(player.getFootContactPlayback()).toBeNull();
+    replacement.cancel();
+  });
+
+  it("never applies annotations to bytes with a different source hash", async () => {
+    const footContacts = { ...(await contacts()), sourceSha256: "a".repeat(64) };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(recordedVrma())),
+    );
+    const { player, hips } = sourceRig();
+    const handle = await player.play("reviewed.vrma", { footContacts, fadeInMs: 0 });
+    player.update(1);
+    expect(player.getFootContactPlayback()).toBeNull();
+    expect(hips.position.toArray()).toEqual([0, 1, 0]);
+    handle.cancel();
+  });
+
+  it("leaves upper-body and looping playback on their existing support path", async () => {
+    const footContacts = await contacts();
+    const fetch = vi.fn();
+    vi.stubGlobal("fetch", fetch);
+    const { player } = sourceRig();
+    for (const options of [{ mask: "upper-body" as const }, { loop: true }]) {
+      const handle = await player.play("reviewed.vrma", { ...options, footContacts, fadeInMs: 0 });
+      player.update(0.1);
+      expect(player.getFootContactPlayback()).toBeNull();
+      handle.cancel();
+    }
+    expect(fetch).not.toHaveBeenCalled();
+  });
+});
 
 describe("explicit reviewed root motion", () => {
   it.each([

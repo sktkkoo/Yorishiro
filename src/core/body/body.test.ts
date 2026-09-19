@@ -175,6 +175,7 @@ describe("Body motion activation ownership", () => {
       result: {
         id: 1,
         completion: completion.promise,
+        stopped: completion.promise,
         setWeight: vi.fn(),
         stop,
         cancel,

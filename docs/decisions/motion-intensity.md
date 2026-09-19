@@ -3,6 +3,11 @@
 **Status**: active
 **Last updated**: 2026-06-17
 
+2026-09-19: The public Normal/Lively calibration and scope below are superseded
+by [Quieter Normal motion for terminal work](terminal-idle-intensity-calibration.md).
+The low-level gain formulas remain unchanged; Body maps Normal to strength 0.5
+and Lively to the former Normal strength 1, while preserving speech hand poses.
+
 ## TL;DR
 
 `motionIntensity` は idle procedural motion の大きさと弾性を変える global 1 ノブ。range は `0.0`–`3.0`、default は `1.0` で現状維持。user（settings / SDK）と住人 AI（MCP）に同時公開し、短い速い beat は Phase 3 の impulse event に分ける。**住人の状態（idle / thinking / reading / writing / running）の判別は、intensity とは別軸の「持続ポーズ（シルエット）＋テンポ」（Phase 4 StatePose）で行う**。

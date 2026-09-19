@@ -214,6 +214,28 @@ pub struct BodyAnimationPlayRequest {
     /// 再生速度倍率。default 1。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub speed: Option<f32>,
+    /// Reviewed runtime foot contact correction. Set false for source diagnostics.
+    #[serde(rename = "footContact")]
+    pub foot_contact: Option<bool>,
+    /// Optional body mask. Upper-body retains the existing standing support.
+    pub mask: Option<BodyAnimationMask>,
+    /// Optional source hips translation policy for explicit full-body diagnostics.
+    #[serde(rename = "rootMotion")]
+    pub root_motion: Option<BodyAnimationRootMotion>,
+}
+
+#[derive(Debug, Deserialize, serde::Serialize, schemars::JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum BodyAnimationMask {
+    UpperBody,
+    FullBody,
+}
+
+#[derive(Debug, Deserialize, serde::Serialize, schemars::JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum BodyAnimationRootMotion {
+    InPlace,
+    Preserve,
 }
 
 /// `body_motion_cancel` の引数。空。
@@ -819,7 +841,7 @@ impl Yorishiro {
 
     /// 住人 AI が意識的に body animation を再生する（priority mcp-conscious）。
     #[tool(
-        description = "Play a body animation at mcp-conscious priority. Preempts lower-priority motions (persona/state/idle). Re-calling replaces the current MCP animation."
+        description = "Play a body animation at mcp-conscious priority. Preempts lower-priority motions (persona/state/idle). Re-calling replaces the current MCP animation. Reviewed finite full-body standing motions preserve authored hips and use contact IK; footContact:false disables that correction for diagnostics. mask:upper-body retains standing support."
     )]
     async fn body_animation_play(
         &self,
@@ -835,6 +857,9 @@ impl Yorishiro {
                 "weight": req.weight,
                 "loop": req.r#loop,
                 "speed": req.speed,
+                "footContact": req.foot_contact,
+                "mask": req.mask,
+                "rootMotion": req.root_motion,
             }),
         )
         .await

@@ -73,6 +73,8 @@ const CONVERSATION_INTENTS = ["explain", "agree", "consider", "reassure", "empha
  * Idle Conversation is excluded: source wrist/forearm coupling failed acting QA.
  * Watching and whole Looking Around clips fail low-wrist QA. The safe survey
  * interval is a separate, infrequent finite performance over the recorded base.
+ * Shrugging is manual-only: the shoulder lift is distracting in conversation.
+ * Idle Chatting 2 is manual-only after user-confirmed arm jitter around 3–4 s.
  * See CREDITS.md and docs/decisions/motion-source-eligibility.md.
  */
 export const DEFAULT_MOTION_CATALOG: readonly MotionCatalogEntry[] = [
@@ -97,7 +99,7 @@ export const DEFAULT_MOTION_CATALOG: readonly MotionCatalogEntry[] = [
     features: [0.85, 0.25, 0.15, 0.3, 0.15, 0.2],
     weight: 0.85,
     speed: 0.8,
-    cooldownMs: 60_000,
+    cooldownMs: 180_000,
   },
   {
     id: "speech-appreciate",
@@ -106,7 +108,7 @@ export const DEFAULT_MOTION_CATALOG: readonly MotionCatalogEntry[] = [
     contexts: ["speech"],
     intents: ["agree", "reassure"],
     features: [0.65, 0.6, 0.1, 1, 0.15, 0.3],
-    weight: 0.42,
+    weight: 0.6,
     speed: 1,
     cooldownMs: 6_000,
   },
@@ -117,19 +119,6 @@ export const DEFAULT_MOTION_CATALOG: readonly MotionCatalogEntry[] = [
     contexts: ["speech"],
     intents: CONVERSATION_INTENTS,
     features: [0.5, 0.8, 0.35, 0.85, 0.6, 0.42],
-    weight: 0.85,
-    speed: 1,
-    cooldownMs: 6_000,
-  },
-  {
-    id: "speech-animated",
-    animation: "anim:Idle Chatting 2",
-    family: "animated-conversation",
-    contexts: ["speech"],
-    // The source raises both hands around the chest/shoulders. Lowering its
-    // blend weight does not turn that performance into quiet contemplation.
-    intents: ["explain", "emphasize"],
-    features: [0.35, 0.85, 0.25, 0.65, 0.9, 0.68],
     weight: 0.85,
     speed: 1,
     cooldownMs: 6_000,
@@ -160,22 +149,6 @@ export const DEFAULT_MOTION_CATALOG: readonly MotionCatalogEntry[] = [
     weight: 1,
     speed: 1,
     cooldownMs: 20_000,
-    playback: "once",
-    finishAfterSpeech: true,
-  },
-  {
-    id: "speech-uncertain",
-    animation: "/animations/mixamo/Shrugging.vrma",
-    family: "uncertainty",
-    contexts: ["speech"],
-    intents: ["uncertain"],
-    features: [0.65, 0.8, 1, 0.35, 0.2, 0.3],
-    weight: 1,
-    // Unattenuated left-upper-arm entry exceeds the existing joint gate.
-    // Intensity may never raise this above the reviewed 0.8 composition.
-    maxWeight: 0.8,
-    speed: 1,
-    cooldownMs: 45_000,
     playback: "once",
     finishAfterSpeech: true,
   },
@@ -218,6 +191,8 @@ export interface MotionRetrievalOptions {
   readonly limit?: number;
   /** Internal two-stage selection: let the physical gate run before truncating to five. */
   readonly includeAllEligible?: boolean;
+  /** An absent speech background may resume after its ordinary clip cooldown. */
+  readonly allowConsecutive?: boolean;
 }
 
 export function cosineMotionSimilarity(a: MotionFeatures, b: MotionFeatures): number {
@@ -249,7 +224,11 @@ export function retrieveMotionCandidates(
     // A short contextual reaction can recur after its clip cooldown, even when
     // no other speech motif occurred during a long silence. Continuous/idle
     // recordings still avoid consecutive selections of the same clip.
-    if (entry.id === last?.id && !(query.context === "speech" && entry.playback === "once"))
+    if (
+      entry.id === last?.id &&
+      !options.allowConsecutive &&
+      !(query.context === "speech" && entry.playback === "once")
+    )
       continue;
     const clipHistory = history.filter((item) => item.id === entry.id);
     const previous = clipHistory[clipHistory.length - 1];

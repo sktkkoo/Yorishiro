@@ -52,7 +52,7 @@ export const UPPER_BODY_TRANSITION_LIMITS = {
 export function measureMotionEntry(
   current: ReadonlyMap<string, MotionPoseJoint>,
   target: MotionTransitionProfile,
-  opts: { weight: number; speed: number; matched: boolean; loop: boolean },
+  opts: { weight: number; speed: number; matched: boolean; loop: boolean; startTimeSec?: number },
   limits?: Readonly<Omit<MotionEntryMeasurement, "startTimeSec">>,
 ): MotionEntryMeasurement | null {
   if (
@@ -79,7 +79,20 @@ export function measureMotionEntry(
   const lastEntry = opts.loop
     ? target.duration - target.sampleInterval
     : Math.max(0, target.duration - 0.4);
-  for (const index of opts.matched ? target.entryCandidates : [0]) {
+  const exactEntry =
+    opts.startTimeSec === undefined
+      ? undefined
+      : Math.round(opts.startTimeSec / target.sampleInterval);
+  if (
+    exactEntry !== undefined &&
+    (!Number.isFinite(exactEntry) || exactEntry < 0 || exactEntry >= target.sampleCount)
+  )
+    return null;
+  for (const index of exactEntry !== undefined
+    ? [exactEntry]
+    : opts.matched
+      ? target.entryCandidates
+      : [0]) {
     const startTimeSec = index * target.sampleInterval;
     if (startTimeSec > lastEntry) continue;
     let poseSquared = 0;

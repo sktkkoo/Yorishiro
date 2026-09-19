@@ -63,6 +63,8 @@ export interface MotionDirectorContext {
   readonly intent?: MotionIntent;
   /** Higher-priority motion, body ownership, or user interaction is active. */
   readonly blocked?: boolean;
+  /** Explicit null means no scheduled performance; omission preserves strict no-repeat. */
+  readonly activeAnimation?: string | null;
 }
 
 export interface MotionDirectorSnapshot {
@@ -134,6 +136,8 @@ export class MotionDirector {
     return this.select(
       { intent: context.intent ?? "neutral", context: context.context },
       speechBaseline ? "speech-dwell-elapsed" : "idle-dwell-elapsed",
+      undefined,
+      speechBaseline && context.activeAnimation === null,
     );
   }
 
@@ -178,12 +182,31 @@ export class MotionDirector {
     this.excludedAnimations.add(animation);
   }
 
+  /** A prepared candidate that never committed must not consume history or become permanently unavailable. */
+  rejectDecision(decision: MotionDecision): void {
+    const id = decision.candidates.find(
+      (candidate) => candidate.animation === decision.animation,
+    )?.id;
+    this.history = this.history.filter(
+      (entry) => entry.id !== id || entry.selectedAtMs !== decision.selectedAtMs,
+    );
+    if (this.lastDecision !== decision) return;
+    this.lastDecision = null;
+    if (decision.context === "speech") this.lastSpeechAtMs = -Infinity;
+    this.quietUntilMs = 0;
+    this.nextDueAtMs = this.elapsedMs + 2_500;
+    this.retryAtMs = this.nextDueAtMs;
+    this.phase = "waiting";
+    this.suppressedReason = "transition";
+  }
+
   private readonly excludedAnimations = new Set<string>();
 
   private select(
     query: SemanticMotionQuery,
     reason: MotionDecision["reason"],
     preferredAnimation?: string,
+    allowConsecutive = false,
   ): MotionDecision | null {
     const semanticCandidates = retrieveMotionCandidates(query, {
       nowMs: this.elapsedMs,
@@ -197,6 +220,7 @@ export class MotionDirector {
       // Apply the physical gate before the final top five: a bad seam must not
       // crowd a compatible, slightly lower semantic match out of consideration.
       includeAllEligible: this.options.evaluateTransition !== undefined,
+      allowConsecutive,
     });
     const candidates: DirectedMotionCandidate[] = [];
     for (const candidate of semanticCandidates) {

@@ -55,9 +55,15 @@ describe("MotionDirector", () => {
     1,
     3,
     Number.NaN,
-  ])("scores and plays Shrugging below its reviewed ceiling even at intensity %s", (intensity) => {
-    const entry = DEFAULT_MOTION_CATALOG.find((entry) => entry.id === "speech-uncertain");
-    if (!entry) throw new Error("reviewed shrug fixture required");
+  ])("scores and plays a capped recording below its reviewed ceiling even at intensity %s", (intensity) => {
+    const entry: MotionCatalogEntry = {
+      ...finiteEntry,
+      contexts: ["speech"],
+      intents: ["uncertain"],
+      weight: 1,
+      maxWeight: 0.8,
+      finishAfterSpeech: true,
+    };
     let evaluatedWeight: number | undefined;
     const director = new MotionDirector({
       catalog: [entry],
@@ -384,12 +390,11 @@ describe("MotionDirector", () => {
     expect(advance(director, 2_400)).toEqual([]);
   });
 
-  it("varies a long explanation with restrained matched recordings independently of emotion cues", () => {
+  it("retains the sole admitted explanatory loop instead of restarting it or selecting a rejected source", () => {
     const director = new MotionDirector({ random: createSeededMotionRandom(73) });
     const decisions = advance(director, 180_000, speaking);
-    expect(decisions.length).toBeGreaterThanOrEqual(9);
-    expect(decisions.length).toBeLessThanOrEqual(18);
-    expect(new Set(decisions.map((entry) => entry.animation)).size).toBe(2);
+    expect(decisions).toHaveLength(1);
+    expect(decisions[0].animation).toBe("anim:Idle Chatting");
     for (const [index, decision] of decisions.entries()) {
       expect(decision).toMatchObject({
         context: "speech",

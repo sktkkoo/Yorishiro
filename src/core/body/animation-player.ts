@@ -13,6 +13,11 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import type { SubsystemLog } from "../dev-log";
 import {
+  type FootContactPlayback,
+  type FootContactProfile,
+  isFootContactProfileValid,
+} from "./foot-contact";
+import {
   analyzeMotionClip,
   conditionMotionLoop,
   findMatchedEntry,
@@ -43,6 +48,8 @@ const ANIM_ALIAS: Record<string, string> = {
 };
 
 export interface AnimationPlayOptions {
+  /** Internal reviewed source annotation; runtime verifies the actual file hash. */
+  footContacts?: FootContactProfile;
   fadeInMs?: number;
   fadeOutMs?: number;
   weight?: number;
@@ -63,6 +70,12 @@ export interface AnimationPlayOptions {
   maxDurationMs?: number;
   /** Checked after loading and after transition waits. False rejects with AbortError. */
   isCurrent?: () => boolean;
+  /** Automatic programs revalidate the actual entry after loading and transition waits. */
+  requireCompatibleEntry?: boolean;
+  /** Physical ownership changes only after preparation and all entry gates pass. */
+  onCommit?: () => void;
+  /** Latest automatic contribution; sampled once after loading for both gate and playback. */
+  getCurrentWeight?: () => number;
 }
 
 interface WeightRamp {
@@ -72,6 +85,9 @@ interface WeightRamp {
   duration: number;
 }
 interface ActiveAnimation {
+  readonly footContacts?: FootContactProfile;
+  contactReadyAt: number;
+  contactRamp?: WeightRamp;
   readonly id: number;
   readonly ref: string;
   readonly action: THREE.AnimationAction;
@@ -118,6 +134,13 @@ export class AnimationPlayer {
   private readonly pendingLoads = new Map<string, Promise<THREE.AnimationClip | null>>();
   private readonly sourceAnimations = new Map<string, VRMAnimation>();
   private readonly pendingSources = new Map<string, Promise<VRMAnimation | null>>();
+  private readonly contactVerification = new Map<string, Promise<VRMAnimation | null>>();
+  private readonly footContactState = {
+    id: 0,
+    phaseSec: 0,
+    strength: 0,
+    profile: null as FootContactProfile | null,
+  };
   private readonly maskedClips = new WeakMap<
     THREE.AnimationClip,
     Map<NonNullable<AnimationPlayOptions["mask"]>, THREE.AnimationClip>
@@ -139,15 +162,22 @@ export class AnimationPlayer {
   private readonly transitionWaits = new Set<TransitionWait>();
   private readonly devLog?: SubsystemLog;
   private readonly beforeActionPlay?: () => void;
+  private readonly beforeActionRetire?: () => void;
   private generation = 0;
   private recordedBaseGeneration = 0;
   private recordedBase?: RecordedBasePlayer;
   private canInitializeRecordedBase = true;
 
-  constructor(vrm: VRM, devLog?: SubsystemLog, beforeActionPlay?: () => void) {
+  constructor(
+    vrm: VRM,
+    devLog?: SubsystemLog,
+    beforeActionPlay?: () => void,
+    beforeActionRetire?: () => void,
+  ) {
     this.vrm = vrm;
     this.devLog = devLog;
     this.beforeActionPlay = beforeActionPlay;
+    this.beforeActionRetire = beforeActionRetire;
     const nodes = new Set<THREE.Object3D>();
     if (vrm.humanoid) {
       for (const name of Object.values(VRMHumanBoneName)) {
@@ -346,16 +376,32 @@ export class AnimationPlayer {
     this.assertRootMotionOptions(opts);
     const generation = this.generation;
     const isCurrent = () => generation === this.generation && (opts.isCurrent?.() ?? true);
-    const loadedClip = await this.loadClip(ref, opts.rootMotion);
+    const verifiedContactSource =
+      opts.footContacts &&
+      isFootContactProfileValid(opts.footContacts) &&
+      (opts.mask === undefined || opts.mask === "full-body") &&
+      opts.layer !== "foundation" &&
+      !opts.loop &&
+      opts.transition !== "matched" &&
+      (await this.verifyFootContacts(ref, opts.footContacts));
+    const footContacts = verifiedContactSource ? opts.footContacts : undefined;
+    // Foot support is expressed relative to the authored pelvis trajectory.
+    // Dropping it makes IK invent up to centimetres of otherwise missing motion.
+    // Only the verified finite standing source opts into this preservation.
+    const rootMotion = footContacts ? "preserve" : opts.rootMotion;
+    const loadedClip =
+      verifiedContactSource && footContacts
+        ? await this.fetchClip(
+            ref,
+            this.resolveRefToPath(ref) ?? ref,
+            JSON.stringify([ref, "contact", footContacts.sourceSha256]),
+            "preserve",
+            verifiedContactSource,
+          )
+        : await this.loadClip(ref, rootMotion);
     this.assertCurrent(isCurrent);
     if (!loadedClip) throw new Error(`animation not found: ${ref}`);
-    const { clip, profile } = this.prepareClip(
-      loadedClip,
-      opts.mask,
-      opts.loop,
-      ref,
-      opts.rootMotion,
-    );
+    const { clip, profile } = this.prepareClip(loadedClip, opts.mask, opts.loop, ref, rootMotion);
     const layer = opts.layer ?? "performance";
     let previous = this.latestAnimation(layer);
     if (previous && opts.transition === "matched" && opts.startTimeSec === undefined) {
@@ -403,9 +449,23 @@ export class AnimationPlayer {
             : 0),
       ),
     );
-    const weight = clampWeight(opts.weight ?? 0.7);
+    const weight = clampWeight(opts.getCurrentWeight?.() ?? opts.weight ?? 0.7);
+    if (
+      opts.requireCompatibleEntry &&
+      !measureMotionEntry(
+        this.recordedBase?.transitionPose(this.poseSnapshot) ?? this.poseSnapshot,
+        profile,
+        { weight, speed, matched: false, loop: opts.loop ?? false, startTimeSec: action.time },
+        UPPER_BODY_TRANSITION_LIMITS,
+      )
+    ) {
+      this.mixer.uncacheClip(playbackClip);
+      throw new Error("Automatic motion entry is no longer compatible");
+    }
     const fadeSec = Math.max(0, finiteOr(opts.fadeInMs, 200)) / 1000;
     const anim: ActiveAnimation = {
+      footContacts,
+      contactReadyAt: this.mixer.time + fadeSec,
       id,
       ref,
       action,
@@ -443,6 +503,14 @@ export class AnimationPlayer {
       }
     }
     // Activate incoming bindings before retiring a zero-fade action.
+    try {
+      this.assertCurrent(isCurrent);
+      opts.onCommit?.();
+      this.assertCurrent(isCurrent);
+    } catch (error) {
+      this.mixer.uncacheClip(playbackClip);
+      throw error;
+    }
     action.play();
     this.canInitializeRecordedBase = false;
     for (const outgoing of this.active.values()) {
@@ -457,7 +525,7 @@ export class AnimationPlayer {
         entrySec: action.time,
         transition: opts.transition ?? "immediate",
         mask: opts.mask ?? "full-body",
-        rootMotion: opts.rootMotion ?? "in-place",
+        rootMotion: rootMotion ?? "in-place",
         layer,
         grounded:
           layer === "foundation" && clip.tracks.some((track) => track.name.endsWith(".position")),
@@ -467,9 +535,22 @@ export class AnimationPlayer {
     return {
       id,
       completion: anim.completion.promise,
+      stopped: anim.stopped.promise,
       setWeight: (value: number, fadeMs = 0) => {
         if (!this.active.has(id)) return;
         const to = clampWeight(value);
+        if (anim.footContacts && anim.stopAt === undefined) {
+          if (to === 0 || anim.contactRamp) {
+            anim.contactRamp = {
+              from: this.contactStrength(anim),
+              to: to > 0 ? 1 : 0,
+              start: this.mixer.time,
+              duration: Math.max(0, fadeMs / 1000),
+            };
+          }
+          if (to > 0 && action.getEffectiveWeight() === 0)
+            anim.contactReadyAt = this.mixer.time + Math.max(0, fadeMs / 1000);
+        }
         if (fadeMs > 0)
           anim.ramp = {
             from: action.getEffectiveWeight(),
@@ -514,6 +595,21 @@ export class AnimationPlayer {
   hasActiveRecordedBase(): boolean {
     return this.recordedBase?.hasMotion ?? false;
   }
+  /** Actual mixer actions, rather than a scheduler request that may still be loading. */
+  writeMotionDiagnosticState(out: {
+    performanceAnimation: string | null;
+    performancePhaseSec: number | null;
+    performanceWeight: number;
+    performanceCount: number;
+  }): void {
+    const latest = this.latestAnimation("performance");
+    out.performanceAnimation = latest?.ref ?? null;
+    out.performancePhaseSec = latest?.action.time ?? null;
+    out.performanceWeight = latest?.action.getEffectiveWeight() ?? 0;
+    out.performanceCount = 0;
+    for (const anim of this.active.values())
+      if (anim.layer === "performance") out.performanceCount++;
+  }
   getTotalEffectiveWeight(): number {
     return Math.min(
       1,
@@ -522,6 +618,23 @@ export class AnimationPlayer {
   }
 
   /** Lower-body contribution, separate from upper-body procedural attenuation. */
+  getFootContactPlayback(): FootContactPlayback | null {
+    // Preserve an outgoing contact through its release fade. An incoming stance
+    // acquires its own anchors only after the authored crossfade has completed.
+    let latest: ActiveAnimation | undefined;
+    for (const anim of this.active.values()) {
+      if (!anim.footContacts || this.mixer.time < anim.contactReadyAt) continue;
+      if (!latest || anim.id > latest.id) latest = anim;
+    }
+    if (!latest?.footContacts || latest.action.getEffectiveWeight() <= 0) return null;
+    const state = this.footContactState;
+    state.id = latest.id;
+    state.phaseSec = latest.action.time;
+    state.strength = this.contactStrength(latest);
+    state.profile = latest.footContacts;
+    return state as FootContactPlayback;
+  }
+
   getFoundationEffectiveWeight(): number {
     return Math.min(
       1,
@@ -609,11 +722,30 @@ export class AnimationPlayer {
     const stopAt = this.mixer.time + duration;
     // Repeated stop requests cannot indefinitely postpone cleanup.
     if (anim.stopAt !== undefined && anim.stopAt <= stopAt) return;
+    anim.contactRamp = {
+      from: this.contactStrength(anim),
+      to: 0,
+      start: this.mixer.time,
+      duration,
+    };
     anim.stopAt = stopAt;
     anim.ramp = { from: anim.action.getEffectiveWeight(), to: 0, start: this.mixer.time, duration };
   }
+  private contactStrength(anim: ActiveAnimation): number {
+    if (this.mixer.time < anim.contactReadyAt) return 0;
+    const ramp = anim.contactRamp;
+    if (!ramp) return 1;
+    const t =
+      ramp.duration > 0
+        ? Math.max(0, Math.min(1, (this.mixer.time - ramp.start) / ramp.duration))
+        : 1;
+    return ramp.from + (ramp.to - ramp.from) * t * t * (3 - 2 * t);
+  }
   private disposeAnimation(anim: ActiveAnimation): void {
     if (this.active.get(anim.id) !== anim) return;
+    // Post-mixer IK must release its temporary writes before Three restores or
+    // rebinds original properties, including cancellation outside Body.update.
+    this.beforeActionRetire?.();
     this.active.delete(anim.id);
     anim.action.stop();
     this.mixer.uncacheClip(anim.action.getClip());
@@ -780,14 +912,50 @@ export class AnimationPlayer {
       this.pendingSources.delete(ref);
     }
   }
+  private verifyFootContacts(
+    ref: string,
+    profile: FootContactProfile,
+  ): Promise<VRMAnimation | null> {
+    const key = `${ref}:${profile.sourceSha256}`;
+    const previous = this.contactVerification.get(key);
+    if (previous) return previous;
+    const check = (async () => {
+      try {
+        const path = this.resolveRefToPath(ref);
+        if (!path || !/^[a-f0-9]{64}$/.test(profile.sourceSha256)) return null;
+        const response = await fetch(path);
+        if (!response.ok) return null;
+        const bytes = await response.arrayBuffer();
+        const hash = await crypto.subtle.digest("SHA-256", bytes);
+        const actualHash = [...new Uint8Array(hash)]
+          .map((value) => value.toString(16).padStart(2, "0"))
+          .join("");
+        if (actualHash !== profile.sourceSha256) return null;
+        // Parse exactly the verified bytes, not a second fetch or a stale source
+        // cache whose file might have changed since normal library preparation.
+        const gltf = await this.loader.parseAsync(bytes, path.slice(0, path.lastIndexOf("/") + 1));
+        const animation = gltf.userData.vrmAnimations?.[0] as VRMAnimation | undefined;
+        return animation && Math.abs(animation.duration - profile.durationSec) < 1e-4
+          ? animation
+          : null;
+      } catch {
+        return null;
+      }
+    })();
+    this.contactVerification.set(key, check);
+    return check;
+  }
   private async fetchClip(
     ref: string,
     path: string,
     key: string,
     rootMotion: AnimationPlayOptions["rootMotion"],
+    verifiedSource?: VRMAnimation,
   ): Promise<THREE.AnimationClip | null> {
     try {
-      const source = await this.loadSource(ref, path);
+      const cached = this.clipCache.get(key);
+      if (cached) return cached;
+      const source = verifiedSource ?? (await this.loadSource(ref, path));
       if (!source) return null;
       const preserve = rootMotion === "preserve";
       const translation = new Map<"hips", THREE.VectorKeyframeTrack>();

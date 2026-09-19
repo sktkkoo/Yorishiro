@@ -2,7 +2,7 @@ import type { MotionHandle } from "./motion-scheduler";
 
 export interface OccasionalIdleMotionOptions {
   /** Return null while the reviewed asset or its physical entry is unavailable. */
-  readonly play: () => MotionHandle | null;
+  readonly play: (ownershipDurationMs?: number) => MotionHandle | null;
   readonly random?: () => number;
   /** Quiet, eligible time between performances. Injectable for deterministic checks. */
   readonly waitRangeMs?: readonly [number, number];
@@ -68,15 +68,16 @@ export class OccasionalIdleMotion {
     this.retryMs = Math.max(0, this.retryMs - elapsed);
     if (this.remainingMs > 0 || this.retryMs > 0) return;
 
-    const handle = this.options.play();
+    const durationMs = this.activeDurationRangeMs
+      ? this.sampleRange(this.activeDurationRangeMs)
+      : undefined;
+    const handle = this.options.play(durationMs);
     if (!handle) {
       this.retryMs = 2_500;
       return;
     }
     this.handle = handle;
-    this.activeRemainingMs = this.activeDurationRangeMs
-      ? this.sampleRange(this.activeDurationRangeMs)
-      : null;
+    this.activeRemainingMs = durationMs ?? null;
     void handle.completion.then(() => {
       if (this.handle !== handle) return;
       this.handle = null;

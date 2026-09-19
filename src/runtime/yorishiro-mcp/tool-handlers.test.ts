@@ -2113,6 +2113,47 @@ describe("createBodyAnimationPlayHandler", () => {
     expect(handle1.release).toHaveBeenCalledWith(200);
   });
 
+  it("keeps explicit full-body source diagnostics and upper-body support requests available", async () => {
+    const acquireMotionSlot = vi.fn().mockReturnValue(makeMockMotionHandle());
+    const handler = createBodyAnimationPlayHandler({
+      getBody: () => ({ acquireMotionSlot }) as unknown as BodyLike,
+    });
+    await handler({
+      animation: "anim:Idle Chatting",
+      mask: "full-body",
+      rootMotion: "preserve",
+      footContact: false,
+    });
+    expect(acquireMotionSlot).toHaveBeenCalledWith(
+      expect.objectContaining({
+        options: expect.objectContaining({
+          mask: "full-body",
+          rootMotion: "preserve",
+          footContact: false,
+        }),
+      }),
+    );
+    await handler({ animation: "anim:Idle Chatting", mask: "upper-body" });
+    expect(acquireMotionSlot).toHaveBeenLastCalledWith(
+      expect.objectContaining({ options: expect.objectContaining({ mask: "upper-body" }) }),
+    );
+  });
+
+  it("rejects invalid contact and mask requests before releasing current playback", async () => {
+    const handle = makeMockMotionHandle();
+    const acquireMotionSlot = vi.fn().mockReturnValue(handle);
+    const handler = createBodyAnimationPlayHandler({
+      getBody: () => ({ acquireMotionSlot }) as unknown as BodyLike,
+    });
+    await handler({ animation: "anim:Idle Chatting" });
+    for (const options of [{ footContact: "false" }, { mask: "legs" }, { rootMotion: "guess" }])
+      await expect(handler({ animation: "anim:Idle Chatting", ...options })).rejects.toThrow(
+        /invalid/,
+      );
+    expect(handle.release).not.toHaveBeenCalled();
+    expect(acquireMotionSlot).toHaveBeenCalledTimes(1);
+  });
+
   it("throws when no Body loaded", async () => {
     const handler = createBodyAnimationPlayHandler({ getBody: () => null });
     await expect(handler({ animation: "anim:wave" })).rejects.toThrow(/no Body loaded/);

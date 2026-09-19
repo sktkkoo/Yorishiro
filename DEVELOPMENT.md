@@ -89,6 +89,16 @@ Cases where working directly on `main` (without a worktree) is acceptable:
 
 ## Documentation
 
+### Motion quality changes
+
+For avatar motion, gesture selection, intensity, transitions, or render scheduling,
+use the [motion quality review](docs/decisions/motion-quality-review.md) and its
+[evidence record](docs/templates/motion-quality-review.md). Capture the observable
+problem, reproduce it, and distinguish source acting, target pose, composition,
+selection rhythm, controls, and frame delivery. Check normal-speed playback in
+the terminal layout as well as a full-body view. Passing tests or a clean static
+pose alone does not establish naturalness; record missing visual checks as pending.
+
 ### Structure
 
 | Layer | Location | Content | Audience |

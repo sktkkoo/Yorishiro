@@ -11,7 +11,7 @@ import { TweenManager } from "../../core/tween/tween-manager";
 import { getOrInit } from "../hot-data";
 import { KEYS } from "../module-registry/keys";
 import { type ClaimState, getClaimState } from "../ui-claim-state";
-import { DEFAULT_CAMERA_HEAD_OFFSET, defaultCameraForCharacter } from "../view-mode-framing";
+import { defaultCameraForCharacter, TERMINAL_CAMERA_HEAD_OFFSET_Y } from "../view-mode-framing";
 import { getVrmCache } from "../vrm-cache";
 import { CameraModulationRegistry } from "./camera-modulation";
 import { R3fHost } from "./r3f-host";
@@ -179,8 +179,8 @@ class ThreeRuntimeImpl implements ThreeRuntime {
       try {
         const buffer = await getVrmCache().getBytes(url);
         if (myToken !== this.loadToken) return;
-        // Contact-prepared recordings are qualified against the exact target,
-        // including its shoes. Other avatars retain the generic motion library.
+        // Match the avatar qualified for contact (including shoes) and automatic acting.
+        // Unknown hashes retain calibrated support without the Yori upper repertoire.
         const modelSha256 = globalThis.crypto?.subtle
           ? Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", buffer)), (byte) =>
               byte.toString(16).padStart(2, "0"),
@@ -502,7 +502,7 @@ class ThreeRuntimeImpl implements ThreeRuntime {
         // Step 1: Base — VRM head tracking（claim 未取得時のみ）
         if (this.trackHead && this.cameraTrackingEnabled && !cameraClaimed) {
           this.trackHead.getWorldPosition(this.headWorldPos);
-          const desiredY = this.headWorldPos.y - DEFAULT_CAMERA_HEAD_OFFSET;
+          const desiredY = this.headWorldPos.y + TERMINAL_CAMERA_HEAD_OFFSET_Y;
           this.cameraBase.y += (desiredY - this.cameraBase.y) * Math.min(1.5 * delta, 1);
         }
 

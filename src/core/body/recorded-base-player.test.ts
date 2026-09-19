@@ -3,6 +3,7 @@ import * as THREE from "three";
 import { describe, expect, it, vi } from "vitest";
 import { AnimationPlayer } from "./animation-player";
 import type { RecordedBaseOptions } from "./recorded-base-player";
+import { RecordedBodySequencer } from "./recorded-body-sequencer";
 
 function fixture(axialChain = false) {
   const scene = new THREE.Object3D();
@@ -81,6 +82,73 @@ function fixture(axialChain = false) {
 }
 
 describe("atomic recorded full-body base", () => {
+  it.each([
+    30, 60, 120,
+  ])("preserves continuous source time and pose across a logical unit boundary at %s Hz", async (hz) => {
+    const current = fixture(true);
+    const reference = fixture(true);
+    const ref = "/animations/recorded-body/continuous.vrma";
+    for (const rig of [current, reference]) {
+      const clip = rig.recording(ref);
+      clip.duration = 6;
+      for (const track of clip.tracks) track.times = new Float32Array([0, 3, 6]);
+    }
+    const modelSha256 = "a".repeat(64);
+    const unit = {
+      id: "first",
+      animation: ref,
+      context: "idle" as const,
+      startTimeSec: 0,
+      endTimeSec: 2,
+      axialReferenceTimeSec: 0,
+      contactWindows: [{ startTimeSec: 0, endTimeSec: 6, feet: "both" as const }],
+    };
+    const sequencer = new RecordedBodySequencer(current.player, {
+      modelSha256,
+      random: () => 0,
+      loadManifest: async () => ({
+        schemaVersion: 1,
+        targetModelSha256: modelSha256,
+        units: [unit, { ...unit, id: "second", startTimeSec: 2, endTimeSec: 4 }],
+      }),
+    });
+    const play = vi.spyOn(current.player, "playRecordedBase");
+    await sequencer.initialize();
+    const direct = await reference.player.playRecordedBase(ref, {
+      ...current.opts,
+      startTimeSec: 0,
+      endTimeSec: 4,
+      axialReferenceTimeSec: 0,
+      initialPose: true,
+      contactWindows: unit.contactWindows,
+    });
+    let time = 0;
+    for (let frame = 0; time < 3; frame++) {
+      // The production order schedules before the mixer; uneven deltas also
+      // cross the boundary without landing exactly on the authored endpoint.
+      const delta = (frame % 2 === 0 ? 0.8 : 1.2) / hz;
+      sequencer.update(delta * 1000, true, "idle", true, 1);
+      current.player.update(delta);
+      reference.player.update(delta);
+      time += delta;
+      const snapshot = sequencer.getSnapshot();
+      expect(snapshot.active?.phaseSec).toBeCloseTo(time, 10);
+      expect(snapshot.active?.phaseSec).toBe(direct.phaseSec);
+      expect(snapshot.active?.held).toBe(false);
+      expect(snapshot.active?.id).toBe(time >= 2 ? "second" : "first");
+      expect(current.node("head").quaternion.toArray()).toEqual(
+        reference.node("head").quaternion.toArray(),
+      );
+      expect(current.node("hips").position.toArray()).toEqual(
+        reference.node("hips").position.toArray(),
+      );
+    }
+    expect(play).toHaveBeenCalledOnce();
+    expect(sequencer.getSnapshot().availableUnits).toBe(2);
+    sequencer.dispose();
+    direct.cancel();
+  });
+
   it("passes full-strength fractional samples through with the exact direct mixer precision", async () => {
     const current = fixture(true);
     const reference = fixture(true);
@@ -609,6 +677,81 @@ describe("atomic recorded full-body base", () => {
     }
     expect(second.phaseSec).toBeCloseTo(0.8, 12);
     expect(player.activeCount).toBe(2);
+  });
+
+  it("continues adjacent source units without braking against a frozen boundary pose", async () => {
+    const current = fixture();
+    const reference = fixture();
+    for (const rig of [current, reference]) rig.recording("continuous");
+    const first = await current.player.playRecordedBase("continuous", {
+      ...current.opts,
+      endTimeSec: 0.75,
+    });
+    await reference.player.playRecordedBase("continuous", reference.opts);
+    current.player.update(0.75);
+    reference.player.update(0.75);
+    await first.completion;
+    const next = await current.player.playRecordedBase("continuous", {
+      ...current.opts,
+      startTimeSec: 0.75,
+      fadeInMs: 800,
+    });
+    // The old handle must still be unable to cancel the new unit.
+    first.cancel();
+    for (let frame = 0; frame < 30; frame++) {
+      current.player.update(1 / 60);
+      reference.player.update(1 / 60);
+      expect(current.node("head").rotation.x).toBeCloseTo(reference.node("head").rotation.x, 7);
+      expect(current.node("hips").position.x).toBeCloseTo(reference.node("hips").position.x, 7);
+      expect(current.player.getFoundationEffectiveWeight()).toBe(1);
+    }
+    expect(next.phaseSec).toBeCloseTo(1.25, 10);
+    expect(current.player.activeCount).toBe(2);
+  });
+
+  it("keeps the fade when adjacent units change their axial reference", async () => {
+    const { player, node, recording, opts } = fixture();
+    recording("continuous");
+    const first = await player.playRecordedBase("continuous", {
+      ...opts,
+      endTimeSec: 0.75,
+      axialReferenceTimeSec: 0,
+      getInitialState: () => ({
+        paused: false,
+        upperWeight: 1,
+        axialStrength: { torso: 0, head: 0 },
+      }),
+    });
+    player.update(0.75);
+    await first.completion;
+    await player.playRecordedBase("continuous", {
+      ...opts,
+      startTimeSec: 0.75,
+      fadeInMs: 800,
+      axialReferenceTimeSec: 1,
+      getInitialState: () => ({
+        paused: false,
+        upperWeight: 1,
+        axialStrength: { torso: 0, head: 0 },
+      }),
+    });
+    player.update(0.4);
+    expect(player.activeCount).toBe(4);
+    expect(node("head").rotation.x).toBeCloseTo(0.25, 6);
+  });
+
+  it("keeps the fade if an adjacent source arrives after a rendered hold", async () => {
+    const { player, recording, opts } = fixture();
+    recording("continuous");
+    const first = await player.playRecordedBase("continuous", { ...opts, endTimeSec: 0.75 });
+    player.update(0.75);
+    await first.completion;
+    player.update(1 / 60);
+    player.update(1 / 60);
+    await player.playRecordedBase("continuous", { ...opts, startTimeSec: 0.75, fadeInMs: 800 });
+    player.update(0.4);
+    expect(player.activeCount).toBe(4);
+    expect(player.getFoundationEffectiveWeight()).toBeCloseTo(1, 12);
   });
 
   it("keeps the outgoing hold and avoids onCommit when contact, speed or support gates fail", async () => {

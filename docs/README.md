@@ -18,6 +18,7 @@
 | GitHub 等で共有された pack を手動導入したい | [`decisions/scene-execution-sandbox.md`](decisions/scene-execution-sandbox.md) |
 | 標準 hook / DispatchEvent の語彙を確認したい | [`catalogs/standard-hooks.md`](catalogs/standard-hooks.md) |
 | 過去に「なぜそう決めたか」を引きたい | [`decisions/README.md`](decisions/README.md) |
+| モーションの品質を評価・継続改善したい | [`decisions/motion-quality-review.md`](decisions/motion-quality-review.md) と [`templates/motion-quality-review.md`](templates/motion-quality-review.md) |
 | 設計上踏んではいけない line を確認したい | [`decisions/critical-constraints.md`](decisions/critical-constraints.md) |
 | `~/.yorishiro/config.json` の field を確認したい | [`configuration.md`](configuration.md) |
 | Terminal の session profile / shell integration / カスタマイズを確認したい | [`terminal.md`](terminal.md) |

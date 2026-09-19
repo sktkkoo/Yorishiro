@@ -1,0 +1,621 @@
+{
+  "baselineRevision": "5f1c1e2cca45d33712562213225d787d9ade1820",
+  "sampleHz": 60,
+  "fadeInMs": 200,
+  "weight": 0.8075,
+  "notes": [
+    "Deterministic actual-avatar replay, not normal-speed human acceptance.",
+    "Steady support drift excludes 0.6 s at acquisition/release boundaries; sole extrema include the selected steady windows.",
+    "Root-pose and local-rotation diagnostic maxima cover the complete replay."
+  ],
+  "runs": [
+    {
+      "name": "Idle Chatting",
+      "startTimeSec": 0,
+      "mode": "stripped",
+      "sourceSha256": "d485a7dabb21d4b8809433a23ddf68a43ba5a31761d7106925c6bd8917e56e0d",
+      "modelSha256": "739a1515cffe09c17a535eb52a11f88640fc7728b86b9e4c74f00c353437b7cd",
+      "weight": 0.8075,
+      "frames": 1634,
+      "rejections": {},
+      "maxPelvisCorrectionMm": 0,
+      "maxLocalCorrectionDegrees": 0.031994,
+      "maxFootOrientationErrorDegrees": 0.000781,
+      "support": {
+        "left": [
+          {
+            "sourceWindowSec": [
+              2.83333333,
+              16.58333333
+            ],
+            "frames": 753,
+            "maxCenterDriftMm": 39.11432,
+            "speedP95MmPerSec": 39.865634,
+            "minimumSoleYmm": 17.314547,
+            "maximumSoleYmm": 20.312754
+          },
+          {
+            "sourceWindowSec": [
+              19.06666667,
+              25.43333333
+            ],
+            "frames": 309,
+            "maxCenterDriftMm": 22.919785,
+            "speedP95MmPerSec": 37.528479,
+            "minimumSoleYmm": 17.421491,
+            "maximumSoleYmm": 19.702329
+          }
+        ],
+        "right": [
+          {
+            "sourceWindowSec": [
+              3.33333333,
+              24.81666667
+            ],
+            "frames": 1218,
+            "maxCenterDriftMm": 153.780203,
+            "speedP95MmPerSec": 116.016135,
+            "minimumSoleYmm": 7.32346,
+            "maximumSoleYmm": 19.496619
+          }
+        ]
+      }
+    },
+    {
+      "name": "Idle Chatting",
+      "startTimeSec": 0,
+      "mode": "preserved",
+      "sourceSha256": "d485a7dabb21d4b8809433a23ddf68a43ba5a31761d7106925c6bd8917e56e0d",
+      "modelSha256": "739a1515cffe09c17a535eb52a11f88640fc7728b86b9e4c74f00c353437b7cd",
+      "weight": 0.8075,
+      "frames": 1634,
+      "rejections": {},
+      "maxPelvisCorrectionMm": 0,
+      "maxLocalCorrectionDegrees": 0.031994,
+      "maxFootOrientationErrorDegrees": 0.000781,
+      "support": {
+        "left": [
+          {
+            "sourceWindowSec": [
+              2.83333333,
+              16.58333333
+            ],
+            "frames": 753,
+            "maxCenterDriftMm": 4.934266,
+            "speedP95MmPerSec": 9.769945,
+            "minimumSoleYmm": 0.905162,
+            "maximumSoleYmm": 2.443843
+          },
+          {
+            "sourceWindowSec": [
+              19.06666667,
+              25.43333333
+            ],
+            "frames": 309,
+            "maxCenterDriftMm": 4.624592,
+            "speedP95MmPerSec": 7.70871,
+            "minimumSoleYmm": 0.345293,
+            "maximumSoleYmm": 1.790773
+          }
+        ],
+        "right": [
+          {
+            "sourceWindowSec": [
+              3.33333333,
+              24.81666667
+            ],
+            "frames": 1218,
+            "maxCenterDriftMm": 18.953449,
+            "speedP95MmPerSec": 18.01702,
+            "minimumSoleYmm": -2.114845,
+            "maximumSoleYmm": 3.141375
+          }
+        ]
+      }
+    },
+    {
+      "name": "Idle Chatting",
+      "startTimeSec": 0,
+      "mode": "contact",
+      "sourceSha256": "d485a7dabb21d4b8809433a23ddf68a43ba5a31761d7106925c6bd8917e56e0d",
+      "modelSha256": "739a1515cffe09c17a535eb52a11f88640fc7728b86b9e4c74f00c353437b7cd",
+      "weight": 0.8075,
+      "frames": 1634,
+      "rejections": {},
+      "maxPelvisCorrectionMm": 19.008,
+      "maxLocalCorrectionDegrees": 1.123547,
+      "maxFootOrientationErrorDegrees": 0.000781,
+      "support": {
+        "left": [
+          {
+            "sourceWindowSec": [
+              2.83333333,
+              16.58333333
+            ],
+            "frames": 753,
+            "maxCenterDriftMm": 0.0,
+            "speedP95MmPerSec": 0.0,
+            "minimumSoleYmm": -0.726168,
+            "maximumSoleYmm": -0.261103
+          },
+          {
+            "sourceWindowSec": [
+              19.06666667,
+              25.43333333
+            ],
+            "frames": 309,
+            "maxCenterDriftMm": 0.0,
+            "speedP95MmPerSec": 0.0,
+            "minimumSoleYmm": -0.572097,
+            "maximumSoleYmm": -0.236573
+          }
+        ],
+        "right": [
+          {
+            "sourceWindowSec": [
+              3.33333333,
+              24.81666667
+            ],
+            "frames": 1218,
+            "maxCenterDriftMm": 0.0,
+            "speedP95MmPerSec": 0.0,
+            "minimumSoleYmm": -2.442671,
+            "maximumSoleYmm": -0.664813
+          }
+        ]
+      }
+    },
+    {
+      "name": "Idle Chatting",
+      "startTimeSec": 8,
+      "mode": "stripped",
+      "sourceSha256": "d485a7dabb21d4b8809433a23ddf68a43ba5a31761d7106925c6bd8917e56e0d",
+      "modelSha256": "739a1515cffe09c17a535eb52a11f88640fc7728b86b9e4c74f00c353437b7cd",
+      "weight": 0.8075,
+      "frames": 1154,
+      "rejections": {},
+      "maxPelvisCorrectionMm": 0,
+      "maxLocalCorrectionDegrees": 0.031994,
+      "maxFootOrientationErrorDegrees": 0.000438,
+      "support": {
+        "left": [
+          {
+            "sourceWindowSec": [
+              2.83333333,
+              16.58333333
+            ],
+            "frames": 442,
+            "maxCenterDriftMm": 34.401377,
+            "speedP95MmPerSec": 46.003712,
+            "minimumSoleYmm": 18.086112,
+            "maximumSoleYmm": 20.312754
+          },
+          {
+            "sourceWindowSec": [
+              19.06666667,
+              25.43333333
+            ],
+            "frames": 309,
+            "maxCenterDriftMm": 22.919785,
+            "speedP95MmPerSec": 37.528479,
+            "minimumSoleYmm": 17.421491,
+            "maximumSoleYmm": 19.702329
+          }
+        ],
+        "right": [
+          {
+            "sourceWindowSec": [
+              3.33333333,
+              24.81666667
+            ],
+            "frames": 937,
+            "maxCenterDriftMm": 152.645991,
+            "speedP95MmPerSec": 129.759438,
+            "minimumSoleYmm": 7.32346,
+            "maximumSoleYmm": 19.496619
+          }
+        ]
+      }
+    },
+    {
+      "name": "Idle Chatting",
+      "startTimeSec": 8,
+      "mode": "preserved",
+      "sourceSha256": "d485a7dabb21d4b8809433a23ddf68a43ba5a31761d7106925c6bd8917e56e0d",
+      "modelSha256": "739a1515cffe09c17a535eb52a11f88640fc7728b86b9e4c74f00c353437b7cd",
+      "weight": 0.8075,
+      "frames": 1154,
+      "rejections": {},
+      "maxPelvisCorrectionMm": 0,
+      "maxLocalCorrectionDegrees": 0.031994,
+      "maxFootOrientationErrorDegrees": 0.000438,
+      "support": {
+        "left": [
+          {
+            "sourceWindowSec": [
+              2.83333333,
+              16.58333333
+            ],
+            "frames": 442,
+            "maxCenterDriftMm": 4.654336,
+            "speedP95MmPerSec": 11.359374,
+            "minimumSoleYmm": 0.905162,
+            "maximumSoleYmm": 2.443843
+          },
+          {
+            "sourceWindowSec": [
+              19.06666667,
+              25.43333333
+            ],
+            "frames": 309,
+            "maxCenterDriftMm": 4.624592,
+            "speedP95MmPerSec": 7.70871,
+            "minimumSoleYmm": 0.345293,
+            "maximumSoleYmm": 1.790773
+          }
+        ],
+        "right": [
+          {
+            "sourceWindowSec": [
+              3.33333333,
+              24.81666667
+            ],
+            "frames": 937,
+            "maxCenterDriftMm": 20.425376,
+            "speedP95MmPerSec": 22.82881,
+            "minimumSoleYmm": -2.114845,
+            "maximumSoleYmm": 3.141375
+          }
+        ]
+      }
+    },
+    {
+      "name": "Idle Chatting",
+      "startTimeSec": 8,
+      "mode": "contact",
+      "sourceSha256": "d485a7dabb21d4b8809433a23ddf68a43ba5a31761d7106925c6bd8917e56e0d",
+      "modelSha256": "739a1515cffe09c17a535eb52a11f88640fc7728b86b9e4c74f00c353437b7cd",
+      "weight": 0.8075,
+      "frames": 1154,
+      "rejections": {},
+      "maxPelvisCorrectionMm": 20.261,
+      "maxLocalCorrectionDegrees": 1.187664,
+      "maxFootOrientationErrorDegrees": 0.000438,
+      "support": {
+        "left": [
+          {
+            "sourceWindowSec": [
+              2.83333333,
+              16.58333333
+            ],
+            "frames": 442,
+            "maxCenterDriftMm": 0.0,
+            "speedP95MmPerSec": 0.0,
+            "minimumSoleYmm": -0.724689,
+            "maximumSoleYmm": -0.268419
+          },
+          {
+            "sourceWindowSec": [
+              19.06666667,
+              25.43333333
+            ],
+            "frames": 309,
+            "maxCenterDriftMm": 0.0,
+            "speedP95MmPerSec": 0.0,
+            "minimumSoleYmm": -0.572574,
+            "maximumSoleYmm": -0.236386
+          }
+        ],
+        "right": [
+          {
+            "sourceWindowSec": [
+              3.33333333,
+              24.81666667
+            ],
+            "frames": 937,
+            "maxCenterDriftMm": 0.0,
+            "speedP95MmPerSec": 0.0,
+            "minimumSoleYmm": -2.442671,
+            "maximumSoleYmm": -0.663912
+          }
+        ]
+      }
+    },
+    {
+      "name": "Idle Chatting 2",
+      "startTimeSec": 0,
+      "mode": "stripped",
+      "sourceSha256": "b0c1a26c46e24e03b9fef3b5c61977fea814921f2293527cb3f0706ed39fd4d2",
+      "modelSha256": "739a1515cffe09c17a535eb52a11f88640fc7728b86b9e4c74f00c353437b7cd",
+      "weight": 0.8075,
+      "frames": 2534,
+      "rejections": {},
+      "maxPelvisCorrectionMm": 0,
+      "maxLocalCorrectionDegrees": 0.031379,
+      "maxFootOrientationErrorDegrees": 0.00066,
+      "support": {
+        "left": [
+          {
+            "sourceWindowSec": [
+              2.23333333,
+              40.18333333
+            ],
+            "frames": 2205,
+            "maxCenterDriftMm": 70.997653,
+            "speedP95MmPerSec": 69.937637,
+            "minimumSoleYmm": 4.582252,
+            "maximumSoleYmm": 58.655257
+          }
+        ],
+        "right": [
+          {
+            "sourceWindowSec": [
+              1.66666667,
+              39.51666667
+            ],
+            "frames": 2199,
+            "maxCenterDriftMm": 79.164195,
+            "speedP95MmPerSec": 75.625999,
+            "minimumSoleYmm": 2.932849,
+            "maximumSoleYmm": 57.471494
+          }
+        ]
+      }
+    },
+    {
+      "name": "Idle Chatting 2",
+      "startTimeSec": 0,
+      "mode": "preserved",
+      "sourceSha256": "b0c1a26c46e24e03b9fef3b5c61977fea814921f2293527cb3f0706ed39fd4d2",
+      "modelSha256": "739a1515cffe09c17a535eb52a11f88640fc7728b86b9e4c74f00c353437b7cd",
+      "weight": 0.8075,
+      "frames": 2534,
+      "rejections": {},
+      "maxPelvisCorrectionMm": 0,
+      "maxLocalCorrectionDegrees": 0.031379,
+      "maxFootOrientationErrorDegrees": 0.00066,
+      "support": {
+        "left": [
+          {
+            "sourceWindowSec": [
+              2.23333333,
+              40.18333333
+            ],
+            "frames": 2205,
+            "maxCenterDriftMm": 8.868476,
+            "speedP95MmPerSec": 12.295502,
+            "minimumSoleYmm": -3.800559,
+            "maximumSoleYmm": 3.062757
+          }
+        ],
+        "right": [
+          {
+            "sourceWindowSec": [
+              1.66666667,
+              39.51666667
+            ],
+            "frames": 2199,
+            "maxCenterDriftMm": 8.144911,
+            "speedP95MmPerSec": 11.929801,
+            "minimumSoleYmm": -4.984322,
+            "maximumSoleYmm": 2.200415
+          }
+        ]
+      }
+    },
+    {
+      "name": "Idle Chatting 2",
+      "startTimeSec": 0,
+      "mode": "contact",
+      "sourceSha256": "b0c1a26c46e24e03b9fef3b5c61977fea814921f2293527cb3f0706ed39fd4d2",
+      "modelSha256": "739a1515cffe09c17a535eb52a11f88640fc7728b86b9e4c74f00c353437b7cd",
+      "weight": 0.8075,
+      "frames": 2534,
+      "rejections": {},
+      "maxPelvisCorrectionMm": 13.551,
+      "maxLocalCorrectionDegrees": 2.199213,
+      "maxFootOrientationErrorDegrees": 0.00066,
+      "support": {
+        "left": [
+          {
+            "sourceWindowSec": [
+              2.23333333,
+              40.18333333
+            ],
+            "frames": 2205,
+            "maxCenterDriftMm": 0.0,
+            "speedP95MmPerSec": 0.0,
+            "minimumSoleYmm": -2.632641,
+            "maximumSoleYmm": -0.766489
+          }
+        ],
+        "right": [
+          {
+            "sourceWindowSec": [
+              1.66666667,
+              39.51666667
+            ],
+            "frames": 2199,
+            "maxCenterDriftMm": 0.0,
+            "speedP95MmPerSec": 0.0,
+            "minimumSoleYmm": -1.465899,
+            "maximumSoleYmm": -0.161202
+          }
+        ]
+      }
+    },
+    {
+      "name": "Idle Chatting 2",
+      "startTimeSec": 8,
+      "mode": "stripped",
+      "sourceSha256": "b0c1a26c46e24e03b9fef3b5c61977fea814921f2293527cb3f0706ed39fd4d2",
+      "modelSha256": "739a1515cffe09c17a535eb52a11f88640fc7728b86b9e4c74f00c353437b7cd",
+      "weight": 0.8075,
+      "frames": 2054,
+      "rejections": {},
+      "maxPelvisCorrectionMm": 0,
+      "maxLocalCorrectionDegrees": 0.031379,
+      "maxFootOrientationErrorDegrees": 0.00066,
+      "support": {
+        "left": [
+          {
+            "sourceWindowSec": [
+              2.23333333,
+              40.18333333
+            ],
+            "frames": 1858,
+            "maxCenterDriftMm": 71.270828,
+            "speedP95MmPerSec": 91.238514,
+            "minimumSoleYmm": 4.582252,
+            "maximumSoleYmm": 58.655257
+          }
+        ],
+        "right": [
+          {
+            "sourceWindowSec": [
+              1.66666667,
+              39.51666667
+            ],
+            "frames": 1819,
+            "maxCenterDriftMm": 71.878316,
+            "speedP95MmPerSec": 78.083191,
+            "minimumSoleYmm": 2.932849,
+            "maximumSoleYmm": 57.471494
+          }
+        ]
+      }
+    },
+    {
+      "name": "Idle Chatting 2",
+      "startTimeSec": 8,
+      "mode": "preserved",
+      "sourceSha256": "b0c1a26c46e24e03b9fef3b5c61977fea814921f2293527cb3f0706ed39fd4d2",
+      "modelSha256": "739a1515cffe09c17a535eb52a11f88640fc7728b86b9e4c74f00c353437b7cd",
+      "weight": 0.8075,
+      "frames": 2054,
+      "rejections": {},
+      "maxPelvisCorrectionMm": 0,
+      "maxLocalCorrectionDegrees": 0.031379,
+      "maxFootOrientationErrorDegrees": 0.00066,
+      "support": {
+        "left": [
+          {
+            "sourceWindowSec": [
+              2.23333333,
+              40.18333333
+            ],
+            "frames": 1858,
+            "maxCenterDriftMm": 10.493996,
+            "speedP95MmPerSec": 13.726493,
+            "minimumSoleYmm": -3.800559,
+            "maximumSoleYmm": 3.062757
+          }
+        ],
+        "right": [
+          {
+            "sourceWindowSec": [
+              1.66666667,
+              39.51666667
+            ],
+            "frames": 1819,
+            "maxCenterDriftMm": 8.884634,
+            "speedP95MmPerSec": 11.929801,
+            "minimumSoleYmm": -4.984322,
+            "maximumSoleYmm": 2.138037
+          }
+        ]
+      }
+    },
+    {
+      "name": "Idle Chatting 2",
+      "startTimeSec": 8,
+      "mode": "contact",
+      "sourceSha256": "b0c1a26c46e24e03b9fef3b5c61977fea814921f2293527cb3f0706ed39fd4d2",
+      "modelSha256": "739a1515cffe09c17a535eb52a11f88640fc7728b86b9e4c74f00c353437b7cd",
+      "weight": 0.8075,
+      "frames": 2054,
+      "rejections": {},
+      "maxPelvisCorrectionMm": 11.239,
+      "maxLocalCorrectionDegrees": 2.456249,
+      "maxFootOrientationErrorDegrees": 0.00066,
+      "support": {
+        "left": [
+          {
+            "sourceWindowSec": [
+              2.23333333,
+              40.18333333
+            ],
+            "frames": 1858,
+            "maxCenterDriftMm": 0.0,
+            "speedP95MmPerSec": 0.0,
+            "minimumSoleYmm": -2.636451,
+            "maximumSoleYmm": -0.767005
+          }
+        ],
+        "right": [
+          {
+            "sourceWindowSec": [
+              1.66666667,
+              39.51666667
+            ],
+            "frames": 1819,
+            "maxCenterDriftMm": 0.0,
+            "speedP95MmPerSec": 0.0,
+            "minimumSoleYmm": -1.472702,
+            "maximumSoleYmm": -0.168056
+          }
+        ]
+      }
+    }
+  ],
+  "fullWeightCandidateChecks": [
+    {
+      "name": "Idle Chatting",
+      "startTimeSec": 0,
+      "weight": 1,
+      "frames": 1634,
+      "rejections": {},
+      "maxPelvisCorrectionMm": 28.003,
+      "maxLocalCorrectionDegrees": 1.169374,
+      "maxFootOrientationErrorDegrees": 0.001748,
+      "maxCenterDriftMm": 0.0,
+      "minimumSoleYmm": -2.873405
+    },
+    {
+      "name": "Idle Chatting",
+      "startTimeSec": 8,
+      "weight": 1,
+      "frames": 1154,
+      "rejections": {},
+      "maxPelvisCorrectionMm": 29.359,
+      "maxLocalCorrectionDegrees": 1.281905,
+      "maxFootOrientationErrorDegrees": 0.001748,
+      "maxCenterDriftMm": 0.0,
+      "minimumSoleYmm": -2.873405
+    },
+    {
+      "name": "Idle Chatting 2",
+      "startTimeSec": 0,
+      "weight": 1,
+      "frames": 2534,
+      "rejections": {},
+      "maxPelvisCorrectionMm": 16.095,
+      "maxLocalCorrectionDegrees": 3.167946,
+      "maxFootOrientationErrorDegrees": 0.001396,
+      "maxCenterDriftMm": 0.0,
+      "minimumSoleYmm": -3.404378
+    },
+    {
+      "name": "Idle Chatting 2",
+      "startTimeSec": 8,
+      "weight": 1,
+      "frames": 2054,
+      "rejections": {},
+      "maxPelvisCorrectionMm": 15.671,
+      "maxLocalCorrectionDegrees": 3.319057,
+      "maxFootOrientationErrorDegrees": 0.001396,
+      "maxCenterDriftMm": 0.0,
+      "minimumSoleYmm": -3.405528
+    }
+  ]
+}

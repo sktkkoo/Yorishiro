@@ -1,6 +1,6 @@
 # Motion source eligibility and performance review
 
-Status: source audit, 2026-09-14. The automatic catalog retains eight documented source assets. Source provenance and passing runtime tests do not establish perceptual quality or superiority to Animates.
+Status: source audit begun 2026-09-14; current Chatting 2 exclusion updated 2026-09-20. Current automatic admission is defined in [character motion profiles](character-motion-profiles.md), which admit five speech recordings. The earlier source audit below is not a complete current repertoire. Source provenance and passing runtime tests do not establish perceptual quality or superiority to Animates.
 
 ## Source records
 
@@ -9,7 +9,8 @@ The repository's [CREDITS.md](../../CREDITS.md#vrma-animations) is the existing 
 | Assets | Documented source and intended use | Eligibility judgment |
 | --- | --- | --- |
 | `Idle` | Mixamo, converted to VRMA. Quiet standing recording. | Retain as the reviewed standing foundation under its documented calibration constraints. This is not a reusable arbitrary full-body contact solver. |
-| `Idle Chatting`, `Idle Chatting 2` | Rokoko everyday idle mocap pack. Sustained conversational performances. | Retain as conversational candidates. Validate the complete performance and its retargeting before treating any subphrase as agreement, reassurance, or emphasis. |
+| `Idle Chatting` | Rokoko everyday idle mocap pack. Sustained conversational performance. | Retain as a conversational candidate. Validate the complete performance and its retargeting before treating any subphrase as agreement, reassurance, or emphasis. |
+| `Idle Chatting 2` | Same Rokoko pack. | Excluded from the automatic catalog and all default automatic roles after the user confirmed shaky arms near the bilateral thumbs-up at source 3–4 s. Preserve the complete source for explicit diagnostic playback; do not jump-cut the rejected interval. |
 | `Idle Conversation` | Same Rokoko pack. | Excluded from automatic playback after wrist QA: direct source FBX and faithful retargeting both reproduce the folded wrist. Explicit diagnostic playback remains available. |
 | `Idle Looking Around`, `Idle Looking Around 2` | Same Rokoko pack. Includes substantial whole-body reorientation. | Retained compatibility candidates, not accepted as universally quiet idle. Review coherent intervals and restore the original body/root relationship before extending full-body use. They are excluded from listening selection. |
 | `Idle Watching Something` | Same Rokoko pack. Observation/attention recording with posture changes. | Retain as an attentive candidate, subject to checking gaze direction, body support and its complete transitions. A low-speed interval alone is not acceptance. |
@@ -63,3 +64,37 @@ Judge movement naturalness, appropriateness to speech/music, and contribution to
 On 2026-09-14 the user reported folded wrists during a rolling-hands gesture. The exact active clip was not captured, so the report is not attributed to a clip from appearance alone. A subsequent source audit found a reproducible failure in `Idle Conversation`: at source 11.0667 seconds the left forearm-to-middle-finger-base angle is 100.84 degrees in direct FBX forward kinematics. Existing VRMA and faithful 30 Hz conversion reproduce the deformation. Nine targeted frames of `Idle Chatting` and `Idle Chatting 2`, including their largest wrist angles, did not show that same inversion; this is sampled review, not a guarantee of every frame.
 
 The automatic catalog excludes Conversation instead of clamping its wrists and losing the intended hand movement. The default relaxed fingers also now bend toward the palm rather than twisting around their long axes. Authored open palms remain authoritative. The source conversion pipeline can retain all 30 finger joints at 30 Hz; preserved tracks still require acting review.
+
+## Confirmed Chatting 2 exclusion: 2026-09-20
+
+The user subsequently identified `Idle Chatting 2` during named native replay:
+the arms shake before/around the bilateral thumbs-up at source 3–4 seconds. They
+explicitly requested removing that motion, then confirmed the decision after a
+second complete replay. This supersedes its earlier sampled admission; it does
+not rewrite the September 14 observation about a different wrist inversion.
+
+Remove the whole entry from the default semantic catalog and character profile,
+covering both background explanation and finite semantic gestures. The default
+now has five automatic speech clips: Thankful, Chatting, Fist Pump, Thoughtful
+Head Shake and Hands Forward Gesture. Sustained explanation retains Chatting
+when there is no other admitted explanatory candidate; it must not repeatedly
+restart or fall back to Chatting 2. Assets, source hashes and explicit manual
+playback remain available for diagnosis. No source interval is edited or skipped.
+
+When no scheduled performance remains, explanation may reuse its sole source
+after the existing clip cooldown; the usual availability and physical entry
+gates still apply. A currently running loop does not receive this repeat
+permission. This closes the otherwise permanent no-consecutive-history veto
+after Chatting itself supplied a finite gesture, without repeatedly restarting
+an uninterrupted explanation or weakening idle repetition controls.
+
+Regression checks cover every catalog intent/context, all default profile roles,
+Body preparation and automatic speech, long-utterance retention and explicit
+manual playback. Native application reload/visual confirmation of the exclusion
+is pending; preparing an isolated commit does not change the running app.
+
+Validation: the five focused motion suites pass 166 tests; the Body suite passes
+703 tests across 38 files. TypeScript, scoped Biome and `git diff --check` pass.
+The finite-to-background recovery cases explicitly restrict their fixture to
+Chatting alone and preserve its cooldown before re-entry. These are runtime
+admission/lifetime checks, not a new perceptual quality score for the other clips.

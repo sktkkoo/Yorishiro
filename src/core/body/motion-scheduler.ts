@@ -54,6 +54,8 @@ const PRIORITY_LEVEL: Record<MotionPriority, number> = {
 
 /** Motion 起動時の補助 option。fade / loop / speed 等の表現 parameter。 */
 export interface MotionOptions {
+  /** False keeps explicit source replay available without reviewed contact correction. */
+  readonly footContact?: boolean;
   readonly fadeInMs?: number;
   readonly fadeOutMs?: number;
   readonly weight?: number;
@@ -191,6 +193,11 @@ export class MotionScheduler {
   /** Allocation-free ownership check for the render loop. */
   getActivePriority(): MotionPriority | null {
     return this.currentSlot?.state === "active" ? this.currentSlot.request.priority : null;
+  }
+
+  /** Internal frame-path view; the request is immutable for this slot's lifetime. */
+  getActiveRequest(): Readonly<MotionRequest> | null {
+    return this.currentSlot?.state === "active" ? this.currentSlot.request : null;
   }
 
   /** 現 active 状態の snapshot（read-only）。observability 用。 */

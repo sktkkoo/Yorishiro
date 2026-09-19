@@ -115,6 +115,11 @@
 - [**single-active-registry-pattern.md**](single-active-registry-pattern.md) — 新しい single-active pack 種別を追加する時の extend recipe。`SingleActiveRegistry<TEntry, TValue>` を extend して domain alias 2 個を生やすだけ、実装をコピーしない
 - [**physiological-reflex-layer.md**](physiological-reflex-layer.md) — 生理反射（startle / 注意切替 / 一息 / 認知瞬き）は persona reaction ではなく Body built-in。event → state mutation axis から発火。表情 preset / motion clip / effect を使うなら演技なので persona 側
 - [**motion-intensity.md**](motion-intensity.md) — idle procedural motion の大きさと弾性を `motionIntensity` で調整する。range `0.0`–`3.0` / default `1.0`。settings・SDK・MCP に対称公開し、sway/head/arm は spring + arc で弾性化。短い速い beat は Phase 3 の discrete impulse event に分ける
+- [**motion-quality-review.md**](motion-quality-review.md) — モーション品質の継続評価。演技・姿勢・遷移・頻度・強度・描画を分け、実際のターミナル表示と境界再生で検証する。共通レビュー記録と未解決の観察を保持
+- [**composed-motion-diagnostics.md**](composed-motion-diagnostics.md) — 最終合成された全身の短い記録と異常候補。姿勢の飛びとフレーム停止を分け、原因に対応した修正を検証する
+- [**character-motion-profiles.md**](character-motion-profiles.md) — キャラ別の明示的な演技採用と共通の全身合成。要求・実再生・回復の所有を区別し、ロード失敗や割り込みにも制御を保持
+- [**motion-quality-actual-avatar-review.md**](motion-quality-actual-avatar-review.md) — 実際の Yori モデルによる変更前後の再生記録。固定ステップの幾何計測とブラウザーの実時間再生を区別する
+- [**terminal-idle-intensity-calibration.md**](terminal-idle-intensity-calibration.md) — 標準の待機を静かにし、活発を従来の標準相当にする。会話の手の位置は別の強度契約で保持
 - [**agent-adapter.md**](agent-adapter.md) — Terminal agent (Claude / Codex / OpenCode / 将来) の adapter 抽象化と capability flag set
 - [**session-status-attention.md**](session-status-attention.md) — session ごとの観察 read model（lifecycle / activity / unread / exit / attention）と TabIndicator badge。許可待ち（`input`）は screen fast path を主に、agent hook（手動起動 shell は per-session shim で sessionId attribution）と OSC を fallback に観察し、focus / 出力では消さず、確定入力 / screen 消失 / resume hook で解除する。照明通知は attention 1 件につき一度だけの 2-pulse cue で、継続点滅はアンチパターン
 - [**codex-terminal-agent.md**](codex-terminal-agent.md) — `terminalAgent` config で Claude Code / Codex を選ぶ。Codex は `developer_instructions` で persona overlay を渡し、base instructions は置換しない。Yorishiro MCP は session-scoped config、`$yori-*` は `~/.agents/skills/` の user skills として渡す

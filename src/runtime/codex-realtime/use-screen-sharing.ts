@@ -524,6 +524,9 @@ export function useScreenSharing({
               contactSheetSamples.current,
               latest.current.contactSheetFrameCount,
             );
+            // Composition decodes images asynchronously; the lease may have
+            // ended or been replaced while the canvas was being built.
+            if (!isCurrent()) return;
             contactSheetSamples.current = [];
             outgoingFrame = {
               ...frame,

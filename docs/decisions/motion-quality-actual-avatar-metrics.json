@@ -1,0 +1,1365 @@
+{
+  "schemaVersion": 1,
+  "status": "Engineering diagnostics; perceptual acceptance remains open",
+  "fixture": {
+    "seed": 738,
+    "simulatedSeconds": 500,
+    "fixedStepHz": 60,
+    "liveSeconds": 32,
+    "avatar": "Yori",
+    "avatarSha256": "739a1515cffe09c17a535eb52a11f88640fc7728b86b9e4c74f00c353437b7cd",
+    "observer": "src/dev/motion-quality-lab.ts",
+    "runner": "scripts/review-motion-quality.mjs"
+  },
+  "limitations": [
+    "Same synthetic commands and seed; changed catalog and initial support phase produce different trajectories.",
+    "Fixed front/side cameras match; terminal camera uses same head-derived framing policy, not identical initial position.",
+    "Laboratory Chrome playback excludes native terminal load, scene effects, audio alignment and the user custom camera.",
+    "Hand/foot markers do not certify skin collision clearance or perceptual quality.",
+    "Independent avatar-space position predictor differs from production monitor local-translation predictor; suspect counts are not defect counts.",
+    "Live video encoded25fps includes startup; RAF measurements are separate."
+  ],
+  "baseline": {
+    "revision": "632b9140",
+    "createdAt": "2026-09-19T10:34:14.200Z",
+    "sourcesUnchangedDuringCapture": true,
+    "productionSourceSha256": {
+      "src/core/body/animation-player.ts": "670a0153af7aedd4e0a698b287d004f0f6590b354e3318056093e82c9d2463dc",
+      "src/core/body/beat-library.ts": "fa6802e3aede87ad1de08ea27cb34715f0de2979f884f43fcf412b594f4779de",
+      "src/core/body/beat-scheduler.ts": "1c9c2df05a920e14a09f6752347d86a40c9d2b05e39696df537881a1492f672d",
+      "src/core/body/beat-types.ts": "1a5973d250793c654dec92d9a5a81f9faad7e0698c3fce26cd40507a2da5b661",
+      "src/core/body/blink-system.ts": "e8b5e877cd49ff982234fb8c7c3ac5468e16430aba9dc5c5fbc8009bbf56d340",
+      "src/core/body/breathing-system.ts": "09ab6d7bfb75687d98b0b476225c91ab380b76cbc613b81d1f026293046500ed",
+      "src/core/body/cursor-attention.ts": "8bd2a873cdcdcb78c855297ee5cc888599dced6cfb3c8be50164133d580e76ee",
+      "src/core/body/expression-intent-arbiter.ts": "6b018a262bce16f0fd4febd9c0d1585b2a3c4de8231b2303eac7051a14925686",
+      "src/core/body/expression-intent-debug.ts": "ada39f5c1614f22d0b37e9cbf4e36824dede833c1be50bdfeb42473dbdeec2f7",
+      "src/core/body/expression-intent-policy.ts": "64adc0f00b51c7a39528849b276181bbc6f1e6fac978d09ffe6bdf7324d01e6e",
+      "src/core/body/expression-intent-resolver.ts": "ef3cf5c3b5a55691b69418d41969c10fd85a8955b431737c22af5f7a5d2cae20",
+      "src/core/body/expression-intent-shadow.ts": "2c24512e9c792261a59ddb847b5e2128d4559a8ad2d9efdfc82f3d551e1f59a2",
+      "src/core/body/expression-intent-slot-bridge.ts": "9d61ad0a4d71654f3346cb4590e1a56ab7504c958e098ebb6bace9574bebc238",
+      "src/core/body/expression-intent.ts": "2ec77cdb7875829b3025739e244bd1dc99fa3c318b43eefdba5d088dec61f90f",
+      "src/core/body/expression-manager.ts": "6105101f07de9870c29c5189cc6729c1a6bee42d9bceae170c59e69b778f2ca7",
+      "src/core/body/eye-system.ts": "8164c82d0911521506fa90082f8f3966962984d135234fb313b2cc07e5158c1d",
+      "src/core/body/idle-microexpression-system.ts": "a9e644022da26f28253c92e86d127856aa7642b9cf1bc3e68eca19857be50602",
+      "src/core/body/idle-squint-system.ts": "90acffb3f4e47858a91233376f44718e0336c9c9be2c11e272e228434cc62b90",
+      "src/core/body/index.ts": "c23ef98c8774024fea52d1cc4e5e0d88ff45244377a891a58c93c94fe89f896a",
+      "src/core/body/motion-catalog.ts": "55a0ce5cb6af79eb272853466d0e1eff9a2620f1a563ade6a7425008a80eadbb",
+      "src/core/body/motion-director.ts": "686afc272f3f494d6bd85385424b9b3293ed115b59aaa5595303731cf26afeb8",
+      "src/core/body/motion-gain.ts": "96a24367f72ffd526c8c7b676e093bc7d9b1d840d7619557f44fb177b670d4da",
+      "src/core/body/motion-scheduler.ts": "31baebf872ce4115766ce75bb9e99f6b4e792ca6ee78309a237e722fc0e1bf42",
+      "src/core/body/motion-transition.ts": "d8060fd231545fc89ab789059490c0b01f45ad5e2c3eae7cfeda3e2b58853aec",
+      "src/core/body/occasional-idle-motion.ts": "3c385199215b27122edaf57a47905c3d962be0fb5d39ae672a2529ca46a32bff",
+      "src/core/body/occasional-idle-selector.ts": "3c17f8c7c27743d6e09a698ce7bf0956e3c3dceb72cc69e7a50c4c8b5b6a39c6",
+      "src/core/body/organic-noise.ts": "18b3326429ab4ec1a2fc654af194c311eaebb657fbfbbe827a4f138c6cad8aed",
+      "src/core/body/procedural-bones.ts": "989086829defc50d60ef56ecdc317d53e9116e92b43d7c1f9922e9855ce2b2d6",
+      "src/core/body/recorded-axial-motion.ts": "dc9a233949d23efba54487d7d7aadd7267fd3db4b0b385ed12294fd10e6eae6b",
+      "src/core/body/recorded-base-player.ts": "6a4ee598879d51b654cf57ca69ce5a741e9b361eecd9c2c332d7305693ae347e",
+      "src/core/body/recorded-body-sequencer.ts": "bb0735b2eb7babb2df3f315c85bb8f65dd57b1974fc07af348f9a12f28de1ea5",
+      "src/core/body/recorded-idle-foundation.ts": "17c58e4c505845901143385d2307e552680b9df1714946dd259e8f65a5e6224c",
+      "src/core/body/recorded-motion-dynamics.ts": "c289dbf4902391f82e11e9422df01f785cd67986c183d0d952695938950e701a",
+      "src/core/body/register-orphan-morphs.ts": "ff01bd9a957f49458621d332d4e664ec2711432e278a1a69b714d3c424a7b566",
+      "src/core/body/relaxed-hand-fidget.ts": "7cbe5f2dc9c090fc67ada3afb03ac7f6781b4a6bc14e2f28ba60fcce0518e9f4",
+      "src/core/body/speech-microexpression-system.ts": "acba5dd64f0fab00856d0d1333bf12b4007801ed0006c196402b51fd3cd78ed1",
+      "src/core/body/speech-mood-channel.ts": "f01265faf8dd9a44193171906fa7c61e7d4dd052095623c94c62ece441386a5c",
+      "src/core/body/spring.ts": "e24fea35f5699503aa69168982bdef3ec491b1f3a65ea1f5c0fc461cf89a28d1",
+      "src/core/body/standing-idle-grounding.ts": "3f089e462d87b7b74ffaa0da5fb4cb1f6a6d57e34ec48f30a4cfce80386e8173",
+      "src/core/body/state-pose.ts": "18b17f13a5652466938df306eceb796eaf47a9191c73338f7f21a67315d088f8",
+      "src/core/body/tool-failure-reflex.ts": "07a57e5a65f3cbddbf2441b225fad7cd60b26863108b0ebb71999d4f21b3525f",
+      "src/core/body/vrm-rest-pose.ts": "81dfa417d3d91d87910e3c31c61390eae5874397d931212e9cfd3b725502ff91",
+      "src/dev/motion-quality-lab.ts": "3374df6f69c176d5e5532a4ca459ac675ba849279c449ea917e7b6d7869743aa",
+      "src/runtime/view-mode-framing.ts": "2478a2c0e3cb5f05d33f4db1b63a9ecbdea85a9d9fdc5281deca032f7994245d"
+    },
+    "assetManifestSha256": "07f2e4e0c2c0270f49594772398e55cbd96eebc93cbc2029975072129a0c5a4a",
+    "assetCount": 45,
+    "observerSha256": "3374df6f69c176d5e5532a4ca459ac675ba849279c449ea917e7b6d7869743aa",
+    "initialRecordedSourcePhaseSec": 15.66666667,
+    "initialCameras": [
+      {
+        "position": [
+          0,
+          0.8441890157868552,
+          3.1465226952055505
+        ],
+        "quaternion": [
+          -0.0073164856226791974,
+          0,
+          0,
+          0.9999732341608616
+        ],
+        "fov": 30,
+        "aspect": 0.78125
+      },
+      {
+        "position": [
+          3.1465226952055505,
+          0.8441890157868552,
+          0
+        ],
+        "quaternion": [
+          -0.005173536598250341,
+          0.7070878548801884,
+          0.00517353659825034,
+          0.7070878548801885
+        ],
+        "fov": 30,
+        "aspect": 0.78125
+      },
+      {
+        "position": [
+          0.06544432594603497,
+          1.1145845689389993,
+          1.6
+        ],
+        "quaternion": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "fov": 35,
+        "aspect": 0.625
+      }
+    ],
+    "simulatedFrames": 30000,
+    "groups": {
+      "idle-normal": {
+        "seconds": 300.0,
+        "performanceStarts": {
+          "anim:VRMA_06_HandOnHip": 5,
+          "anim:Idle": 5,
+          "/animations/mixamo/Warrior Stretch.vrma": 1
+        },
+        "performanceOccupancySeconds": {
+          "anim:VRMA_06_HandOnHip": 54.3667,
+          "anim:Idle": 47.5667,
+          "/animations/mixamo/Warrior Stretch.vrma": 5.8
+        },
+        "heldFramesBySourcePhase": {
+          "idle-look-around@23.3666667": 54,
+          "idle-weight-shift@15.6666667": 53
+        },
+        "recordedUpperStrengthRange": [
+          1,
+          1
+        ],
+        "maxFootOrToeMarkerDisplacementM": 0.0020271,
+        "heightRelativeUpperChestM": {
+          "leftHandHeightRelativeChestM": {
+            "min": -0.3595629,
+            "max": 0.0783871,
+            "mean": -0.3363969
+          },
+          "rightHandHeightRelativeChestM": {
+            "min": -0.3673575,
+            "max": 0.0339209,
+            "mean": -0.3424091
+          },
+          "meanShoulderHeightRelativeChestM": {
+            "min": 0.0699665,
+            "max": 0.0993868,
+            "mean": 0.0809955
+          }
+        },
+        "maximumPerformanceWeights": {
+          "anim:VRMA_06_HandOnHip": 0.85,
+          "anim:Idle": 0.9,
+          "/animations/mixamo/Warrior Stretch.vrma": 1
+        }
+      },
+      "listening": {
+        "seconds": 20.0,
+        "performanceStarts": {},
+        "performanceOccupancySeconds": {
+          "anim:Idle": 5.8
+        },
+        "heldFramesBySourcePhase": {
+          "idle-look-around@23.3666667": 6,
+          "idle-weight-shift@15.6666667": 3
+        },
+        "recordedUpperStrengthRange": [
+          0,
+          0
+        ],
+        "maxFootOrToeMarkerDisplacementM": 0.002946,
+        "heightRelativeUpperChestM": {
+          "leftHandHeightRelativeChestM": {
+            "min": -0.3548508,
+            "max": -0.337254,
+            "mean": -0.347371
+          },
+          "rightHandHeightRelativeChestM": {
+            "min": -0.3549734,
+            "max": -0.3390159,
+            "mean": -0.3464506
+          },
+          "meanShoulderHeightRelativeChestM": {
+            "min": 0.0809396,
+            "max": 0.093341,
+            "mean": 0.0838092
+          }
+        },
+        "maximumPerformanceWeights": {
+          "anim:Idle": 0.9
+        }
+      },
+      "thinking": {
+        "seconds": 10.0,
+        "performanceStarts": {
+          "anim:VRMA_06_HandOnHip": 1
+        },
+        "performanceOccupancySeconds": {
+          "anim:VRMA_06_HandOnHip": 0.3167
+        },
+        "heldFramesBySourcePhase": {
+          "idle-weight-shift@15.6666667": 3
+        },
+        "recordedUpperStrengthRange": [
+          0,
+          0
+        ],
+        "maxFootOrToeMarkerDisplacementM": 0.0020356,
+        "heightRelativeUpperChestM": {
+          "leftHandHeightRelativeChestM": {
+            "min": -0.3515747,
+            "max": -0.3442063,
+            "mean": -0.3483765
+          },
+          "rightHandHeightRelativeChestM": {
+            "min": -0.3587395,
+            "max": -0.3459873,
+            "mean": -0.3506486
+          },
+          "meanShoulderHeightRelativeChestM": {
+            "min": 0.0806945,
+            "max": 0.0847449,
+            "mean": 0.0831859
+          }
+        },
+        "maximumPerformanceWeights": {
+          "anim:VRMA_06_HandOnHip": 0.1603224
+        }
+      },
+      "speech-normal": {
+        "seconds": 45.0,
+        "performanceStarts": {
+          "anim:Idle Chatting": 2,
+          "/animations/mixamo/Hands Forward Gesture.vrma": 1,
+          "anim:Idle Chatting 2": 1
+        },
+        "performanceOccupancySeconds": {
+          "anim:VRMA_06_HandOnHip": 0.75,
+          "anim:Idle Chatting": 34.4667,
+          "/animations/mixamo/Hands Forward Gesture.vrma": 3.6833,
+          "anim:Idle Chatting 2": 8.3
+        },
+        "heldFramesBySourcePhase": {
+          "idle-look-around@23.3666667": 18
+        },
+        "recordedUpperStrengthRange": [
+          0,
+          0
+        ],
+        "maxFootOrToeMarkerDisplacementM": 0.0008192,
+        "heightRelativeUpperChestM": {
+          "leftHandHeightRelativeChestM": {
+            "min": -0.3664093,
+            "max": -0.0362375,
+            "mean": -0.2587928
+          },
+          "rightHandHeightRelativeChestM": {
+            "min": -0.3909853,
+            "max": -0.0184679,
+            "mean": -0.221778
+          },
+          "meanShoulderHeightRelativeChestM": {
+            "min": 0.0654313,
+            "max": 0.0853305,
+            "mean": 0.0806652
+          }
+        },
+        "maximumPerformanceWeights": {
+          "anim:VRMA_06_HandOnHip": 0.1601165,
+          "anim:Idle Chatting": 0.85,
+          "/animations/mixamo/Hands Forward Gesture.vrma": 1,
+          "anim:Idle Chatting 2": 0.85
+        }
+      },
+      "interruption": {
+        "seconds": 3.0,
+        "performanceStarts": {
+          "anim:Idle": 1
+        },
+        "performanceOccupancySeconds": {
+          "anim:Idle Chatting 2": 0.6333,
+          "anim:Idle": 1.7833
+        },
+        "heldFramesBySourcePhase": {},
+        "recordedUpperStrengthRange": [
+          0,
+          0
+        ],
+        "maxFootOrToeMarkerDisplacementM": 0.00057,
+        "heightRelativeUpperChestM": {
+          "leftHandHeightRelativeChestM": {
+            "min": -0.3461263,
+            "max": -0.1452605,
+            "mean": -0.3267199
+          },
+          "rightHandHeightRelativeChestM": {
+            "min": -0.3546943,
+            "max": -0.141476,
+            "mean": -0.3308341
+          },
+          "meanShoulderHeightRelativeChestM": {
+            "min": 0.0817995,
+            "max": 0.0902365,
+            "mean": 0.0842973
+          }
+        },
+        "maximumPerformanceWeights": {
+          "anim:Idle Chatting 2": 0.8483521,
+          "anim:Idle": 0.9
+        }
+      },
+      "listening-after-interruption": {
+        "seconds": 17.0,
+        "performanceStarts": {},
+        "performanceOccupancySeconds": {
+          "anim:Idle": 17.0
+        },
+        "heldFramesBySourcePhase": {
+          "idle-look-around@23.3666667": 3,
+          "idle-weight-shift@15.6666667": 3
+        },
+        "recordedUpperStrengthRange": [
+          0,
+          0
+        ],
+        "maxFootOrToeMarkerDisplacementM": 0.0028235,
+        "heightRelativeUpperChestM": {
+          "leftHandHeightRelativeChestM": {
+            "min": -0.3507205,
+            "max": -0.3353063,
+            "mean": -0.3434682
+          },
+          "rightHandHeightRelativeChestM": {
+            "min": -0.3532895,
+            "max": -0.3358924,
+            "mean": -0.3441335
+          },
+          "meanShoulderHeightRelativeChestM": {
+            "min": 0.081676,
+            "max": 0.0926159,
+            "mean": 0.0872054
+          }
+        },
+        "maximumPerformanceWeights": {
+          "anim:Idle": 0.9
+        }
+      },
+      "idle-return": {
+        "seconds": 15.0,
+        "performanceStarts": {
+          "anim:VRMA_06_HandOnHip": 1
+        },
+        "performanceOccupancySeconds": {
+          "anim:Idle": 0.6333,
+          "anim:VRMA_06_HandOnHip": 11.65
+        },
+        "heldFramesBySourcePhase": {
+          "idle-look-around@23.3666667": 3,
+          "idle-weight-shift@15.6666667": 3
+        },
+        "recordedUpperStrengthRange": [
+          1,
+          1
+        ],
+        "maxFootOrToeMarkerDisplacementM": 0.0028758,
+        "heightRelativeUpperChestM": {
+          "leftHandHeightRelativeChestM": {
+            "min": -0.357575,
+            "max": -0.0574687,
+            "mean": -0.3032932
+          },
+          "rightHandHeightRelativeChestM": {
+            "min": -0.3651289,
+            "max": -0.3234514,
+            "mean": -0.3480483
+          },
+          "meanShoulderHeightRelativeChestM": {
+            "min": 0.07073,
+            "max": 0.0827939,
+            "mean": 0.0749109
+          }
+        },
+        "maximumPerformanceWeights": {
+          "anim:Idle": 0.8982552,
+          "anim:VRMA_06_HandOnHip": 0.85
+        }
+      },
+      "idle-calm": {
+        "seconds": 15.0,
+        "performanceStarts": {
+          "anim:Idle": 1
+        },
+        "performanceOccupancySeconds": {
+          "anim:Idle": 0.3167
+        },
+        "heldFramesBySourcePhase": {
+          "idle-look-around@23.3666667": 3,
+          "idle-weight-shift@15.6666667": 3
+        },
+        "recordedUpperStrengthRange": [
+          0.5,
+          0.5
+        ],
+        "maxFootOrToeMarkerDisplacementM": 0.0028453,
+        "heightRelativeUpperChestM": {
+          "leftHandHeightRelativeChestM": {
+            "min": -0.3561586,
+            "max": -0.3484119,
+            "mean": -0.352721
+          },
+          "rightHandHeightRelativeChestM": {
+            "min": -0.3528186,
+            "max": -0.3426885,
+            "mean": -0.3486638
+          },
+          "meanShoulderHeightRelativeChestM": {
+            "min": 0.0813421,
+            "max": 0.0829107,
+            "mean": 0.082023
+          }
+        },
+        "maximumPerformanceWeights": {
+          "anim:Idle": 0.0848765
+        }
+      },
+      "idle-normal-return": {
+        "seconds": 15.0,
+        "performanceStarts": {},
+        "performanceOccupancySeconds": {
+          "anim:Idle": 10.9833
+        },
+        "heldFramesBySourcePhase": {
+          "idle-look-around@23.3666667": 3,
+          "idle-weight-shift@15.6666667": 3
+        },
+        "recordedUpperStrengthRange": [
+          1,
+          1
+        ],
+        "maxFootOrToeMarkerDisplacementM": 0.0028674,
+        "heightRelativeUpperChestM": {
+          "leftHandHeightRelativeChestM": {
+            "min": -0.3556447,
+            "max": -0.3364783,
+            "mean": -0.3474503
+          },
+          "rightHandHeightRelativeChestM": {
+            "min": -0.3538712,
+            "max": -0.3376158,
+            "mean": -0.3446496
+          },
+          "meanShoulderHeightRelativeChestM": {
+            "min": 0.081586,
+            "max": 0.0925168,
+            "mean": 0.0856237
+          }
+        },
+        "maximumPerformanceWeights": {
+          "anim:Idle": 0.9
+        }
+      },
+      "idle-lively": {
+        "seconds": 15.0,
+        "performanceStarts": {
+          "/animations/mixamo/Warrior Stretch.vrma": 1
+        },
+        "performanceOccupancySeconds": {
+          "/animations/mixamo/Warrior Stretch.vrma": 5.8
+        },
+        "heldFramesBySourcePhase": {
+          "idle-look-around@23.3666667": 3,
+          "idle-weight-shift@15.6666667": 3
+        },
+        "recordedUpperStrengthRange": [
+          1,
+          1
+        ],
+        "maxFootOrToeMarkerDisplacementM": 0.0031463,
+        "heightRelativeUpperChestM": {
+          "leftHandHeightRelativeChestM": {
+            "min": -0.359732,
+            "max": 0.0534071,
+            "mean": -0.2854837
+          },
+          "rightHandHeightRelativeChestM": {
+            "min": -0.3531162,
+            "max": 0.0258832,
+            "mean": -0.2899725
+          },
+          "meanShoulderHeightRelativeChestM": {
+            "min": 0.0734562,
+            "max": 0.0969365,
+            "mean": 0.0823455
+          }
+        },
+        "maximumPerformanceWeights": {
+          "/animations/mixamo/Warrior Stretch.vrma": 1
+        }
+      },
+      "idle-over": {
+        "seconds": 15.0,
+        "performanceStarts": {
+          "anim:VRMA_06_HandOnHip": 1
+        },
+        "performanceOccupancySeconds": {
+          "anim:VRMA_06_HandOnHip": 10.9333
+        },
+        "heldFramesBySourcePhase": {
+          "idle-look-around@23.3666667": 3
+        },
+        "recordedUpperStrengthRange": [
+          1,
+          1
+        ],
+        "maxFootOrToeMarkerDisplacementM": 0.0020751,
+        "heightRelativeUpperChestM": {
+          "leftHandHeightRelativeChestM": {
+            "min": -0.3618106,
+            "max": -0.0544846,
+            "mean": -0.3031042
+          },
+          "rightHandHeightRelativeChestM": {
+            "min": -0.3648405,
+            "max": -0.3109221,
+            "mean": -0.3480082
+          },
+          "meanShoulderHeightRelativeChestM": {
+            "min": 0.0703894,
+            "max": 0.0819965,
+            "mean": 0.0752855
+          }
+        },
+        "maximumPerformanceWeights": {
+          "anim:VRMA_06_HandOnHip": 0.85
+        }
+      },
+      "zero": {
+        "seconds": 5.0,
+        "performanceStarts": {},
+        "performanceOccupancySeconds": {},
+        "heldFramesBySourcePhase": {},
+        "recordedUpperStrengthRange": [
+          0,
+          0
+        ],
+        "maxFootOrToeMarkerDisplacementM": 0,
+        "heightRelativeUpperChestM": {
+          "leftHandHeightRelativeChestM": {
+            "min": -0.3556091,
+            "max": -0.3383655,
+            "mean": -0.3446236
+          },
+          "rightHandHeightRelativeChestM": {
+            "min": -0.3577589,
+            "max": -0.3448486,
+            "mean": -0.3529648
+          },
+          "meanShoulderHeightRelativeChestM": {
+            "min": 0.0817108,
+            "max": 0.0826711,
+            "mean": 0.0823764
+          }
+        },
+        "maximumPerformanceWeights": {}
+      },
+      "resume": {
+        "seconds": 10.0,
+        "performanceStarts": {},
+        "performanceOccupancySeconds": {},
+        "heldFramesBySourcePhase": {
+          "idle-weight-shift@15.6666667": 3,
+          "idle-look-around@23.3666667": 3
+        },
+        "recordedUpperStrengthRange": [
+          1,
+          1
+        ],
+        "maxFootOrToeMarkerDisplacementM": 0.0013068,
+        "heightRelativeUpperChestM": {
+          "leftHandHeightRelativeChestM": {
+            "min": -0.3571043,
+            "max": -0.3448451,
+            "mean": -0.3544345
+          },
+          "rightHandHeightRelativeChestM": {
+            "min": -0.351969,
+            "max": -0.3428405,
+            "mean": -0.3451499
+          },
+          "meanShoulderHeightRelativeChestM": {
+            "min": 0.0813222,
+            "max": 0.0820808,
+            "mean": 0.0816111
+          }
+        },
+        "maximumPerformanceWeights": {}
+      },
+      "speech-resume": {
+        "seconds": 15.0,
+        "performanceStarts": {
+          "anim:Idle Chatting": 1
+        },
+        "performanceOccupancySeconds": {
+          "anim:Idle Chatting": 14.3833
+        },
+        "heldFramesBySourcePhase": {
+          "idle-weight-shift@15.6666667": 3
+        },
+        "recordedUpperStrengthRange": [
+          0,
+          0
+        ],
+        "maxFootOrToeMarkerDisplacementM": 0.0027187,
+        "heightRelativeUpperChestM": {
+          "leftHandHeightRelativeChestM": {
+            "min": -0.366817,
+            "max": -0.185972,
+            "mean": -0.2907205
+          },
+          "rightHandHeightRelativeChestM": {
+            "min": -0.3561885,
+            "max": -0.1063038,
+            "mean": -0.2421938
+          },
+          "meanShoulderHeightRelativeChestM": {
+            "min": 0.0807408,
+            "max": 0.0840498,
+            "mean": 0.0825106
+          }
+        },
+        "maximumPerformanceWeights": {
+          "anim:Idle Chatting": 0.85
+        }
+      }
+    },
+    "independentPredictionFilter": {
+      "meaning": "Candidate discontinuities, not perceptual failures",
+      "rotation": "parent-space local quaternion prediction",
+      "position": "avatar-space joint-origin prediction; curved intentional motion may flag",
+      "distinctFromProductionMonitor": true,
+      "thresholds": {
+        "angularErrorRad": 0.05,
+        "angularAccelerationRadSec2": 120,
+        "positionErrorM": 0.015,
+        "linearAccelerationMSec2": 25,
+        "frameStallMs": 100
+      }
+    },
+    "simulatedSuspectMoments": 51,
+    "liveSuspectMoments": 12,
+    "livePerformanceStarts": [
+      {
+        "at": 6.9128,
+        "animation": "anim:Idle",
+        "scenario": "live-listening"
+      },
+      {
+        "at": 10.8293,
+        "animation": "anim:Idle Chatting",
+        "scenario": "live-speech"
+      },
+      {
+        "at": 18.379,
+        "animation": "/animations/mixamo/Hands Forward Gesture.vrma",
+        "scenario": "live-speech"
+      },
+      {
+        "at": 21.5289,
+        "animation": "anim:Idle Chatting",
+        "scenario": "live-speech"
+      },
+      {
+        "at": 26.562,
+        "animation": "anim:VRMA_06_HandOnHip",
+        "scenario": "live-interruption"
+      }
+    ],
+    "liveFrameTiming": {
+      "frames": 1920,
+      "p50Ms": 16.69999999999891,
+      "p95Ms": 16.700000000000728,
+      "p99Ms": 16.800000000000182,
+      "maxMs": 16.80000000000291,
+      "stalls100Ms": 0
+    },
+    "productionMonitorAtEndOfLiveRun": null,
+    "errors": [],
+    "resourceErrors": [],
+    "warnings": [
+      "VRMAnimationLoaderPlugin: The loaded VRM Animation might violate the VRM T-pose (The y component of the rest hips position is approximately zero or below.)",
+      "createVRMAnimationClip: VRMLookAtQuaternionProxy is not found. Creating a new one automatically. To suppress this warning, create a VRMLookAtQuaternionProxy manually"
+    ],
+    "localEvidenceSha256": {
+      "manifest.json": "74d517dabb58d87a169efc53af263be267c15e15e38aeccddca94bb4d7eb9c15",
+      "simulated-frames.jsonl.gz": "0fce47a12cf23aac5ec179f89580745277f7689ea6cb968963cd53dbc94ac944",
+      "live-frames.jsonl.gz": "ea30737bf8c1c6ae2d5214edc99c3d5a0947cb028c86e5a1bcf3c588ab21872a",
+      "live.webm": "25da383f2d83462264de5fdd6755ce999b9940546bf8ce92805121f0f9ffd5b5"
+    }
+  },
+  "candidate": {
+    "revision": "working tree based on 632b9140",
+    "createdAt": "2026-09-19T10:46:15.775Z",
+    "sourcesUnchangedDuringCapture": true,
+    "productionSourceSha256": {
+      "src/core/body/animation-player.ts": "a025335a83d385aeccd19e4ac3b1505ef6a51d8840984912e60ed5d571ddd4d4",
+      "src/core/body/beat-library.ts": "fa6802e3aede87ad1de08ea27cb34715f0de2979f884f43fcf412b594f4779de",
+      "src/core/body/beat-scheduler.ts": "1c9c2df05a920e14a09f6752347d86a40c9d2b05e39696df537881a1492f672d",
+      "src/core/body/beat-types.ts": "1a5973d250793c654dec92d9a5a81f9faad7e0698c3fce26cd40507a2da5b661",
+      "src/core/body/blink-system.ts": "e8b5e877cd49ff982234fb8c7c3ac5468e16430aba9dc5c5fbc8009bbf56d340",
+      "src/core/body/breathing-system.ts": "09ab6d7bfb75687d98b0b476225c91ab380b76cbc613b81d1f026293046500ed",
+      "src/core/body/composed-motion-monitor.ts": "37dbe42cb17e6008500361ed63d107230e2c20e73869a129a1f40a7a249c1bde",
+      "src/core/body/cursor-attention.ts": "8bd2a873cdcdcb78c855297ee5cc888599dced6cfb3c8be50164133d580e76ee",
+      "src/core/body/expression-intent-arbiter.ts": "6b018a262bce16f0fd4febd9c0d1585b2a3c4de8231b2303eac7051a14925686",
+      "src/core/body/expression-intent-debug.ts": "ada39f5c1614f22d0b37e9cbf4e36824dede833c1be50bdfeb42473dbdeec2f7",
+      "src/core/body/expression-intent-policy.ts": "64adc0f00b51c7a39528849b276181bbc6f1e6fac978d09ffe6bdf7324d01e6e",
+      "src/core/body/expression-intent-resolver.ts": "ef3cf5c3b5a55691b69418d41969c10fd85a8955b431737c22af5f7a5d2cae20",
+      "src/core/body/expression-intent-shadow.ts": "2c24512e9c792261a59ddb847b5e2128d4559a8ad2d9efdfc82f3d551e1f59a2",
+      "src/core/body/expression-intent-slot-bridge.ts": "9d61ad0a4d71654f3346cb4590e1a56ab7504c958e098ebb6bace9574bebc238",
+      "src/core/body/expression-intent.ts": "2ec77cdb7875829b3025739e244bd1dc99fa3c318b43eefdba5d088dec61f90f",
+      "src/core/body/expression-manager.ts": "6105101f07de9870c29c5189cc6729c1a6bee42d9bceae170c59e69b778f2ca7",
+      "src/core/body/eye-system.ts": "8164c82d0911521506fa90082f8f3966962984d135234fb313b2cc07e5158c1d",
+      "src/core/body/idle-microexpression-system.ts": "a9e644022da26f28253c92e86d127856aa7642b9cf1bc3e68eca19857be50602",
+      "src/core/body/idle-squint-system.ts": "90acffb3f4e47858a91233376f44718e0336c9c9be2c11e272e228434cc62b90",
+      "src/core/body/index.ts": "89293b79dc3e80d815b9d4086f4eb3f5924114fa234a8ef43866010a3cf97b7a",
+      "src/core/body/motion-catalog.ts": "62b6af3f96c526f56be806133090a73bb97e54c8673490e4b4bb9509916870ac",
+      "src/core/body/motion-composition.ts": "399786c3fac75ecd8f0a363b524a061862fbfc9294ea6b05967f49d6b2415292",
+      "src/core/body/motion-director.ts": "f7506e38e2480b2265c3e777373b93fa472347930641326fd2e6f92a652d106b",
+      "src/core/body/motion-gain.ts": "96a24367f72ffd526c8c7b676e093bc7d9b1d840d7619557f44fb177b670d4da",
+      "src/core/body/motion-intensity.ts": "96eabb81ada9fd67c22a3c6f4dd101918afe2a087f356fdae624f95e76bed12b",
+      "src/core/body/motion-profile.ts": "faef4e7dac26816fb201b94de3488465914ea8bb5b4f95019cefe9f9259a32c2",
+      "src/core/body/motion-scheduler.ts": "de39b3f29946f56968c54d0d4c840ebfcd638fd74706e20946200d78e22ccffb",
+      "src/core/body/motion-transition.ts": "1eea6aa3998da02a49079290ef062a097e639af5a6cfa246588837efefc669a6",
+      "src/core/body/occasional-idle-motion.ts": "7ad38f39e92be83168ad0c0dbe210879dd76c075a5bb5053808cbe439d265725",
+      "src/core/body/occasional-idle-selector.ts": "3c17f8c7c27743d6e09a698ce7bf0956e3c3dceb72cc69e7a50c4c8b5b6a39c6",
+      "src/core/body/organic-noise.ts": "18b3326429ab4ec1a2fc654af194c311eaebb657fbfbbe827a4f138c6cad8aed",
+      "src/core/body/procedural-bones.ts": "989086829defc50d60ef56ecdc317d53e9116e92b43d7c1f9922e9855ce2b2d6",
+      "src/core/body/recorded-axial-motion.ts": "dc9a233949d23efba54487d7d7aadd7267fd3db4b0b385ed12294fd10e6eae6b",
+      "src/core/body/recorded-base-player.ts": "48a0bafde8c610b2f76135e99558bc7af842f750ef2ff419ad513e92ea27bb11",
+      "src/core/body/recorded-body-sequencer.ts": "2b3a87e6ce87dec817b4af8fcc8686eaf86324265816ddb897eec9413347a2c1",
+      "src/core/body/recorded-idle-foundation.ts": "17c58e4c505845901143385d2307e552680b9df1714946dd259e8f65a5e6224c",
+      "src/core/body/recorded-motion-dynamics.ts": "c289dbf4902391f82e11e9422df01f785cd67986c183d0d952695938950e701a",
+      "src/core/body/register-orphan-morphs.ts": "ff01bd9a957f49458621d332d4e664ec2711432e278a1a69b714d3c424a7b566",
+      "src/core/body/relaxed-hand-fidget.ts": "7cbe5f2dc9c090fc67ada3afb03ac7f6781b4a6bc14e2f28ba60fcce0518e9f4",
+      "src/core/body/speech-microexpression-system.ts": "acba5dd64f0fab00856d0d1333bf12b4007801ed0006c196402b51fd3cd78ed1",
+      "src/core/body/speech-mood-channel.ts": "f01265faf8dd9a44193171906fa7c61e7d4dd052095623c94c62ece441386a5c",
+      "src/core/body/spring.ts": "e24fea35f5699503aa69168982bdef3ec491b1f3a65ea1f5c0fc461cf89a28d1",
+      "src/core/body/standing-idle-grounding.ts": "3f089e462d87b7b74ffaa0da5fb4cb1f6a6d57e34ec48f30a4cfce80386e8173",
+      "src/core/body/state-pose.ts": "18b17f13a5652466938df306eceb796eaf47a9191c73338f7f21a67315d088f8",
+      "src/core/body/tool-failure-reflex.ts": "07a57e5a65f3cbddbf2441b225fad7cd60b26863108b0ebb71999d4f21b3525f",
+      "src/core/body/vrm-rest-pose.ts": "81dfa417d3d91d87910e3c31c61390eae5874397d931212e9cfd3b725502ff91",
+      "src/dev/motion-quality-lab.ts": "3374df6f69c176d5e5532a4ca459ac675ba849279c449ea917e7b6d7869743aa",
+      "src/runtime/view-mode-framing.ts": "2478a2c0e3cb5f05d33f4db1b63a9ecbdea85a9d9fdc5281deca032f7994245d"
+    },
+    "assetManifestSha256": "07f2e4e0c2c0270f49594772398e55cbd96eebc93cbc2029975072129a0c5a4a",
+    "assetCount": 45,
+    "observerSha256": "3374df6f69c176d5e5532a4ca459ac675ba849279c449ea917e7b6d7869743aa",
+    "initialRecordedSourcePhaseSec": 7.08333333,
+    "initialCameras": [
+      {
+        "position": [
+          0,
+          0.8441890157868552,
+          3.1465226952055505
+        ],
+        "quaternion": [
+          -0.0073164856226791974,
+          0,
+          0,
+          0.9999732341608616
+        ],
+        "fov": 30,
+        "aspect": 0.78125
+      },
+      {
+        "position": [
+          3.1465226952055505,
+          0.8441890157868552,
+          0
+        ],
+        "quaternion": [
+          -0.005173536598250341,
+          0.7070878548801884,
+          0.00517353659825034,
+          0.7070878548801885
+        ],
+        "fov": 30,
+        "aspect": 0.78125
+      },
+      {
+        "position": [
+          0.09003175772487576,
+          1.1076836793094922,
+          1.6
+        ],
+        "quaternion": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "fov": 35,
+        "aspect": 0.625
+      }
+    ],
+    "simulatedFrames": 30000,
+    "groups": {
+      "idle-normal": {
+        "seconds": 300.0,
+        "performanceStarts": {
+          "anim:VRMA_06_HandOnHip": 2,
+          "/animations/mixamo/Warrior Stretch.vrma": 1,
+          "/animations/recorded-idle/survey.vrma": 1
+        },
+        "performanceOccupancySeconds": {
+          "anim:VRMA_06_HandOnHip": 21.5833,
+          "/animations/mixamo/Warrior Stretch.vrma": 5.7667,
+          "/animations/recorded-idle/survey.vrma": 25.4667
+        },
+        "heldFramesBySourcePhase": {
+          "idle-look-around@23.3666667": 54
+        },
+        "recordedUpperStrengthRange": [
+          0.5,
+          0.5
+        ],
+        "maxFootOrToeMarkerDisplacementM": 0.0032949,
+        "heightRelativeUpperChestM": {
+          "leftHandHeightRelativeChestM": {
+            "min": -0.3622808,
+            "max": -0.2036131,
+            "mean": -0.347464
+          },
+          "rightHandHeightRelativeChestM": {
+            "min": -0.3618534,
+            "max": 0.0602784,
+            "mean": -0.3227425
+          },
+          "meanShoulderHeightRelativeChestM": {
+            "min": 0.0758442,
+            "max": 0.0894312,
+            "mean": 0.0821001
+          }
+        },
+        "maximumPerformanceWeights": {
+          "anim:VRMA_06_HandOnHip": 0.425,
+          "/animations/mixamo/Warrior Stretch.vrma": 0.5,
+          "/animations/recorded-idle/survey.vrma": 0.5
+        }
+      },
+      "listening": {
+        "seconds": 20.0,
+        "performanceStarts": {},
+        "performanceOccupancySeconds": {},
+        "heldFramesBySourcePhase": {
+          "idle-look-around@23.3666667": 3
+        },
+        "recordedUpperStrengthRange": [
+          0,
+          0
+        ],
+        "maxFootOrToeMarkerDisplacementM": 0.0033012,
+        "heightRelativeUpperChestM": {
+          "leftHandHeightRelativeChestM": {
+            "min": -0.3546503,
+            "max": -0.3429951,
+            "mean": -0.3479658
+          },
+          "rightHandHeightRelativeChestM": {
+            "min": -0.3555891,
+            "max": -0.3448974,
+            "mean": -0.3491985
+          },
+          "meanShoulderHeightRelativeChestM": {
+            "min": 0.0801485,
+            "max": 0.0843444,
+            "mean": 0.0822648
+          }
+        },
+        "maximumPerformanceWeights": {}
+      },
+      "thinking": {
+        "seconds": 10.0,
+        "performanceStarts": {},
+        "performanceOccupancySeconds": {},
+        "heldFramesBySourcePhase": {
+          "idle-look-around@23.3666667": 3
+        },
+        "recordedUpperStrengthRange": [
+          0,
+          0
+        ],
+        "maxFootOrToeMarkerDisplacementM": 0.0031997,
+        "heightRelativeUpperChestM": {
+          "leftHandHeightRelativeChestM": {
+            "min": -0.3533616,
+            "max": -0.3438281,
+            "mean": -0.3472625
+          },
+          "rightHandHeightRelativeChestM": {
+            "min": -0.3553705,
+            "max": -0.3451113,
+            "mean": -0.3506492
+          },
+          "meanShoulderHeightRelativeChestM": {
+            "min": 0.0816223,
+            "max": 0.0841836,
+            "mean": 0.082695
+          }
+        },
+        "maximumPerformanceWeights": {}
+      },
+      "speech-normal": {
+        "seconds": 45.0,
+        "performanceStarts": {
+          "anim:Idle Chatting 2": 2,
+          "anim:Idle Chatting": 2
+        },
+        "performanceOccupancySeconds": {
+          "anim:Idle Chatting 2": 30.2333,
+          "anim:Idle Chatting": 17.6
+        },
+        "heldFramesBySourcePhase": {
+          "idle-look-around@23.3666667": 15
+        },
+        "recordedUpperStrengthRange": [
+          0,
+          0
+        ],
+        "maxFootOrToeMarkerDisplacementM": 0.0036269,
+        "heightRelativeUpperChestM": {
+          "leftHandHeightRelativeChestM": {
+            "min": -0.366309,
+            "max": 0.0622265,
+            "mean": -0.1782677
+          },
+          "rightHandHeightRelativeChestM": {
+            "min": -0.3552628,
+            "max": 0.0538685,
+            "mean": -0.1472354
+          },
+          "meanShoulderHeightRelativeChestM": {
+            "min": 0.0799776,
+            "max": 0.0847321,
+            "mean": 0.0818912
+          }
+        },
+        "maximumPerformanceWeights": {
+          "anim:Idle Chatting 2": 0.85,
+          "anim:Idle Chatting": 0.85
+        }
+      },
+      "interruption": {
+        "seconds": 3.0,
+        "performanceStarts": {},
+        "performanceOccupancySeconds": {
+          "anim:Idle Chatting": 0.6333
+        },
+        "heldFramesBySourcePhase": {},
+        "recordedUpperStrengthRange": [
+          0,
+          0
+        ],
+        "maxFootOrToeMarkerDisplacementM": 0.0005577,
+        "heightRelativeUpperChestM": {
+          "leftHandHeightRelativeChestM": {
+            "min": -0.3659486,
+            "max": -0.3446959,
+            "mean": -0.3477807
+          },
+          "rightHandHeightRelativeChestM": {
+            "min": -0.353943,
+            "max": -0.3421518,
+            "mean": -0.3500469
+          },
+          "meanShoulderHeightRelativeChestM": {
+            "min": 0.0815799,
+            "max": 0.0832516,
+            "mean": 0.0825192
+          }
+        },
+        "maximumPerformanceWeights": {
+          "anim:Idle Chatting": 0.8483521
+        }
+      },
+      "listening-after-interruption": {
+        "seconds": 17.0,
+        "performanceStarts": {
+          "anim:VRMA_06_HandOnHip": 1
+        },
+        "performanceOccupancySeconds": {
+          "anim:VRMA_06_HandOnHip": 9.35
+        },
+        "heldFramesBySourcePhase": {
+          "idle-look-around@23.3666667": 3
+        },
+        "recordedUpperStrengthRange": [
+          0,
+          0
+        ],
+        "maxFootOrToeMarkerDisplacementM": 0.0028414,
+        "heightRelativeUpperChestM": {
+          "leftHandHeightRelativeChestM": {
+            "min": -0.3564138,
+            "max": -0.2466526,
+            "mean": -0.3339709
+          },
+          "rightHandHeightRelativeChestM": {
+            "min": -0.3613984,
+            "max": -0.3422016,
+            "mean": -0.350834
+          },
+          "meanShoulderHeightRelativeChestM": {
+            "min": 0.0767001,
+            "max": 0.0825104,
+            "mean": 0.0796856
+          }
+        },
+        "maximumPerformanceWeights": {
+          "anim:VRMA_06_HandOnHip": 0.425
+        }
+      },
+      "idle-return": {
+        "seconds": 15.0,
+        "performanceStarts": {},
+        "performanceOccupancySeconds": {},
+        "heldFramesBySourcePhase": {
+          "idle-look-around@23.3666667": 3
+        },
+        "recordedUpperStrengthRange": [
+          0.5,
+          0.5
+        ],
+        "maxFootOrToeMarkerDisplacementM": 0.0027827,
+        "heightRelativeUpperChestM": {
+          "leftHandHeightRelativeChestM": {
+            "min": -0.3562178,
+            "max": -0.3465829,
+            "mean": -0.3529087
+          },
+          "rightHandHeightRelativeChestM": {
+            "min": -0.3515959,
+            "max": -0.3443927,
+            "mean": -0.3484752
+          },
+          "meanShoulderHeightRelativeChestM": {
+            "min": 0.0817704,
+            "max": 0.0828554,
+            "mean": 0.0822073
+          }
+        },
+        "maximumPerformanceWeights": {}
+      },
+      "idle-calm": {
+        "seconds": 15.0,
+        "performanceStarts": {},
+        "performanceOccupancySeconds": {},
+        "heldFramesBySourcePhase": {
+          "idle-look-around@23.3666667": 3
+        },
+        "recordedUpperStrengthRange": [
+          0.25,
+          0.25
+        ],
+        "maxFootOrToeMarkerDisplacementM": 0.0028332,
+        "heightRelativeUpperChestM": {
+          "leftHandHeightRelativeChestM": {
+            "min": -0.3547558,
+            "max": -0.3478834,
+            "mean": -0.3515228
+          },
+          "rightHandHeightRelativeChestM": {
+            "min": -0.3534276,
+            "max": -0.3454707,
+            "mean": -0.348715
+          },
+          "meanShoulderHeightRelativeChestM": {
+            "min": 0.081464,
+            "max": 0.0836917,
+            "mean": 0.0822449
+          }
+        },
+        "maximumPerformanceWeights": {}
+      },
+      "idle-normal-return": {
+        "seconds": 15.0,
+        "performanceStarts": {},
+        "performanceOccupancySeconds": {},
+        "heldFramesBySourcePhase": {
+          "idle-look-around@23.3666667": 3
+        },
+        "recordedUpperStrengthRange": [
+          0.5,
+          0.5
+        ],
+        "maxFootOrToeMarkerDisplacementM": 0.0029523,
+        "heightRelativeUpperChestM": {
+          "leftHandHeightRelativeChestM": {
+            "min": -0.3553804,
+            "max": -0.3479732,
+            "mean": -0.3525588
+          },
+          "rightHandHeightRelativeChestM": {
+            "min": -0.3526211,
+            "max": -0.3461711,
+            "mean": -0.3487806
+          },
+          "meanShoulderHeightRelativeChestM": {
+            "min": 0.0811747,
+            "max": 0.0828183,
+            "mean": 0.082024
+          }
+        },
+        "maximumPerformanceWeights": {}
+      },
+      "idle-lively": {
+        "seconds": 15.0,
+        "performanceStarts": {},
+        "performanceOccupancySeconds": {},
+        "heldFramesBySourcePhase": {
+          "idle-look-around@23.3666667": 3
+        },
+        "recordedUpperStrengthRange": [
+          1,
+          1
+        ],
+        "maxFootOrToeMarkerDisplacementM": 0.0032021,
+        "heightRelativeUpperChestM": {
+          "leftHandHeightRelativeChestM": {
+            "min": -0.3571043,
+            "max": -0.345969,
+            "mean": -0.353934
+          },
+          "rightHandHeightRelativeChestM": {
+            "min": -0.3490271,
+            "max": -0.3416034,
+            "mean": -0.3446688
+          },
+          "meanShoulderHeightRelativeChestM": {
+            "min": 0.0813222,
+            "max": 0.0824954,
+            "mean": 0.0817558
+          }
+        },
+        "maximumPerformanceWeights": {}
+      },
+      "idle-over": {
+        "seconds": 15.0,
+        "performanceStarts": {},
+        "performanceOccupancySeconds": {},
+        "heldFramesBySourcePhase": {
+          "idle-look-around@23.3666667": 3
+        },
+        "recordedUpperStrengthRange": [
+          1,
+          1
+        ],
+        "maxFootOrToeMarkerDisplacementM": 0.0020319,
+        "heightRelativeUpperChestM": {
+          "leftHandHeightRelativeChestM": {
+            "min": -0.362282,
+            "max": -0.3366885,
+            "mean": -0.3528666
+          },
+          "rightHandHeightRelativeChestM": {
+            "min": -0.3588451,
+            "max": -0.3342585,
+            "mean": -0.3459554
+          },
+          "meanShoulderHeightRelativeChestM": {
+            "min": 0.0810287,
+            "max": 0.0824255,
+            "mean": 0.0817195
+          }
+        },
+        "maximumPerformanceWeights": {}
+      },
+      "zero": {
+        "seconds": 5.0,
+        "performanceStarts": {},
+        "performanceOccupancySeconds": {},
+        "heldFramesBySourcePhase": {},
+        "recordedUpperStrengthRange": [
+          0,
+          0
+        ],
+        "maxFootOrToeMarkerDisplacementM": 0,
+        "heightRelativeUpperChestM": {
+          "leftHandHeightRelativeChestM": {
+            "min": -0.3565248,
+            "max": -0.341853,
+            "mean": -0.3485845
+          },
+          "rightHandHeightRelativeChestM": {
+            "min": -0.3557052,
+            "max": -0.3436228,
+            "mean": -0.3494641
+          },
+          "meanShoulderHeightRelativeChestM": {
+            "min": 0.0817172,
+            "max": 0.0827141,
+            "mean": 0.0823845
+          }
+        },
+        "maximumPerformanceWeights": {}
+      },
+      "resume": {
+        "seconds": 10.0,
+        "performanceStarts": {
+          "/animations/mixamo/Warrior Stretch.vrma": 1
+        },
+        "performanceOccupancySeconds": {
+          "/animations/mixamo/Warrior Stretch.vrma": 3.8
+        },
+        "heldFramesBySourcePhase": {
+          "idle-look-around@23.3666667": 3
+        },
+        "recordedUpperStrengthRange": [
+          0.5,
+          0.5
+        ],
+        "maxFootOrToeMarkerDisplacementM": 0.0012202,
+        "heightRelativeUpperChestM": {
+          "leftHandHeightRelativeChestM": {
+            "min": -0.3530031,
+            "max": -0.2047069,
+            "mean": -0.3176343
+          },
+          "rightHandHeightRelativeChestM": {
+            "min": -0.3524777,
+            "max": -0.2114065,
+            "mean": -0.3175274
+          },
+          "meanShoulderHeightRelativeChestM": {
+            "min": 0.078703,
+            "max": 0.0895859,
+            "mean": 0.0829633
+          }
+        },
+        "maximumPerformanceWeights": {
+          "/animations/mixamo/Warrior Stretch.vrma": 0.5
+        }
+      },
+      "speech-resume": {
+        "seconds": 15.0,
+        "performanceStarts": {
+          "anim:Idle Chatting 2": 1,
+          "anim:Idle Chatting": 1
+        },
+        "performanceOccupancySeconds": {
+          "/animations/mixamo/Warrior Stretch.vrma": 0.7667,
+          "anim:Idle Chatting 2": 12.8667,
+          "anim:Idle Chatting": 2.6667
+        },
+        "heldFramesBySourcePhase": {},
+        "recordedUpperStrengthRange": [
+          0,
+          0
+        ],
+        "maxFootOrToeMarkerDisplacementM": 0.0035406,
+        "heightRelativeUpperChestM": {
+          "leftHandHeightRelativeChestM": {
+            "min": -0.3505083,
+            "max": -0.0440167,
+            "mean": -0.1918847
+          },
+          "rightHandHeightRelativeChestM": {
+            "min": -0.3492679,
+            "max": -0.0233415,
+            "mean": -0.1628073
+          },
+          "meanShoulderHeightRelativeChestM": {
+            "min": 0.0786509,
+            "max": 0.0857919,
+            "mean": 0.0820068
+          }
+        },
+        "maximumPerformanceWeights": {
+          "/animations/mixamo/Warrior Stretch.vrma": 0.499358,
+          "anim:Idle Chatting 2": 0.85,
+          "anim:Idle Chatting": 0.85
+        }
+      }
+    },
+    "independentPredictionFilter": {
+      "meaning": "Candidate discontinuities, not perceptual failures",
+      "rotation": "parent-space local quaternion prediction",
+      "position": "avatar-space joint-origin prediction; curved intentional motion may flag",
+      "distinctFromProductionMonitor": true,
+      "thresholds": {
+        "angularErrorRad": 0.05,
+        "angularAccelerationRadSec2": 120,
+        "positionErrorM": 0.015,
+        "linearAccelerationMSec2": 25,
+        "frameStallMs": 100
+      }
+    },
+    "simulatedSuspectMoments": 48,
+    "liveSuspectMoments": 27,
+    "livePerformanceStarts": [
+      {
+        "at": 10.8162,
+        "animation": "anim:Idle Chatting",
+        "scenario": "live-speech"
+      },
+      {
+        "at": 18.3659,
+        "animation": "anim:Idle Chatting 2",
+        "scenario": "live-speech"
+      },
+      {
+        "at": 24.449,
+        "animation": "anim:Idle Chatting",
+        "scenario": "live-speech"
+      }
+    ],
+    "liveFrameTiming": {
+      "frames": 1920,
+      "p50Ms": 16.69999999999891,
+      "p95Ms": 16.799999999999272,
+      "p99Ms": 16.800000000000182,
+      "maxMs": 33.19999999999891,
+      "stalls100Ms": 0
+    },
+    "productionMonitorAtEndOfLiveRun": {
+      "schemaVersion": 1,
+      "samplingStage": "final composed normalized skeleton; local rotations and avatar-space joint origins",
+      "sampleCount": 1920,
+      "poseCandidateCount": 27,
+      "frameStallCount": 0,
+      "invalidSampleCount": 0,
+      "frameCapacity": 120,
+      "eventCapacity": 32
+    },
+    "errors": [],
+    "resourceErrors": [],
+    "warnings": [
+      "VRMAnimationLoaderPlugin: The loaded VRM Animation might violate the VRM T-pose (The y component of the rest hips position is approximately zero or below.)",
+      "createVRMAnimationClip: VRMLookAtQuaternionProxy is not found. Creating a new one automatically. To suppress this warning, create a VRMLookAtQuaternionProxy manually"
+    ],
+    "localEvidenceSha256": {
+      "manifest.json": "dd65af3970be8039107a0d2b8e1576100740d3a89bcdd80d1139956c2b81e73c",
+      "simulated-frames.jsonl.gz": "7da0d5519cb07ea0f0bf42ba9d43cb532f2cf88d07895b53662d25618d81b1e1",
+      "live-frames.jsonl.gz": "2fc9f80cd3f3f56cd3ac9ca900257d1ffbed1e7e30aac721de1875b71bcfa515",
+      "live.webm": "65eb40ec7c096d97b0c6d78cfedc7ad7127afc4b92718deccfbb430553892c12"
+    }
+  },
+  "comparabilityChecks": {
+    "sameAssets": true,
+    "sameObserver": true,
+    "sameFixedFrontSideCameras": true,
+    "sameInitialTerminalCamera": false
+  }
+}

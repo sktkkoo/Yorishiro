@@ -304,6 +304,8 @@ export interface CharacterAPI {
 export type AnimationRef = string;
 
 export interface PlayOptions {
+  /** False disables reviewed runtime foot contact correction for source diagnostics. */
+  footContact?: boolean;
   /** Upper-body performances leave the supporting recorded body motion running. */
   mask?: "upper-body" | "full-body";
   /** フェードインの時間（他アニメとの blend 用） */
@@ -313,7 +315,7 @@ export interface PlayOptions {
   weight?: number;
   loop?: boolean;
   speed?: number;
-  /** Default in-place; preserve reviewed hips XYZ only for non-looping full-body playback. */
+  /** Default in-place; reviewed full-body foot contact also preserves source hips XYZ. */
   rootMotion?: "in-place" | "preserve";
   /**
    * Legacy field — MVP では無視される。
@@ -432,6 +434,8 @@ export type MotionPriority =
 
 /** Motion 起動時の補助 option（fade / loop / speed 等の表現 parameter）。 */
 export interface MotionOptions {
+  /** Disable reviewed runtime foot contact correction for source/composition diagnostics. */
+  readonly footContact?: boolean;
   readonly fadeInMs?: number;
   readonly fadeOutMs?: number;
   readonly weight?: number;
@@ -441,7 +445,7 @@ export interface MotionOptions {
   readonly transition?: "matched" | "immediate";
   /** Upper-body leaves hips and legs available to the standing base pose. */
   readonly mask?: "upper-body" | "full-body";
-  /** Default in-place; preserve reviewed hips XYZ only for full-body, immediate one-shots. */
+  /** Default in-place; reviewed full-body foot contact also preserves source hips XYZ. */
   readonly rootMotion?: "in-place" | "preserve";
   readonly maxTransitionDelayMs?: number;
   /** Bound a non-looping performance at a nearby quiet exit; shorter clips keep their ending. */

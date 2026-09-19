@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createBodyStateExpressionAdapter } from "../../runtime/agent-state-expression/body-adapter";
 import { createVoiceStateExpressionBridge } from "../../runtime/agent-state-expression/voice-state-expression-bridge";
 import { AnimationPlayer, Body } from "../body";
+import { DEFAULT_CHARACTER_MOTION_PROFILE } from "../body/motion-profile";
 
 const { mockInvoke, mockAudioContext, mockFetch, mockEnsureAudioContextRunning, detachAudioData } =
   vi.hoisted(() => {
@@ -585,6 +586,9 @@ describe("VoicePlayer (engine あり — Web Audio)", () => {
       completion: new Promise<void>((resolve) => {
         completeMotion = resolve;
       }),
+      get stopped() {
+        return this.completion;
+      },
       setWeight: vi.fn(),
       stop: vi.fn(async () => completeMotion()),
       cancel: vi.fn(() => completeMotion()),
@@ -596,11 +600,16 @@ describe("VoicePlayer (engine あり — Web Audio)", () => {
       .spyOn(AnimationPlayer.prototype, "evaluateTransition")
       .mockReturnValue({ cost: 0, startTimeSec: 0 });
     const play = vi.spyOn(AnimationPlayer.prototype, "play").mockResolvedValue(motion);
-    const body = new Body(vrm, undefined, {
-      isClaimed: () => false,
-      claim: () => ({ dispose() {} }),
-      releaseAll() {},
-    });
+    const body = new Body(
+      vrm,
+      undefined,
+      {
+        isClaimed: () => false,
+        claim: () => ({ dispose() {} }),
+        releaseAll() {},
+      },
+      { modelSha256: DEFAULT_CHARACTER_MOTION_PROFILE.modelSha256 },
+    );
     const phases: string[] = [];
     const adapter = createBodyStateExpressionAdapter(() => body);
     const bridge = createVoiceStateExpressionBridge({
