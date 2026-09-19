@@ -1,4 +1,6 @@
+import { type FootContactProfile, isFootContactProfileValid } from "./foot-contact";
 import { DEFAULT_MOTION_CATALOG, type MotionCatalogEntry } from "./motion-catalog";
+import { REVIEWED_FOOT_CONTACTS } from "./reviewed-foot-contacts";
 
 export type MotionProgramRole = "ambient" | "posture" | "occasional" | "speech";
 
@@ -21,6 +23,8 @@ export interface CharacterMotionProfile {
   /** Optional exact avatar binding. A mismatch admits no automatic programs. */
   readonly modelSha256?: string;
   readonly programs: readonly MotionProgram[];
+  /** Geometric source contacts do not admit a performance to automatic acting. */
+  readonly footContacts?: Readonly<Record<string, FootContactProfile>>;
   readonly support: { readonly recorded: boolean; readonly fallback: boolean };
   readonly cadence: {
     readonly postureWaitMs: readonly [number, number];
@@ -41,6 +45,7 @@ function reviewedEntry(id: string): MotionCatalogEntry {
 export const DEFAULT_CHARACTER_MOTION_PROFILE: CharacterMotionProfile = {
   id: "reviewed-standing",
   modelSha256: "739a1515cffe09c17a535eb52a11f88640fc7728b86b9e4c74f00c353437b7cd",
+  footContacts: REVIEWED_FOOT_CONTACTS,
   support: { recorded: true, fallback: true },
   cadence: {
     postureWaitMs: [15_000, 25_000],
@@ -97,6 +102,7 @@ export interface CompiledMotionProfile {
   readonly id: string;
   readonly programs: readonly MotionProgram[];
   readonly byAnimation: ReadonlyMap<string, MotionProgram>;
+  readonly footContacts: ReadonlyMap<string, FootContactProfile>;
   readonly support: CharacterMotionProfile["support"];
   readonly cadence: CharacterMotionProfile["cadence"];
   readonly rejections: readonly { readonly id: string; readonly reason: string }[];
@@ -172,10 +178,29 @@ export function compileMotionProfile(
     programs.push(admitted);
     byAnimation.set(entry.animation, admitted);
   }
+  const footContacts = new Map<string, FootContactProfile>();
+  if (compatible) {
+    for (const [animation, contact] of Object.entries(profile.footContacts ?? {})) {
+      if (!animation.trim() || !isFootContactProfileValid(contact)) continue;
+      footContacts.set(
+        animation,
+        Object.freeze({
+          ...contact,
+          left: Object.freeze(
+            contact.left.map((interval) => Object.freeze([...interval] as [number, number])),
+          ),
+          right: Object.freeze(
+            contact.right.map((interval) => Object.freeze([...interval] as [number, number])),
+          ),
+        }),
+      );
+    }
+  }
   return {
     id: profile.id,
     programs: Object.freeze(programs),
     byAnimation,
+    footContacts,
     support: Object.freeze({
       recorded: compatible && profile.support.recorded,
       fallback: profile.support.fallback,

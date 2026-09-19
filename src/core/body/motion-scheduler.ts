@@ -54,6 +54,8 @@ const PRIORITY_LEVEL: Record<MotionPriority, number> = {
 
 /** Motion 起動時の補助 option。fade / loop / speed 等の表現 parameter。 */
 export interface MotionOptions {
+  /** False keeps explicit source replay available without reviewed contact correction. */
+  readonly footContact?: boolean;
   readonly fadeInMs?: number;
   readonly fadeOutMs?: number;
   readonly weight?: number;

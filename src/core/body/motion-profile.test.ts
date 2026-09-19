@@ -77,4 +77,31 @@ describe("character motion program admission", () => {
     expect(second.programs[0].entry.animation).toBe("changed");
     expect(Object.isFrozen(first.programs[0].entry.intents)).toBe(true);
   });
+
+  it("keeps reviewed contact geometry independent of automatic acting admission and avatar-bound", () => {
+    const source = { ...profile(), programs: [] };
+    const compatible = compileMotionProfile(source, "avatar-a");
+    const other = compileMotionProfile(source, "avatar-b");
+    expect(compatible.programs).toEqual([]);
+    expect(compatible.footContacts.has("anim:Idle Chatting")).toBe(true);
+    expect(compatible.footContacts.has("anim:Idle Chatting 2")).toBe(true);
+    expect(other.footContacts.size).toBe(0);
+    const contact = compatible.footContacts.get("anim:Idle Chatting 2");
+    expect(Object.isFrozen(contact?.left[0])).toBe(true);
+  });
+
+  it("rejects malformed contact annotations without changing the acting program", () => {
+    const source = profile();
+    const result = compileMotionProfile(
+      {
+        ...source,
+        footContacts: {
+          "anim:invalid": { sourceSha256: "unverified", durationSec: 5, left: [[0, 5]], right: [] },
+        },
+      },
+      "avatar-a",
+    );
+    expect(result.programs).toHaveLength(1);
+    expect(result.footContacts.size).toBe(0);
+  });
 });

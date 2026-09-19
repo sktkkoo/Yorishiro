@@ -75,6 +75,7 @@ import {
   type SlotSnapshot,
 } from "./expression-manager";
 import { type EyeState, EyeSystem, gazeTargetToAngles, type MutableEyeOutput } from "./eye-system";
+import { FootContactController } from "./foot-contact";
 import {
   IdleMicroexpressionSystem,
   MICRO_BROW_POOL,
@@ -291,6 +292,7 @@ export class Body {
     occasionalActive: false,
   };
   private readonly relaxedHandFidget: RelaxedHandFidget;
+  private readonly footContact: FootContactController;
   private readonly proceduralBones: ProceduralBones;
   private readonly beatScheduler: IdleBeatScheduler;
   private readonly beatTarget: BeatTarget;
@@ -513,10 +515,17 @@ export class Body {
     this.proceduralBones = new ProceduralBones();
     this.proceduralBones.bindVrm(vrm);
     this.relaxedHandFidget = new RelaxedHandFidget(vrm);
-    this.animationPlayer = new AnimationPlayer(vrm, devLog, () => {
-      this.relaxedHandFidget.restoreBaseRotations();
-      this.proceduralBones.restoreBaseRotations();
-    });
+    this.footContact = new FootContactController(vrm);
+    this.animationPlayer = new AnimationPlayer(
+      vrm,
+      devLog,
+      () => {
+        this.footContact.restore();
+        this.relaxedHandFidget.restoreBaseRotations();
+        this.proceduralBones.restoreBaseRotations();
+      },
+      () => this.footContact.restore(),
+    );
     this.composedMotionMonitor = new ComposedMotionMonitor(vrm);
     this.motionDirector = new MotionDirector({
       catalog: this.motionProfile.programs
@@ -559,6 +568,10 @@ export class Body {
         try {
           result = await this.animationPlayer.play(req.animation, {
             ...req.options,
+            footContacts:
+              req.options?.footContact === false
+                ? undefined
+                : this.motionProfile.footContacts.get(req.animation),
             requireCompatibleEntry: program !== undefined,
             getCurrentWeight: automatic
               ? () => {
@@ -924,6 +937,7 @@ export class Body {
     // pose. This also clears the last offset while an external animation claim
     // owns the body.
     this.relaxedHandFidget.restoreBaseRotations();
+    this.footContact.restore();
     this.updateAmbientMotion(delta, animationClaimed);
     this.proceduralBones.restoreBaseRotations();
     if (!animationClaimed) {
@@ -1047,6 +1061,10 @@ export class Body {
     this.applyGaze();
 
     // 8. VRM spring bones etc.
+    this.footContact.update(
+      delta,
+      animationClaimed ? null : this.animationPlayer.getFootContactPlayback(),
+    );
     this.vrm.update(delta);
 
     // Sample after every authored/procedural layer. This is observation only;
@@ -1108,6 +1126,7 @@ export class Body {
     this.disposeAttention();
     this.postureVariation.dispose();
     this.occasionalIdleMotion.dispose();
+    this.footContact.clear();
     this.motionScheduler.cancelAll(0);
     this.motionActivationGeneration++;
     this.relaxedHandFidget.dispose();
@@ -1234,6 +1253,7 @@ export class Body {
         speed: options?.speed,
         mask: options?.mask,
         rootMotion: options?.rootMotion,
+        footContact: options?.footContact,
       },
     });
     return adaptMotionHandleToAnimationHandle(motionHandle);
@@ -1512,6 +1532,7 @@ export class Body {
     return {
       ...this.recordedBody.getSnapshot(),
       composedMotion: this.composedMotionMonitor.getSnapshot(),
+      footContact: this.footContact.getSnapshot(),
       activity: this.eyeSystem.state,
       conversationPhase: this.motionConversationPhase,
       postureVariation: this.postureVariation.getSnapshot(),

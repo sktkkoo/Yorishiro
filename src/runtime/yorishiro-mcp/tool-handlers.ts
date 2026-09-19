@@ -1523,6 +1523,9 @@ export function createBodyAnimationPlayHandler(deps: BodyAnimationPlayDeps) {
   return async (request: unknown): Promise<BodyAnimationPlayResult> => {
     const r = (request ?? {}) as {
       animation?: unknown;
+      footContact?: unknown;
+      mask?: unknown;
+      rootMotion?: unknown;
       fadeInMs?: unknown;
       fadeOutMs?: unknown;
       weight?: unknown;
@@ -1532,6 +1535,12 @@ export function createBodyAnimationPlayHandler(deps: BodyAnimationPlayDeps) {
     if (typeof r.animation !== "string" || r.animation === "") {
       throw new Error("missing animation");
     }
+    if (r.footContact != null && typeof r.footContact !== "boolean")
+      throw new Error("invalid footContact");
+    if (r.mask != null && r.mask !== "upper-body" && r.mask !== "full-body")
+      throw new Error("invalid mask");
+    if (r.rootMotion != null && r.rootMotion !== "in-place" && r.rootMotion !== "preserve")
+      throw new Error("invalid rootMotion");
     const body = deps.getBody();
     if (!body) {
       throw new Error("no Body loaded");
@@ -1553,6 +1562,10 @@ export function createBodyAnimationPlayHandler(deps: BodyAnimationPlayDeps) {
         weight: typeof r.weight === "number" ? r.weight : 1.0, // MCP-conscious motion は procedural を override する
         loop: typeof r.loop === "boolean" ? r.loop : undefined,
         speed: typeof r.speed === "number" ? r.speed : undefined,
+        footContact: typeof r.footContact === "boolean" ? r.footContact : undefined,
+        mask: r.mask === "upper-body" || r.mask === "full-body" ? r.mask : undefined,
+        rootMotion:
+          r.rootMotion === "preserve" || r.rootMotion === "in-place" ? r.rootMotion : undefined,
       },
     });
 

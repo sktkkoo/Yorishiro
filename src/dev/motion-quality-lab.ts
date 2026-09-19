@@ -8,6 +8,7 @@ import {
   defaultCameraForCharacter,
   TERMINAL_CAMERA_HEAD_OFFSET_Y,
 } from "../runtime/view-mode-framing";
+import type { MotionHandle, MotionOptions } from "../sdk/context";
 
 // Development-only observation adapter. Private player access deliberately stays
 // here so the same harness can inspect an older checkout without changing Body.
@@ -81,6 +82,7 @@ let wallFrames: { at: number; wallMs: number; deltaMs: number }[] = [];
 let commands: { at: number; command: unknown }[] = [];
 let modelSha256 = "";
 let headBone: THREE.Object3D;
+let manualHandle: MotionHandle | null = null;
 
 function actions() {
   return [...(body as unknown as ObservedBody).animationPlayer.active.values()].map((entry) => ({
@@ -123,6 +125,7 @@ function sample(delta: number) {
       active: recorded.active,
       intensity: recorded.intensity,
       postureVariation: recorded.postureVariation,
+      footContact: recorded.footContact,
     },
     terminalCamera: cameras[2].position.toArray(),
   };
@@ -171,6 +174,8 @@ function command(input: {
   intensity?: number;
   gesture?: MotionIntent;
   scenario?: string;
+  manual?: { animation: string; options?: MotionOptions & { startTimeSec?: number } };
+  stopManual?: boolean;
 }) {
   commands.push({ at: elapsed, command: input });
   if (input.scenario) scenario = input.scenario;
@@ -192,6 +197,14 @@ function command(input: {
       intent: input.gesture,
       intensity: 0.6,
     });
+  if (input.manual)
+    manualHandle = body.acquireMotionSlot({
+      source: "mcp",
+      priority: "mcp-conscious",
+      animation: input.manual.animation,
+      options: input.manual.options,
+    });
+  if (input.stopManual) manualHandle?.release(600);
 }
 
 function drain() {
