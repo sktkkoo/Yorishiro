@@ -31,6 +31,7 @@ export interface MotionCompositionPlan {
     readonly blocked: boolean;
     readonly context: MotionContext;
     readonly intent: MotionIntent;
+    readonly activeAnimation: string | null;
   };
   readonly hardCancel: boolean;
   readonly exclusivePerformance: boolean;
@@ -53,6 +54,7 @@ export class MotionCompositionController {
       blocked: true,
       context: "idle" as MotionContext,
       intent: "neutral" as MotionIntent,
+      activeAnimation: null as string | null,
     },
     hardCancel: false,
     exclusivePerformance: false,
@@ -152,6 +154,7 @@ export class MotionCompositionController {
     plan.ambient.blocked = ambientBlocked;
     plan.ambient.context = speaking ? "speech" : "idle";
     plan.ambient.intent = intent;
+    plan.ambient.activeAnimation = input.scheduled?.animation ?? null;
     plan.hardCancel = hardCancel;
     plan.exclusivePerformance = exclusivePerformance;
     plan.recordedSupportActive = recorded && input.recordedActive;

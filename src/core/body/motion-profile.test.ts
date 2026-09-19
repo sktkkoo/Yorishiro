@@ -44,14 +44,16 @@ describe("character motion program admission", () => {
     ]);
   });
 
-  it("keeps all default automatic routes free of Shrugging and upper Idle, with HandOnHip posture-only", () => {
+  it("keeps all default automatic routes free of rejected performances, with HandOnHip posture-only", () => {
     const compiled = compileMotionProfile(
       DEFAULT_CHARACTER_MOTION_PROFILE,
       DEFAULT_CHARACTER_MOTION_PROFILE.modelSha256,
     );
     expect(
       compiled.programs.some(
-        ({ entry }) => entry.animation === "anim:Idle" || entry.animation.includes("Shrugging"),
+        ({ entry }) =>
+          ["anim:Idle", "anim:Idle Chatting 2"].includes(entry.animation) ||
+          entry.animation.includes("Shrugging"),
       ),
     ).toBe(false);
     const hip = compiled.byAnimation.get("anim:VRMA_06_HandOnHip");
@@ -59,6 +61,7 @@ describe("character motion program admission", () => {
     expect(hip?.entry.cooldownMs).toBe(180_000);
     expect(compiled.cadence.postureDurationMs[1]).toBeLessThanOrEqual(12_000);
     expect(compiled.programs.filter((program) => program.role === "ambient")).toEqual([]);
+    expect(compiled.programs.filter((program) => program.role === "speech")).toHaveLength(5);
   });
 
   it("snapshots nested authoring data so one character's later edits cannot mutate a live profile", () => {

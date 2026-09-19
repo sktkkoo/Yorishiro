@@ -63,6 +63,8 @@ export interface MotionDirectorContext {
   readonly intent?: MotionIntent;
   /** Higher-priority motion, body ownership, or user interaction is active. */
   readonly blocked?: boolean;
+  /** Explicit null means no scheduled performance; omission preserves strict no-repeat. */
+  readonly activeAnimation?: string | null;
 }
 
 export interface MotionDirectorSnapshot {
@@ -134,6 +136,8 @@ export class MotionDirector {
     return this.select(
       { intent: context.intent ?? "neutral", context: context.context },
       speechBaseline ? "speech-dwell-elapsed" : "idle-dwell-elapsed",
+      undefined,
+      speechBaseline && context.activeAnimation === null,
     );
   }
 
@@ -202,6 +206,7 @@ export class MotionDirector {
     query: SemanticMotionQuery,
     reason: MotionDecision["reason"],
     preferredAnimation?: string,
+    allowConsecutive = false,
   ): MotionDecision | null {
     const semanticCandidates = retrieveMotionCandidates(query, {
       nowMs: this.elapsedMs,
@@ -215,6 +220,7 @@ export class MotionDirector {
       // Apply the physical gate before the final top five: a bad seam must not
       // crowd a compatible, slightly lower semantic match out of consideration.
       includeAllEligible: this.options.evaluateTransition !== undefined,
+      allowConsecutive,
     });
     const candidates: DirectedMotionCandidate[] = [];
     for (const candidate of semanticCandidates) {

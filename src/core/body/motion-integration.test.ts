@@ -978,9 +978,12 @@ describe("recorded motion Body integration", () => {
 
   it.each([
     3, 25,
-  ])("resumes explanation as a real %ss finite gesture finishes, without adding idle settling", async (duration) => {
+  ])("resumes explanation after a real %ss finite gesture and any remaining source cooldown", async (duration) => {
     mockPerformanceLibrary();
-    const { body, vrm } = createBody();
+    const { body, vrm } = createBody(undefined, {
+      ...TEST_MOTION_PROFILE,
+      programs: [testProgram("speech-chat")],
+    });
     const arm = vrm.humanoid.getNormalizedBoneNode("leftLowerArm");
     if (!arm) throw new Error("test arm is required");
     const player = (body as unknown as { animationPlayer: AnimationPlayer }).animationPlayer;
@@ -1020,6 +1023,15 @@ describe("recorded motion Body integration", () => {
     expect(player.getTotalEffectiveWeight()).toBeGreaterThan(0);
     advance(body, 1 / 60);
     await flush();
+    if (duration === 3 && gesture?.animation === "anim:Idle Chatting") {
+      // The only explanatory source may also have supplied the finite gesture.
+      // Its existing six-second cooldown still applies before background reuse.
+      expect(body.getMotionSnapshot().active).toBeNull();
+      for (let i = 0; i < 6 && !body.getMotionSnapshot().active; i++) {
+        advance(body, 1);
+        await flush();
+      }
+    }
     expect(body.getMotionSnapshot().active?.priority).toBe("idle-fidget");
     expect(body.getMotionDirectorSnapshot().lastDecision).toMatchObject({
       context: "speech",
@@ -1286,9 +1298,12 @@ describe("recorded motion Body integration", () => {
       advance(body, 1);
       await flush();
     }
-    expect(play.mock.calls.length).toBeGreaterThanOrEqual(3);
+    // With one admitted explanatory loop, retain it instead of forcing a
+    // rejected alternative or repeatedly restarting the same performance.
+    expect(play).toHaveBeenCalledOnce();
+    expect(body.getMotionSnapshot().active?.animation).toBe("anim:Idle Chatting");
     for (const [ref, options] of play.mock.calls) {
-      expect(["anim:Idle Chatting", "anim:Idle Chatting 2"]).toContain(ref);
+      expect(ref).toBe("anim:Idle Chatting");
       expect(options).toMatchObject({ loop: true, transition: "matched", mask: "upper-body" });
     }
     expression.release();
@@ -1518,7 +1533,10 @@ describe("recorded motion Body integration", () => {
     expect(base.cancel).not.toHaveBeenCalled();
   });
 
-  it("preserves an explicit manual weight even for an automatic catalog animation", async () => {
+  it.each([
+    "anim:Thankful",
+    "anim:Idle Chatting 2",
+  ])("preserves explicit manual playback of %s regardless of automatic admission", async (animation) => {
     mockPerformanceLibrary();
     const active = playback();
     const play = vi.spyOn(AnimationPlayer.prototype, "play").mockResolvedValue(active);
@@ -1527,7 +1545,7 @@ describe("recorded motion Body integration", () => {
     body.acquireMotionSlot({
       source: "mcp",
       priority: "mcp-conscious",
-      animation: "anim:Thankful",
+      animation,
       options: { weight: 0.399 },
     });
     await flush();
@@ -1536,6 +1554,32 @@ describe("recorded motion Body integration", () => {
     body.setMotionIntensity(3);
     body.setMotionIntensity(0.5);
     expect(active.setWeight).not.toHaveBeenCalled();
+  });
+
+  it("does not preload or choose Chatting 2 through the default automatic speech path", async () => {
+    const preload = mockPerformanceLibrary();
+    const play = vi.spyOn(AnimationPlayer.prototype, "play").mockResolvedValue(playback());
+    const { body } = createBody(
+      DEFAULT_CHARACTER_MOTION_PROFILE.modelSha256,
+      DEFAULT_CHARACTER_MOTION_PROFILE,
+    );
+    await body.prepareMotionLibrary();
+    expect(preload.mock.calls.some(([animation]) => animation === "anim:Idle Chatting 2")).toBe(
+      false,
+    );
+    body.setMotionIntensity(2);
+    body.setMotionConversationPhase("assistant-speaking");
+    advance(body, 1.3);
+    await flush();
+    expect(play).toHaveBeenCalledOnce();
+    expect(play.mock.calls[0][0]).toBe("anim:Idle Chatting");
+    expect(
+      body
+        .getMotionDirectorSnapshot()
+        .lastDecision?.candidates.some(
+          (candidate) => candidate.animation === "anim:Idle Chatting 2",
+        ),
+    ).toBe(false);
   });
 
   it("preserves the real mixer's fade ramp through Body activation at unchanged motion gain", async () => {

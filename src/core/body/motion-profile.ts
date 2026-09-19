@@ -51,7 +51,6 @@ export const DEFAULT_CHARACTER_MOTION_PROFILE: CharacterMotionProfile = {
     ...[
       "speech-appreciate",
       "speech-chat",
-      "speech-animated",
       "speech-celebrate",
       "speech-thoughtful",
       "speech-present",

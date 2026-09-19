@@ -10,6 +10,33 @@ import {
 } from "./motion-catalog";
 
 describe("local semantic motion catalog", () => {
+  it("excludes the user-rejected Chatting 2 performance from every automatic query", () => {
+    expect(DEFAULT_MOTION_CATALOG.some((entry) => entry.animation === "anim:Idle Chatting 2")).toBe(
+      false,
+    );
+    for (const context of ["idle", "speech"] as const) {
+      for (const intent of [
+        "neutral",
+        "attentive",
+        "relaxed",
+        "thinking",
+        "explain",
+        "agree",
+        "consider",
+        "reassure",
+        "emphasize",
+        "celebrate",
+        "sad",
+        "uncertain",
+      ] as const) {
+        expect(
+          retrieveMotionCandidates({ context, intent }, { nowMs: 0 }).some(
+            (candidate) => candidate.animation === "anim:Idle Chatting 2",
+          ),
+        ).toBe(false);
+      }
+    }
+  });
   it.each([
     "celebrate",
     "sad",
@@ -133,8 +160,7 @@ describe("local semantic motion catalog", () => {
       { nowMs: 0 },
     );
     expect(consider[0].id).toBe("speech-thoughtful");
-    expect(consider.some((candidate) => candidate.id === "speech-animated")).toBe(false);
-    expect(emphasize[0].id).toBe("speech-animated");
+    expect(emphasize[0].id).toBe("speech-present");
     for (const candidates of [consider, emphasize]) {
       expect(candidates.length).toBeGreaterThan(0);
       expect(candidates.length).toBeLessThanOrEqual(5);
@@ -155,7 +181,6 @@ describe("local semantic motion catalog", () => {
     expect(candidates.map((entry) => entry.animation).sort()).toEqual([
       "/animations/mixamo/Hands Forward Gesture.vrma",
       "anim:Idle Chatting",
-      "anim:Idle Chatting 2",
     ]);
   });
 
@@ -164,10 +189,7 @@ describe("local semantic motion catalog", () => {
       { intent: "explain", context: "speech" },
       { nowMs: 0 },
     );
-    expect(candidates.map((entry) => entry.animation).sort()).toEqual([
-      "anim:Idle Chatting",
-      "anim:Idle Chatting 2",
-    ]);
+    expect(candidates.map((entry) => entry.animation)).toEqual(["anim:Idle Chatting"]);
     expect(retrieveMotionCandidates({ intent: "explain", context: "idle" }, { nowMs: 0 })).toEqual(
       [],
     );

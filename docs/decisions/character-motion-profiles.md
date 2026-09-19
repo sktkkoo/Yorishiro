@@ -1,7 +1,7 @@
 # Character motion profiles and whole-body composition
 
 **Status**: first integrated implementation; visual acceptance is tracked separately
-**Last updated**: 2026-09-19
+**Last updated**: 2026-09-20
 
 ## Problem and boundary
 
@@ -52,10 +52,13 @@ than accepted with an unimplemented contract. Explicit manual motion commands
 keep their existing priority and playback interface; they can take lower-body
 ownership through the physical commit lifecycle below.
 
-The default admits six explicitly named speech entries, one bounded posture and
+The default admits five explicitly named speech entries, one bounded posture and
 two finite occasional performances. Adding another catalog entry does not expand
-this list. `Shrugging` and the upper-body `anim:Idle` performance are absent from
-all automatic roles. The lower-body `anim:Idle` foundation is prepared independently;
+this list. `Idle Chatting 2`, `Shrugging` and the upper-body `anim:Idle` performance
+are absent from all automatic roles. Chatting 2 was excluded after the user
+identified shaky arm movement around its bilateral thumbs-up at source 3–4 s;
+the whole clip remains available only for explicit diagnostics. The lower-body
+`anim:Idle` foundation is prepared independently;
 its availability does not admit the upper performance. HandOnHip belongs only to
 `posture`, with an 8–12 second ownership lease, 180-second cooldown, and no forced
 first choice. Empty listening/ambient candidates leave the admitted standing
@@ -95,8 +98,9 @@ excluded during preparation.
 ## Intensity and evidence
 
 Standing dynamics use the [terminal idle calibration](terminal-idle-intensity-calibration.md).
-Speech programs use the separate authored speech gain: Normal and Lively retain
-the existing conversational pose weight, while zero and Calm still reduce it.
+Speech programs use the [authored performance strength policy](authored-performance-intensity-review.md):
+Normal retains individual baselines, while Lively and Over reach full authored
+weight subject to reviewed ceilings. Zero and Calm still reduce it.
 The gate and actual entry use the same latest gain; a setting change during load
 does not restart or shorten the authored fade.
 
@@ -118,5 +122,8 @@ final composition with [composed-pose diagnostics](composed-motion-diagnostics.m
 
 ## Revision history
 
+- 2026-09-20: Excluded Chatting 2 from every default automatic role after confirmed
+  user replay; retained the full source for explicit diagnostics without cutting
+  or jump-skipping the rejected interval.
 - 2026-09-19: Added explicit character repertoire, shared composition grants and
   physical commit/recovery ownership without replacing the existing scheduler.
