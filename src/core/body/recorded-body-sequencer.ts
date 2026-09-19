@@ -65,8 +65,14 @@ interface RecordedBodyPlayer {
  */
 export class RecordedBodySequencer {
   private units: readonly RecordedBodyUnit[] = [];
+  private readonly contiguousRuns = new Map<string, readonly RecordedBodyUnit[]>();
   private prepared: Promise<void> | null = null;
-  private current: { unit: RecordedBodyUnit; playback: RecordedBodyPlayback } | null = null;
+  private current: {
+    unit: RecordedBodyUnit;
+    run: readonly RecordedBodyUnit[];
+    runIndex: number;
+    playback: RecordedBodyPlayback;
+  } | null = null;
   private pending = false;
   private enabled = false;
   private disposed = false;
@@ -135,8 +141,11 @@ export class RecordedBodySequencer {
         if (this.disposed) return;
         if (await this.player.preloadRecordedBase(ref)) available.add(ref);
       }
-      if (!this.disposed)
+      if (!this.disposed) {
         this.units = manifest.units.filter((unit) => available.has(unit.animation));
+        for (const unit of this.units)
+          this.contiguousRuns.set(unit.id, contiguousRun(unit, this.units));
+      }
     } catch {
       // Optional source assets may be absent; the existing recorded idle remains.
       this.units = [];
@@ -151,6 +160,7 @@ export class RecordedBodySequencer {
     intensity = 1,
   ): void {
     if (this.disposed) return;
+    this.syncLogicalUnit();
     if (Number.isFinite(deltaMs)) this.elapsedMs += Math.max(0, Math.min(1_000, deltaMs));
     if (!enabled) {
       this.suspend(650);
@@ -232,27 +242,44 @@ export class RecordedBodySequencer {
         pool.splice(pool.indexOf(candidate), 1);
         const { unit } = candidate;
         try {
-          const playback = await this.player.playRecordedBase(unit.animation, {
-            startTimeSec: unit.startTimeSec,
-            endTimeSec: unit.endTimeSec,
-            contactWindows: unit.contactWindows,
-            fadeInMs: initialPose ? 0 : 800,
-            initialPose,
-            axialReferenceTimeSec: unit.axialReferenceTimeSec,
-            isCurrent,
-            onCommit: this.options.onCommit,
-            getInitialState: () => ({
-              paused: this.intensity === 0,
-              axialStrength: this.axialStrength,
-              upperWeight:
-                this.allowBaseUpper && unit.context === this.context ? this.intensity : 0,
-            }),
-          });
+          let run = this.contiguousRuns.get(unit.id) ?? [unit];
+          const playRun = (last: RecordedBodyUnit) =>
+            this.player.playRecordedBase(unit.animation, {
+              startTimeSec: unit.startTimeSec,
+              endTimeSec: last.endTimeSec,
+              contactWindows: unit.contactWindows,
+              fadeInMs: initialPose ? 0 : 800,
+              initialPose,
+              axialReferenceTimeSec: unit.axialReferenceTimeSec,
+              isCurrent,
+              onCommit: this.options.onCommit,
+              getInitialState: () => ({
+                paused: this.intensity === 0,
+                axialStrength: this.axialStrength,
+                upperWeight:
+                  this.allowBaseUpper && unit.context === this.context ? this.intensity : 0,
+              }),
+            });
+          let playback: RecordedBodyPlayback;
+          try {
+            playback = await playRun(run[run.length - 1]);
+          } catch (error) {
+            if (
+              run.length === 1 ||
+              !isCurrent() ||
+              (error instanceof DOMException && error.name === "AbortError")
+            )
+              throw error;
+            // A later endpoint may fail the target-space gate. Preserve the
+            // original unit's independent eligibility instead of widening it.
+            run = [unit];
+            playback = await playRun(unit);
+          }
           if (!isCurrent()) {
             playback.cancel();
             return;
           }
-          this.current = { unit, playback };
+          this.current = { unit, run, runIndex: 0, playback };
           this.upperEnabled =
             this.intensity > 0 && this.allowBaseUpper && unit.context === this.context;
           this.upperStrength = this.upperEnabled ? this.intensity : 0;
@@ -285,6 +312,7 @@ export class RecordedBodySequencer {
     return this.current !== null;
   }
   get ownsUpperBody(): boolean {
+    this.syncLogicalUnit();
     return (
       this.intensity > 0 &&
       this.allowBaseUpper &&
@@ -298,6 +326,7 @@ export class RecordedBodySequencer {
   }
 
   getSnapshot() {
+    this.syncLogicalUnit();
     return {
       axialStrength: this.axialStrength,
       targetModelSha256: this.options.modelSha256 ?? null,
@@ -321,7 +350,26 @@ export class RecordedBodySequencer {
     };
   }
 
+  /** Caller-owned diagnostic context for final-pose sampling, with no frame allocation. */
+  writeMotionDiagnosticState(out: {
+    recordedUnit: string | null;
+    recordedAnimation: string | null;
+    recordedPhaseSec: number | null;
+    recordedHeld: boolean;
+    recordedPaused: boolean;
+    recordedUpperStrength: number;
+  }): void {
+    this.syncLogicalUnit();
+    out.recordedUnit = this.current?.unit.id ?? null;
+    out.recordedAnimation = this.current?.unit.animation ?? null;
+    out.recordedPhaseSec = this.current?.playback.phaseSec ?? null;
+    out.recordedHeld = this.current?.playback.held ?? false;
+    out.recordedPaused = this.current?.playback.paused ?? false;
+    out.recordedUpperStrength = this.current ? this.upperStrength : 0;
+  }
+
   suspend(fadeMs = 650, reason = "disabled"): void {
+    this.syncLogicalUnit();
     this.enabled = false;
     if (!this.pending && !this.current) return;
     if (this.current) this.lastSuspension = { reason, unit: this.current.unit.id };
@@ -337,6 +385,64 @@ export class RecordedBodySequencer {
     this.disposed = true;
     this.suspend(0);
   }
+
+  /** Logical authored boundaries remain observable without restarting source playback. */
+  private syncLogicalUnit(): void {
+    const current = this.current;
+    if (!current) return;
+    while (
+      current.runIndex + 1 < current.run.length &&
+      current.playback.phaseSec >= current.run[current.runIndex + 1].startTimeSec
+    ) {
+      current.unit = current.run[++current.runIndex];
+      this.lastPlayed.set(current.unit.id, this.elapsedMs);
+    }
+  }
+}
+
+/**
+ * Only an unambiguous adjacent portion of the same cached source may continue.
+ * All units already passed the avatar manifest gate. Equal contact annotations
+ * retain exactly the original support policy; no windows are widened or bridged.
+ */
+function contiguousRun(
+  first: RecordedBodyUnit,
+  units: readonly RecordedBodyUnit[],
+): readonly RecordedBodyUnit[] {
+  const run = [first];
+  let tail = first;
+  while (run.length < units.length) {
+    let next: RecordedBodyUnit | undefined;
+    let ambiguous = false;
+    for (const candidate of units) {
+      if (
+        candidate.startTimeSec !== tail.endTimeSec ||
+        candidate.animation !== tail.animation ||
+        candidate.context !== tail.context ||
+        candidate.axialReferenceTimeSec !== tail.axialReferenceTimeSec ||
+        candidate.handsAtRest !== tail.handsAtRest ||
+        candidate.contactWindows.length !== tail.contactWindows.length ||
+        !candidate.contactWindows.every((window, index) => {
+          const previous = tail.contactWindows[index];
+          return (
+            window.feet === previous.feet &&
+            window.startTimeSec === previous.startTimeSec &&
+            window.endTimeSec === previous.endTimeSec
+          );
+        })
+      )
+        continue;
+      if (next) {
+        ambiguous = true;
+        break;
+      }
+      next = candidate;
+    }
+    if (!next || ambiguous) break;
+    run.push(next);
+    tail = next;
+  }
+  return Object.freeze(run);
 }
 
 function clampIntensity(value: number): number {

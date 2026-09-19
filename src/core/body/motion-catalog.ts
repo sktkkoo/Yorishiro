@@ -73,6 +73,7 @@ const CONVERSATION_INTENTS = ["explain", "agree", "consider", "reassure", "empha
  * Idle Conversation is excluded: source wrist/forearm coupling failed acting QA.
  * Watching and whole Looking Around clips fail low-wrist QA. The safe survey
  * interval is a separate, infrequent finite performance over the recorded base.
+ * Shrugging is manual-only: the shoulder lift is distracting in conversation.
  * See CREDITS.md and docs/decisions/motion-source-eligibility.md.
  */
 export const DEFAULT_MOTION_CATALOG: readonly MotionCatalogEntry[] = [
@@ -97,7 +98,7 @@ export const DEFAULT_MOTION_CATALOG: readonly MotionCatalogEntry[] = [
     features: [0.85, 0.25, 0.15, 0.3, 0.15, 0.2],
     weight: 0.85,
     speed: 0.8,
-    cooldownMs: 60_000,
+    cooldownMs: 180_000,
   },
   {
     id: "speech-appreciate",
@@ -160,22 +161,6 @@ export const DEFAULT_MOTION_CATALOG: readonly MotionCatalogEntry[] = [
     weight: 1,
     speed: 1,
     cooldownMs: 20_000,
-    playback: "once",
-    finishAfterSpeech: true,
-  },
-  {
-    id: "speech-uncertain",
-    animation: "/animations/mixamo/Shrugging.vrma",
-    family: "uncertainty",
-    contexts: ["speech"],
-    intents: ["uncertain"],
-    features: [0.65, 0.8, 1, 0.35, 0.2, 0.3],
-    weight: 1,
-    // Unattenuated left-upper-arm entry exceeds the existing joint gate.
-    // Intensity may never raise this above the reviewed 0.8 composition.
-    maxWeight: 0.8,
-    speed: 1,
-    cooldownMs: 45_000,
     playback: "once",
     finishAfterSpeech: true,
   },

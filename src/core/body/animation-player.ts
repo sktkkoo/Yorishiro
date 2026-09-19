@@ -63,6 +63,12 @@ export interface AnimationPlayOptions {
   maxDurationMs?: number;
   /** Checked after loading and after transition waits. False rejects with AbortError. */
   isCurrent?: () => boolean;
+  /** Automatic programs revalidate the actual entry after loading and transition waits. */
+  requireCompatibleEntry?: boolean;
+  /** Physical ownership changes only after preparation and all entry gates pass. */
+  onCommit?: () => void;
+  /** Latest automatic contribution; sampled once after loading for both gate and playback. */
+  getCurrentWeight?: () => number;
 }
 
 interface WeightRamp {
@@ -403,7 +409,19 @@ export class AnimationPlayer {
             : 0),
       ),
     );
-    const weight = clampWeight(opts.weight ?? 0.7);
+    const weight = clampWeight(opts.getCurrentWeight?.() ?? opts.weight ?? 0.7);
+    if (
+      opts.requireCompatibleEntry &&
+      !measureMotionEntry(
+        this.recordedBase?.transitionPose(this.poseSnapshot) ?? this.poseSnapshot,
+        profile,
+        { weight, speed, matched: false, loop: opts.loop ?? false, startTimeSec: action.time },
+        UPPER_BODY_TRANSITION_LIMITS,
+      )
+    ) {
+      this.mixer.uncacheClip(playbackClip);
+      throw new Error("Automatic motion entry is no longer compatible");
+    }
     const fadeSec = Math.max(0, finiteOr(opts.fadeInMs, 200)) / 1000;
     const anim: ActiveAnimation = {
       id,
@@ -443,6 +461,14 @@ export class AnimationPlayer {
       }
     }
     // Activate incoming bindings before retiring a zero-fade action.
+    try {
+      this.assertCurrent(isCurrent);
+      opts.onCommit?.();
+      this.assertCurrent(isCurrent);
+    } catch (error) {
+      this.mixer.uncacheClip(playbackClip);
+      throw error;
+    }
     action.play();
     this.canInitializeRecordedBase = false;
     for (const outgoing of this.active.values()) {
@@ -467,6 +493,7 @@ export class AnimationPlayer {
     return {
       id,
       completion: anim.completion.promise,
+      stopped: anim.stopped.promise,
       setWeight: (value: number, fadeMs = 0) => {
         if (!this.active.has(id)) return;
         const to = clampWeight(value);
@@ -513,6 +540,21 @@ export class AnimationPlayer {
   }
   hasActiveRecordedBase(): boolean {
     return this.recordedBase?.hasMotion ?? false;
+  }
+  /** Actual mixer actions, rather than a scheduler request that may still be loading. */
+  writeMotionDiagnosticState(out: {
+    performanceAnimation: string | null;
+    performancePhaseSec: number | null;
+    performanceWeight: number;
+    performanceCount: number;
+  }): void {
+    const latest = this.latestAnimation("performance");
+    out.performanceAnimation = latest?.ref ?? null;
+    out.performancePhaseSec = latest?.action.time ?? null;
+    out.performanceWeight = latest?.action.getEffectiveWeight() ?? 0;
+    out.performanceCount = 0;
+    for (const anim of this.active.values())
+      if (anim.layer === "performance") out.performanceCount++;
   }
   getTotalEffectiveWeight(): number {
     return Math.min(

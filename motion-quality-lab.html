@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Motion quality review</title>
+    <style>
+      * { box-sizing: border-box; }
+                                    body { margin: 0; background: #151923; color: #e6ecf6; font: 14px system-ui, sans-serif; }
+                                    header, footer { padding: 18px 24px; }
+                                    h1 { margin: 0 0 8px; font-size: 22px; }
+                                    p { margin: 5px 0; color: #aebcd1; }
+                                    .labels { display: grid; grid-template-columns: 5fr 5fr 4fr; padding: 0 18px 10px; }
+                                    canvas { display: block; width: 1400px; height: 640px; }
+                                    #state { font: 12px ui-monospace, monospace; }
+    </style>
+  </head>
+  <body>
+    <header><h1>Motion quality review</h1><p id="status">Loading local Yori assets…</p><p id="state">Preparing…</p></header>
+    <div class="labels"><span>Fixed front / full body</span><span>Fixed side / full body</span><span>Production terminal camera / tracked</span></div>
+    <canvas id="review" width="1400" height="640"></canvas>
+    <footer><p>One final composed avatar, three cameras. Terminal camera uses production framing and vertical tracking; this is an isolated browser lab, without the native terminal compositor or scene effects.</p><p>Diagnostic playback and geometric measurements do not establish naturalness, mesh collision clearance, or human acceptance.</p></footer>
+    <script type="module" src="/src/dev/motion-quality-lab.ts"></script>
+  </body>
+</html>

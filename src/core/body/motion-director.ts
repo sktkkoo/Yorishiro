@@ -178,6 +178,24 @@ export class MotionDirector {
     this.excludedAnimations.add(animation);
   }
 
+  /** A prepared candidate that never committed must not consume history or become permanently unavailable. */
+  rejectDecision(decision: MotionDecision): void {
+    const id = decision.candidates.find(
+      (candidate) => candidate.animation === decision.animation,
+    )?.id;
+    this.history = this.history.filter(
+      (entry) => entry.id !== id || entry.selectedAtMs !== decision.selectedAtMs,
+    );
+    if (this.lastDecision !== decision) return;
+    this.lastDecision = null;
+    if (decision.context === "speech") this.lastSpeechAtMs = -Infinity;
+    this.quietUntilMs = 0;
+    this.nextDueAtMs = this.elapsedMs + 2_500;
+    this.retryAtMs = this.nextDueAtMs;
+    this.phase = "waiting";
+    this.suppressedReason = "transition";
+  }
+
   private readonly excludedAnimations = new Set<string>();
 
   private select(

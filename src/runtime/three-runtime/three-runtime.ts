@@ -179,8 +179,8 @@ class ThreeRuntimeImpl implements ThreeRuntime {
       try {
         const buffer = await getVrmCache().getBytes(url);
         if (myToken !== this.loadToken) return;
-        // Contact-prepared recordings are qualified against the exact target,
-        // including its shoes. Other avatars retain the generic motion library.
+        // Match the avatar qualified for contact (including shoes) and automatic acting.
+        // Unknown hashes retain calibrated support without the Yori upper repertoire.
         const modelSha256 = globalThis.crypto?.subtle
           ? Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", buffer)), (byte) =>
               byte.toString(16).padStart(2, "0"),

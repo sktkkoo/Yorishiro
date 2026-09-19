@@ -1,5 +1,11 @@
 # Contextual use of the September 15 Mixamo recordings
 
+**September 19 update:** Shrugging is no longer admitted to automatic playback,
+following the user's acting preference. Its original conversion and compatibility
+measurements below remain historical evidence, not current permission to select
+it. Current admission is defined by the character motion profile; see
+[motion orchestration](motion-orchestration.md).
+
 The user supplied seven original FBX recordings and requested review of the complete performances before assigning idle or conversational uses. All seven were converted with their original 30 Hz timestamps, 52 bone rotation tracks, 30 finger tracks, and authored hips XYZ variation. The original files remain in `../Yorishiro-assets/sources/`. Conversion fidelity and provenance are recorded in `mixamo-source-conversion.json`; source attribution and license links are in `CREDITS.md` and `mixamo-idle-import.md`.
 
 ## Playback decisions
@@ -9,7 +15,7 @@ The user supplied seven original FBX recordings and requested review of the comp
 | Hands Forward Gesture | A short explanatory emphasis | Full 3.1-second phrase, once; never a looping speech baseline. |
 | Fist Pump | Explicit achievement or strong joy | Full 3.8-second phrase, once; ordinary agreement or thanks does not trigger it. |
 | Thoughtful Head Shake | Reconsideration or uncertainty | Full 3.067-second reaction, once; not continuous head movement while idle. |
-| Shrugging | Explicit uncertainty | Full 2-second phrase, once; clip-specific maximum upper-body weight 0.8. |
+| Shrugging | Manual asset only; automatic use withdrawn September 19 | The original 2-second phrase and earlier 0.8 compatibility review remain available for explicit inspection. |
 | Warrior Idle | An occasional chest/arm stretch | Use original seconds 5–10, including arms down before and after opening. The 13.3-second full source remains available separately. |
 | Sad Idle | A whole-body expression of disappointment | Not automatically admitted yet: its foot action is essential, and the current base cannot safely resume after the full-body performance. |
 | Texting While Standing | Taking out, using, and putting away a phone | Manual/contextual asset for a scene with a phone prop; absent from automatic selection when the character has no phone. |

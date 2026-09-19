@@ -81,6 +81,87 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
+describe("physical motion commitment and recovery", () => {
+  it("rechecks an automatic entry after asynchronous preparation and retains the outgoing action on rejection", async () => {
+    const { player, addClip } = rig();
+    addClip("moving", [0, 2.4]);
+    addClip("candidate", [0, 0]);
+    const options = {
+      mask: "upper-body",
+      weight: 1,
+      speed: 1,
+      transition: "immediate",
+      loop: false,
+    } as const;
+    await player.preload("candidate", options);
+    const outgoing = await player.play("moving", { ...options, fadeInMs: 0 });
+    player.update(0);
+    expect(player.evaluateTransition("candidate", options)).not.toBeNull();
+    const commit = vi.fn();
+    const pending = player.play("candidate", {
+      ...options,
+      requireCompatibleEntry: true,
+      onCommit: commit,
+    });
+    player.update(1.5);
+    await expect(pending).rejects.toThrow("no longer compatible");
+    expect(commit).not.toHaveBeenCalled();
+    expect(player.activeCount).toBe(1);
+    expect(actionFor(player, outgoing.id).time).toBeCloseTo(1.5);
+    player.stopAll();
+  });
+
+  it("samples the latest contribution for both physical entry validation and initial playback", async () => {
+    const { player, addClip } = rig();
+    addClip("base", [0, 0]);
+    addClip("candidate", [1.8, 1.8]);
+    await player.play("base", { mask: "upper-body", weight: 1, loop: true, fadeInMs: 0 });
+    player.update(0);
+    let weight = 1;
+    const commit = vi.fn();
+    const pending = player.play("candidate", {
+      mask: "upper-body",
+      weight: 1,
+      fadeInMs: 0,
+      requireCompatibleEntry: true,
+      getCurrentWeight: () => weight,
+      onCommit: commit,
+    });
+    weight = 0.2;
+    const incoming = await pending;
+    expect(commit).toHaveBeenCalledOnce();
+    expect(actionFor(player, incoming.id).getEffectiveWeight()).toBe(0.2);
+    player.stopAll();
+  });
+
+  it("cannot resurrect an incoming action cancelled by its commit callback", async () => {
+    const { player, addClip } = rig();
+    addClip("incoming", [0, 0]);
+    await expect(player.play("incoming", { onCommit: () => player.stopAll() })).rejects.toThrow();
+    expect(player.activeCount).toBe(0);
+  });
+
+  it("keeps physical recovery distinct from semantic completion", async () => {
+    const { player, addClip } = rig();
+    addClip("finite", [0, 0.2], 0.5);
+    const clip = await player.play("finite", { fadeInMs: 0, fadeOutMs: 200 });
+    const complete = vi.fn();
+    const stopped = vi.fn();
+    void clip.completion.then(complete);
+    void clip.stopped.then(stopped);
+    player.update(0.5);
+    await Promise.resolve();
+    expect(complete).toHaveBeenCalledOnce();
+    expect(stopped).not.toHaveBeenCalled();
+    expect(player.activeCount).toBe(1);
+    player.update(0.21);
+    await Promise.resolve();
+    expect(stopped).toHaveBeenCalledOnce();
+    expect(player.activeCount).toBe(0);
+    player.stopAll();
+  });
+});
+
 describe("cached physical candidate evaluation", () => {
   const opts = {
     mask: "upper-body",

@@ -49,7 +49,6 @@ describe("local semantic motion catalog", () => {
       "speech-celebrate",
       "speech-present",
       "speech-thoughtful",
-      "speech-uncertain",
     ]);
     for (const entry of admitted) {
       expect(entry.contexts).toEqual(["speech"]);
@@ -69,7 +68,7 @@ describe("local semantic motion catalog", () => {
       retrieveMotionCandidates({ context: "speech", intent: "uncertain" }, { nowMs: 0 }).map(
         (entry) => entry.id,
       ),
-    ).toEqual(["speech-uncertain", "speech-thoughtful"]);
+    ).toEqual(["speech-thoughtful"]);
     for (const intent of ["agree", "reassure"] as const) {
       expect(
         retrieveMotionCandidates({ context: "speech", intent }, { nowMs: 0 }).some((entry) =>
@@ -86,6 +85,22 @@ describe("local semantic motion catalog", () => {
       "anim:VRMA_06_HandOnHip",
     ]);
     expect(idle.every((entry) => entry.weight >= 0.85)).toBe(true);
+  });
+
+  it("keeps hand-on-hip occasional even when quiet idle has played between selections", () => {
+    const history: MotionHistoryEntry[] = [
+      { id: "idle-rest-hand", family: "rest", context: "idle", selectedAtMs: 0 },
+      { id: "idle-balance", family: "balance", context: "idle", selectedAtMs: 40_000 },
+    ];
+    const query = { context: "idle", intent: "neutral" } as const;
+    for (const nowMs of [60_000, 120_000, 179_999]) {
+      expect(retrieveMotionCandidates(query, { nowMs, history })).not.toEqual(
+        expect.arrayContaining([expect.objectContaining({ id: "idle-rest-hand" })]),
+      );
+    }
+    expect(retrieveMotionCandidates(query, { nowMs: 180_000, history })).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: "idle-rest-hand" })]),
+    );
   });
 
   it("gates by context and intent before ranking rather than trusting vector proximity", () => {

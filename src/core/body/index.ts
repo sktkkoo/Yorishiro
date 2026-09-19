@@ -41,6 +41,7 @@ import { IdleBeatScheduler } from "./beat-scheduler";
 import type { BeatTarget } from "./beat-types";
 import { BlinkSystem } from "./blink-system";
 import { BreathingSystem } from "./breathing-system";
+import { ComposedMotionMonitor, createComposedMotionContext } from "./composed-motion-monitor";
 import { CursorAttentionSystem, type MutableCursorAttentionOutput } from "./cursor-attention";
 import type {
   AdmittedExpressionIntent,
@@ -83,8 +84,21 @@ import {
   type MutableMicroexpressionEvent,
 } from "./idle-microexpression-system";
 import { IdleSquintSystem } from "./idle-squint-system";
-import { DEFAULT_MOTION_CATALOG, type MotionContext, type MotionIntent } from "./motion-catalog";
+import type { MotionContext, MotionIntent } from "./motion-catalog";
+import {
+  MotionCompositionController,
+  type MotionCompositionInput,
+  type MotionCompositionPlan,
+} from "./motion-composition";
 import { MotionDirector, type MotionDirectorSnapshot } from "./motion-director";
+import { calibratedMotionIntensity } from "./motion-intensity";
+import {
+  type CharacterMotionProfile,
+  type CompiledMotionProfile,
+  compileMotionProfile,
+  DEFAULT_CHARACTER_MOTION_PROFILE,
+  type MotionProgram,
+} from "./motion-profile";
 import {
   type MotionHandle as InternalMotionHandle,
   type MotionRequest as InternalMotionRequest,
@@ -93,10 +107,6 @@ import {
   type MotionSource,
 } from "./motion-scheduler";
 import { OccasionalIdleMotion } from "./occasional-idle-motion";
-import {
-  OCCASIONAL_IDLE_ANIMATIONS,
-  selectOccasionalIdleAnimation,
-} from "./occasional-idle-selector";
 import { ProceduralBones } from "./procedural-bones";
 import { RecordedBodySequencer } from "./recorded-body-sequencer";
 import { RecordedIdleFoundation } from "./recorded-idle-foundation";
@@ -245,17 +255,38 @@ export class Body {
   private nextSpeechStateExpressionLayerId = 1;
   private readonly cursorAttention: CursorAttentionSystem;
   private readonly animationPlayer: AnimationPlayer;
+  private readonly composedMotionMonitor: ComposedMotionMonitor;
+  private readonly composedMotionContext = createComposedMotionContext();
   private readonly recordedIdleFoundation: RecordedIdleFoundation;
   private readonly recordedBody: RecordedBodySequencer;
   private readonly recordedMotionDynamics = new RecordedMotionDynamics();
-  private readonly axialStrength = { torso: 0.18, head: 0.06 };
+  private readonly axialStrength = { torso: 0.09, head: 0.03 };
   private readonly postureVariation: OccasionalIdleMotion;
-  private firstPostureVariation = true;
   private readonly occasionalIdleMotion: OccasionalIdleMotion;
-  private readonly availableOccasionalIdles = new Set<string>();
-  private previousOccasionalIdle: string | null = null;
+  private readonly motionProfile: CompiledMotionProfile;
+  private readonly motionComposition: MotionCompositionController;
+  private readonly automaticPrograms = new WeakMap<
+    InternalMotionRequest,
+    { readonly program: MotionProgram; readonly expiresAtMs?: number }
+  >();
+  private readonly lastProgramPlayed = new Map<string, number>();
+  private readonly previousTimedPrograms = new Map<string, string>();
+  private motionElapsedMs = 0;
+  private readonly compositionInput: MotionCompositionInput = {
+    enabled: true,
+    moving: true,
+    claimed: false,
+    activity: "idle",
+    phase: "idle",
+    ungroundedSpeech: false,
+    relaxed: false,
+    recordedActive: false,
+    recordedOwnsUpper: false,
+    scheduled: null,
+    postureActive: false,
+    occasionalActive: false,
+  };
   private readonly relaxedHandFidget: RelaxedHandFidget;
-  private foundationBlockedByPerformance = false;
   private readonly proceduralBones: ProceduralBones;
   private readonly beatScheduler: IdleBeatScheduler;
   private readonly beatTarget: BeatTarget;
@@ -271,29 +302,17 @@ export class Body {
    */
   private readonly motionScheduler: MotionScheduler;
   private readonly availableMotions = new Set<string>();
-  private readonly motionDirector = new MotionDirector({
-    availableAnimations: this.availableMotions,
-    evaluateTransition: (animation, options) =>
-      this.animationPlayer.evaluateTransition(animation, {
-        ...options,
-        weight: options.weight * Math.min(1, this.motionIntensity),
-      }),
-  });
+  private readonly motionDirector: MotionDirector;
   private motionLibraryEnabled = true;
   private motionLibraryLoad: Promise<void> | null = null;
   private ambientMotionHandle: InternalMotionHandle | null = null;
   private ambientMotionPlaybackContext: MotionContext | null = null;
   private readonly semanticMotionHandles = new Set<SdkMotionHandle>();
   private disposed = false;
-  private motionIntensity = 1;
+  private motionIntensitySetting = 1;
+  private motionIntensity = calibratedMotionIntensity(1);
   private motionConversationPhase: MotionConversationPhase = "idle";
   private hasGroundedConversationPhase = false;
-  private readonly ambientMotionContext = {
-    enabled: true,
-    context: "idle" as MotionContext,
-    intent: "neutral" as MotionIntent,
-    blocked: false,
-  };
 
   private stateExprState: EyeState | null = null;
 
@@ -346,11 +365,15 @@ export class Body {
    * 設計仕様: internal design-record: 2026-04-29-motion-priority-queue-design.md §5.1
    */
   private activeMotionPlayback: {
+    readonly animation: string;
+    readonly priority: MotionPriority;
     readonly stop: (fadeMs?: number) => Promise<void>;
     readonly cancel: () => void;
     readonly setWeight: (weight: number, fadeMs?: number) => void;
     readonly generation: number;
     readonly automaticBaseWeight: number | null;
+    readonly program?: MotionProgram;
+    readonly expiresAtMs?: number;
   } | null = null;
   /** Invalidates AnimationPlayer.play() results that arrive after ownership changed. */
   private motionActivationGeneration = 0;
@@ -392,11 +415,16 @@ export class Body {
     vrm: VRM,
     devLog?: SubsystemLog,
     claimState?: ClaimState,
-    motionAssets: { modelSha256?: string } = {},
+    motionAssets: { modelSha256?: string; motionProfile?: CharacterMotionProfile } = {},
   ) {
     this.vrm = vrm;
     this.devLog = devLog;
     this.claimState = claimState ?? getClaimState();
+    this.motionProfile = compileMotionProfile(
+      motionAssets.motionProfile ?? DEFAULT_CHARACTER_MOTION_PROFILE,
+      motionAssets.modelSha256,
+    );
+    this.motionComposition = new MotionCompositionController(this.motionProfile);
     this.expressions = new ExpressionManager();
     this.expressionIntentBridge = new ExpressionIntentSlotBridge(
       this.expressions,
@@ -485,6 +513,18 @@ export class Body {
       this.relaxedHandFidget.restoreBaseRotations();
       this.proceduralBones.restoreBaseRotations();
     });
+    this.composedMotionMonitor = new ComposedMotionMonitor(vrm);
+    this.motionDirector = new MotionDirector({
+      catalog: this.motionProfile.programs
+        .filter((program) => program.role === "ambient" || program.role === "speech")
+        .map((program) => program.entry),
+      availableAnimations: this.availableMotions,
+      evaluateTransition: (animation, options) =>
+        this.animationPlayer.evaluateTransition(animation, {
+          ...options,
+          weight: options.weight * this.automaticMotionGain(animation),
+        }),
+    });
     this.recordedIdleFoundation = new RecordedIdleFoundation(this.animationPlayer);
     this.recordedBody = new RecordedBodySequencer(this.animationPlayer, {
       modelSha256: motionAssets.modelSha256,
@@ -496,14 +536,8 @@ export class Body {
     this.motionScheduler = new MotionScheduler({
       onActivate: async (req) => {
         const generation = ++this.motionActivationGeneration;
-        this.foundationBlockedByPerformance = req.options?.mask !== "upper-body";
-        if (this.foundationBlockedByPerformance) {
-          this.recordedBody.suspend(
-            req.options?.fadeInMs ?? 200,
-            `performance:${req.source}:${req.priority}:${req.animation}`,
-          );
-          this.recordedIdleFoundation.suspend(req.options?.fadeInMs ?? 200);
-        }
+        const automatic = this.automaticPrograms.get(req);
+        const program = automatic?.program;
         // AnimationPlayer.play() を呼んで clip を mixer に載せる。返値の handle
         // (stop / cancel / completion) を activeMotionPlayback に保持し、
         // onDeactivate が同じ playback を停止できるようにする。
@@ -512,42 +546,70 @@ export class Body {
         // MotionScheduler 側は「自然完了」として扱う。preempt / cancel の場合は
         // onDeactivate が先に handle.stop / cancel を呼び、completion を resolve させる
         // ことで本 await が抜ける（MotionScheduler の settled guard が二重 resolve を防ぐ）。
-        const previous = this.activeMotionPlayback;
-        const gainAtActivation = Math.min(1, this.motionIntensity);
+        const gainAtActivation = this.automaticMotionGain(req.animation, req.priority);
+        let gainAtCommit = gainAtActivation;
         let result: Awaited<ReturnType<AnimationPlayer["play"]>>;
         try {
           result = await this.animationPlayer.play(req.animation, {
             ...req.options,
+            requireCompatibleEntry: program !== undefined,
+            getCurrentWeight:
+              program && gainAtActivation > 0
+                ? () => {
+                    gainAtCommit = this.automaticMotionGain(req.animation, req.priority);
+                    return ((req.options?.weight ?? 0.7) / gainAtActivation) * gainAtCommit;
+                  }
+                : undefined,
+            onCommit: () => {
+              if (
+                program &&
+                !this.motionComposition.admits(program, this.resolveMotionComposition())
+              )
+                throw new Error("Motion composition no longer admitted");
+              this.motionComposition.commit(generation, req.options?.mask);
+              if (program?.role === "posture" || program?.role === "occasional") {
+                this.previousTimedPrograms.set(program.role, program.entry.id);
+                this.lastProgramPlayed.set(program.entry.id, this.motionElapsedMs);
+              }
+              if (req.options?.mask !== "upper-body") {
+                this.recordedBody.suspend(
+                  req.options?.fadeInMs ?? 200,
+                  `performance:${req.source}:${req.priority}:${req.animation}`,
+                );
+                this.recordedIdleFoundation.suspend(req.options?.fadeInMs ?? 200);
+              }
+            },
             isCurrent: () =>
               generation === this.motionActivationGeneration &&
               !this.disposed &&
               !this.claimState.isClaimed("animation"),
           });
         } catch (error) {
-          if (generation === this.motionActivationGeneration) {
-            this.foundationBlockedByPerformance = false;
-          }
-          if (generation === this.motionActivationGeneration && previous) {
-            void previous.stop(250);
-            if (this.activeMotionPlayback === previous) this.activeMotionPlayback = null;
-          }
+          this.motionComposition.settled(generation);
+          // The outgoing physical owner survives a failed replacement.
           throw error;
         }
+        void result.stopped.then(() => this.motionComposition.settled(generation));
         if (generation !== this.motionActivationGeneration) {
           result.cancel();
           return;
         }
         if (
           gainAtActivation > 0 &&
-          gainAtActivation !== Math.min(1, this.motionIntensity) &&
+          gainAtCommit !== this.automaticMotionGain(req.animation, req.priority) &&
           (req.source === "idle" || req.priority === "speech-expression")
         ) {
           result.setWeight(
-            ((req.options?.weight ?? 0.7) * Math.min(1, this.motionIntensity)) / gainAtActivation,
+            ((req.options?.weight ?? 0.7) * this.automaticMotionGain(req.animation, req.priority)) /
+              gainAtActivation,
             350,
           );
         }
         this.activeMotionPlayback = {
+          animation: req.animation,
+          priority: req.priority,
+          program,
+          expiresAtMs: automatic?.expiresAtMs,
           stop: result.stop,
           cancel: result.cancel,
           setWeight: result.setWeight,
@@ -562,9 +624,6 @@ export class Body {
         } finally {
           if (this.activeMotionPlayback?.stop === result.stop) {
             this.activeMotionPlayback = null;
-            if (generation === this.motionActivationGeneration) {
-              this.foundationBlockedByPerformance = false;
-            }
           }
         }
       },
@@ -573,7 +632,6 @@ export class Body {
         // Keep the outgoing pose alive during asynchronous loading and exit matching.
         // The player retires it when the replacement actually begins its crossfade.
         if (replacing) return;
-        this.foundationBlockedByPerformance = false;
         // active な playback があれば停止。fadeMs が 0 なら cancel（即時）、
         // それ以外は stop(fadeMs)。stop は async だが onDeactivate は void 契約
         // なので fire-and-forget でよい（completion 解決は MotionScheduler 側で
@@ -591,63 +649,15 @@ export class Body {
     });
 
     this.occasionalIdleMotion = new OccasionalIdleMotion({
-      // Alternate reviewed finite performances with long quiet gaps.
-      waitRangeMs: [90_000, 150_000],
-      play: () => {
-        if (this.motionScheduler.getActivePriority() !== null) return null;
-        const options = {
-          mask: "upper-body",
-          loop: false,
-          transition: "immediate",
-          speed: 1,
-          weight: Math.min(1, this.motionIntensity),
-          fadeInMs: 800,
-          fadeOutMs: 800,
-        } as const;
-        const animation = selectOccasionalIdleAnimation({
-          available: this.availableOccasionalIdles,
-          previous: this.previousOccasionalIdle,
-          canPlay: (ref) => this.animationPlayer.evaluateTransition(ref, options) !== null,
-          random: Math.random,
-        });
-        if (!animation) return null;
-        const handle = this.motionScheduler.request({
-          source: "idle",
-          priority: "idle-fidget",
-          animation,
-          options,
-        });
-        if (handle.isActive()) this.previousOccasionalIdle = animation;
-        return handle;
-      },
+      waitRangeMs: this.motionProfile.cadence.occasionalWaitMs,
+      play: () => this.playTimedProgram("occasional"),
     });
     this.postureVariation = new OccasionalIdleMotion({
-      waitRangeMs: [15_000, 25_000],
-      activeDurationRangeMs: [8_000, 12_000],
-      play: () => {
-        const activePriority = this.motionScheduler.getActivePriority();
-        if (
-          activePriority !== null &&
-          !(activePriority === "idle-fidget" && this.ambientMotionHandle?.isActive())
-        )
-          return null;
-        const decision = this.motionDirector.request(
-          { context: "idle", intent: "neutral" },
-          this.firstPostureVariation ? { preferredAnimation: "anim:VRMA_06_HandOnHip" } : undefined,
-        );
-        if (!decision) return null;
-        this.firstPostureVariation = false;
-        return this.motionScheduler.request({
-          source: "idle",
-          priority: "idle-fidget",
-          animation: decision.animation,
-          options: {
-            ...decision.options,
-            weight: decision.options.weight * Math.min(1, this.motionIntensity),
-          },
-        });
-      },
+      waitRangeMs: this.motionProfile.cadence.postureWaitMs,
+      activeDurationRangeMs: this.motionProfile.cadence.postureDurationMs,
+      play: (durationMs) => this.playTimedProgram("posture", durationMs),
     });
+    this.setMotionIntensity(this.motionIntensitySetting);
     this.applyStateExpressions("idle");
     if (typeof window !== "undefined") void this.prepareMotionLibrary();
   }
@@ -713,23 +723,44 @@ export class Body {
 
   /** Map 0–3 expressiveness to the recorded and procedural motion layers. */
   setMotionIntensity(intensity: number): void {
-    this.motionIntensity = Math.max(0, Math.min(3, Number.isFinite(intensity) ? intensity : 1));
+    this.motionIntensitySetting = Math.max(
+      0,
+      Math.min(3, Number.isFinite(intensity) ? intensity : 1),
+    );
+    this.motionIntensity = calibratedMotionIntensity(this.motionIntensitySetting);
     const playback = this.activeMotionPlayback;
-    if (
-      playback?.generation === this.motionActivationGeneration &&
-      playback.automaticBaseWeight !== null
-    ) {
-      playback.setWeight(playback.automaticBaseWeight * Math.min(1, this.motionIntensity), 350);
+    if (playback && playback.automaticBaseWeight !== null) {
+      playback.setWeight(
+        playback.automaticBaseWeight *
+          this.automaticMotionGain(playback.animation, playback.priority),
+        350,
+      );
     }
     if (this.motionIntensity === 0) {
       this.recordedIdleFoundation.suspend(350);
       this.ambientMotionHandle?.release(350);
       this.ambientMotionHandle = null;
       for (const handle of this.semanticMotionHandles) handle.release(350);
+      this.stopRetainedAutomaticPlayback(350);
     }
-    this.breathing.setIntensity(intensity);
-    this.proceduralBones.setIntensity(intensity);
-    this.beatScheduler.setIntensity(intensity);
+    this.breathing.setIntensity(this.motionIntensity);
+    this.proceduralBones.setIntensity(this.motionIntensity);
+    this.beatScheduler.setIntensity(this.motionIntensity);
+  }
+
+  /** Quiet standing calibration must not lower a deliberate speech hand pose. */
+  private automaticMotionGain(animation: string, priority?: MotionPriority): number {
+    const gain = this.motionProfile.byAnimation.get(animation)?.composition.gain;
+    const speech = gain === "speech" || (gain === undefined && priority === "speech-expression");
+    return Math.min(1, speech ? this.motionIntensitySetting : this.motionIntensity);
+  }
+
+  /** A failed replacement may leave an outgoing physical owner without a scheduler slot. */
+  private stopRetainedAutomaticPlayback(fadeMs: number): void {
+    const playback = this.activeMotionPlayback;
+    if (!playback || playback.automaticBaseWeight === null) return;
+    this.activeMotionPlayback = null;
+    void playback.stop(fadeMs);
   }
 
   setState(state: EyeState): void {
@@ -1010,6 +1041,20 @@ export class Body {
 
     // 8. VRM spring bones etc.
     this.vrm.update(delta);
+
+    // Sample after every authored/procedural layer. This is observation only;
+    // numeric pose/context rings are reused instead of cloning frame snapshots.
+    const diagnostic = this.composedMotionContext;
+    this.animationPlayer.writeMotionDiagnosticState(diagnostic);
+    this.recordedBody.writeMotionDiagnosticState(diagnostic);
+    diagnostic.activity = this.eyeSystem.state;
+    diagnostic.conversation = this.motionConversationPhase;
+    diagnostic.configuredIntensity = this.motionIntensitySetting;
+    diagnostic.effectiveIntensity = this.motionIntensity;
+    diagnostic.animationClaimed = animationClaimed;
+    diagnostic.paused =
+      this.motionIntensity === 0 && diagnostic.performanceCount === 0 && !animationClaimed;
+    this.composedMotionMonitor.update(delta, diagnostic);
   }
 
   /** Add hand relaxation after authored tracks, with explicit ownership gates. */
@@ -1030,7 +1075,7 @@ export class Body {
         this.motionLibraryEnabled &&
         this.motionIntensity > 0 &&
         this.recordedBody.active &&
-        !this.foundationBlockedByPerformance &&
+        !this.motionComposition.exclusivePerformance &&
         (handMotionPriority === null ||
           handMotionPriority === "idle-fidget" ||
           handMotionPriority === "speech-expression"),
@@ -1326,42 +1371,35 @@ export class Body {
   prepareMotionLibrary(): Promise<void> {
     if (this.motionLibraryLoad) return this.motionLibraryLoad;
     this.motionLibraryLoad = (async () => {
-      const bodyPreparation = this.recordedBody.prepare();
-      for (const entry of DEFAULT_MOTION_CATALOG) {
+      const bodyPreparation = this.motionProfile.support.recorded
+        ? this.recordedBody.prepare()
+        : Promise.resolve();
+      // Lower standing support is admitted independently from the quarantined upper Idle.
+      if (this.motionProfile.support.fallback) await this.recordedIdleFoundation.prepare();
+      for (const program of this.motionProfile.programs) {
         if (this.disposed) return;
+        const entry = program.entry;
         if (
           await this.animationPlayer.preload(entry.animation, {
-            mask: "upper-body",
-            loop: entry.contexts.includes("idle") && entry.playback !== "once",
+            mask: program.composition.mask,
+            loop:
+              (program.role === "ambient" || program.role === "posture") &&
+              entry.playback !== "once",
           })
         ) {
           this.availableMotions.add(entry.animation);
           if (
-            entry.contexts.includes("speech") &&
+            program.role === "speech" &&
             entry.intents.includes("explain") &&
             entry.playback !== "once" &&
             !this.disposed
           ) {
-            // Neutral conversation loops and finite semantic performances use
-            // different immutable variants; both must be ready before scoring.
             await this.animationPlayer.preload(entry.animation, {
-              mask: "upper-body",
+              mask: program.composition.mask,
               loop: true,
             });
           }
-          if (entry.animation === "anim:Idle" && !this.disposed) {
-            await this.recordedIdleFoundation.prepare();
-          }
-        } else {
-          this.motionDirector.excludeAnimation(entry.animation);
-        }
-      }
-      if (this.disposed) return;
-      for (const animation of OCCASIONAL_IDLE_ANIMATIONS) {
-        if (this.disposed) return;
-        if (await this.animationPlayer.preload(animation, { mask: "upper-body", loop: false })) {
-          this.availableOccasionalIdles.add(animation);
-        }
+        } else this.motionDirector.excludeAnimation(entry.animation);
       }
       await bodyPreparation;
     })();
@@ -1379,6 +1417,7 @@ export class Body {
       this.ambientMotionHandle?.release(500);
       this.ambientMotionHandle = null;
       for (const handle of this.semanticMotionHandles) handle.release(500);
+      this.stopRetainedAutomaticPlayback(500);
     } else if (typeof window !== "undefined") {
       void this.prepareMotionLibrary();
     }
@@ -1406,21 +1445,29 @@ export class Body {
       intensity: request.intensity,
     });
     if (!decision) return null;
+    const program = this.motionProfile.byAnimation.get(decision.animation);
+    if (!program) return null;
+    const scheduled = this.requestAutomaticProgram(program, {
+      source: request.source,
+      priority: request.priority,
+      animation: decision.animation,
+      options: {
+        ...decision.options,
+        weight: decision.options.weight * this.automaticMotionGain(decision.animation),
+      },
+    });
+    if (!scheduled) {
+      this.motionDirector.rejectDecision(decision);
+      return null;
+    }
     const handle: SemanticMotionHandle = {
-      ...this.acquireMotionSlot({
-        source: request.source,
-        priority: request.priority,
-        animation: decision.animation,
-        options: {
-          ...decision.options,
-          weight: decision.options.weight * Math.min(1, this.motionIntensity),
-        },
-      }),
+      ...scheduled,
       ...(decision.finishAfterSpeech ? { finishAfterSpeech: true } : {}),
     };
     this.semanticMotionHandles.add(handle);
     void handle.completion.then(({ reason }) => {
       this.semanticMotionHandles.delete(handle);
+      if (reason === "errored") this.motionDirector.rejectDecision(decision);
       if (
         reason === "completed" &&
         request.priority === "speech-expression" &&
@@ -1441,7 +1488,12 @@ export class Body {
 
   /** Establish a reviewed standing pose before ThreeRuntime displays this avatar. */
   async initializeRecordedBody(): Promise<void> {
-    if (this.disposed || !this.motionLibraryEnabled || this.claimState.isClaimed("animation"))
+    if (
+      this.disposed ||
+      !this.motionLibraryEnabled ||
+      !this.motionProfile.support.recorded ||
+      this.claimState.isClaimed("animation")
+    )
       return;
     Object.assign(
       this.axialStrength,
@@ -1452,16 +1504,31 @@ export class Body {
   }
 
   getRecordedBodySnapshot() {
+    const composition = this.resolveMotionComposition();
     return {
       ...this.recordedBody.getSnapshot(),
+      composedMotion: this.composedMotionMonitor.getSnapshot(),
       activity: this.eyeSystem.state,
       conversationPhase: this.motionConversationPhase,
       postureVariation: this.postureVariation.getSnapshot(),
       occasionalIdle: this.occasionalIdleMotion.getSnapshot(),
-      intensity: this.motionIntensity,
+      intensity: this.motionIntensitySetting,
+      effectiveIntensity: this.motionIntensity,
       animationClaimed: this.claimState.isClaimed("animation"),
-      performanceOwnsBody: this.foundationBlockedByPerformance,
+      performanceOwnsBody: this.motionComposition.exclusivePerformance,
+      motionProfile: { id: this.motionProfile.id, rejectedPrograms: this.motionProfile.rejections },
+      composition: {
+        ...composition,
+        support: { ...composition.support },
+        grants: { ...composition.grants },
+        ambient: { ...composition.ambient },
+      },
     };
+  }
+
+  /** Opt-in full numeric trace for the motion lab; routine state_get stays concise. */
+  getComposedMotionSnapshot(includeFrames = false) {
+    return this.composedMotionMonitor.getSnapshot(includeFrames);
   }
 
   getMotionDirectorSnapshot(): MotionDirectorSnapshot {
@@ -1475,6 +1542,12 @@ export class Body {
     // Once audio boundaries are supplied, those phases also govern silent idle.
     this.hasGroundedConversationPhase = true;
     if (phase === this.motionConversationPhase) return;
+    // A retained automatic performance must not outlive the conversation state that admitted it.
+    if (
+      this.activeMotionPlayback &&
+      this.activeMotionPlayback.generation !== this.motionActivationGeneration
+    )
+      this.stopRetainedAutomaticPlayback(650);
     const leavingSpeech = this.motionConversationPhase === "assistant-speaking";
     this.motionConversationPhase = phase;
     this.motionDirector.requestNextIdle(phase === "interrupted" ? 1_200 : 600);
@@ -1493,146 +1566,178 @@ export class Body {
     }
   }
 
+  private resolveMotionComposition(): MotionCompositionPlan {
+    const input = this.compositionInput;
+    input.enabled = this.motionLibraryEnabled;
+    input.moving = this.motionIntensity > 0;
+    input.claimed = this.claimState.isClaimed("animation");
+    input.activity = this.eyeSystem.state;
+    input.phase = this.motionConversationPhase;
+    input.ungroundedSpeech =
+      !this.hasGroundedConversationPhase &&
+      (this.speechStateExpressionLayers.size > 0 ||
+        (this.lipSyncSource?.isMouthActive?.() ?? this.lipSyncSource !== null));
+    input.relaxed = this.relaxedValue > 0.2;
+    input.recordedActive = this.recordedBody.active;
+    input.recordedOwnsUpper = this.recordedBody.ownsUpperBody;
+    input.scheduled = this.motionScheduler.getActiveRequest();
+    input.postureActive = this.postureVariation.isActive;
+    input.occasionalActive = this.occasionalIdleMotion.isActive;
+    return this.motionComposition.resolve(input);
+  }
+
   private updateAmbientMotion(delta: number, claimed: boolean): void {
+    this.motionElapsedMs += Number.isFinite(delta) ? Math.max(0, Math.min(1, delta)) * 1000 : 0;
     if (claimed) {
+      this.activeMotionPlayback?.cancel();
+      this.activeMotionPlayback = null;
       this.recordedBody.suspend(0, "animation-claim");
       this.recordedIdleFoundation.suspend(0);
       for (const handle of this.semanticMotionHandles) handle.cancel();
       this.animationPlayer.retireFadingActions();
     }
-    const state = this.eyeSystem.state;
-    const speaking = this.motionConversationPhase === "assistant-speaking";
-    const ambientAllowed =
-      this.motionLibraryEnabled &&
-      this.motionIntensity > 0 &&
-      (state === "idle" || state === "thinking" || speaking);
-    if ((!ambientAllowed || claimed) && this.ambientMotionHandle?.isActive()) {
+    let plan = this.resolveMotionComposition();
+    const retained = this.activeMotionPlayback;
+    if (
+      retained &&
+      retained.automaticBaseWeight !== null &&
+      retained.generation !== this.motionActivationGeneration &&
+      ((retained.expiresAtMs !== undefined && this.motionElapsedMs >= retained.expiresAtMs) ||
+        (!this.motionScheduler.getActiveRequest() &&
+          retained.program &&
+          !this.motionComposition.admits(retained.program, plan)))
+    ) {
+      this.stopRetainedAutomaticPlayback(800);
+    }
+    if ((!plan.ambient.enabled || plan.hardCancel) && this.ambientMotionHandle?.isActive()) {
       this.ambientMotionHandle.release(claimed ? 0 : 650);
       this.ambientMotionHandle = null;
     }
-    const activePriority = this.motionScheduler.getActivePriority();
-    const recordedBodyAllowed =
-      this.motionLibraryEnabled && !claimed && !this.foundationBlockedByPerformance;
-    const ungroundedSpeechActive =
-      !this.hasGroundedConversationPhase &&
-      (this.speechStateExpressionLayers.size > 0 ||
-        (this.lipSyncSource?.isMouthActive?.() ?? this.lipSyncSource !== null));
-    const quietIdle =
-      recordedBodyAllowed &&
-      this.recordedBody.active &&
-      state === "idle" &&
-      !ungroundedSpeechActive &&
-      ["idle", "disconnected"].includes(this.motionConversationPhase);
     const axialTarget = this.recordedMotionDynamics.update(
       delta * 1000,
       this.motionIntensity,
-      quietIdle && activePriority === null,
+      plan.axialAccents,
     );
-    // Frame-rate independent settling handles slider changes without restarting
-    // a finite fade on every frame of the already smooth dynamics envelope.
     const axialBlend = 1 - Math.exp(-Math.max(0, delta) / 0.15);
     this.axialStrength.torso += (axialTarget.torso - this.axialStrength.torso) * axialBlend;
     this.axialStrength.head += (axialTarget.head - this.axialStrength.head) * axialBlend;
     this.recordedBody.setAxialStrength(this.axialStrength, 0);
     this.recordedBody.update(
       delta * 1000,
-      recordedBodyAllowed,
-      speaking ? "speech" : "idle",
-      speaking ||
-        (state === "idle" &&
-          !["user-speaking", "assistant-responding", "interrupted"].includes(
-            this.motionConversationPhase,
-          )),
+      plan.support.recorded,
+      plan.ambient.context,
+      plan.support.upper,
       this.motionIntensity,
     );
+    plan = this.resolveMotionComposition();
     if (this.recordedBody.ownsUpperBody && this.ambientMotionHandle) {
       this.ambientMotionHandle.release(650);
       this.ambientMotionHandle = null;
       this.ambientMotionPlaybackContext = null;
     }
-    this.recordedIdleFoundation.update(
-      ambientAllowed &&
-        !claimed &&
-        !this.recordedBody.active &&
-        !this.foundationBlockedByPerformance &&
-        (activePriority === null ||
-          activePriority === "idle-fidget" ||
-          activePriority === "speech-expression"),
-      this.motionIntensity,
-    );
-    // Rare finite performances own a separate handle, so ordinary idle replacement
-    // path above cannot release it on the next frame. Its supporting legs keep
-    // the same recorded phase throughout entry, performance and recovery.
-    this.occasionalIdleMotion.update(
-      delta * 1000,
-      ambientAllowed &&
-        !claimed &&
-        this.recordedBody.active &&
-        !this.foundationBlockedByPerformance &&
-        state === "idle" &&
-        !ungroundedSpeechActive &&
-        ["idle", "disconnected"].includes(this.motionConversationPhase) &&
-        (activePriority === null || this.occasionalIdleMotion.isActive),
-      claimed || this.foundationBlockedByPerformance,
-    );
-    const currentMotion = this.motionScheduler.getSnapshot().active;
-    this.postureVariation.update(
-      delta * 1000,
-      ambientAllowed &&
-        recordedBodyAllowed &&
-        this.recordedBody.active &&
-        (state === "idle" || state === "thinking") &&
-        !ungroundedSpeechActive &&
-        ["idle", "disconnected", "user-speaking", "assistant-responding"].includes(
-          this.motionConversationPhase,
-        ) &&
-        (currentMotion === null ||
-          (currentMotion.source === "idle" &&
-            currentMotion.priority === "idle-fidget" &&
-            DEFAULT_MOTION_CATALOG.some(
-              (entry) =>
-                entry.contexts.includes("idle") && entry.animation === currentMotion.animation,
-            ))),
-      claimed || this.foundationBlockedByPerformance,
-    );
-    const ambientBlocked =
-      this.postureVariation.isActive ||
-      this.recordedBody.ownsUpperBody ||
-      claimed ||
-      (activePriority !== null && activePriority !== "idle-fidget") ||
-      ungroundedSpeechActive;
-    this.ambientMotionContext.enabled = ambientAllowed;
-    this.ambientMotionContext.context = speaking ? "speech" : "idle";
-    this.ambientMotionContext.intent = speaking
-      ? "explain"
-      : this.motionConversationPhase === "user-speaking"
-        ? "attentive"
-        : state === "thinking" || this.motionConversationPhase === "assistant-responding"
-          ? "thinking"
-          : this.relaxedValue > 0.2
-            ? "relaxed"
-            : "neutral";
-    this.ambientMotionContext.blocked = ambientBlocked;
-    const decision = this.motionDirector.update(delta * 1000, this.ambientMotionContext);
+    this.recordedIdleFoundation.update(plan.support.fallback, this.motionIntensity);
+    this.occasionalIdleMotion.update(delta * 1000, plan.grants.occasional, plan.hardCancel);
+    plan = this.resolveMotionComposition();
+    this.postureVariation.update(delta * 1000, plan.grants.posture, plan.hardCancel);
+    plan = this.resolveMotionComposition();
+    const decision = this.motionDirector.update(delta * 1000, plan.ambient);
     if (!decision) return;
-    const handle = this.motionScheduler.request({
+    const program = this.motionProfile.byAnimation.get(decision.animation);
+    if (!program) return;
+    const handle = this.requestAutomaticProgram(program, {
       source: "idle",
       priority: "idle-fidget",
       animation: decision.animation,
       options: {
         ...decision.options,
-        weight: decision.options.weight * Math.min(1, this.motionIntensity),
+        weight: decision.options.weight * this.automaticMotionGain(decision.animation),
       },
     });
+    if (!handle) {
+      this.motionDirector.rejectDecision(decision);
+      return;
+    }
     this.ambientMotionHandle = handle;
     this.ambientMotionPlaybackContext = decision.context;
     void handle.completion.then(({ reason }) => {
-      if (reason === "errored") this.motionDirector.excludeAnimation(decision.animation);
+      // A commit-time incompatibility is temporary; preparation owns permanent exclusion.
+      if (reason === "errored") this.motionDirector.rejectDecision(decision);
       if (this.ambientMotionHandle === handle) {
         this.ambientMotionHandle = null;
         this.ambientMotionPlaybackContext = null;
       }
     });
+  }
+
+  /** Every automatic route crosses the same character admission and composition boundary. */
+  private requestAutomaticProgram(
+    program: MotionProgram,
+    request: InternalMotionRequest,
+    ownershipDurationMs?: number,
+  ): InternalMotionHandle | null {
+    if (
+      request.options?.mask !== program.composition.mask ||
+      !this.motionComposition.admits(program, this.resolveMotionComposition())
+    )
+      return null;
+    this.automaticPrograms.set(request, {
+      program,
+      expiresAtMs:
+        ownershipDurationMs === undefined ? undefined : this.motionElapsedMs + ownershipDurationMs,
+    });
+    return this.motionScheduler.request(request);
+  }
+
+  private playTimedProgram(
+    role: "posture" | "occasional",
+    ownershipDurationMs?: number,
+  ): InternalMotionHandle | null {
+    const plan = this.resolveMotionComposition();
+    const candidates = this.motionProfile.programs
+      .filter(
+        (program) =>
+          program.role === role &&
+          this.availableMotions.has(program.entry.animation) &&
+          this.motionComposition.admits(program, plan) &&
+          this.motionElapsedMs - (this.lastProgramPlayed.get(program.entry.id) ?? -Infinity) >=
+            program.entry.cooldownMs,
+      )
+      .map((program) => {
+        const options = {
+          mask: program.composition.mask,
+          loop: program.entry.playback !== "once",
+          transition:
+            program.entry.playback === "once" ? ("immediate" as const) : ("matched" as const),
+          speed: program.entry.speed,
+          weight:
+            Math.min(program.entry.maxWeight ?? 1, program.entry.weight) *
+            this.automaticMotionGain(program.entry.animation),
+          fadeInMs: 800,
+          fadeOutMs: 800,
+        };
+        const entry = this.animationPlayer.evaluateTransition(program.entry.animation, options);
+        return entry
+          ? { program, options: { ...options, startTimeSec: entry.startTimeSec } }
+          : null;
+      })
+      .filter((candidate) => candidate !== null);
+    const alternatives = candidates.filter(
+      ({ program }) => program.entry.id !== this.previousTimedPrograms.get(role),
+    );
+    const pool = alternatives.length ? alternatives : candidates;
+    const selected = pool[Math.floor(Math.random() * pool.length)];
+    if (!selected) return null;
+    const handle = this.requestAutomaticProgram(
+      selected.program,
+      {
+        source: "idle",
+        priority: "idle-fidget",
+        animation: selected.program.entry.animation,
+        options: selected.options,
+      },
+      ownershipDurationMs,
+    );
+    return handle;
   }
 
   /**
@@ -1693,6 +1798,11 @@ export class Body {
     // getMotionSnapshot() で観察可能になり、completion は {reason: "cancelled"}
     // で resolve される。
     this.motionScheduler.cancelAll(200);
+    const retained = this.activeMotionPlayback;
+    if (retained) {
+      this.activeMotionPlayback = null;
+      void retained.stop(200);
+    }
 
     // Release all expressions
     for (const h of this.activeExprHandles) {

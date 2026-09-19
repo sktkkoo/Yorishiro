@@ -193,6 +193,11 @@ export class MotionScheduler {
     return this.currentSlot?.state === "active" ? this.currentSlot.request.priority : null;
   }
 
+  /** Internal frame-path view; the request is immutable for this slot's lifetime. */
+  getActiveRequest(): Readonly<MotionRequest> | null {
+    return this.currentSlot?.state === "active" ? this.currentSlot.request : null;
+  }
+
   /** 現 active 状態の snapshot（read-only）。observability 用。 */
   getSnapshot(): MotionSnapshot {
     const slot = this.currentSlot;

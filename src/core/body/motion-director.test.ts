@@ -55,9 +55,15 @@ describe("MotionDirector", () => {
     1,
     3,
     Number.NaN,
-  ])("scores and plays Shrugging below its reviewed ceiling even at intensity %s", (intensity) => {
-    const entry = DEFAULT_MOTION_CATALOG.find((entry) => entry.id === "speech-uncertain");
-    if (!entry) throw new Error("reviewed shrug fixture required");
+  ])("scores and plays a capped recording below its reviewed ceiling even at intensity %s", (intensity) => {
+    const entry: MotionCatalogEntry = {
+      ...finiteEntry,
+      contexts: ["speech"],
+      intents: ["uncertain"],
+      weight: 1,
+      maxWeight: 0.8,
+      finishAfterSpeech: true,
+    };
     let evaluatedWeight: number | undefined;
     const director = new MotionDirector({
       catalog: [entry],

@@ -94,12 +94,14 @@ interface Group {
   phase: number;
   startedAt: number;
   held: boolean;
+  heldAtUpdate?: number;
   paused: boolean;
   blend: number;
   blendRamp?: Ramp;
   upperGain: number;
   upperRamp?: Ramp;
   readonly axial: RecordedAxialMotion;
+  readonly axialReferenceTimeSec: number;
   readonly axialStrength: { torso: number; head: number };
   axialRamp?: { torso: Ramp; head: Ramp };
   stopAt?: number;
@@ -123,6 +125,7 @@ export class RecordedBasePlayer {
   private readonly names = new Map<string, number>();
   private readonly rest: LowerPose;
   private nextId = 1;
+  private updateCount = 0;
 
   constructor(
     private readonly mixer: THREE.AnimationMixer,
@@ -251,7 +254,7 @@ export class RecordedBasePlayer {
     const prepared = this.prepare(clip);
     const start = opts.startTimeSec,
       end = opts.endTimeSec;
-    const fade = Math.max(0, Math.min(MAX_FADE_SEC, (opts.fadeInMs ?? 800) / 1000));
+    let fade = Math.max(0, Math.min(MAX_FADE_SEC, (opts.fadeInMs ?? 800) / 1000));
     if (
       ![start, end, fade].every(Number.isFinite) ||
       start < 0 ||
@@ -350,6 +353,28 @@ export class RecordedBasePlayer {
       torso: clampWeight(initialState?.axialStrength?.torso ?? 1),
       head: clampWeight(initialState?.axialStrength?.head ?? 1),
     };
+    // Adjacent units of the same recording already share their boundary pose
+    // and velocity. Fading an advancing continuation against its frozen entry
+    // inserts a stop and acceleration into an otherwise continuous performance.
+    // Keep genuine joins and changes of upper ownership on the validated fade.
+    if (
+      previous &&
+      previous.prepared === prepared &&
+      Math.abs(previous.end - start) < 1e-8 &&
+      previous.heldAtUpdate !== undefined &&
+      // The sequencer observes completion on its next frame; cached loading
+      // commits after that frame's mixer update. Longer holds need a fresh fade.
+      this.updateCount - previous.heldAtUpdate <= 1 &&
+      previous.axialReferenceTimeSec === (opts.axialReferenceTimeSec ?? 0) &&
+      previous.blend === 1 &&
+      !previous.upperRamp &&
+      !previous.axialRamp &&
+      previous.paused === (initialState?.paused ?? false) &&
+      previous.upperGain === clampWeight(initialState?.upperWeight ?? 1) &&
+      previous.axialStrength.torso === axialStrength.torso &&
+      previous.axialStrength.head === axialStrength.head
+    )
+      fade = 0;
     const upper = this.action(
       new THREE.AnimationClip(
         `${clip.name}:recorded-upper`,
@@ -372,11 +397,13 @@ export class RecordedBasePlayer {
       phase: start,
       startedAt: this.mixer.time,
       held: start === end,
+      heldAtUpdate: start === end ? this.updateCount : undefined,
       paused: initialState?.paused ?? false,
       blend: fade ? 0 : 1,
       blendRamp: fade ? { from: 0, to: 1, start: this.mixer.time, duration: fade } : undefined,
       upperGain: clampWeight(initialState?.upperWeight ?? 1),
       axial,
+      axialReferenceTimeSec: opts.axialReferenceTimeSec ?? 0,
       axialStrength,
       offset,
       completion: deferred(),
@@ -443,13 +470,17 @@ export class RecordedBasePlayer {
 
   /** Set both phases/weights before the shared mixer's one evaluation. */
   beforeUpdate(nextTime: number, performanceWeight: number): void {
+    this.updateCount++;
     const complement = 1 - Math.max(0, Math.min(1, performanceWeight));
     for (const group of this.groups.values()) {
       if (group.paused) group.startedAt += Math.max(0, nextTime - this.mixer.time);
       if (!group.paused && !group.held && group.stopAt === undefined) {
         group.phase = Math.min(group.end, group.start + Math.max(0, nextTime - group.startedAt));
         group.held = group.phase >= group.end - 1e-9;
-        if (group.held) group.phase = group.end;
+        if (group.held) {
+          group.phase = group.end;
+          group.heldAtUpdate = this.updateCount;
+        }
       }
       if (group.blendRamp) {
         group.blend = rampValue(group.blendRamp, nextTime);

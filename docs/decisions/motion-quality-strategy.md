@@ -2,6 +2,10 @@
 
 Status: revised scope after user feedback, 2026-09-14. Runtime foundations exist; asset-quality and product-comparison acceptance remain open.
 
+The recurring evaluation procedure is [Motion quality review](motion-quality-review.md)
+(2026-09-19), with a [review record template](../templates/motion-quality-review.md).
+Use it for motion changes and keep technical verification separate from visual acceptance.
+
 ## Product target
 
 目標は、Idle の種類を増やすことだけではない。まず静かな待機、傾聴、思考、腕を使った会話と、その間の移行が一人のキャラクターの振る舞いとして自然につながることを優先する。ユーザーが挙げた Animates の「PC で流れている音楽を検出し、BPM に合って踊る」は、文脈・時間同期・全身連動が成立する品質の目安であり、最初に再現すべき必須機能ではない。現在の短い待機録画では、Animates の会話・音楽機能を評価できていない。

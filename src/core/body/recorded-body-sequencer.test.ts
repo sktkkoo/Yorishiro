@@ -4,6 +4,7 @@ import {
   type RecordedBodyManifest,
   type RecordedBodyPlayback,
   RecordedBodySequencer,
+  type RecordedBodyUnit,
 } from "./recorded-body-sequencer";
 
 const modelSha256 = "a".repeat(64);
@@ -75,7 +76,151 @@ async function flush() {
   for (let i = 0; i < 12; i++) await Promise.resolve();
 }
 
+function contiguousManifest(secondPatch: Partial<RecordedBodyUnit> = {}): RecordedBodyManifest {
+  const first = {
+    ...idleUnit,
+    axialReferenceTimeSec: 5,
+    contactWindows: [{ startTimeSec: 1, endTimeSec: 16, feet: "both" as const }],
+  };
+  return {
+    ...manifest,
+    units: [
+      first,
+      { ...first, id: "continued-shift", startTimeSec: 8, endTimeSec: 14, ...secondPatch },
+    ],
+  };
+}
+
 describe("recorded whole-body sequencing", () => {
+  it("plays adjacent reviewed ranges once, reports the actual logical phase, and fades only at the run wrap", async () => {
+    const { sequencer, active, playRecordedBase } = setup(contiguousManifest());
+    await sequencer.initialize();
+    expect(playRecordedBase.mock.calls[0][1]).toMatchObject({
+      startTimeSec: 2,
+      endTimeSec: 14,
+      fadeInMs: 0,
+    });
+    active.phaseSec = 8;
+    // Export occurs after the mixer, before the next sequencer update.
+    const diagnostic = {
+      recordedUnit: null,
+      recordedAnimation: null,
+      recordedPhaseSec: null,
+      recordedHeld: false,
+      recordedPaused: false,
+      recordedUpperStrength: 0,
+    };
+    sequencer.writeMotionDiagnosticState(diagnostic);
+    expect(diagnostic).toMatchObject({
+      recordedUnit: "continued-shift",
+      recordedPhaseSec: 8,
+      recordedHeld: false,
+    });
+    expect(sequencer.getSnapshot()).toMatchObject({
+      availableUnits: 2,
+      active: { id: "continued-shift", phaseSec: 8 },
+    });
+    sequencer.update(16, true, "idle");
+    expect(playRecordedBase).toHaveBeenCalledOnce();
+    expect(active.stop).not.toHaveBeenCalled();
+    expect(active.cancel).not.toHaveBeenCalled();
+    active.phaseSec = 14;
+    active.held = true;
+    sequencer.update(16, true, "idle");
+    await flush();
+    expect(playRecordedBase.mock.calls[1][1]).toMatchObject({
+      startTimeSec: 2,
+      endTimeSec: 14,
+      fadeInMs: 800,
+      initialPose: false,
+    });
+  });
+
+  it("preserves one source clock across a run's pause, resume, gain and upper ownership changes", async () => {
+    const { sequencer, active, playRecordedBase } = setup(contiguousManifest());
+    await sequencer.initialize();
+    active.phaseSec = 8.25;
+    sequencer.update(16, true, "idle", true, 0);
+    expect(sequencer.getSnapshot().active).toMatchObject({
+      id: "continued-shift",
+      phaseSec: 8.25,
+      paused: true,
+    });
+    sequencer.update(16, true, "idle", true, 0.4);
+    expect(active.setPaused).toHaveBeenLastCalledWith(false);
+    expect(active.setUpperWeight).toHaveBeenLastCalledWith(0.4, 350);
+    sequencer.update(16, true, "speech", true, 0.7);
+    expect(active.setUpperWeight).toHaveBeenLastCalledWith(0, 350);
+    sequencer.update(16, true, "idle", false, 0.7);
+    expect(sequencer.ownsUpperBody).toBe(false);
+    sequencer.update(16, true, "idle", true, 0.7);
+    expect(active.setUpperWeight).toHaveBeenLastCalledWith(0.7, 650);
+    expect(playRecordedBase).toHaveBeenCalledOnce();
+    expect(active.cancel).not.toHaveBeenCalled();
+    expect(active.stop).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { startTimeSec: 8.001 },
+    { animation: "/animations/recorded-body/different.vrma" },
+    { context: "speech" as const },
+    { axialReferenceTimeSec: 6 },
+    { handsAtRest: true },
+    { contactWindows: [{ startTimeSec: 1, endTimeSec: 15, feet: "both" as const }] },
+  ])("does not coalesce a gap or changed source/composition/contact policy: %j", async (patch) => {
+    const { sequencer, playRecordedBase } = setup(contiguousManifest(patch));
+    await sequencer.initialize();
+    expect(sequencer.getSnapshot().availableUnits).toBe(2);
+    expect(playRecordedBase.mock.calls[0][1]).toMatchObject({ startTimeSec: 2, endTimeSec: 8 });
+  });
+
+  it("keeps an ambiguous continuation as an explicit later selection", async () => {
+    const input = contiguousManifest();
+    const { sequencer, playRecordedBase } = setup({
+      ...input,
+      units: [...input.units, { ...input.units[1], id: "another-continuation", endTimeSec: 15 }],
+    });
+    await sequencer.initialize();
+    expect(sequencer.getSnapshot().availableUnits).toBe(3);
+    expect(playRecordedBase.mock.calls[0][1]).toMatchObject({ startTimeSec: 2, endTimeSec: 8 });
+  });
+
+  it("retains the original unit's eligibility if the extended endpoint fails physical admission", async () => {
+    const { sequencer, active, playRecordedBase } = setup(contiguousManifest());
+    playRecordedBase.mockRejectedValueOnce(new Error("extended endpoint incompatible"));
+    await sequencer.initialize();
+    expect(playRecordedBase.mock.calls.map(([, options]) => options)).toMatchObject([
+      { startTimeSec: 2, endTimeSec: 14 },
+      { startTimeSec: 2, endTimeSec: 8 },
+    ]);
+    active.phaseSec = 8;
+    expect(sequencer.getSnapshot().active?.id).toBe(idleUnit.id);
+    expect(active.cancel).not.toHaveBeenCalled();
+  });
+
+  it("does not revive a pending run or fall back after external ownership invalidates it", async () => {
+    const { sequencer, active, playRecordedBase } = setup(contiguousManifest());
+    const pending = deferred<typeof active>();
+    playRecordedBase.mockReturnValueOnce(pending.promise);
+    await sequencer.prepare();
+    sequencer.update(16, true, "idle");
+    sequencer.suspend(0);
+    expect(playRecordedBase.mock.calls[0][1].isCurrent()).toBe(false);
+    pending.resolve(active);
+    await flush();
+    expect(active.cancel).toHaveBeenCalledOnce();
+    expect(playRecordedBase).toHaveBeenCalledOnce();
+    expect(sequencer.active).toBe(false);
+  });
+
+  it("does not compile unavailable recordings into a run", async () => {
+    const { sequencer, preloadRecordedBase, playRecordedBase } = setup(contiguousManifest());
+    preloadRecordedBase.mockResolvedValue(false);
+    await sequencer.initialize();
+    expect(sequencer.getSnapshot().availableUnits).toBe(0);
+    expect(playRecordedBase).not.toHaveBeenCalled();
+  });
+
   it("keeps a shared axial reference and applies the latest gains atomically to a pending unit", async () => {
     const unit = { ...idleUnit, axialReferenceTimeSec: 5 };
     const { sequencer, active, playRecordedBase } = setup({ ...manifest, units: [unit] });

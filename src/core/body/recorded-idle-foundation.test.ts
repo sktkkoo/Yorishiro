@@ -17,6 +17,7 @@ function playback() {
   return {
     id: 1,
     completion: completion.promise,
+    stopped: completion.promise,
     setWeight: vi.fn(),
     stop: vi.fn(async () => completion.resolve()),
     cancel: vi.fn(() => completion.resolve()),
