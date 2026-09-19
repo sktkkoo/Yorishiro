@@ -15,6 +15,7 @@ import {
   screenCaptureSelectRegion,
 } from "../../bindings/tauri-commands";
 import { listCameraSources, openCamera } from "./camera-capture";
+import { buildContactSheet } from "./contact-sheet";
 import type { ScreenObservationFrame } from "./screen-observation";
 
 let useScreenSharing: typeof import("./use-screen-sharing").useScreenSharing;
@@ -47,6 +48,11 @@ vi.mock("../../bindings/tauri-commands", () => ({
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn() }));
 
 vi.mock("./camera-capture", () => ({ openCamera: vi.fn(), listCameraSources: vi.fn() }));
+
+vi.mock("./contact-sheet", () => ({ buildContactSheet: vi.fn() }));
+
+const sheet = { dataUrl: "data:image/jpeg;base64,c2hlZXQ=", width: 2560, height: 1440 };
+const sampleInterval = 30_000 / 16;
 
 const frame = {
   frameId: "frame-1",
@@ -86,6 +92,8 @@ describe("useScreenSharing", () => {
     vi.mocked(screenAnnotationEnd).mockResolvedValue(undefined);
     vi.mocked(screenAnnotationClear).mockResolvedValue(undefined);
     vi.mocked(screenCaptureFrame).mockResolvedValue(frame);
+    // Image decoding/canvas composition is outside this hook’s lease and scheduling tests.
+    vi.mocked(buildContactSheet).mockResolvedValue(sheet);
   });
   afterEach(() => {
     cleanup();
@@ -121,6 +129,7 @@ describe("useScreenSharing", () => {
     vi.mocked(screenCaptureSelectRegion).mockResolvedValue({ sourceId: 1, region });
     vi.mocked(screenCaptureFrame).mockResolvedValue({ ...frame, selectionKind: "region" });
     await act(async () => hook.result.current.start());
+    await act(async () => hook.result.current.captureNow());
     const frameOwner = hook.result.current.screenShareKey;
     if (!frameOwner) throw new Error("Region did not start");
     return { ...hook, frameOwner };
@@ -192,6 +201,7 @@ describe("useScreenSharing", () => {
       selected.resolve({ sourceId: 7, region });
       await starting;
     });
+    await act(async () => result.current.captureNow());
     expect(result.current.sourceId).toBe(7);
     expect(result.current.active).toBe(true);
     expect(screenCaptureRegionFrameOpen).toHaveBeenCalledWith(expect.any(String), 7, region);
@@ -562,6 +572,7 @@ describe("useScreenSharing", () => {
       pointerFrameValid: false,
     });
     await act(async () => result.current.start());
+    await act(async () => result.current.captureNow());
     expect(screenAnnotationBegin).toHaveBeenCalledWith(expect.any(String), 1, "document-1", {
       kind: "window",
     });
@@ -576,6 +587,7 @@ describe("useScreenSharing", () => {
     await act(async () => result.current.refreshSources());
     await act(async () => result.current.setScreenSourceKind("region"));
     await act(async () => result.current.start());
+    await act(async () => result.current.captureNow());
     expect(screenAnnotationBegin).not.toHaveBeenCalled();
     vi.mocked(screenCaptureSelectRegion).mockResolvedValue({ sourceId: 1, region });
     await act(async () => result.current.selectRegion());
@@ -591,6 +603,7 @@ describe("useScreenSharing", () => {
     };
     vi.mocked(screenCaptureFrame).mockResolvedValue(cropped);
     await act(async () => result.current.start());
+    await act(async () => result.current.captureNow());
     expect(screenAnnotationBegin).toHaveBeenCalledWith(expect.any(String), 1, "document-1", {
       kind: "region",
       region,
@@ -696,6 +709,7 @@ describe("useScreenSharing", () => {
     expect(screenCaptureSelectRegion).not.toHaveBeenCalled();
     expect(screenCaptureRequestPermission).not.toHaveBeenCalled();
     await act(async () => result.current.start());
+    await act(async () => result.current.captureNow());
     expect(share).toHaveBeenCalled();
   });
 
@@ -711,18 +725,21 @@ describe("useScreenSharing", () => {
     expect(result.current.screenSelectionSupported).toBe(true);
   });
 
-  it("previews only delivered screenshots and clears them when sharing stops", async () => {
+  it("previews buffered screenshots before delivery and clears them when sharing stops", async () => {
     const { result, share } = setup();
     const delivery = deferred<{ status: "shared"; capturedAt: string }>();
     share.mockReturnValueOnce(delivery.promise);
     await act(async () => result.current.refreshSources());
     await act(async () => result.current.start());
     expect(result.current.screenShareKey).toBeTruthy();
-    expect(result.current.screenPreviewFrame).toBeNull();
+    expect(result.current.screenPreviewFrame?.imageDataUrl).toBe(frame.dataUrl);
+    expect(share).not.toHaveBeenCalled();
+    await act(async () => vi.advanceTimersByTimeAsync(sampleInterval * 15));
+    expect(share).toHaveBeenCalledOnce();
     await act(async () =>
       delivery.resolve({ status: "shared", capturedAt: new Date(frame.capturedAt).toISOString() }),
     );
-    expect(result.current.screenPreviewFrame?.imageDataUrl).toBe(frame.dataUrl);
+    expect(result.current.screenPreviewFrame?.imageDataUrl).toBe(sheet.dataUrl);
     act(() => result.current.stop());
     expect(result.current.screenPreviewFrame).toBeNull();
     expect(result.current.screenShareKey).toBeNull();
@@ -735,6 +752,8 @@ describe("useScreenSharing", () => {
     share.mockReturnValueOnce(delivery.promise);
     await act(async () => result.current.refreshSources());
     await act(async () => result.current.start());
+    await act(async () => vi.advanceTimersByTimeAsync(sampleInterval * 15));
+    expect(share).toHaveBeenCalledOnce();
     act(() => result.current.stop());
     await act(async () =>
       delivery.resolve({ status: "shared", capturedAt: new Date(frame.capturedAt).toISOString() }),
@@ -872,7 +891,7 @@ describe("useScreenSharing", () => {
       pending.resolve({ ...frame, frameId: "refreshed", dataUrl: "data:image/jpeg;base64,Yg==" });
       await first;
     });
-    expect(share).toHaveBeenCalledTimes(2);
+    expect(share).toHaveBeenCalledTimes(1);
     act(() => result.current.stop());
     await act(async () => result.current.captureNow());
     expect(screenCaptureFrame).toHaveBeenCalledTimes(2);
@@ -885,14 +904,13 @@ describe("useScreenSharing", () => {
     await act(async () => result.current.refreshSources());
     await act(async () => result.current.start());
     await act(async () => vi.advanceTimersByTimeAsync(40_000));
-    expect(screenCaptureFrame).toHaveBeenCalledTimes(1);
+    expect(screenCaptureFrame).toHaveBeenCalledTimes(16);
     await act(async () => {
       delivery.resolve({ status: "shared", capturedAt: new Date(frame.capturedAt).toISOString() });
     });
     await act(async () => vi.advanceTimersByTimeAsync(1));
-    // The previous setInterval loop would discard the 30s tick and wait until
-    // 60s. A due capture can now begin at 40s without overlapping delivery.
-    expect(screenCaptureFrame).toHaveBeenCalledTimes(2);
+    // The next sample was due at 30s and resumes immediately at 40s.
+    expect(screenCaptureFrame).toHaveBeenCalledTimes(17);
   });
 
   it("starts a replacement lease's first capture as soon as the old capture settles", async () => {
@@ -906,13 +924,14 @@ describe("useScreenSharing", () => {
     expect(screenCaptureFrame).toHaveBeenCalledTimes(1);
     await act(async () => pending.resolve(frame));
     expect(screenCaptureFrame).toHaveBeenCalledTimes(2);
+    expect(share).not.toHaveBeenCalled();
+    await act(async () => vi.advanceTimersByTimeAsync(sampleInterval * 15));
     expect(share).toHaveBeenCalledTimes(1);
     expect(result.current.active).toBe(true);
   });
 
   it("reports stage durations without sending captured content to diagnostics", async () => {
     const capture = deferred<typeof frame>();
-    vi.mocked(screenCaptureFrame).mockReturnValueOnce(capture.promise);
     const delivery = deferred<{ status: "shared"; capturedAt: string }>();
     const onTiming = vi.fn();
     const { result } = renderHook(() =>
@@ -925,7 +944,11 @@ describe("useScreenSharing", () => {
     );
     await act(async () => result.current.refreshSources());
     await act(async () => result.current.start());
-    await act(async () => vi.advanceTimersByTimeAsync(100));
+    await act(async () => vi.advanceTimersByTimeAsync(sampleInterval * 14));
+    expect(screenCaptureFrame).toHaveBeenCalledTimes(15);
+    onTiming.mockClear();
+    vi.mocked(screenCaptureFrame).mockReturnValueOnce(capture.promise);
+    await act(async () => vi.advanceTimersByTimeAsync(sampleInterval + 100));
     await act(async () => capture.resolve(frame));
     await act(async () => vi.advanceTimersByTimeAsync(80));
     await act(async () =>
@@ -940,50 +963,96 @@ describe("useScreenSharing", () => {
     });
   });
 
-  it("clamps periodic sampling to ten seconds, deduplicates pixels, and stops on owner change", async () => {
+  it("clamps sheet intervals to ten seconds and stops sampling on owner change", async () => {
     const { result, rerender, share } = setup();
     expect(result.current.intervalSeconds).toBe(30);
-    await act(async () => {
-      await result.current.refreshSources();
-    });
+    expect(result.current.contactSheetFrameCount).toBe(16);
+    await act(async () => result.current.refreshSources());
     act(() => result.current.setIntervalSeconds(5));
     expect(result.current.intervalSeconds).toBe(10);
-    await act(async () => {
-      await result.current.start();
-    });
-    expect(share).toHaveBeenCalledTimes(1);
-    expect(share).toHaveBeenCalledWith(
+    await act(async () => result.current.start());
+    expect(share).not.toHaveBeenCalled();
+    expect(result.current.screenPreviewFrame?.imageDataUrl).toBe(frame.dataUrl);
+    await act(async () => vi.advanceTimersByTimeAsync(9_374));
+    expect(screenCaptureFrame).toHaveBeenCalledTimes(15);
+    expect(share).not.toHaveBeenCalled();
+    await act(async () => vi.advanceTimersByTimeAsync(1));
+    expect(buildContactSheet).toHaveBeenCalledExactlyOnceWith(
+      Array.from({ length: 16 }, () => ({ dataUrl: frame.dataUrl, capturedAt: frame.capturedAt })),
+      16,
+    );
+    expect(share).toHaveBeenCalledExactlyOnceWith(
       {
         sourceKind: "screen",
-        frameId: frame.frameId,
-        pointersEnabled: frame.pointersEnabled,
-        pointerFrameValid: frame.pointerFrameValid,
+        frameId: expect.any(String),
+        pointersEnabled: false,
+        pointerFrameValid: false,
         pointerEpoch: frame.pointerEpoch,
-        width: frame.width,
-        height: frame.height,
-        imageDataUrl: frame.dataUrl,
+        width: sheet.width,
+        height: sheet.height,
+        imageDataUrl: sheet.dataUrl,
         source: frame.sourceName,
         capturedAt: new Date(frame.capturedAt).toISOString(),
       },
       expect.any(AbortSignal),
     );
+    expect(share.mock.calls[0][0].frameId).not.toBe(frame.frameId);
     expect(result.current.lastObservedAt).toBe(frame.capturedAt);
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(9_999);
-    });
-    expect(screenCaptureFrame).toHaveBeenCalledTimes(1);
-    await act(async () => vi.advanceTimersByTimeAsync(1));
-    expect(screenCaptureFrame).toHaveBeenCalledTimes(2);
-    expect(share).toHaveBeenCalledTimes(1);
+    // Identical sheets still need a fresh, invalid-for-pointing reference.
+    await act(async () => vi.advanceTimersByTimeAsync(10_000));
+    expect(share).toHaveBeenCalledTimes(2);
+    expect(share.mock.calls[1][0].frameId).not.toBe(share.mock.calls[0][0].frameId);
     rerender({ ownerKey: "main:other-thread:active", available: true });
     expect(result.current.active).toBe(false);
     expect(screenAnnotationEnd).toHaveBeenCalledWith(
       vi.mocked(screenAnnotationBegin).mock.calls[0][0],
     );
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(30_000);
-    });
-    expect(screenCaptureFrame).toHaveBeenCalledTimes(2);
+    await act(async () => vi.advanceTimersByTimeAsync(30_000));
+    expect(screenCaptureFrame).toHaveBeenCalledTimes(32);
+  });
+
+  it("discards a contact sheet that finishes composing after sharing stops", async () => {
+    const pending = deferred<typeof sheet>();
+    vi.mocked(buildContactSheet).mockReturnValueOnce(pending.promise);
+    const { result, share } = setup();
+    await act(async () => result.current.refreshSources());
+    await act(async () => result.current.start());
+    await act(async () => vi.advanceTimersByTimeAsync(sampleInterval * 15));
+    expect(buildContactSheet).toHaveBeenCalledOnce();
+    expect(share).not.toHaveBeenCalled();
+    act(() => result.current.stop());
+    await act(async () => pending.resolve(sheet));
+    expect(share).not.toHaveBeenCalled();
+    expect(result.current.screenPreviewFrame).toBeNull();
+    await act(async () => vi.advanceTimersByTimeAsync(30_000));
+    expect(screenCaptureFrame).toHaveBeenCalledTimes(16);
+  });
+
+  it("does not mix buffered samples from an old lease into a replacement sheet", async () => {
+    const { result, share } = setup();
+    await act(async () => result.current.refreshSources());
+    await act(async () => result.current.start());
+    await act(async () => vi.advanceTimersByTimeAsync(sampleInterval * 14));
+    expect(share).not.toHaveBeenCalled();
+    act(() => result.current.stop());
+    const replacement = {
+      ...frame,
+      dataUrl: "data:image/jpeg;base64,bmV3",
+      capturedAt: frame.capturedAt + 30_000,
+    };
+    vi.mocked(screenCaptureFrame).mockResolvedValue(replacement);
+    await act(async () => result.current.start());
+    await act(async () => vi.advanceTimersByTimeAsync(sampleInterval * 14));
+    expect(share).not.toHaveBeenCalled();
+    await act(async () => vi.advanceTimersByTimeAsync(sampleInterval));
+    expect(buildContactSheet).toHaveBeenCalledExactlyOnceWith(
+      Array.from({ length: 16 }, () => ({
+        dataUrl: replacement.dataUrl,
+        capturedAt: replacement.capturedAt,
+      })),
+      16,
+    );
+    expect(share).toHaveBeenCalledOnce();
   });
 
   it("normalizes a legacy five-second React state for both publication and actual sampling", async () => {
@@ -994,7 +1063,7 @@ describe("useScreenSharing", () => {
       await act(async () => result.current.refreshSources());
       await act(async () => result.current.start());
       expect(screenCaptureFrame).toHaveBeenCalledTimes(1);
-      await act(async () => vi.advanceTimersByTimeAsync(9_999));
+      await act(async () => vi.advanceTimersByTimeAsync(624));
       expect(screenCaptureFrame).toHaveBeenCalledTimes(1);
       await act(async () => vi.advanceTimersByTimeAsync(1));
       expect(screenCaptureFrame).toHaveBeenCalledTimes(2);
@@ -1003,12 +1072,15 @@ describe("useScreenSharing", () => {
     }
   });
 
-  it("shares a replacement frame reference even when its pixels are unchanged", async () => {
+  it("deduplicates explicit refreshes but shares replacement references with identical pixels", async () => {
     const { result, share } = setup();
     await act(async () => result.current.refreshSources());
     await act(async () => result.current.start());
+    await act(async () => result.current.captureNow());
+    await act(async () => result.current.captureNow());
+    expect(share).toHaveBeenCalledOnce();
     vi.mocked(screenCaptureFrame).mockResolvedValueOnce({ ...frame, frameId: "after-expiry" });
-    await act(async () => vi.advanceTimersByTimeAsync(30_000));
+    await act(async () => result.current.captureNow());
     expect(share).toHaveBeenCalledTimes(2);
     expect(share).toHaveBeenLastCalledWith(
       expect.objectContaining({ frameId: "after-expiry", imageDataUrl: frame.dataUrl }),
@@ -1017,7 +1089,7 @@ describe("useScreenSharing", () => {
   });
 
   it("continues sharing images with the native OFF and invalid-pointer-frame metadata", async () => {
-    vi.mocked(screenCaptureFrame).mockResolvedValueOnce({
+    vi.mocked(screenCaptureFrame).mockResolvedValue({
       ...frame,
       pointersEnabled: false,
       pointerFrameValid: false,
@@ -1025,6 +1097,7 @@ describe("useScreenSharing", () => {
     const { result, share } = setup();
     await act(async () => result.current.refreshSources());
     await act(async () => result.current.start());
+    await act(async () => result.current.captureNow());
     expect(result.current.active).toBe(true);
     expect(share).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({
@@ -1047,6 +1120,7 @@ describe("useScreenSharing", () => {
     await act(async () => {
       await result.current.start();
     });
+    await act(async () => vi.advanceTimersByTimeAsync(sampleInterval * 15));
     expect(result.current.active).toBe(false);
     expect(result.current.error).toContain("unsupported");
     expect(screenAnnotationEnd).toHaveBeenCalledWith(
@@ -1055,7 +1129,7 @@ describe("useScreenSharing", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(60_000);
     });
-    expect(screenCaptureFrame).toHaveBeenCalledTimes(1);
+    expect(screenCaptureFrame).toHaveBeenCalledTimes(16);
   });
 
   it("does not send a burst of images while dragging the interval slider", async () => {
@@ -1074,7 +1148,7 @@ describe("useScreenSharing", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(180_000);
     });
-    expect(screenCaptureFrame).toHaveBeenCalledTimes(2);
+    expect(screenCaptureFrame).toHaveBeenCalledTimes(17);
   });
 
   it("serializes a cancelled native begin before a new sharing lease", async () => {
@@ -1140,6 +1214,8 @@ describe("useScreenSharing", () => {
     expect(screenAnnotationBegin).toHaveBeenCalledTimes(2);
     expect(screenAnnotationEnd).toHaveBeenLastCalledWith(firstShareId);
     expect(first.share).not.toHaveBeenCalled();
+    expect(second.share).not.toHaveBeenCalled();
+    await act(async () => vi.advanceTimersByTimeAsync(sampleInterval * 15));
     expect(second.share).toHaveBeenCalledTimes(1);
     expect(second.result.current.active).toBe(true);
   });
@@ -1172,6 +1248,7 @@ describe("useScreenSharing", () => {
     const { result, share } = setup();
     await act(async () => result.current.refreshSources());
     await act(async () => result.current.start());
+    await act(async () => result.current.captureNow());
     vi.mocked(screenCaptureListSources).mockResolvedValueOnce([
       { id: 2, name: "Display 2", width: 1920, height: 1080 },
     ]);
@@ -1194,6 +1271,7 @@ describe("useScreenSharing", () => {
     const { result, share } = setup();
     await act(async () => result.current.refreshSources());
     await act(async () => result.current.start());
+    await act(async () => result.current.captureNow());
     const firstShareId = vi.mocked(screenAnnotationBegin).mock.calls[0][0];
     act(() => result.current.setSourceId(2));
     expect(result.current.sourceId).toBe(2);
@@ -1207,6 +1285,7 @@ describe("useScreenSharing", () => {
       sourceName: "Display 2",
     });
     await act(async () => result.current.start());
+    await act(async () => result.current.captureNow());
     const secondShareId = vi.mocked(screenAnnotationBegin).mock.calls[1][0];
     expect(secondShareId).not.toBe(firstShareId);
     expect(screenAnnotationBegin).toHaveBeenLastCalledWith(secondShareId, 2, "document-1");
