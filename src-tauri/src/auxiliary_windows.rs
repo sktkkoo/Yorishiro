@@ -91,7 +91,7 @@ fn default_preview_visible() -> bool {
 }
 
 fn default_contact_sheet_frame_count() -> u8 {
-    16
+    1
 }
 
 impl ScreenSharingSnapshot {
@@ -113,8 +113,8 @@ impl ScreenSharingSnapshot {
         if !(10..=180).contains(&self.interval_seconds) {
             return Err("Viewing interval must be between 10 and 180 seconds".into());
         }
-        if !matches!(self.contact_sheet_frame_count, 4 | 9 | 16 | 25) {
-            return Err("Contact sheet frame count must be 4, 9, 16, or 25".into());
+        if !matches!(self.contact_sheet_frame_count, 1 | 4 | 9 | 16 | 25) {
+            return Err("Contact sheet frame count must be 1, 4, 9, 16, or 25".into());
         }
         if self.sources.len() > 64 || self.sources.iter().any(|source| source.name.len() > 800) {
             return Err("Invalid display list".into());
@@ -299,8 +299,8 @@ fn validate_action(
         }
         ScreenSharingAction::SetContactSheetFrameCount {
             contact_sheet_frame_count,
-        } if !matches!(contact_sheet_frame_count, 4 | 9 | 16 | 25) => {
-            Err("Contact sheet frame count must be 4, 9, 16, or 25".into())
+        } if !matches!(contact_sheet_frame_count, 1 | 4 | 9 | 16 | 25) => {
+            Err("Contact sheet frame count must be 1, 4, 9, 16, or 25".into())
         }
         _ => Ok(()),
     }
@@ -449,6 +449,27 @@ mod tests {
                 last_observed_at: None,
                 language: "ja".into(),
             },
+        }
+    }
+
+    #[test]
+    fn allows_still_images_and_supported_motion_frame_counts() {
+        let mut state = published();
+        for count in [1, 4, 9, 16, 25] {
+            state.snapshot.contact_sheet_frame_count = count;
+            assert!(state.snapshot.validate().is_ok());
+            let request = AuxiliaryActionRequest {
+                version: 7,
+                pointer_revision: None,
+                action: ScreenSharingAction::SetContactSheetFrameCount {
+                    contact_sheet_frame_count: count,
+                },
+            };
+            assert!(validate_action(&state, &request).is_ok());
+        }
+        for count in [0, 2, 5, 26] {
+            state.snapshot.contact_sheet_frame_count = count;
+            assert!(state.snapshot.validate().is_err());
         }
     }
 

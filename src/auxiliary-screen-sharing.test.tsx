@@ -56,6 +56,29 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("independent screen-sharing controls", () => {
+  it("turns motion off through the owner and hides the frame count", async () => {
+    render(<AuxiliaryScreenSharing />);
+    fireEvent.click(
+      await screen.findByRole("switch", { name: "Show motion with sequential frames" }),
+    );
+    await waitFor(() =>
+      expect(requestAuxiliaryAction).toHaveBeenCalledWith(1, {
+        type: "set-contact-sheet-frame-count",
+        contactSheetFrameCount: 1,
+      }),
+    );
+    state = { version: 2, snapshot: { ...state.snapshot, contactSheetFrameCount: 1 } };
+    await act(async () => receive(state));
+    expect(screen.queryByRole("slider", { name: "Frames to combine" })).toBeNull();
+    fireEvent.click(screen.getByRole("switch", { name: "Show motion with sequential frames" }));
+    await waitFor(() =>
+      expect(requestAuxiliaryAction).toHaveBeenLastCalledWith(2, {
+        type: "set-contact-sheet-frame-count",
+        contactSheetFrameCount: 16,
+      }),
+    );
+  });
+
   it("commits the selected frame count rather than its slider index and applies the main theme", async () => {
     state = {
       ...state,
@@ -63,7 +86,7 @@ describe("independent screen-sharing controls", () => {
     };
     vi.mocked(readAuxiliarySnapshot).mockResolvedValue(state);
     render(<AuxiliaryScreenSharing />);
-    const slider = await screen.findByRole("slider", { name: "Frames per send" });
+    const slider = await screen.findByRole("slider", { name: "Frames to combine" });
     fireEvent.change(slider, { target: { value: "1" } });
     fireEvent.pointerUp(slider);
     await waitFor(() =>

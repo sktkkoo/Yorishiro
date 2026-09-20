@@ -3,6 +3,7 @@ import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from
 import type { ScreenCaptureRegion, ScreenSourceKind } from "./bindings/tauri-commands";
 import { CameraPreviewToggle } from "./camera-preview-toggle";
 import { MediaPermissionHelp } from "./media-permission-help";
+import { MotionSharingToggle } from "./motion-sharing-toggle";
 import { CONTACT_SHEET_FRAME_COUNTS } from "./runtime/contact-sheet-settings";
 import { getMediaPermissionKind } from "./runtime/media-permissions";
 import {
@@ -61,7 +62,7 @@ const strings = {
     noDisplays: "No displays available",
     refresh: "Refresh displays",
     interval: "Send interval",
-    frameCount: "Frames per send",
+    frameCount: "Frames to combine",
     hint: "Shorter intervals use more tokens.",
     seconds: (value: number) => formatSharingInterval(value, "en"),
     unavailable: "Select an agent that supports screen sharing to start.",
@@ -81,7 +82,7 @@ const strings = {
     noDisplays: "共有できる画面がありません",
     refresh: "画面一覧を更新",
     interval: "送信間隔",
-    frameCount: "送信コマ数",
+    frameCount: "まとめるコマ数",
     hint: "間隔が短いほどトークン消費が増えます。",
     seconds: (value: number) => formatSharingInterval(value, "ja"),
     unavailable: "画面共有に対応するエージェントを選択してください。",
@@ -130,7 +131,7 @@ export function ScreenSharingControl({
   pointersEnabled,
   pointersReady,
   intervalSeconds,
-  contactSheetFrameCount = 16,
+  contactSheetFrameCount = 1,
   sources,
   sourceId,
   error,
@@ -509,30 +510,39 @@ export function ScreenSharingControl({
               </p>
               {onContactSheetFrameCountChange ? (
                 <>
-                  <div className="screen-sharing-interval-heading">
-                    <label className="screen-sharing-label" htmlFor={frameCountId}>
-                      {labels.frameCount}
-                    </label>
-                    <output htmlFor={frameCountId}>{contactSheetFrameCount}</output>
-                  </div>
-                  <input
-                    id={frameCountId}
-                    className="screen-sharing-slider"
-                    type="range"
-                    min={0}
-                    max={CONTACT_SHEET_FRAME_COUNTS.length - 1}
-                    step={1}
-                    value={CONTACT_SHEET_FRAME_COUNTS.indexOf(
-                      contactSheetFrameCount as (typeof CONTACT_SHEET_FRAME_COUNTS)[number],
-                    )}
-                    aria-label={labels.frameCount}
-                    aria-valuetext={String(contactSheetFrameCount)}
-                    onChange={(event) =>
-                      onContactSheetFrameCountChange(
-                        CONTACT_SHEET_FRAME_COUNTS[Number(event.currentTarget.value)],
-                      )
-                    }
+                  <MotionSharingToggle
+                    frameCount={contactSheetFrameCount}
+                    language={language}
+                    onChange={onContactSheetFrameCountChange}
                   />
+                  {contactSheetFrameCount > 1 ? (
+                    <>
+                      <div className="screen-sharing-interval-heading">
+                        <label className="screen-sharing-label" htmlFor={frameCountId}>
+                          {labels.frameCount}
+                        </label>
+                        <output htmlFor={frameCountId}>{contactSheetFrameCount}</output>
+                      </div>
+                      <input
+                        id={frameCountId}
+                        className="screen-sharing-slider"
+                        type="range"
+                        min={0}
+                        max={CONTACT_SHEET_FRAME_COUNTS.length - 1}
+                        step={1}
+                        value={CONTACT_SHEET_FRAME_COUNTS.indexOf(
+                          contactSheetFrameCount as (typeof CONTACT_SHEET_FRAME_COUNTS)[number],
+                        )}
+                        aria-label={labels.frameCount}
+                        aria-valuetext={String(contactSheetFrameCount)}
+                        onChange={(event) =>
+                          onContactSheetFrameCountChange(
+                            CONTACT_SHEET_FRAME_COUNTS[Number(event.currentTarget.value)],
+                          )
+                        }
+                      />
+                    </>
+                  ) : null}
                 </>
               ) : null}
               {onPreviewVisibleChange ? (
