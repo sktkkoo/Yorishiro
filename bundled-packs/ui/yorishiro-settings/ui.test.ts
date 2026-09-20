@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { getStrings, resolvePackRepairPrompt } from "../../../src/i18n/strings";
-import { KNOWN_AGENT_IDS } from "../../../src/runtime/user-pack-loader/config";
+import { applyCurrentProjectSceneSelection } from "../../../src/runtime/project-context/project-context";
+import { EMPTY_CONFIG, KNOWN_AGENT_IDS } from "../../../src/runtime/user-pack-loader/config";
 import {
   activeVrmCandidateId,
   applyConfigUpdate,
@@ -455,9 +456,30 @@ describe("default scene selection", () => {
     expect(resolveSceneSelectValue("misty-grasslands")).toBe("misty-grasslands");
   });
 
-  it("stores the default scene selection as null", () => {
-    expect(configActiveSceneForSelection("simple-room")).toBeNull();
+  it("keeps Simple Room as an explicit scene selection", () => {
+    expect(configActiveSceneForSelection("simple-room")).toBe("simple-room");
     expect(configActiveSceneForSelection("misty-grasslands")).toBe("misty-grasslands");
+  });
+});
+
+describe("scene selection with a project override", () => {
+  it.each([
+    "amber-window-room",
+    "misty-grasslands",
+  ])("switches from %s to Simple Room without falling back to Twilight Café", (previousScene) => {
+    const result = applyCurrentProjectSceneSelection(
+      {
+        ...EMPTY_CONFIG,
+        activeScene: "amber-window-room",
+        sceneByProject: { "/repo/main": previousScene },
+      },
+      "/repo/main",
+      configActiveSceneForSelection("simple-room"),
+    );
+
+    expect(result.activeScene).toBe("simple-room");
+    expect(result.config.sceneByProject["/repo/main"]).toBe("simple-room");
+    expect(result.config.activeScene).toBe("amber-window-room");
   });
 });
 

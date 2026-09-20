@@ -512,8 +512,10 @@ export function resolveSceneSelectValue(activeScene: string | null): string {
   return activeScene ?? DEFAULT_SCENE_ID;
 }
 
-export function configActiveSceneForSelection(id: string): string | null {
-  return id === DEFAULT_SCENE_ID ? null : id;
+export function configActiveSceneForSelection(id: string): string {
+  // null clears the project override and inherits the global scene, which may
+  // differ from Simple Room. Every dropdown choice is an explicit selection.
+  return id;
 }
 
 /**
