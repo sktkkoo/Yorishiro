@@ -10,6 +10,9 @@ Pack 管理、event dispatch、module registry、singleton service。core primit
 
 | Module | 責務 | Entry | 備考 |
 |---|---|---|---|
+| `agent-setup.ts` | 登録済み terminal agent の実行ファイル検出、利用可能な agent の自動選択、公式導入リンク | `detectInstalledAgents` / `resolveAgentStartup` | [agent-onboarding.md](../../docs/decisions/agent-onboarding.md) |
+| `agent-setup-controller.ts` | 初回 health check の選択待ち、独立した導入進捗、ウィンドウ復帰時の再検出・選択保存・shell での続行 | `AgentSetupController` | host-owned store。導入完了だけでは agent を起動しない |
+| `agent-install.ts` | 公式 installer を実行する Tauri command と main window 宛ての進捗 event の bridge | `installTerminalAgent` / `listenAgentInstallOutput` | 明示的な install 操作からのみ呼ぶ |
 | `ambient-audio/` | Scene Pack の `ambient` 宣言を Howler.js で再生する engine と ScenePackRegistry への配線 | `index.ts` | [README](./ambient-audio/README.md) |
 | `codex-realtime/` | Codex TUI と同じ app-server thread に WebRTC 音声を接続し、remote audio を lip sync source にする | `index.ts` | experimental、host-owned UI |
 | `event-bus/` | Trigger dispatch engine — 環境 event → trigger match → reaction emit | `event-bus.ts` | Twin-trigger / Synthetic event の dispatch loop |
@@ -57,6 +60,8 @@ workspace-attention/  ◄─── terminal-runtime/, attention-runtime/, core/b
 ```
 
 `terminalAgent` は `user-pack-loader/config.ts` で parse し、`App.tsx` の user-layer bootstrap 完了後に `terminal-runtime/` へ渡す。これにより primaryPersona の prompt overlay と agent 選択が同じ gate で確定し、null prompt race / 多重 spawn を避ける。
+
+初回 health check の agent 判定は `agent-setup-controller.ts` が同じ bootstrap 内で行う。導入済みがあれば設定中の agent を優先し、見つからなければ導入済みの Codex、または最初の利用可能な agent を自動選択して保存する。複数導入済みでも選択画面は出さず、利用可能な agent がない場合だけ導入画面で待つ。「あとで設定する」は shell で続行する。明示的な shell / custom command profile はこの判定を通さない。正常な初回 health report は表示せず、ほかの実際の問題は案内する。
 
 ---
 

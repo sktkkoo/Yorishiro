@@ -1,3 +1,4 @@
+mod agent_setup;
 pub mod attach;
 mod auxiliary_windows;
 mod bundled_examples_gen;
@@ -485,12 +486,28 @@ fn resolve_command_path_impl(command: &str) -> Option<String> {
     for dir in std::env::split_paths(&path_env) {
         for candidate in &candidates {
             let path = dir.join(candidate);
-            if path.is_file() {
+            if command_path_is_executable(&path) {
                 return Some(path.to_string_lossy().to_string());
             }
         }
     }
     None
+}
+
+fn command_path_is_executable(path: &Path) -> bool {
+    let Ok(metadata) = path.metadata() else {
+        return false;
+    };
+    if !metadata.is_file() {
+        return false;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        metadata.permissions().mode() & 0o111 != 0
+    }
+    #[cfg(not(unix))]
+    true
 }
 
 fn canonicalize_cwd(cwd: &Path) -> Result<PathBuf, String> {
@@ -3890,6 +3907,7 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            agent_setup::install_terminal_agent,
             media_permissions::open_media_permission_settings,
             screen_preview::screen_preview_begin,
             screen_preview::screen_preview_open,
