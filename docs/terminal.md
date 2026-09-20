@@ -66,6 +66,28 @@ UI pack が terminal を fullscreen / hidden / fixed position にする layout �
 
 ---
 
+## Scene と terminal の配色
+
+Scene 切り替え時は全 session の terminal palette を更新する。DEC mode 2031 を
+有効にした TUI には、scene 背景に基づく light/dark 変更通知を返す。これは terminal
+protocol の応答であり、ユーザーの入力・attention・perception には流さない。
+未購読の shell には通知しない。プロセス終了・再起動時は購読を解除する。
+仕様: [Contour color palette notifications](https://contour-terminal.org/vt-extensions/color-palette-update-notifications/)。
+
+Claude Code の対応版はこの通知から背景色を再照会できる。OpenCode は既存の
+`system` theme と `SIGUSR2` による palette 再取得を使う。Codex は起動時の RGB 色を
+保持するため、起動時の背景から計算された入力欄・発言欄の色に限り、xterm の公開
+decoration API で現在の scene に合わせる。agent session と、shell integration が
+実行中の `codex` コマンドを識別できる shell session が対象。起動色は OSC 11 の
+照会時に記録し、すでに起動済みの session には既定背景色も候補として使う。
+差分などの別の背景色は置き換えない。
+
+`minimumContrastRatio: 4.5` は補正後の背景に対して文字色を調整する。補正は描画色
+だけに作用し、入力中の文章や会話履歴の buffer は変更しない。開発中の HMR でも
+既存の terminal に修正を反映し、PTY の再起動や buffer のリセットは行わない。
+
+---
+
 ## 外部ターミナルから attach（macOS）
 
 - `yorishiro companion [session-id]`: Yorishiroを起動し、外部ターミナルから接続する。

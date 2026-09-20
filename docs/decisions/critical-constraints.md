@@ -31,6 +31,12 @@
 
 ### Theme Refresh Signals
 
+Terminal emulator は DEC mode 2031 を明示的に有効化した TUI に、scene の配色変更を
+固定形式の DSR（`CSI ? 997 ; 1/2 n`）で通知できる。明示的な DSR / DECRQM 照会への
+応答も terminal protocol として扱い、typing / perception / attention の入力経路には
+流さない。未購読のプロセスへ unsolicited response を送らず、終了・再起動時は購読を
+解除する。pack に任意の PTY write API を公開するものではない。
+
 Terminal agent adapter は PTY input に書き込まない。OpenCode の TUI theme refresh では
 例外的に host が `SIGUSR2` を child process へ送るが、これは PTY data ではなく
 terminal theme を agent renderer に再サンプルさせる固定の process-control signal として扱う。

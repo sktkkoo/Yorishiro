@@ -17,6 +17,8 @@ import {
 import type { Perception } from "../../core/perception";
 import { getOrInit } from "../hot-data";
 import { KEYS } from "../module-registry/keys";
+import { CodexThemeDecorations } from "./codex-theme-decorations";
+import { TerminalColorScheme } from "./color-scheme";
 import { type TerminalCommandRun, TerminalCommandRunStore } from "./command-run-store";
 import {
   type OscNotificationCode,
@@ -138,6 +140,8 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   private readonly textDecoder = new TextDecoder("utf-8", { fatal: false });
   private readonly commandRuns: TerminalCommandRunStore;
   private readonly oscHandlerDisposables: Disposable[] = [];
+  private colorScheme!: TerminalColorScheme;
+  private codexTheme!: CodexThemeDecorations;
   private readonly commandRunProblems = new Map<number, ReadonlyArray<TerminalProblem>>();
   private attachLiveBuffer: Uint8Array[] | null = null;
   private readonly ptyWriteQueue: Array<{ readonly bytes: Uint8Array; readonly replay: boolean }> =
@@ -218,6 +222,9 @@ class TerminalRuntimeImpl implements TerminalRuntime {
       // alpha 付き background を合成可能にする。不透明 background のときは描画結果が
       // 同一（無害）で、setBackgroundOpacity(<1) で初めて効く。
       allowTransparency: true,
+      // TUIs can retain explicit RGB input backgrounds after a scene change.
+      // Keep text legible against those cells while their theme catches up.
+      minimumContrastRatio: 4.5,
       scrollback: 5000,
     });
 
@@ -240,6 +247,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     this.installImeCompositionGuard();
     this.installCommandRunOscHandlers();
     this.installNotificationOscHandlers();
+    this.initializeThemeSupport();
 
     const regionCtx = this.createRegionCanvas();
     this.regionCanvas = regionCtx?.canvas ?? null;
@@ -255,6 +263,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
       const unlisten = await listen<{ session_id: string; code: number }>("pty-exit", (event) => {
         if (this.disposed) return;
         if (event.payload.session_id !== this.sessionId) return;
+        this.colorScheme.reset();
         this.finalizeCommandRun("pty-exit", normalizePtyExitCode(event.payload.code));
         this.term.write(`\r\n\x1b[90m[Process exited with code ${event.payload.code}]\x1b[0m\r\n`);
       });
@@ -414,6 +423,8 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     for (const disposable of this.oscHandlerDisposables.splice(0)) {
       disposable.dispose();
     }
+    this.colorScheme.dispose();
+    this.codexTheme.dispose();
     this.commandRuns.clear();
     this.ptyDataListeners.clear();
     this.scrollListeners.clear();
@@ -460,7 +471,10 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     this.clearPtyWriteQueue();
     this.clearCommandRunDecorations();
     this.commandRuns.clear();
+    this.colorScheme.reset();
+    this.codexTheme.reset();
     this.term.reset();
+    this.syncColorScheme();
 
     return (async () => {
       const stopIfStale = (): boolean => {
@@ -605,10 +619,72 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     }
     // scene 由来の background が変わっても保持中の alpha を再適用する。
     this.applyBackgroundOpacity();
+    this.syncColorScheme();
     // Theme update can leave renderer dimensions stale when scene switches
     // coincide with layout changes, so force a fresh fit before refresh.
     this.refit();
     this.term.refresh(0, this.term.rows - 1);
+  }
+
+  private syncColorScheme(): void {
+    // Replay must not consume a live scene notification; send once parsing drains.
+    if (this.currentWriteReplay) return;
+    this.colorScheme.update(
+      hexToRgba(this.currentThemeBackground ?? DEFAULT_TERMINAL_THEME.background ?? "#141619", 1),
+    );
+    this.codexTheme.update({
+      enabled: this.isCodexSession(),
+      background: this.currentThemeBackground ?? DEFAULT_TERMINAL_THEME.background ?? "#141619",
+    });
+  }
+
+  private isCodexSession(): boolean {
+    const spec = this.currentParams?.spec;
+    if (spec?.kind === "agent") return spec.agent === "codex";
+    if (spec?.kind !== "shell") return false;
+    const command = this.commandRuns.getActiveRun()?.command?.trim() ?? "";
+    return /^(?:(?:command|exec)\s+)?(?:[^\s]*\/)?codex(?:\s|$)/.test(command);
+  }
+
+  private initializeThemeSupport(): void {
+    this.term.options.minimumContrastRatio = 4.5;
+    if (!this.colorScheme) {
+      this.colorScheme = new TerminalColorScheme(this.term.parser, (data, isCurrent) => {
+        // Protocol replies must bypass typing, IME, and attention observers.
+        if (this.disposed || this.currentWriteReplay) return;
+        const generation = this.startGeneration;
+        this.inputWriteQueue = this.inputWriteQueue.then(async () => {
+          if (this.isStaleStart(generation) || !isCurrent()) return;
+          await sessionWrite({ sessionId: this.sessionId, data }).catch(() => {});
+        });
+      });
+    }
+    if (!this.codexTheme) {
+      this.codexTheme = new CodexThemeDecorations(this.term);
+      this.oscHandlerDisposables.push(
+        this.term.parser.registerOscHandler(11, (data) => {
+          if (data === "?" && !this.currentWriteReplay && this.isCodexSession()) {
+            this.codexTheme.recordStartupBackground(
+              this.currentThemeBackground ?? DEFAULT_TERMINAL_THEME.background ?? "#141619",
+            );
+          }
+          return false;
+        }),
+      );
+    }
+    this.syncColorScheme();
+  }
+
+  static refreshPreservedRuntime(runtime: TerminalRuntimeImpl): void {
+    if (runtime.disposed) return;
+    // HMR keeps the live PTY and xterm; adopt new methods without resetting either.
+    Object.setPrototypeOf(runtime, TerminalRuntimeImpl.prototype);
+    if (runtime.colorScheme)
+      Object.setPrototypeOf(runtime.colorScheme, TerminalColorScheme.prototype);
+    if (runtime.codexTheme)
+      Object.setPrototypeOf(runtime.codexTheme, CodexThemeDecorations.prototype);
+    runtime.initializeThemeSupport();
+    runtime.term.refresh(0, runtime.term.rows - 1);
   }
 
   refit(): void {
@@ -1183,6 +1259,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
       this.currentWriteReplay = false;
       this.writingPtyChunk = false;
       this.flushPtyWriteQueue();
+      if (!this.writingPtyChunk) this.syncColorScheme();
     });
   }
 
@@ -1262,6 +1339,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   }
 
   private finalizeCommandRun(completedBy: "osc133" | "pty-exit", exitCode: number | null): void {
+    if (completedBy === "pty-exit") this.colorScheme.reset();
     const finalized = this.commandRuns.finalizeActive({
       completedBy,
       exitCode,
@@ -2086,8 +2164,14 @@ export function disposeTerminalRuntime(sessionId: string): void {
   map.delete(sessionId);
 }
 
-// Self-accept: terminal-runtime.ts 自身を編集しても Map は保たれる。
-// React 側は影響なく次 mount で同 instance を引く。
+/** Refresh development code while preserving the xterm buffer and running PTY. */
+export function refreshPreservedTerminalRuntimes(): void {
+  for (const runtime of getRuntimeMap().values()) {
+    TerminalRuntimeImpl.refreshPreservedRuntime(runtime);
+  }
+}
+
 if (import.meta.hot) {
   import.meta.hot.accept();
+  refreshPreservedTerminalRuntimes();
 }
