@@ -3,6 +3,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Perception } from "../../core/perception";
 import { _clearForTest } from "../hot-data/hot-data";
+import { getSceneRegistry } from "../scene-pack-registry/scene-pack-registry";
 import { encodeOsc633Value } from "./osc633";
 
 interface Deferred<T> {
@@ -154,6 +155,7 @@ vi.mock("@xterm/xterm", () => ({
       [2, "failed output"],
     ]);
     wrappedLines = new Set<number>();
+    private readonly writeParsedListeners = new Set<() => void>();
     private markerId = 0;
     parser = {
       registerCsiHandler: (
@@ -219,6 +221,7 @@ vi.mock("@xterm/xterm", () => ({
     write(data: unknown, callback?: () => void): void {
       this.writes.push(data);
       callback?.();
+      for (const listener of this.writeParsedListeners) listener();
     }
     dispose(): void {
       this.disposed = true;
@@ -227,8 +230,9 @@ vi.mock("@xterm/xterm", () => ({
       this.dataHandler = handler;
       mockState.dataHandlers.push(handler);
     }
-    onWriteParsed() {
-      return { dispose: vi.fn() };
+    onWriteParsed(listener: () => void) {
+      this.writeParsedListeners.add(listener);
+      return { dispose: () => this.writeParsedListeners.delete(listener) };
     }
     onResize() {
       return { dispose: vi.fn() };
@@ -344,7 +348,7 @@ function terminalClick(options: {
   });
 }
 
-function addCachedCodexSurface() {
+function addCachedCodexSurface(background = 0x303134) {
   const terminal = mockState.terminals[0] as unknown as {
     buffer: { active: { length: number; getLine: (line: number) => unknown } };
     registerDecoration(options: { backgroundColor?: string; layer?: string }): unknown;
@@ -361,7 +365,7 @@ function addCachedCodexSurface() {
             isFgDefault: () => true,
             getFgColor: () => 0,
             isBgRGB: () => col < 18,
-            getBgColor: () => 0x303134,
+            getBgColor: () => background,
             isInverse: () => 0,
           }),
         }
@@ -1234,6 +1238,57 @@ describe("TerminalRuntime", () => {
     expect([mockState.oscHandlers.get(11), mockState.csiHandlers.get("?h")]).toEqual(handlers);
     expect(mockState.sessionSpawn).not.toHaveBeenCalled();
     expect(mockState.sessionAttach).not.toHaveBeenCalled();
+    expect(mockState.sessionDestroy).not.toHaveBeenCalled();
+    expect(mockState.sessionWrite).not.toHaveBeenCalled();
+    decoration.mockRestore();
+  });
+
+  it.each([
+    "attach",
+    "hot-upgrade",
+  ] as const)("repairs a light-scene Codex input on a dark scene after %s without its startup query", async (restore) => {
+    getSceneRegistry().register({
+      id: "previous-light-scene",
+      origin: "user",
+      manifest: {
+        id: "previous-light-scene",
+        type: "scene",
+        version: "0.1.0",
+        yorishiroVersion: "^0.1.0",
+        entry: "scene.ts",
+      },
+      scene: {
+        id: "previous-light-scene",
+        layers: [],
+        terminal: { background: "#e7e7d9" },
+      },
+    });
+    mockState.sessionAttach.mockResolvedValueOnce({ attached: true, replay: [65] });
+    const runtime = getTerminalRuntime("shell-1");
+    runtime.setTheme({ background: "#141619" });
+    runtime.updatePtyParams(
+      { spec: { kind: "agent", agent: "codex" }, cwd: null },
+      { attachFirst: true },
+    );
+    const decoration = addCachedCodexSurface(0xddddd0);
+    if (restore === "hot-upgrade") {
+      await flushMicrotasks();
+      const retained = runtime as unknown as {
+        codexTheme?: { dispose(): void };
+      };
+      retained.codexTheme?.dispose();
+      delete retained.codexTheme;
+      decoration.mockClear();
+      refreshPreservedTerminalRuntimes();
+    } else {
+      await flushMicrotasks();
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    }
+    expect(decoration).toHaveBeenCalledWith(
+      expect.objectContaining({ backgroundColor: "#303134", layer: "bottom" }),
+    );
+    expect(runtime.readScreenTailText(24).trimEnd()).toBe("Unsubmitted draft");
+    expect(mockState.sessionSpawn).not.toHaveBeenCalled();
     expect(mockState.sessionDestroy).not.toHaveBeenCalled();
     expect(mockState.sessionWrite).not.toHaveBeenCalled();
     decoration.mockRestore();

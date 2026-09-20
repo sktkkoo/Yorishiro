@@ -167,6 +167,63 @@ describe("Codex cached surface adaptation", () => {
     adapter.dispose();
   });
 
+  it("adapts attached light-scene fills without receiving the original startup query", () => {
+    const { adapter, cells, term, fire, flush } = setup();
+    cells[0] = [{ color: 0xddddd0 }, { color: 0xe2e2d4 }, { color: 0xaa0000 }];
+    const options = {
+      enabled: true,
+      background: "#141619",
+      sourceBackgrounds: ["#e7e7d9"],
+    };
+    adapter.update(options);
+    expect(term.registerDecoration).toHaveBeenCalledTimes(2);
+    expect(term.registerDecoration).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ x: 0, width: 1, backgroundColor: "#303134" }),
+    );
+    expect(term.registerDecoration).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        x: 1,
+        width: 1,
+        backgroundColor: codexSurfaceColor("#141619", "history"),
+      }),
+    );
+    adapter.update(options);
+    fire("write");
+    flush();
+    expect(term.registerDecoration).toHaveBeenCalledTimes(2);
+    adapter.dispose();
+  });
+
+  it("rechecks an unchanged theme when scene palettes become available after attachment", () => {
+    const { adapter, cells, term } = setup();
+    cells[0] = [{ color: 0xddddd0 }];
+    adapter.update({ enabled: true, background: "#141619" });
+    expect(term.registerDecoration).not.toHaveBeenCalled();
+    adapter.update({
+      enabled: true,
+      background: "#141619",
+      sourceBackgrounds: ["#e7e7d9"],
+    });
+    expect(term.registerDecoration).toHaveBeenCalledWith(
+      expect.objectContaining({ backgroundColor: "#303134" }),
+    );
+    adapter.dispose();
+  });
+
+  it("remembers applied scene colors even when a startup query was missed", () => {
+    const { adapter, cells, term } = setup();
+    cells[0] = [{ color: 0xddddd0 }];
+    adapter.update({ enabled: true, background: "#e7e7d9" });
+    expect(term.registerDecoration).not.toHaveBeenCalled();
+    adapter.update({ enabled: true, background: "#141619" });
+    expect(term.registerDecoration).toHaveBeenCalledWith(
+      expect.objectContaining({ backgroundColor: "#303134" }),
+    );
+    adapter.dispose();
+  });
+
   it("stays inactive for other agents and cleans up listeners, decorations, and pending work", () => {
     const { adapter, cells, stale, term, fire, flush, markers, subscriptionDisposals } = setup();
     cells[0] = [{ color: stale }];

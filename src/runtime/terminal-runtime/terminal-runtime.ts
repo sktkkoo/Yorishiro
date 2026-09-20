@@ -17,6 +17,7 @@ import {
 import type { Perception } from "../../core/perception";
 import { getOrInit } from "../hot-data";
 import { KEYS } from "../module-registry/keys";
+import { getSceneRegistry } from "../scene-pack-registry/scene-pack-registry";
 import { CodexThemeDecorations } from "./codex-theme-decorations";
 import { TerminalColorScheme } from "./color-scheme";
 import { type TerminalCommandRun, TerminalCommandRunStore } from "./command-run-store";
@@ -635,6 +636,11 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     this.codexTheme.update({
       enabled: this.isCodexSession(),
       background: this.currentThemeBackground ?? DEFAULT_TERMINAL_THEME.background ?? "#141619",
+      // Reattached processes and legacy HMR runtimes can predate OSC 11 observation.
+      // Recognize exact fills derived from registered scenes without recoloring other RGB cells.
+      sourceBackgrounds: getSceneRegistry()
+        .listEntries()
+        .flatMap(({ scene }) => (scene.terminal?.background ? [scene.terminal.background] : [])),
     });
   }
 
