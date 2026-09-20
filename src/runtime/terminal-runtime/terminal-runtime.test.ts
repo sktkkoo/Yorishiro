@@ -23,6 +23,7 @@ interface MockBufferLine {
 }
 
 interface MockBuffer {
+  onBufferChange: () => { dispose: () => void };
   readonly active: {
     readonly baseY: number;
     readonly cursorY: number;
@@ -47,6 +48,7 @@ const mockState = vi.hoisted(() => {
     channels: Array<{ onmessage: ((data: ArrayBuffer) => void) | null }>;
     terminals: Array<{
       writes: unknown[];
+      write(data: unknown, callback?: () => void): void;
       clearCalls: number;
       disposed: boolean;
       textarea: HTMLTextAreaElement;
@@ -58,6 +60,8 @@ const mockState = vi.hoisted(() => {
     dataHandlers: Array<(data: string) => void>;
     decorations: Array<{ element: HTMLElement; dispose: ReturnType<typeof vi.fn> }>;
     oscHandlers: Map<number, (data: string) => boolean | Promise<boolean>>;
+    csiHandlers: Map<string, (params: (number | number[])[]) => boolean | Promise<boolean>>;
+    escHandlers: Map<string, () => boolean | Promise<boolean>>;
     eventListeners: Map<string, Array<(event: { payload: unknown }) => void>>;
     fitCalls: number;
     focusCalls: number;
@@ -79,6 +83,8 @@ const mockState = vi.hoisted(() => {
     dataHandlers: [],
     decorations: [],
     oscHandlers: new Map(),
+    csiHandlers: new Map(),
+    escHandlers: new Map(),
     eventListeners: new Map(),
     fitCalls: 0,
     focusCalls: 0,
@@ -150,6 +156,18 @@ vi.mock("@xterm/xterm", () => ({
     wrappedLines = new Set<number>();
     private markerId = 0;
     parser = {
+      registerCsiHandler: (
+        id: { prefix?: string; intermediates?: string; final: string },
+        callback: (params: (number | number[])[]) => boolean | Promise<boolean>,
+      ) => {
+        const key = `${id.prefix ?? ""}${id.intermediates ?? ""}${id.final}`;
+        mockState.csiHandlers.set(key, callback);
+        return { dispose: () => mockState.csiHandlers.delete(key) };
+      },
+      registerEscHandler: (id: { final: string }, callback: () => boolean | Promise<boolean>) => {
+        mockState.escHandlers.set(id.final, callback);
+        return { dispose: () => mockState.escHandlers.delete(id.final) };
+      },
       registerOscHandler: (
         ident: number,
         callback: (data: string) => boolean | Promise<boolean>,
@@ -166,6 +184,7 @@ vi.mock("@xterm/xterm", () => ({
     constructor(options: { theme?: unknown }) {
       this.options = options;
       this.buffer = {
+        onBufferChange: () => ({ dispose: vi.fn() }),
         active: {
           baseY: 0,
           cursorY: 2,
@@ -208,8 +227,15 @@ vi.mock("@xterm/xterm", () => ({
       this.dataHandler = handler;
       mockState.dataHandlers.push(handler);
     }
-    onResize(): void {}
-    onScroll(): void {}
+    onWriteParsed() {
+      return { dispose: vi.fn() };
+    }
+    onResize() {
+      return { dispose: vi.fn() };
+    }
+    onScroll() {
+      return { dispose: vi.fn() };
+    }
     scrollToLine(line: number): void {
       mockState.scrollToLineCalls.push(line);
       this.buffer.active.viewportY = line;
@@ -268,9 +294,8 @@ vi.mock("../../bindings/tauri-commands", () => ({
   sessionWrite: mockState.sessionWrite,
 }));
 
-const { disposeTerminalRuntime, getTerminalRuntime, hexToRgba } = await import(
-  "./terminal-runtime"
-);
+const { disposeTerminalRuntime, getTerminalRuntime, hexToRgba, refreshPreservedTerminalRuntimes } =
+  await import("./terminal-runtime");
 
 const shellSpec = { kind: "shell" as const, integration: true };
 
@@ -319,6 +344,31 @@ function terminalClick(options: {
   });
 }
 
+function addCachedCodexSurface() {
+  const terminal = mockState.terminals[0] as unknown as {
+    buffer: { active: { length: number; getLine: (line: number) => unknown } };
+    registerDecoration(options: { backgroundColor?: string; layer?: string }): unknown;
+  };
+  terminal.buffer.active.length = 24;
+  terminal.buffer.active.getLine = (line) =>
+    line === 0
+      ? {
+          isWrapped: false,
+          translateToString: () => "Unsubmitted draft",
+          getCell: (col: number) => ({
+            getChars: () => "Unsubmitted draft"[col] ?? " ",
+            getWidth: () => 1,
+            isFgDefault: () => true,
+            getFgColor: () => 0,
+            isBgRGB: () => col < 18,
+            getBgColor: () => 0x303134,
+            isInverse: () => 0,
+          }),
+        }
+      : undefined;
+  return vi.spyOn(terminal, "registerDecoration");
+}
+
 describe("TerminalRuntime", () => {
   beforeEach(() => {
     _clearForTest();
@@ -331,6 +381,8 @@ describe("TerminalRuntime", () => {
     mockState.dataHandlers.length = 0;
     mockState.decorations.length = 0;
     mockState.oscHandlers.clear();
+    mockState.csiHandlers.clear();
+    mockState.escHandlers.clear();
     mockState.eventListeners.clear();
     mockState.fitCalls = 0;
     mockState.focusCalls = 0;
@@ -1097,6 +1149,216 @@ describe("TerminalRuntime", () => {
 
     expect(received).toEqual(["y"]);
     sub.dispose();
+  });
+
+  it.each([
+    ["codex", true],
+    ["codex --resume", true],
+    ["command codex", true],
+    ["exec /opt/homebrew/bin/codex", true],
+    ["/opt/homebrew/bin/codex --help", true],
+    ["claude", false],
+    ["opencode", false],
+    ["echo codex", false],
+    ["codex-helper", false],
+  ])("adapts shell-launched Codex only while command %s is active", async (command, expected) => {
+    const runtime = getTerminalRuntime("shell-1");
+    runtime.updatePtyParams({ spec: shellSpec, cwd: null });
+    await flushMicrotasks();
+    const decoration = addCachedCodexSurface();
+    runtime.setTheme({ background: "#e7e7d9" });
+    expect(decoration).not.toHaveBeenCalled();
+    mockState.oscHandlers.get(633)?.(`E;${encodeOsc633Value(command)}`);
+    mockState.oscHandlers.get(133)?.("C");
+    // Draining a PTY chunk must update detection without requiring a scene switch.
+    mockState.channels[0]?.onmessage?.(new Uint8Array([65]).buffer);
+    expect(decoration.mock.calls.some(([options]) => options.backgroundColor === "#ddddd0")).toBe(
+      expected,
+    );
+    expect(mockState.sessionWrite).not.toHaveBeenCalled();
+    if (expected) {
+      const fill = mockState.decorations[mockState.decorations.length - 1];
+      mockState.oscHandlers.get(133)?.("D;0");
+      mockState.channels[0]?.onmessage?.(new Uint8Array([66]).buffer);
+      expect(fill?.dispose).toHaveBeenCalled();
+    }
+    decoration.mockRestore();
+  });
+
+  it("hot-upgrades a legacy runtime in place without resetting its draft, buffer, or PTY", async () => {
+    const runtime = getTerminalRuntime("shell-1");
+    runtime.updatePtyParams({ spec: { kind: "agent", agent: "codex" }, cwd: null });
+    await flushMicrotasks();
+    const terminal = mockState.terminals[0];
+    terminal.textarea.value = "Unsubmitted draft";
+    mockState.channels[0]?.onmessage?.(new Uint8Array([65, 66]).buffer);
+    const writes = [...terminal.writes];
+    const lines = new Map(terminal.bufferLines);
+    const channel = mockState.channels[0];
+    const retained = runtime as unknown as {
+      colorScheme?: { dispose(): void };
+      codexTheme?: { dispose(): void };
+    };
+    retained.colorScheme?.dispose();
+    retained.codexTheme?.dispose();
+    delete retained.colorScheme;
+    delete retained.codexTheme;
+    mockState.oscHandlers.delete(11);
+    const decoration = addCachedCodexSurface();
+    // Remove methods as an old module instance would have an obsolete prototype.
+    Object.setPrototypeOf(runtime, {});
+    mockState.sessionSpawn.mockClear();
+    mockState.sessionAttach.mockClear();
+    mockState.sessionDestroy.mockClear();
+    mockState.sessionWrite.mockClear();
+
+    refreshPreservedTerminalRuntimes();
+    expect(getTerminalRuntime("shell-1")).toBe(runtime);
+    expect(mockState.terminals).toEqual([terminal]);
+    expect(retained.colorScheme).toBeDefined();
+    expect(retained.codexTheme).toBeDefined();
+    expect(terminal.writes).toEqual(writes);
+    expect(terminal.bufferLines).toEqual(lines);
+    expect(terminal.textarea.value).toBe("Unsubmitted draft");
+    expect(terminal.clearCalls).toBe(0);
+    expect(terminal.disposed).toBe(false);
+    expect(mockState.channels[0]).toBe(channel);
+    runtime.setTheme({ background: "#e7e7d9" });
+    expect(decoration).toHaveBeenCalledWith(
+      expect.objectContaining({ backgroundColor: "#ddddd0", layer: "bottom" }),
+    );
+    const support = [retained.colorScheme, retained.codexTheme];
+    const handlers = [mockState.oscHandlers.get(11), mockState.csiHandlers.get("?h")];
+    refreshPreservedTerminalRuntimes();
+    expect([retained.colorScheme, retained.codexTheme]).toEqual(support);
+    expect([mockState.oscHandlers.get(11), mockState.csiHandlers.get("?h")]).toEqual(handlers);
+    expect(mockState.sessionSpawn).not.toHaveBeenCalled();
+    expect(mockState.sessionAttach).not.toHaveBeenCalled();
+    expect(mockState.sessionDestroy).not.toHaveBeenCalled();
+    expect(mockState.sessionWrite).not.toHaveBeenCalled();
+    decoration.mockRestore();
+  });
+
+  it("sends subscribed scene color replies without reporting them as user input", async () => {
+    const runtime = getTerminalRuntime("shell-1");
+    const perception = { onCommandBlock: vi.fn(), onPtyOutput: vi.fn(), onUserInput: vi.fn() };
+    runtime.setPerception(perception as unknown as Perception);
+    const userInput = vi.fn();
+    runtime.subscribeUserInput(userInput);
+    const terminal = mockState.terminals[0];
+    const originalLines = new Map(terminal.bufferLines);
+
+    runtime.setTheme({ background: "#ffffff", foreground: "#111111" });
+    await flushMicrotasks();
+    expect(mockState.sessionWrite).not.toHaveBeenCalled();
+
+    mockState.csiHandlers.get("?h")?.([2031]);
+    runtime.setTheme({ background: "#141619", foreground: "#eeeeee" });
+    await flushMicrotasks();
+    expect(mockState.sessionWrite).toHaveBeenCalledExactlyOnceWith({
+      sessionId: "shell-1",
+      data: "\x1b[?997;1n",
+    });
+    runtime.setTheme({ background: "#ffffff", foreground: "#111111" });
+    await flushMicrotasks();
+    expect(mockState.sessionWrite).toHaveBeenLastCalledWith({
+      sessionId: "shell-1",
+      data: "\x1b[?997;2n",
+    });
+    expect(userInput).not.toHaveBeenCalled();
+    expect(perception.onUserInput).not.toHaveBeenCalled();
+    expect(perception.onCommandBlock).not.toHaveBeenCalled();
+    expect(terminal.bufferLines).toEqual(originalLines);
+    expect(terminal.writes).toEqual([]);
+  });
+
+  it("clears scene color subscriptions on terminal reset, process exit, and replacement", async () => {
+    const runtime = getTerminalRuntime("shell-1");
+    await vi.waitFor(() => {
+      expect(mockState.eventListeners.get("pty-exit")?.length ?? 0).toBeGreaterThan(0);
+    });
+    mockState.csiHandlers.get("?h")?.([2031]);
+    mockState.escHandlers.get("c")?.();
+    runtime.setTheme({ background: "#ffffff" });
+
+    mockState.csiHandlers.get("?h")?.([2031]);
+    for (const listener of mockState.eventListeners.get("pty-exit") ?? []) {
+      listener({ payload: { session_id: "shell-1", code: 0 } });
+    }
+    runtime.setTheme({ background: "#141619" });
+
+    mockState.csiHandlers.get("?h")?.([2031]);
+    runtime.setTheme({ background: "#ffffff" });
+    // Replacement must discard the queued reply as well as the old subscription.
+    runtime.updatePtyParams({ spec: shellSpec, cwd: null });
+    runtime.setTheme({ background: "#141619" });
+    await flushMicrotasks();
+    expect(mockState.sessionWrite).not.toHaveBeenCalled();
+
+    disposeTerminalRuntime("shell-1");
+    expect(mockState.csiHandlers.size).toBe(0);
+    expect(mockState.escHandlers.size).toBe(0);
+  });
+
+  it("cancels queued palette notifications on disable or exit but keeps explicit query replies", async () => {
+    const runtime = getTerminalRuntime("shell-1");
+    await vi.waitFor(() => {
+      expect(mockState.eventListeners.get("pty-exit")?.length ?? 0).toBeGreaterThan(0);
+    });
+    mockState.csiHandlers.get("?h")?.([2031]);
+    runtime.setTheme({ background: "#ffffff" });
+    mockState.csiHandlers.get("?l")?.([2031]);
+    await flushMicrotasks();
+    expect(mockState.sessionWrite).not.toHaveBeenCalled();
+
+    mockState.csiHandlers.get("?n")?.([996]);
+    mockState.csiHandlers.get("?h")?.([2031]);
+    await flushMicrotasks();
+    expect(mockState.sessionWrite).toHaveBeenCalledExactlyOnceWith({
+      sessionId: "shell-1",
+      data: "\x1b[?997;2n",
+    });
+    mockState.sessionWrite.mockClear();
+
+    runtime.setTheme({ background: "#141619" });
+    for (const listener of mockState.eventListeners.get("pty-exit") ?? []) {
+      listener({ payload: { session_id: "shell-1", code: 0 } });
+    }
+    await flushMicrotasks();
+    expect(mockState.sessionWrite).not.toHaveBeenCalled();
+
+    mockState.csiHandlers.get("?n")?.([996]);
+    mockState.escHandlers.get("c")?.();
+    await flushMicrotasks();
+    expect(mockState.sessionWrite).not.toHaveBeenCalled();
+  });
+
+  it("defers scene notifications until replay completes and suppresses replayed color queries", async () => {
+    mockState.sessionAttach.mockResolvedValueOnce({ attached: true, replay: [65] });
+    const runtime = getTerminalRuntime("shell-1");
+    const terminal = mockState.terminals[0];
+    let completeReplay: (() => void) | undefined;
+    vi.spyOn(terminal, "write").mockImplementation((data, callback) => {
+      terminal.writes.push(data);
+      // Simulate the asynchronous parser consuming replayed opt-in and query sequences.
+      mockState.csiHandlers.get("?h")?.([2031]);
+      mockState.csiHandlers.get("?n")?.([996]);
+      completeReplay = callback;
+    });
+    runtime.updatePtyParams({ spec: shellSpec, cwd: null }, { attachFirst: true });
+    await flushMicrotasks();
+    expect(completeReplay).toBeDefined();
+
+    runtime.setTheme({ background: "#ffffff" });
+    await flushMicrotasks();
+    expect(mockState.sessionWrite).not.toHaveBeenCalled();
+
+    completeReplay?.();
+    await flushMicrotasks();
+    expect(mockState.sessionWrite).toHaveBeenCalledExactlyOnceWith({
+      sessionId: "shell-1",
+      data: "\x1b[?997;2n",
+    });
   });
 
   it("suppresses first Ctrl+C data in all interrupt protection mode", async () => {
