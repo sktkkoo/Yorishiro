@@ -84,9 +84,25 @@ export class CodexThemeDecorations {
     ];
   }
 
-  update(options: { enabled: boolean; background: string; foreground?: string }): void {
+  update(options: {
+    enabled: boolean;
+    background: string;
+    foreground?: string;
+    /** Known scene palettes recover startup fills after replay or a legacy HMR upgrade. */
+    sourceBackgrounds?: readonly string[];
+  }): void {
     if (this.disposed) return;
-    if (this.enabled === options.enabled && this.background === options.background) return;
+    let sourcesChanged = false;
+    for (const background of options.sourceBackgrounds ?? []) {
+      sourcesChanged = this.rememberBackground(background) || sourcesChanged;
+    }
+    sourcesChanged = this.rememberBackground(options.background) || sourcesChanged;
+    if (
+      !sourcesChanged &&
+      this.enabled === options.enabled &&
+      this.background === options.background
+    )
+      return;
     this.enabled = options.enabled;
     this.background = options.background;
     this.refresh();
@@ -95,11 +111,21 @@ export class CodexThemeDecorations {
   /** Call for a live Codex OSC 11 query, using the opaque palette being answered. */
   recordStartupBackground(background: string): void {
     if (this.disposed) return;
+    if (this.rememberBackground(background)) this.schedule();
+  }
+
+  private rememberBackground(background: string): boolean {
+    let changed = false;
     for (const surface of ["composer", "history"] as const) {
       const color = codexSurfaceColor(background, surface);
-      if (color) this.sources.set(Number.parseInt(color.slice(1), 16), surface);
+      if (!color) continue;
+      const value = Number.parseInt(color.slice(1), 16);
+      if (this.sources.get(value) !== surface) {
+        this.sources.set(value, surface);
+        changed = true;
+      }
     }
-    this.schedule();
+    return changed;
   }
 
   reset(): void {
