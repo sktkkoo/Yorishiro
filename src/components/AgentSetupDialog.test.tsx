@@ -40,14 +40,14 @@ afterEach(() => {
 });
 
 describe("AgentSetupDialog", () => {
-  it("keeps account details available without running anything on render", () => {
+  it("shows one shared account note above the agents without running anything on render", () => {
     const callbacks = props();
     render(<AgentSetupDialog {...callbacks} />);
 
     expect(screen.getByRole("dialog", { name: "Agent installation" })).toBeTruthy();
-    for (const note of screen.getAllByText(/Sign in with your own account after installation/)) {
-      expect(note.closest("details")?.open).toBe(false);
-    }
+    const note = screen.getByText(/Sign in with your own account after installation/);
+    expect(note.closest("header")).not.toBeNull();
+    expect(note.closest("details")).toBeNull();
     expect(callbacks.onInstall).not.toHaveBeenCalled();
     expect(callbacks.onSelect).not.toHaveBeenCalled();
     expect(callbacks.onRefresh).not.toHaveBeenCalled();

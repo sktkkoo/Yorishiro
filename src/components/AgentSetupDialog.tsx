@@ -223,6 +223,8 @@ export function AgentSetupDialog({
           </h2>
           <p className="agent-setup-description" id={bodyId}>
             {strings[reason]}
+            <br />
+            {strings.accountNote}
           </p>
         </header>
 
@@ -296,7 +298,6 @@ export function AgentSetupDialog({
                 {guide ? (
                   <details className="agent-setup-details">
                     <summary>{strings.details}</summary>
-                    <p className="agent-setup-hint">{strings.accountNote}</p>
                     <div className="agent-setup-links">
                       {[
                         { label: strings.setup, url: guide.url },
