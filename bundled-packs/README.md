@@ -37,6 +37,7 @@ bundled-packs/
 │   ├── text-physics/        — ターミナル文字の崩落 / 復元
 │   └── abandoned-monitor/   — 放置監視端末風 ARG overlay
 ├── ui/
+│   ├── chat/                — host-owned conversation and inline terminal controls
 │   ├── yorishiro-settings/  — 設定画面（F1 で開く）
 │   ├── immersive/           — 透過ターミナル UI
 │   └── theater/             — フルスクリーン character view

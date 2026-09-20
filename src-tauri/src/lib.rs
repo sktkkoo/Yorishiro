@@ -2,6 +2,7 @@ pub mod attach;
 mod auxiliary_windows;
 mod bundled_examples_gen;
 mod camera_preview;
+mod chat_approvals;
 mod history;
 mod journal;
 mod mcp;
@@ -1028,6 +1029,52 @@ async fn session_attach(
 async fn session_detach(state: State<'_, PtyState>, session_id: String) -> Result<(), String> {
     state.detach(&session_id);
     Ok(())
+}
+
+/// Chat の表示中だけ lease を更新し、現在の要求を読み取る。
+#[tauri::command]
+async fn session_chat_approvals(
+    broker: State<'_, chat_approvals::ChatApprovalBroker>,
+    registry: State<'_, Arc<SessionRegistry>>,
+    session_id: String,
+    owner_id: String,
+    enabled: bool,
+) -> Result<Vec<chat_approvals::ChatApprovalRequest>, String> {
+    broker.lease(&session_id, &owner_id, enabled);
+    if !enabled {
+        return Ok(Vec::new());
+    }
+    let mut requests = broker.list(&session_id, &owner_id);
+    if let Some(session) = registry.get_pty_session(&session_id) {
+        requests.extend(session.chat_approvals());
+    }
+    Ok(requests)
+}
+
+/// 明示的なカード操作を、要求を保持している元の transport へ返す。
+#[tauri::command]
+async fn session_chat_approval_respond(
+    broker: State<'_, chat_approvals::ChatApprovalBroker>,
+    registry: State<'_, Arc<SessionRegistry>>,
+    session_id: String,
+    owner_id: String,
+    id: String,
+    decision: chat_approvals::ChatApprovalDecision,
+) -> Result<(), String> {
+    if !broker.owns_lease(&session_id, &owner_id) {
+        return Err("This Chat approval view is no longer active".to_string());
+    }
+    if broker
+        .list(&session_id, &owner_id)
+        .iter()
+        .any(|request| request.id == id)
+    {
+        return broker.respond(&session_id, &owner_id, &id, decision);
+    }
+    let session = registry
+        .get_pty_session(&session_id)
+        .ok_or_else(|| "This approval session is no longer available".to_string())?;
+    session.respond_chat_approval(&id, decision).await
 }
 
 /// WebView の代わりに Origin header なしで Codex app-server へ接続する。
@@ -3860,6 +3907,7 @@ pub fn run() {
         .manage(Arc::clone(&registry))
         .manage(hook_server_endpoint)
         .manage(RealtimeBridgeState::default())
+        .manage(chat_approvals::ChatApprovalBroker::default())
         .manage(WatcherState::new())
         .manage(tts::TtsState::new())
         .manage(mcp::McpServerStatus::default())
@@ -3932,6 +3980,8 @@ pub fn run() {
             session_attach,
             session_detach,
             session_realtime_connect,
+            session_chat_approvals,
+            session_chat_approval_respond,
             session_realtime_capabilities,
             session_realtime_selected_thread,
             session_realtime_selected_thread_state,

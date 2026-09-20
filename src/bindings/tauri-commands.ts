@@ -114,6 +114,45 @@ export const screenAnnotationSetEnabled = (
 
 // ─── Session ────────────────────────────────────────────────────
 
+/** ネイティブが提示した選択肢だけを識別する不透明な ID。 */
+export type ChatApprovalDecision = string;
+
+export interface ChatApprovalChoice {
+  readonly id: ChatApprovalDecision;
+  readonly label:
+    | "allowOnce"
+    | "deny"
+    | "allowSession"
+    | "allowRule"
+    | "allowNetwork"
+    | "denyNetwork";
+  readonly detail: string | null;
+}
+
+/** ネイティブ側が保持する、現在の要求だけに有効な承認カード。 */
+export interface ChatApprovalRequest {
+  readonly id: string;
+  readonly sessionId: string;
+  readonly agent: string;
+  readonly conversationId: string | null;
+  readonly title: string;
+  readonly detail: string;
+  readonly choices: readonly ChatApprovalChoice[];
+}
+
+export const sessionChatApprovals = (args: {
+  readonly sessionId: string;
+  readonly ownerId: string;
+  readonly enabled: boolean;
+}): Promise<ChatApprovalRequest[]> => call("session_chat_approvals", args);
+
+export const sessionChatApprovalRespond = (args: {
+  readonly sessionId: string;
+  readonly ownerId: string;
+  readonly id: string;
+  readonly decision: ChatApprovalDecision;
+}): Promise<void> => call("session_chat_approval_respond", args);
+
 /**
  * SpawnSpec — Rust 側 `sessions::SpawnSpec` と 1:1 mirror。Agent / Shell の
  * discriminated union で、TS 側は SessionProfile から build して渡す。

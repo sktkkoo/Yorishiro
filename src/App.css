@@ -1020,6 +1020,46 @@ html[data-rounded-view] body {
   overflow: hidden;
 }
 
+.conversation-workspace {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* PTY と端末の実寸を維持し、Chat を同じ領域へ表示する。 */
+.conversation-workspace[data-chat-active="true"] {
+  flex-direction: column;
+}
+
+.conversation-workspace[data-chat-active="true"] > .terminal-workspace {
+  position: absolute;
+  inset: 0;
+  order: 2;
+  pointer-events: none;
+}
+
+.chat-view-host {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.chat-history-note {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0 18px 8px;
+  background: var(--yorishiro-bg);
+  color: var(--yorishiro-fg-dim);
+  font-size: 11px;
+}
+
 .terminal-container {
   flex: 1;
   min-width: 0;

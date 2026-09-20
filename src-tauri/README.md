@@ -13,6 +13,7 @@ Yorishiro の **IO 境界層**。PTY / file system / hooks / MCP server。**設�
 src-tauri/src/
 ├── main.rs        — minimal entry, calls yorishiro_lib::run()
 ├── lib.rs         — Tauri app builder + #[tauri::command] 登録 + setup hook
+├── chat_approvals.rs — Host-owned approval leases and exact pending request decisions
 ├── pty.rs         — Legacy PTY facade / per-instance dynamic-port hook server
 ├── sessions/
 │   ├── pty_session.rs — Per-session PTY resource lifecycle
@@ -39,6 +40,7 @@ src-tauri/src/
 
 | Module | 責務 | TS 側との関係 |
 |---|---|---|
+| `chat_approvals.rs` | Chat 承認の表示 lease / 要求単位の回答 / 失効 | Claude hook と Codex TUI proxy の host-only 承認型。pack / MCP へは公開しない |
 | `pty.rs` | Legacy Tauri command facade / hook server / default-session delegation | TS 側 perception primitive が PTY output を **read のみ** で受け取る。terminal agent launch 引数差分は `sessions/agent_adapter/` で吸収 |
 | `sessions/pty_session.rs` | Per-session PTY spawn / I/O / resize / kill / replay (HMR 越し) | `SpawnSpec` を受け取り、agent は adapter lookup、shell は wrapper 経由で起動。Codex では同寿命の app-server も所有。attach replay は invoke response、live は raw Channel |
 | `sessions/agent_adapter/` | TerminalAgent trait + Claude / Codex / OpenCode adapter registry | CLI args / env / temp config file の差を `LaunchArgs` に閉じる。capability flag は feature 有無の宣言 |
@@ -54,6 +56,7 @@ src-tauri/src/
 
 Session / PTY:
 - `session_spawn(session_id?, spec, cols, rows, cwd?, on_output)` / `session_write(session_id, data)` / `session_resize(session_id, cols, rows)` / `session_refresh_theme(session_id)` / `session_attach(session_id, cwd?, on_output) → AttachResult { attached, replay }` / `session_detach(session_id)` / `session_realtime_connect(session_id, on_message)` / `session_realtime_send(connection_id, message)` / `session_realtime_disconnect(connection_id, final_message?)` / `session_destroy(session_id)` / `session_list()`
+- Chat approval commands: `session_chat_approvals(session_id, owner_id, enabled)` / `session_chat_approval_respond(session_id, owner_id, id, decision)`
 - Legacy default-session shim: `pty_write(data)` / `pty_resize(cols, rows)` / `pty_kill()` / `pty_attach(cwd?, on_output) → AttachResult { attached, replay }` / `pty_detach()` / `poll_hook_signals() → Vec<String>`
 
 User layer:

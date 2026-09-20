@@ -77,7 +77,7 @@ npm run tauri dev
 
 ### ビューモード
 
-タイトルバーのビューモードメニュー、または `⌥⌘0`〜`4` で切り替えられます。
+タイトルバーのビューモードメニュー、または `⌥⌘0`〜`5` で切り替えられます。
 
 | モード | プレビュー | 説明 |
 |---|---|---|
@@ -86,6 +86,7 @@ npm run tauri dev
 | **Call** | <img src="docs/assets/view-mode-call.png" alt="Callビューモード" width="320" /> | 会話向けのコンパクトウィンドウ |
 | **Theater** | <img src="docs/assets/view-mode-theater.png" alt="Theaterビューモード" width="320" /> | ターミナルやタイトルバーを隠し、住人とシーンを全面表示 |
 | **Immersive** | <img src="docs/assets/view-mode-immersive.png" alt="Immersiveビューモード" width="320" /> | 住人とシーンの上に透明なターミナルを重ねる表示 |
+| **Chat** | [使い方](bundled-packs/ui/chat/README.md) | 住人のカメラを保って会話を表示。承認・拒否は会話内のボタンから操作 |
 
 Portrait・Call・Theaterでは、Commandキーを短く押すと画面中央下にクイックチャットが開き、長押しするとGPT Liveの音声会話が始まります。クイックチャットの返答は通常のmacOS Voice Summary経路で読み上げられるため、Terminalへ戻らず内容を確認できます。音声会話中はCommandキーの短押しでマイクのミュートを切り替えられます。どちらもそのままMain Agentとの会話を続けます。
 
@@ -303,7 +304,7 @@ packやinit.jsが変わるたびに、チェックポイントが自動で作ら
 - `/yori:*`コマンドによるpackの対話的な作成・編集
 - `/yori:tutorial`によるチュートリアル
 - ローカライズ: 日本語/英語の自動検出、言語別persona・プロンプト
-- 拡張可能なView Mode: Terminal / Portrait / Call / Theater / Immersiveをtitle barまたは`Option+Command+0`〜`4`で切替
+- 拡張可能なView Mode: Terminal / Portrait / Call / Theater / Immersive / Chatをtitle barまたは`Option+Command+0`〜`5`で切替
 - Pack診断: ヘルスチェック、修復ハンドオフ、ローカルpackの検証
 - [Safe mode](docs/troubleshooting.ja.md)（`YORISHIRO_SAFE_MODE=1`）で壊れたpackから復旧
 - GitHub Actionsによる署名済みmacOSビルド（コード署名 + 公証）

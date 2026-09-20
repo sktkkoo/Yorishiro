@@ -18,6 +18,7 @@ use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::attach::protocol::ControlMessage;
+use crate::chat_approvals::{ChatApprovalDecision, ChatApprovalRequest};
 use crate::pty::PtyExit;
 
 use super::codex_tui_proxy::CodexTuiProxy;
@@ -1079,6 +1080,31 @@ impl PtySession {
             .as_ref()
             .and_then(CodexAppServerProcess::selected_thread);
         codex_selection.or_else(|| lock_or_recover(&self.hook_selected_conversation).clone())
+    }
+
+    /// 現在の Codex TUI 接続が所有する、未解決の承認だけを返す。
+    pub fn chat_approvals(&self) -> Vec<ChatApprovalRequest> {
+        lock_or_recover(&self.codex_app_server)
+            .as_ref()
+            .and_then(|server| server.tui_proxy.as_ref())
+            .map(|proxy| proxy.chat_approvals(&self.session_id))
+            .unwrap_or_default()
+    }
+
+    /// 表示済み token を使い、元の接続へ一度だけ承認結果を返す。
+    pub async fn respond_chat_approval(
+        &self,
+        id: &str,
+        decision: ChatApprovalDecision,
+    ) -> Result<(), String> {
+        let approvals = lock_or_recover(&self.codex_app_server)
+            .as_ref()
+            .and_then(|server| server.tui_proxy.as_ref())
+            .map(CodexTuiProxy::chat_approval_handle)
+            .ok_or_else(|| {
+                "This session does not have an active Codex approval connection".to_string()
+            })?;
+        approvals.respond(id, decision).await
     }
 
     pub fn record_hook_selected_conversation(

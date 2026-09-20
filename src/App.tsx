@@ -58,6 +58,8 @@ import {
   attentionAuraManifest,
   cameraMoveManifest,
   cameraMovePack,
+  chatManifest,
+  chatPack,
   companionManifest,
   companionPack,
   desaturateManifest,
@@ -97,6 +99,7 @@ import {
 } from "./bundled-packs";
 import { CameraPreview } from "./camera-preview";
 import CharacterSurface from "./character-surface";
+import { ChatView } from "./chat-view";
 import { QuickChatInput, QuickVoiceIndicator } from "./components/QuickChatInput";
 import { RestoreConfirmDialog } from "./components/RestoreConfirmDialog";
 import {
@@ -169,6 +172,7 @@ import { registerBundledMusicShelf } from "./runtime/bundled-music-shelf";
 import { registerBundledPomodoro } from "./runtime/bundled-pomodoro";
 import { registerBundledPomodoroUi } from "./runtime/bundled-pomodoro-ui";
 import { useCameraPreviewWindow } from "./runtime/camera-preview-window";
+import { ClaudeChatTranscriptStore } from "./runtime/chat-transcript";
 import { appendCodexRealtimePersonaDiagnostic } from "./runtime/codex-realtime/persona-diagnostics";
 import { useCodexRealtime } from "./runtime/codex-realtime/use-codex-realtime";
 import { useScreenPointerSettings } from "./runtime/codex-realtime/use-screen-pointer-settings";
@@ -337,6 +341,8 @@ import {
 } from "./runtime/ui-pack-transition/stage-transition";
 import { getUiStateStore } from "./runtime/ui-state-store";
 import { useAuxiliaryScreenSharing } from "./runtime/use-auxiliary-screen-sharing";
+import { useChatApprovals } from "./runtime/use-chat-approvals";
+import { useChatConversation } from "./runtime/use-chat-conversation";
 import { useViewModeCamera } from "./runtime/use-view-mode-camera";
 import {
   loadUserLayer,
@@ -408,6 +414,7 @@ import {
   useSettingsActive,
   useSidebarOpen,
   useViewModes,
+  viewModeOwnsChrome as viewModeOwnsChromeFor,
 } from "./title-bar-state";
 import {
   isUiPackHostReady,
@@ -1084,7 +1091,8 @@ function App() {
     settingsActive,
     pickerActiveViewModeId,
   );
-  const viewModeOwnsChrome = activePresentationViewModeIdValue !== null;
+  const viewModeOwnsChrome = viewModeOwnsChromeFor(activePresentationViewModeIdValue);
+  const chatModeActive = activePresentationViewModeIdValue === "chat";
   const viewModeUsesRoundedWindow = roundedWindowForViewMode(activePresentationViewModeIdValue);
   const isMac = /Mac/i.test(navigator.platform);
   const viewModeShortcuts = useMemo(
@@ -1103,6 +1111,14 @@ function App() {
   const [viewModeHudVisible, setViewModeHudVisible] = useState(false);
   const [quickChatOpen, setQuickChatOpen] = useState(false);
   const [quickChatDraft, setQuickChatDraft] = useState("");
+  const claudeChatStore = useMemo(() => new ClaudeChatTranscriptStore(), []);
+  const [chatResidentName, setChatResidentName] = useState("Yori");
+  useEffect(() => {
+    const subscription = getPersonaRegistry().subscribeActive((persona) => {
+      setChatResidentName(persona?.name ?? "Yori");
+    });
+    return () => subscription.dispose();
+  }, []);
   const quickChatSpeechPendingRef = useRef<{
     readonly requestId: string;
     explicitSpeech: boolean;
@@ -1565,7 +1581,10 @@ function App() {
       phase: "register",
       note: `registered bundled UI pack '${companionPack.id}'`,
     });
-    for (const { pack, manifest } of [{ pack: portraitPack, manifest: portraitManifest }]) {
+    for (const { pack, manifest } of [
+      { pack: portraitPack, manifest: portraitManifest },
+      { pack: chatPack, manifest: chatManifest },
+    ]) {
       uiPackRegistry.register({
         id: pack.id,
         origin: "bundled",
@@ -2823,14 +2842,17 @@ function App() {
 
   const applyTerminalPresentationForSession = useCallback(
     (sessionId: SessionId, layout: UiLayout | null = activeUiLayoutRef.current) => {
-      applyTerminalPresentation(
-        sessionId,
-        resolveTerminalPresentation(
-          layout,
-          visibleTerminalSessionIdSetRef.current.has(sessionId),
-          tabManager.getState().activeSessionId === sessionId,
-        ),
+      const presentation = resolveTerminalPresentation(
+        layout,
+        visibleTerminalSessionIdSetRef.current.has(sessionId),
+        tabManager.getState().activeSessionId === sessionId,
       );
+      applyTerminalPresentation(sessionId, presentation);
+      // singleton terminal は body 直下にある。placeholder の実寸を維持して描画だけ隠す。
+      const chatHidden =
+        getUiRegistry().getActiveUi()?.id === "chat" &&
+        sessionId === tabManager.getState().mainSessionId;
+      getTerminalRuntime(sessionId).setHidden(presentation.hidden || chatHidden);
     },
     [tabManager],
   );
@@ -3126,6 +3148,7 @@ function App() {
           mistyGrasslandsManifest,
           simpleRoomManifest,
           yorishiroSettingsManifest,
+          chatManifest,
           immersiveManifest,
           theaterManifest,
           abandonedMonitorManifest,
@@ -4084,6 +4107,7 @@ function App() {
     toggle: toggleCodexRealtime,
     setMicrophoneMuted: setCodexMicrophoneMuted,
     trackQuickChatPrompt,
+    readChatTranscript,
     screenThreadId,
     shareScreenObservation,
     notifyScreenPointersEnabled,
@@ -4510,6 +4534,7 @@ function App() {
           if (typeof oldest === "number") handled.delete(oldest);
         }
       }
+      claudeChatStore.ingestHook(sig);
       perception.onHookSignal(sig);
       const fallbackSessionId = tabManager.getState().mainSessionId;
       const targetSessionId = parseHookTargetSessionId(sig) ?? fallbackSessionId;
@@ -4556,7 +4581,7 @@ function App() {
       polling = false;
       unlistenHookSignal?.();
     };
-  }, [perception, devLog, sessionStatusStore, tabManager]);
+  }, [perception, devLog, sessionStatusStore, tabManager, claudeChatStore]);
 
   // NOTE: perception.dispose() is NOT called in useEffect cleanup.
   // StrictMode runs cleanup even for [] deps, which would dispose the
@@ -4612,12 +4637,13 @@ function App() {
   const handleSelectViewMode = useCallback(
     (id: string | null) => {
       setViewModeHudVisible(false);
+      if (id === "chat") tabManager.switchTo(tabManager.getState().mainSessionId);
       getUiRegistry().setActiveUi(id);
       void updateYorishiroConfig((config) => ({ ...config, activeUi: id })).catch((error) => {
         console.warn("[App] failed to persist View Mode", error);
       });
     },
-    [updateYorishiroConfig],
+    [updateYorishiroConfig, tabManager],
   );
 
   const handleVoiceEntryCancel = useCallback(() => {
@@ -5594,6 +5620,102 @@ function App() {
   }, [cwd, isUserLayerReady, tabManager]);
 
   const conversationPaletteMode = supportsQuickChatForViewMode(activePresentationViewModeIdValue);
+  const chatPresented = chatModeActive && tabState.activeSessionId === tabState.mainSessionId;
+  const chatSessionStatus = sessionStatusById.get(tabState.mainSessionId);
+  const chatApprovals = useChatApprovals({
+    enabled: chatPresented && canMountTerminals && !mainSessionReplacing,
+    sessionId: tabState.mainSessionId,
+    agent: terminalAgent,
+    generation: mainConversationGenerationRef.current,
+    conversationId: terminalAgent === "codex" ? screenThreadId : null,
+  });
+  const chatRequiresAttention =
+    chatSessionStatus?.activity === "awaiting-input" || chatApprovals.requests.length > 0;
+  const chatSupported = terminalAgent === "codex" || terminalAgent === "claude";
+  const chatCanSend =
+    chatPresented &&
+    chatSupported &&
+    canMountTerminals &&
+    !mainSessionReplacing &&
+    chatSessionStatus?.lifecycle === "running" &&
+    !chatRequiresAttention &&
+    firstRunHealth === null &&
+    restoreDialog === null &&
+    voiceEntryDialog === null &&
+    reloadCurtainPhase === "hidden";
+  const submitChatText = useCallback(
+    async (text: string) => {
+      if (
+        !chatCanSend ||
+        isConversationTransitionActive(mainConversationTransitionGateRef.current)
+      ) {
+        throw new Error("Conversation is not ready for input");
+      }
+      await getTerminalRuntime(tabManager.getState().mainSessionId).submitChatText(text);
+    },
+    [chatCanSend, tabManager],
+  );
+  const chatConversation = useChatConversation({
+    enabled: chatPresented && canMountTerminals && !mainSessionReplacing,
+    sessionId: tabState.mainSessionId,
+    agent: terminalAgent,
+    generation: mainConversationGenerationRef.current,
+    selectedThreadId: screenThreadId,
+    claudeStore: claudeChatStore,
+    readCodexTranscript: readChatTranscript,
+    submit: submitChatText,
+    canSend: chatCanSend,
+  });
+  const chatStatus =
+    !chatSupported || chatSessionStatus?.lifecycle === "exited"
+      ? "unavailable"
+      : chatRequiresAttention
+        ? "attention"
+        : mainSessionReplacing ||
+            chatConversation.loading ||
+            chatSessionStatus?.lifecycle !== "running"
+          ? "loading"
+          : chatConversation.sending || chatConversation.transcript.working
+            ? "working"
+            : "ready";
+  const chatError =
+    chatConversation.error === "send"
+      ? appLanguage.resolved === "ja"
+        ? "送信を確認できませんでした。下書きは残しています。必要に応じて下のボタンからターミナルを開いてください。"
+        : "Delivery could not be confirmed. Your draft is saved. Open Terminal below to check the conversation before retrying."
+      : chatConversation.error === "read"
+        ? appLanguage.resolved === "ja"
+          ? "会話を取得できませんでした。再接続しています。ターミナルでも続きを確認できます。"
+          : "Conversation is temporarily unavailable. Reconnecting; you can also continue in Terminal."
+        : chatConversation.transcript.needsAttention
+          ? appLanguage.resolved === "ja"
+            ? "返信が完了しませんでした。ターミナルで状態を確認できます。"
+            : "The reply did not finish. Open Terminal for details."
+          : null;
+  useEffect(() => {
+    if (mainSessionReplacing) {
+      claudeChatStore.clear(tabState.mainSessionId);
+    }
+  }, [mainSessionReplacing, claudeChatStore, tabState.mainSessionId]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: ref 経由の表示ポリシーをレイアウト切替時に再適用する。
+  useEffect(() => {
+    applyTerminalPresentationForMountedSessions();
+    const frame = requestAnimationFrame(refitPresentedTerminals);
+    return () => cancelAnimationFrame(frame);
+  }, [chatPresented, applyTerminalPresentationForMountedSessions, refitPresentedTerminals]);
+  const openChatTerminal = () => {
+    getUiRegistry().setActiveUi(null);
+    requestAnimationFrame(() => {
+      if (
+        getUiRegistry().getActiveUi() !== null ||
+        tabManager.getState().activeSessionId !== tabManager.getState().mainSessionId
+      )
+        return;
+      const terminal = getTerminalRuntime(tabManager.getState().mainSessionId);
+      terminal.refit();
+      terminal.focus();
+    });
+  };
   const conversationShortcutEnabled =
     conversationPaletteMode &&
     canMountTerminals &&
@@ -6077,17 +6199,66 @@ function App() {
           />
         </div>
         {canMountTerminals && (
-          <TerminalWorkspace
-            sessions={tabState.sessions}
-            activeSessionId={tabState.activeSessionId}
-            cwd={cwd}
-            getSessionCwd={getSessionCwd}
-            getSpec={getTerminalSpec}
-            getInterruptProtectionMode={getInterruptProtectionMode}
-            perception={perception}
-            shouldAttachExistingSession={shouldAttachExistingSession}
-            onActivate={handleTerminalActivate}
-          />
+          <div className="conversation-workspace" data-chat-active={chatPresented}>
+            <TerminalWorkspace
+              sessions={tabState.sessions}
+              activeSessionId={tabState.activeSessionId}
+              cwd={cwd}
+              getSessionCwd={getSessionCwd}
+              getSpec={getTerminalSpec}
+              getInterruptProtectionMode={getInterruptProtectionMode}
+              perception={perception}
+              shouldAttachExistingSession={shouldAttachExistingSession}
+              onActivate={handleTerminalActivate}
+            />
+            {chatPresented && (
+              <div className="chat-view-host">
+                <ChatView
+                  key={`${tabState.mainSessionId}:${terminalAgent}:${mainConversationGenerationRef.current}:${chatConversation.transcript.conversationId ?? "new"}`}
+                  language={appLanguage.resolved}
+                  residentName={chatResidentName}
+                  messages={chatConversation.transcript.messages}
+                  draft={chatConversation.draft}
+                  onDraftChange={chatConversation.setDraft}
+                  onSend={() => void chatConversation.send()}
+                  onOpenTerminal={openChatTerminal}
+                  approvals={chatApprovals.requests}
+                  onResolveApproval={(id, decision) => void chatApprovals.respond(id, decision)}
+                  approvalBusyIds={chatApprovals.busyIds}
+                  approvalError={
+                    chatApprovals.error
+                      ? appLanguage.resolved === "ja"
+                        ? chatApprovals.error === "respond"
+                          ? "承認の結果を確認できませんでした。要求がまだ表示されているか確認してください。"
+                          : "承認要求を取得できませんでした。再接続しています。"
+                        : chatApprovals.error === "respond"
+                          ? "The decision could not be confirmed. Check whether the request is still pending."
+                          : "Approval requests are temporarily unavailable. Reconnecting."
+                      : null
+                  }
+                  status={chatStatus}
+                  error={chatError}
+                  inputDisabled={!chatCanSend || chatConversation.sending}
+                  onToggleVoice={
+                    voiceEntryAvailable && !mainSessionReplacing
+                      ? () => void handleToggleVoice()
+                      : undefined
+                  }
+                  voiceActive={
+                    codexRealtimeState.status === "active" ||
+                    codexRealtimeState.status === "connecting"
+                  }
+                />
+                {terminalAgent === "claude" && (
+                  <p className="chat-history-note">
+                    {appLanguage.resolved === "ja"
+                      ? "この起動中の会話を表示します。返信は完了時に反映されます。"
+                      : "Conversation observed during this app session. Replies appear when complete."}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
         )}
       </div>
       {quickChatOpen && quickChatEnabled ? (

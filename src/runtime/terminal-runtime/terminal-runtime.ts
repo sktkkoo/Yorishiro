@@ -115,6 +115,14 @@ class SupersededPtyStartError extends Error {
   }
 }
 
+/** ネイティブ入力欄の下書きを Chat が上書き・二重送信しないための送信拒否。 */
+export class ChatInputError extends Error {
+  constructor(readonly reason: "native-input-pending" | "native-input-uncertain") {
+    super("Finish or clear pending input in the terminal controls before sending Chat.");
+    this.name = "ChatInputError";
+  }
+}
+
 /**
  * TerminalRuntime implementation. See types.ts for the contract.
  *
@@ -178,6 +186,10 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   /** 直近 setTheme で明示された背景色。背景 alpha の色元・不透明化時の復帰先。 */
   private currentThemeBackground: string | undefined;
   private startGeneration = 0;
+  private ptyRunning = false;
+  private ptyExitVersion = 0;
+  private chatInputState: "clean" | "pending" | "uncertain" = "uncertain";
+  private nativeInputVersion = 0;
   /**
    * 同じ session id に対する session_spawn invoke を発行順に直列化する。
    *
@@ -264,6 +276,8 @@ class TerminalRuntimeImpl implements TerminalRuntime {
         if (this.disposed) return;
         if (event.payload.session_id !== this.sessionId) return;
         this.colorScheme.reset();
+        this.ptyRunning = false;
+        this.ptyExitVersion++;
         this.finalizeCommandRun("pty-exit", normalizePtyExitCode(event.payload.code));
         this.term.write(`\r\n\x1b[90m[Process exited with code ${event.payload.code}]\x1b[0m\r\n`);
       });
@@ -466,6 +480,10 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   ): Promise<SessionSpawnResult | null> {
     if (this.disposed) return Promise.resolve(null);
     const generation = ++this.startGeneration;
+    const exitVersion = this.ptyExitVersion;
+    const inputVersion = this.nativeInputVersion;
+    this.ptyRunning = false;
+    this.chatInputState = "uncertain";
     // 前 generation の attach replay 用 buffer を新しい起動へ持ち越さない。
     this.attachLiveBuffer = null;
     this.clearPtyWriteQueue();
@@ -511,6 +529,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
                 this.handlePtyBytes(liveBytes, { replay: false });
               }
               this.resyncAttachedPtyDisplay();
+              this.ptyRunning = exitVersion === this.ptyExitVersion;
               return null;
             }
           } catch {
@@ -550,6 +569,8 @@ class TerminalRuntimeImpl implements TerminalRuntime {
           return null;
         }
         if (stopIfStale()) return null;
+        this.ptyRunning = exitVersion === this.ptyExitVersion;
+        this.chatInputState = inputVersion === this.nativeInputVersion ? "clean" : "uncertain";
         return spawnResult;
       } catch (err) {
         if (err instanceof SupersededPtyStartError) throw err;
@@ -1022,6 +1043,59 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     this.acceptUserInputData("\r");
   }
 
+  async submitChatText(text: string): Promise<void> {
+    const prompt = text.replace(/\r\n?/g, "\n");
+    if (prompt.trim().length === 0) throw new Error("Enter a message before sending.");
+    for (const char of prompt) {
+      const code = char.charCodeAt(0);
+      if ((code < 0x20 && char !== "\n" && char !== "\t") || (code >= 0x7f && code <= 0x9f)) {
+        throw new Error("Chat messages cannot contain terminal control characters.");
+      }
+    }
+
+    const generation = this.startGeneration;
+    const assertCurrentPty = (): void => {
+      if (this.isStaleStart(generation) || !this.ptyRunning) {
+        throw new Error("The terminal session is not ready or has changed. Please try again.");
+      }
+    };
+    assertCurrentPty();
+
+    // 本文と Enter を同じ queue 項目に置き、途中へ別入力が割り込むのを防ぐ。
+    const operation = this.inputWriteQueue.then(async () => {
+      assertCurrentPty();
+      if (this.chatInputState !== "clean") {
+        throw new ChatInputError(
+          this.chatInputState === "pending" ? "native-input-pending" : "native-input-uncertain",
+        );
+      }
+      const bracketedPaste = this.term.modes.bracketedPasteMode;
+      if (!bracketedPaste && (prompt.includes("\n") || prompt.includes("\t"))) {
+        throw new Error("This terminal does not support multiline or tabbed Chat input.");
+      }
+      const pastedText = prompt.replace(/\n/g, "\r");
+      const data = bracketedPaste ? `\x1b[200~${pastedText}\x1b[201~` : pastedText;
+      // write の失敗は部分書込の可能性があるため、Enter の成功まで再送を許可しない。
+      this.chatInputState = "uncertain";
+      this.observeUserInputData(data, false);
+      assertCurrentPty();
+      await sessionWrite({ sessionId: this.sessionId, data });
+      assertCurrentPty();
+
+      // 貼り付け中の改行はコマンド確定ではない。単一行だけ既存の clear 検出へ渡す。
+      if (prompt.includes("\n")) this.recentInput = "";
+      else for (const char of prompt) this.detectClearCommand(char);
+      this.observeUserInputData("\r");
+      assertCurrentPty();
+      await sessionWrite({ sessionId: this.sessionId, data: "\r" });
+      assertCurrentPty();
+      this.chatInputState = "clean";
+    });
+    // caller へ失敗を返しつつ、後続の通常入力 queue は止めない。
+    this.inputWriteQueue = operation.catch(() => {});
+    return operation;
+  }
+
   focus(): void {
     if (this.disposed) return;
     this.term.focus();
@@ -1225,18 +1299,63 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   }
 
   private acceptUserInputData(data: string): void {
-    if (this.shouldSuppressProtectedInterruptData(data)) return;
+    if (!this.observeUserInputData(data)) return;
+    this.queueNativeInputData(data);
+  }
+
+  private queueNativeInputData(data: string): void {
+    this.inputWriteQueue = this.inputWriteQueue.then(async () => {
+      const generation = this.startGeneration;
+      const editsInput = !this.isNonEditingTerminalInput(data);
+      const submitsInput = data === "\r" || data === "\n";
+      if (editsInput) {
+        this.nativeInputVersion++;
+        this.chatInputState = submitsInput ? "uncertain" : "pending";
+      }
+      try {
+        await sessionWrite({ sessionId: this.sessionId, data });
+        if (submitsInput && !this.isStaleStart(generation)) this.chatInputState = "clean";
+      } catch {
+        if (editsInput && !this.isStaleStart(generation)) this.chatInputState = "uncertain";
+        // 通常の端末入力の書込失敗は従来どおり表示せず、Chat の再送だけ止める。
+      }
+    });
+  }
+
+  private isNonEditingTerminalInput(data: string): boolean {
+    if (data.length === 0) return true;
+    // xterm が自動送信する色・設定応答はユーザーの下書きではない。
+    if (data.endsWith("\x1b\\")) {
+      const response = data.slice(2, -2);
+      if (data.startsWith("\x1b]")) {
+        return /^(?:4;\d+|1[012]);rgb:[\da-f]+\/[\da-f]+\/[\da-f]+$/i.test(response);
+      }
+      if (data.startsWith("\x1bP")) return /^[01]\$r[\d; "mpqr]*$/.test(response);
+    }
+    // focus / mouse / 端末照会の応答も除外し、履歴・カーソル移動は下書きありとする。
+    const report = data.startsWith("\x1b[") ? data.slice(2) : null;
+    return (
+      report !== null &&
+      (report === "I" ||
+        report === "O" ||
+        /^\??\d+;\d+R$/.test(report) ||
+        report === "0n" ||
+        /^[?>][\d;]+c$/.test(report) ||
+        /^\??\d+;\d+\$y$/.test(report) ||
+        /^[468];\d+;\d+t$/.test(report) ||
+        /^<\d+;\d+;\d+[Mm]$/.test(report) ||
+        /^\d+;\d+;\d+M$/.test(report) ||
+        (report.startsWith("M") && report.length === 4))
+    );
+  }
+
+  private observeUserInputData(data: string, detectClear = true): boolean {
+    if (this.shouldSuppressProtectedInterruptData(data)) return false;
     this.lastUserInputAt = performance.now();
     this.perceptionRef.current?.onUserInput(data);
     this.notifyUserInputListeners(data);
-    this.detectClearCommand(data);
-    this.inputWriteQueue = this.inputWriteQueue.then(async () => {
-      try {
-        await sessionWrite({ sessionId: this.sessionId, data });
-      } catch {
-        // PTY already closed — silent
-      }
-    });
+    if (detectClear) this.detectClearCommand(data);
+    return true;
   }
 
   private handlePtyBytes(bytes: Uint8Array, opts: { replay: boolean }): void {
@@ -1889,7 +2008,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     const id = `${this.sessionId}:${localId}`;
     this.terminalReferences.set(id, { id, context });
     const marker = `[#${localId}] `;
-    void sessionWrite({ sessionId: this.sessionId, data: marker }).catch(() => {});
+    this.queueNativeInputData(marker);
     return id;
   }
 

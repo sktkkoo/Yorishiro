@@ -5,6 +5,7 @@ import {
   sessionRealtimeSelectedThread,
   sessionRealtimeSend,
 } from "../../bindings/tauri-commands";
+import { type ChatTranscript, chatTranscriptFromCodexTurns } from "../chat-transcript";
 import { ScreenContextNotifications } from "./screen-context-notifications";
 import { type ScreenObservationFrame, ScreenObservationTransport } from "./screen-observation";
 import { screenPointerPreferenceNotice } from "./screen-sharing-prompts";
@@ -103,6 +104,48 @@ export class CodexThreadTracker {
 
   getCurrentThreadId(): string | null {
     return this.currentThreadId;
+  }
+
+  /** Quick Chat での送信追跡に依存せず、選択中の会話を読み取る。 */
+  async readChatTranscript(): Promise<ChatTranscript> {
+    const threadId = this.currentThreadId;
+    if (!threadId) return { conversationId: null, messages: [], working: false };
+    const epoch = this.epoch;
+    const connectionId = this.connectionId;
+    const selectionGeneration = this.threadSelectionGeneration;
+    let result: unknown;
+    try {
+      result = await this.request("thread/turns/list", {
+        threadId,
+        limit: 100,
+        sortDirection: "desc",
+        itemsView: "full",
+      });
+    } catch (error) {
+      // 初回送信前の未永続化 thread だけは空の会話として扱う。他の障害は隠さない。
+      if (
+        !(error instanceof Error) ||
+        !error.message.endsWith(
+          " is not materialized yet; thread/turns/list is unavailable before first user message",
+        )
+      ) {
+        throw error;
+      }
+      result = { data: [] };
+    }
+    if (
+      !this.running ||
+      epoch !== this.epoch ||
+      connectionId !== this.connectionId ||
+      threadId !== this.currentThreadId ||
+      selectionGeneration !== this.threadSelectionGeneration
+    ) {
+      throw new Error("The selected conversation changed while reading chat");
+    }
+    if (!isRecord(result) || !Array.isArray(result.data)) {
+      throw new Error("Codex returned an invalid chat transcript");
+    }
+    return chatTranscriptFromCodexTurns(threadId, result.data);
   }
 
   shareScreenObservation(frame: ScreenObservationFrame, signal?: AbortSignal) {
