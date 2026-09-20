@@ -40,13 +40,14 @@ afterEach(() => {
 });
 
 describe("AgentSetupDialog", () => {
-  it("explains the installer and account requirements without running anything on render", () => {
+  it("keeps account details available without running anything on render", () => {
     const callbacks = props();
     render(<AgentSetupDialog {...callbacks} />);
 
-    expect(screen.getByRole("dialog", { name: "Set up your coding agent" })).toBeTruthy();
-    expect(screen.getByText(/downloads and runs the provider’s official installer/)).toBeTruthy();
-    expect(screen.getByText(/Installation does not sign you in/)).toBeTruthy();
+    expect(screen.getByRole("dialog", { name: "Agent installation" })).toBeTruthy();
+    for (const note of screen.getAllByText(/Sign in with your own account after installation/)) {
+      expect(note.closest("details")?.open).toBe(false);
+    }
     expect(callbacks.onInstall).not.toHaveBeenCalled();
     expect(callbacks.onSelect).not.toHaveBeenCalled();
     expect(callbacks.onRefresh).not.toHaveBeenCalled();
@@ -57,7 +58,7 @@ describe("AgentSetupDialog", () => {
   it("installs only the explicitly chosen agent and keeps the other installation independent", () => {
     const callbacks = props();
     const { rerender } = render(<AgentSetupDialog {...callbacks} />);
-    fireEvent.click(screen.getByRole("button", { name: "Codex: Install" }));
+    fireEvent.click(screen.getByRole("button", { name: "Codex: Install official CLI" }));
     expect(callbacks.onInstall).toHaveBeenCalledExactlyOnceWith("codex");
     expect(callbacks.onSelect).not.toHaveBeenCalled();
 
@@ -70,13 +71,25 @@ describe("AgentSetupDialog", () => {
     const pendingButton = screen.getByRole("button", { name: "Codex: Installing…" });
     expect((pendingButton as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(pendingButton);
-    fireEvent.click(screen.getByRole("button", { name: "Claude Code: Install" }));
+    fireEvent.click(screen.getByRole("button", { name: "Claude Code: Install official CLI" }));
     expect(callbacks.onInstall).toHaveBeenNthCalledWith(2, "claude");
     expect(callbacks.onInstall).toHaveBeenCalledTimes(2);
 
     fireEvent.click(screen.getByRole("button", { name: "Set up later" }));
     fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
     expect(callbacks.onSkip).not.toHaveBeenCalled();
+  });
+
+  it("rechecks when returning from a manual install without starting another installer", () => {
+    const callbacks = props();
+    const { unmount } = render(<AgentSetupDialog {...callbacks} />);
+    expect(callbacks.onRefresh).not.toHaveBeenCalled();
+    fireEvent(window, new Event("focus"));
+    expect(callbacks.onRefresh).toHaveBeenCalledOnce();
+    expect(callbacks.onInstall).not.toHaveBeenCalled();
+    unmount();
+    fireEvent(window, new Event("focus"));
+    expect(callbacks.onRefresh).toHaveBeenCalledOnce();
   });
 
   it("treats a detected path as installation, and starts only after a separate choice", () => {
@@ -93,7 +106,7 @@ describe("AgentSetupDialog", () => {
     const codex = within(screen.getByRole("region", { name: "Codex" }));
     expect(codex.getByText("Installed")).toBeTruthy();
     expect(codex.queryByText(/signed in|logged in/i)).toBeNull();
-    expect(screen.queryByRole("button", { name: "Codex: Install" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Codex: Install official CLI" })).toBeNull();
     expect(screen.getByRole("button", { name: "Use OpenCode" })).toBeTruthy();
     expect(callbacks.onSelect).not.toHaveBeenCalled();
     fireEvent.click(codex.getByRole("button", { name: "Use Codex" }));
@@ -130,13 +143,13 @@ describe("AgentSetupDialog", () => {
     const callbacks = props();
     render(<AgentSetupDialog {...callbacks} />);
     const codex = within(screen.getByRole("region", { name: "Codex" }));
+    const details = codex.getByText("Details").closest("details");
+    if (details) details.open = true;
     fireEvent.click(codex.getByRole("link", { name: /Official setup/ }));
     expect(openUrl).toHaveBeenCalledWith(AGENT_SETUP_GUIDES.codex?.url);
     fireEvent.click(codex.getByRole("link", { name: /Provider terms/ }));
     expect(openUrl).toHaveBeenCalledWith(AGENT_SETUP_GUIDES.codex?.termsUrl);
 
-    const details = codex.getByText("Install with a command").closest("details");
-    if (details) details.open = true;
     fireEvent.click(codex.getByRole("button", { name: "Copy Codex install command" }));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(AGENT_SETUP_GUIDES.codex?.command));
     expect(callbacks.onInstall).not.toHaveBeenCalled();
@@ -152,7 +165,7 @@ describe("AgentSetupDialog", () => {
     expect(document.activeElement).toBe(screen.getByRole("heading", { level: 2 }));
 
     fireEvent.keyDown(dialog, { key: "Tab" });
-    const first = screen.getByRole("button", { name: "Codex: Install" });
+    const first = screen.getByRole("button", { name: "Codex: Install official CLI" });
     expect(document.activeElement).toBe(first);
     fireEvent.keyDown(first, { key: "Tab", shiftKey: true });
     const last = screen.getByRole("button", { name: "Set up later" });
@@ -169,10 +182,14 @@ describe("AgentSetupDialog", () => {
   it("offers official instructions instead of runnable installer controls on unsupported systems", () => {
     vi.spyOn(window.navigator, "platform", "get").mockReturnValue("Win32");
     render(<AgentSetupDialog {...props()} />);
-    expect(screen.queryByRole("button", { name: "Codex: Install" })).toBeNull();
-    expect(screen.queryByText("Install with a command")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Codex: Install official CLI" })).toBeNull();
+    expect(screen.queryByText("Install command")).toBeNull();
+    for (const summary of screen.getAllByText("Details")) {
+      const details = summary.closest("details");
+      if (details) details.open = true;
+    }
     expect(screen.getAllByRole("link", { name: /Official setup/ })).toHaveLength(2);
-    expect(screen.getByText(/Follow the official setup instructions/)).toBeTruthy();
+    expect(screen.getByText(/Use the official guide/)).toBeTruthy();
   });
 
   it("rechecks completed installations without reinstalling, and disables actions while checking", () => {
@@ -185,7 +202,7 @@ describe("AgentSetupDialog", () => {
     expect(callbacks.onRefresh).toHaveBeenCalledOnce();
     expect(callbacks.onInstall).not.toHaveBeenCalled();
     rerender(<AgentSetupDialog {...callbacks} busy />);
-    fireEvent.click(screen.getByRole("button", { name: "Claude Code: インストール" }));
+    fireEvent.click(screen.getByRole("button", { name: "Claude Code: 公式からインストール" }));
     fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
     expect(callbacks.onInstall).not.toHaveBeenCalled();
     expect(callbacks.onSkip).not.toHaveBeenCalled();

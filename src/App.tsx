@@ -3286,12 +3286,14 @@ function App() {
     let cancelled = false;
     void collectAppHealthReport().then((report) => {
       if (cancelled) return;
-      // 導入画面を済ませた直後に同じ案内を重ねない。他の問題は引き続き表示する。
+      // 正常なら直接起動する。導入画面で扱った項目だけの場合も案内を重ねない。
+      // agent と無関係な warning / error は引き続き表示する。
       if (
-        agentSetupController.wasPresented &&
-        !report.items.some(
-          (item) => item.id !== "agent" && item.id !== "agent-options" && item.status !== "ok",
-        )
+        report.summary === "ok" ||
+        (agentSetupController.wasPresented &&
+          !report.items.some(
+            (item) => item.id !== "agent" && item.id !== "agent-options" && item.status !== "ok",
+          ))
       ) {
         localStorage.setItem(FIRST_RUN_HEALTH_SEEN_KEY, "1");
         return;

@@ -21,77 +21,65 @@ export interface AgentSetupDialogProps {
 
 const STRINGS = {
   en: {
-    eyebrow: "FIRST-TIME SETUP",
-    title: "Set up your coding agent",
-    choose: "Choose an installed agent to get started. You can change it later in Settings.",
-    missing:
-      "To use Yorishiro’s agent features, install Claude Code or Codex on this computer. You can install either one, or both.",
-    "detection-error":
-      "We couldn’t check your agents. Check again, or use the setup options below.",
-    installNote:
-      "Install downloads and runs the provider’s official installer on this computer. An internet connection is required.",
-    unsupported: "Follow the official setup instructions to install an agent on this system.",
+    title: "Agent installation",
+    choose: "Choose an agent to use.",
+    missing: "To use Yorishiro, you need either Codex or Claude Code.",
+    "detection-error": "Couldn’t check your installed agents.",
+    unsupported: "Use the official guide to install an agent.",
     accountNote:
-      "Use your own provider account. Installation does not sign you in; the agent’s official login flow opens when needed after you start. Provider terms and any account or usage charges apply.",
+      "Sign in with your own account after installation. Provider terms and charges apply.",
+    details: "Details",
     installed: "Installed",
-    absent: "Not installed",
     unknown: "Couldn’t verify installation",
     installing: "Installing…",
     complete: "Installation finished",
-    verifying: "Check again to confirm the agent is ready.",
-    install: "Install",
+    verifying: "Check again to continue.",
+    install: "Install official CLI",
     use: "Use",
     retry: "Retry installation",
     setup: "Official setup",
     terms: "Provider terms",
-    manual: "Install with a command",
-    copy: "Copy command",
+    manual: "Install command",
+    copy: "Copy",
     copied: "Copied",
     copyLabel: "Copy {agent} install command",
     log: "Installation details",
-    failed: "Installation failed. You can retry or follow the official setup instructions.",
+    failed: "Installation failed. Try again.",
     refresh: "Check again",
     checking: "Please wait…",
     skip: "Set up later",
-    pending:
-      "Keep Yorishiro open while installation finishes. You can install the other agent too.",
+    pending: "Keep Yorishiro open until installation finishes.",
     linkError: "Couldn’t open the link. Try again.",
     copyError: "Couldn’t copy the command. You can select and copy it below.",
   },
   ja: {
-    eyebrow: "初回セットアップ",
-    title: "エージェントを準備する",
-    choose: "インストール済みのエージェントで始められます。あとから設定で変更できます。",
-    missing:
-      "ヨリシロのエージェント機能を使うには、Claude Code または Codex のインストールが必要です。片方でも、両方でも導入できます。",
-    "detection-error":
-      "エージェントを確認できませんでした。再確認するか、以下の案内からセットアップしてください。",
-    installNote:
-      "「インストール」を押すと、提供元の公式インストーラーをダウンロードし、このコンピューターで実行します。インターネット接続が必要です。",
-    unsupported: "この環境では、公式セットアップの手順に従ってインストールしてください。",
-    accountNote:
-      "ご自身の提供元アカウントを使用します。インストールとログインは別です。開始後、必要に応じて公式のログイン手順に進みます。提供元の利用規約と、アカウント・利用に応じた料金が適用されます。",
+    title: "エージェントのインストール",
+    choose: "使うエージェントを選んでください。",
+    missing: "Yorishiroの利用には Codex か Claude Code のどちらかが必要です。",
+    "detection-error": "インストール状況を確認できませんでした。",
+    unsupported: "公式ガイドからインストールしてください。",
+    accountNote: "導入後、ご自身のアカウントでログインします。料金・利用規約は提供元に準じます。",
+    details: "詳細",
     installed: "インストール済み",
-    absent: "未インストール",
     unknown: "インストール状況を確認できません",
     installing: "インストール中…",
-    complete: "インストールが完了しました",
-    verifying: "再確認して、エージェントが使えることを確認してください。",
-    install: "インストール",
+    complete: "インストール完了",
+    verifying: "再確認して続けてください。",
+    install: "公式からインストール",
     use: "使う",
     retry: "インストールを再試行",
-    setup: "公式セットアップ",
-    terms: "提供元の利用規約",
-    manual: "コマンドでインストール",
-    copy: "コマンドをコピー",
+    setup: "公式ガイド",
+    terms: "利用規約",
+    manual: "インストールコマンド",
+    copy: "コピー",
     copied: "コピーしました",
     copyLabel: "{agent} のインストールコマンドをコピー",
-    log: "インストールの詳細",
-    failed: "インストールに失敗しました。再試行するか、公式セットアップの手順をご確認ください。",
+    log: "ログ",
+    failed: "失敗しました。再試行してください。",
     refresh: "再確認",
     checking: "処理中…",
     skip: "あとで設定する",
-    pending: "完了までヨリシロを開いたままにしてください。もう一方も続けてインストールできます。",
+    pending: "完了までYorishiroを開いたままにしてください。",
     linkError: "リンクを開けませんでした。もう一度お試しください。",
     copyError: "コピーできませんでした。表示されたコマンドを選択してコピーしてください。",
   },
@@ -129,7 +117,6 @@ export function AgentSetupDialog({
   const strings = STRINGS[language];
   const titleId = useId();
   const bodyId = useId();
-  const noteId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
   const titleRef = useRef<HTMLHeadingElement>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -157,6 +144,19 @@ export function AgentSetupDialog({
       if (previousFocus instanceof HTMLElement && previousFocus.isConnected) previousFocus.focus();
     };
   }, []);
+
+  useEffect(() => {
+    // 外部のターミナルや公式ガイドから戻ったら、導入済みかを調べ直す。
+    const onVisible = () => {
+      if (document.visibilityState === "visible") onRefresh();
+    };
+    window.addEventListener("focus", onRefresh);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.removeEventListener("focus", onRefresh);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [onRefresh]);
 
   async function openOfficialUrl(url: string): Promise<void> {
     setActionError(null);
@@ -218,7 +218,6 @@ export function AgentSetupDialog({
         role="dialog"
       >
         <header className="agent-setup-header">
-          <p className="agent-setup-eyebrow">{strings.eyebrow}</p>
           <h2 className="agent-setup-title" id={titleId} ref={titleRef} tabIndex={-1}>
             {strings.title}
           </h2>
@@ -226,11 +225,6 @@ export function AgentSetupDialog({
             {strings[reason]}
           </p>
         </header>
-
-        <div className="agent-setup-notes" id={noteId}>
-          <p>{canInstall ? strings.installNote : strings.unsupported}</p>
-          <p>{strings.accountNote}</p>
-        </div>
 
         <div className="agent-setup-agents">
           {visibleAgents.map((agent) => {
@@ -251,17 +245,17 @@ export function AgentSetupDialog({
                 <div className="agent-setup-card-header">
                   <div>
                     <h3>{agent.displayName}</h3>
-                    <p className="agent-setup-status" role="status">
-                      {isInstalling
-                        ? strings.installing
-                        : isInstalled
-                          ? strings.installed
-                          : isComplete
-                            ? strings.complete
-                            : agentError
-                              ? strings.unknown
-                              : strings.absent}
-                    </p>
+                    {isInstalling || isInstalled || isComplete || agentError ? (
+                      <p className="agent-setup-status" role="status">
+                        {isInstalling
+                          ? strings.installing
+                          : isInstalled
+                            ? strings.installed
+                            : isComplete
+                              ? strings.complete
+                              : strings.unknown}
+                      </p>
+                    ) : null}
                   </div>
                   {isInstalled ? (
                     <button
@@ -276,7 +270,6 @@ export function AgentSetupDialog({
                     </button>
                   ) : guide && canInstall ? (
                     <button
-                      aria-describedby={noteId}
                       aria-label={
                         isInstalling
                           ? `${agent.displayName}: ${strings.installing}`
@@ -301,39 +294,42 @@ export function AgentSetupDialog({
                 </div>
 
                 {guide ? (
-                  <div className="agent-setup-links">
-                    {[
-                      { label: strings.setup, url: guide.url },
-                      { label: strings.terms, url: guide.termsUrl },
-                    ].map((link) => (
-                      <a
-                        href={link.url}
-                        key={link.url}
-                        onClick={(event) => {
-                          event.preventDefault();
-                          void openOfficialUrl(link.url);
-                        }}
-                      >
-                        {link.label} <span aria-hidden="true">↗</span>
-                      </a>
-                    ))}
-                  </div>
-                ) : null}
-
-                {!isInstalled && guide && canInstall ? (
                   <details className="agent-setup-details">
-                    <summary>{strings.manual}</summary>
-                    <div className="agent-setup-command">
-                      <code>{guide.command}</code>
-                      <button
-                        aria-label={strings.copyLabel.replace("{agent}", agent.displayName)}
-                        className="agent-setup-button agent-setup-button-secondary"
-                        onClick={() => void copyCommand(agent.id, guide.command)}
-                        type="button"
-                      >
-                        {copiedAgent === agent.id ? strings.copied : strings.copy}
-                      </button>
+                    <summary>{strings.details}</summary>
+                    <p className="agent-setup-hint">{strings.accountNote}</p>
+                    <div className="agent-setup-links">
+                      {[
+                        { label: strings.setup, url: guide.url },
+                        { label: strings.terms, url: guide.termsUrl },
+                      ].map((link) => (
+                        <a
+                          href={link.url}
+                          key={link.url}
+                          onClick={(event) => {
+                            event.preventDefault();
+                            void openOfficialUrl(link.url);
+                          }}
+                        >
+                          {link.label} <span aria-hidden="true">↗</span>
+                        </a>
+                      ))}
                     </div>
+                    {!isInstalled && canInstall ? (
+                      <div className="agent-setup-command">
+                        <p>{strings.manual}</p>
+                        <div className="agent-setup-command-row">
+                          <code>{guide.command}</code>
+                          <button
+                            aria-label={strings.copyLabel.replace("{agent}", agent.displayName)}
+                            className="agent-setup-button agent-setup-button-secondary"
+                            onClick={() => void copyCommand(agent.id, guide.command)}
+                            type="button"
+                          >
+                            {copiedAgent === agent.id ? strings.copied : strings.copy}
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
                   </details>
                 ) : null}
 
@@ -370,6 +366,8 @@ export function AgentSetupDialog({
           })}
         </div>
 
+        {!canInstall ? <p className="agent-setup-notes">{strings.unsupported}</p> : null}
+
         {error || actionError ? (
           <p className="agent-setup-error" role="alert">
             {error || actionError}
@@ -379,14 +377,6 @@ export function AgentSetupDialog({
           {installing ? strings.pending : ""}
         </p>
         <footer className="agent-setup-footer">
-          <button
-            className="agent-setup-button agent-setup-button-secondary"
-            disabled={busy || installing}
-            onClick={onRefresh}
-            type="button"
-          >
-            {busy ? strings.checking : strings.refresh}
-          </button>
           <button
             className="agent-setup-button agent-setup-button-quiet"
             disabled={!canLeave}

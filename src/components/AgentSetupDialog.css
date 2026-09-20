@@ -26,14 +26,6 @@
   text-align: left;
 }
 
-.agent-setup-eyebrow {
-  margin: 0 0 7px;
-  color: var(--yorishiro-accent);
-  font-size: 10px;
-  font-weight: 650;
-  letter-spacing: 0.12em;
-}
-
 .agent-setup-title {
   margin: 0;
   font-size: 21px;
@@ -48,34 +40,19 @@
 }
 
 .agent-setup-notes {
-  margin: 18px 0;
-  padding: 12px 14px;
-  border-left: 2px solid var(--yorishiro-accent-border);
-  border-radius: 0 8px 8px 0;
-  background: var(--yorishiro-accent-soft);
+  margin: 12px 0 0;
   color: var(--yorishiro-fg-dim);
   font-size: 11px;
 }
 
-.agent-setup-notes p + p {
-  margin-top: 6px;
-}
-
 .agent-setup-agents {
   display: grid;
-  gap: 10px;
+  margin-top: 20px;
+  gap: 18px;
 }
 
 .agent-setup-card {
   min-width: 0;
-  padding: 16px;
-  border: 1px solid var(--yorishiro-border);
-  border-radius: 10px;
-  background: var(--yorishiro-input-bg);
-}
-
-.agent-setup-card[data-installed="true"] {
-  border-color: var(--yorishiro-accent-border);
 }
 
 .agent-setup-card-header {
@@ -83,6 +60,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  padding: 4px 0;
 }
 
 .agent-setup-card h3 {
@@ -174,6 +152,10 @@
   font-size: 11px;
 }
 
+.agent-setup-card > .agent-setup-details {
+  margin-top: 4px;
+}
+
 .agent-setup-details summary {
   width: fit-content;
   cursor: pointer;
@@ -184,6 +166,14 @@
   gap: 8px;
   justify-items: start;
   margin-top: 8px;
+}
+
+.agent-setup-command-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
 }
 
 .agent-setup-command code,
@@ -232,7 +222,7 @@
 .agent-setup-footer {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 12px;
   margin-top: 20px;
 }

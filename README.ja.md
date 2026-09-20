@@ -41,9 +41,8 @@ AIと働く時間は、これからもっと長くなります。かつてフィ
 
 Yorishiroはローカルの[Claude Code](https://code.claude.com/docs/en/setup)または[Codex](https://developers.openai.com/codex/cli)をターミナル内で起動します。
 
-- **初回のhealth checkでエージェントをインストールできます。** 各エージェントの「インストール」を押すと、提供元の公式インストーラーをダウンロードして実行します。ボタンは個別に用意されており、片方でも両方でも導入できます。自動ではインストールしません。
-- インストールにはインターネット接続が必要です。公式セットアップへのリンクやコマンドのコピーから手動で導入し、「再確認」で検出することもできます。
-- ログインは、選んだエージェントの公式手順でご自身のアカウントを使用します。CLIのインストールだけではログインされず、提供元のサブスクリプションも付属しません。提供元の利用規約と、アカウント・利用に応じた料金が適用されます。Yorishiroのセットアップが認証情報を収集・仲介することはありません。
+- **導入済みのエージェントがあれば、そのまま起動します。** 見つからない場合は、CodexとClaude Codeを個別に「公式からインストール」できます。選んだボタンを押したときだけ公式インストーラーを実行します。導入にはインターネット接続が必要です。
+- ログインは、エージェントの公式手順でご自身のアカウントを使用します。公式ガイド、手動導入用コマンド、利用規約は「詳細」から確認できます。Yorishiroのセットアップが認証情報を収集・仲介することはありません。
 
 ### インストール（macOS）
 
@@ -74,9 +73,9 @@ npm run tauri dev
 
 起動すると設定済みのterminal agentがターミナル内で立ち上がり、同梱のVRMキャラクター **Yori**（ヨリ）が隣に表示されます。普段通りにClaude CodeまたはCodexを使えます。
 
-初回起動時は、terminal agentを起動する前にインストール状況を確認します。選択が未保存で、対応エージェントが1つだけ見つかった場合は自動選択し、それ以外はセットアップ画面から導入・選択できます。保存済みの選択は尊重します。「あとで設定する」を選ぶと、エージェントを起動せずshellで続けられます。
+起動時は、設定中のエージェントが使えればそのまま起動します。Claude CodeとCodexの両方があっても選択画面は表示しません。設定中のものが見つからなければ、導入済みのCodex、または最初に見つかった別のエージェントを選んで保存します。使えるエージェントがない場合だけセットアップを表示します。「あとで設定する」を選ぶと、エージェントを起動せずshellで続けられます。
 
-health checkではユーザーデータディレクトリ、safe mode、pack、startup reportも確認します。同じ内容は後から設定画面の「Status」セクションでも確認できます。詳しくは[初回起動のトラブルシューティング](docs/troubleshooting.ja.md#初回起動と-health-check)を参照してください。
+初回のhealth checkは、問題がなければ表示せずに進み、対処が必要な問題がある場合に案内します。詳しい結果は設定画面の「Status」から確認できます。[初回起動のトラブルシューティング](docs/troubleshooting.ja.md#初回起動と-health-check)も参照してください。
 
 ### ビューモード
 
@@ -318,7 +317,7 @@ packやinit.jsが変わるたびに、チェックポイントが自動で作ら
 
 ## Agent support
 
-[Claude Code](https://code.claude.com/docs/en/setup)または[Codex](https://developers.openai.com/codex/cli)をMain Agentとして使用できます。初回セットアップでインストール済みのエージェントを検出し、選択を保存します。あとから設定画面または`~/.yorishiro/config.json`で変更できます。どちらも自動起動・persona prompt overlay・PTY observation・Yorishiro MCP accessに対応しています。
+[Claude Code](https://code.claude.com/docs/en/setup)または[Codex](https://developers.openai.com/codex/cli)をMain Agentとして使用できます。設定中のものを優先し、使えるエージェントを自動選択します。あとから設定画面または`~/.yorishiro/config.json`で変更できます。どちらも自動起動・persona prompt overlay・PTY observation・Yorishiro MCP accessに対応しています。
 
 agentによってコマンド記法が異なります。詳しくは[Yorishiroのコマンドとスキル](#yorishiroのコマンドとスキル)を参照してください。
 

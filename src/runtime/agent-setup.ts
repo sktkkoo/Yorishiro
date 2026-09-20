@@ -79,33 +79,28 @@ function isInstalled(agent: DetectedAgent): boolean {
   return agent.error === undefined && agent.path !== null && agent.path.trim() !== "";
 }
 
-/** 保存済みの選択を尊重し、初回だけ確実に使える一つを自動選択する。 */
+/** 利用できる CLI があれば導入画面を出さず、既存の選択を優先して起動する。 */
 export function resolveAgentStartup({
   agents,
   preferredAgent,
   hasSavedChoice,
 }: AgentStartupOptions): AgentStartupResolution {
-  if (hasSavedChoice) {
-    const preferred = agents.find((agent) => agent.id === preferredAgent);
-    if (preferred?.error !== undefined) {
-      return { kind: "setup", reason: "detection-error" };
-    }
-    if (preferred && isInstalled(preferred)) {
-      return { kind: "ready", agentId: preferred.id, automatic: false };
-    }
-    // 選択していた CLI が見つからなくても、別の CLI へ黙って切り替えない。
-    return { kind: "setup", reason: "missing" };
+  const installed = agents.filter(isInstalled);
+  const preferred = installed.find((agent) => agent.id === preferredAgent);
+  if (preferred) {
+    return { kind: "ready", agentId: preferred.id, automatic: !hasSavedChoice };
   }
 
-  // 一つでも検出が失敗していれば「一つしかない」とは判断できない。
-  if (agents.some((agent) => agent.error !== undefined)) {
-    return { kind: "setup", reason: "detection-error" };
+  // 他の CLI の検出失敗は、利用できる CLI の起動を妨げない。
+  // 既存の選択が使えない場合も、切り替えた選択を永続化する。
+  const fallback = installed.find((agent) => agent.id === "codex") ?? installed[0];
+  if (fallback) {
+    return { kind: "ready", agentId: fallback.id, automatic: true };
   }
-  const installed = agents.filter(isInstalled);
-  if (installed.length === 1) {
-    return { kind: "ready", agentId: installed[0].id, automatic: true };
-  }
-  return { kind: "setup", reason: installed.length > 1 ? "choose" : "missing" };
+  return {
+    kind: "setup",
+    reason: agents.some((agent) => agent.error !== undefined) ? "detection-error" : "missing",
+  };
 }
 
 export interface AgentSetupGuide {

@@ -5,16 +5,17 @@ Yorishiro alpha builds are local-first. Most recovery information lives in
 
 ## First-run and health checks
 
-On first launch, Yorishiro shows a health check with the selected terminal
-agent, user data path, safe mode state, pack status, and startup report path.
-The same information is available later from Settings → Health.
+On first launch, Yorishiro checks the selected terminal agent, user data path,
+safe mode state, packs, and startup report. A healthy report stays out of the
+way; issues that need attention are still shown. The full report is available
+later from the Status section in Settings.
 
 Agent setup is part of this initial health check, before an agent starts:
 
-- With no saved choice, one detected agent is selected automatically; when several are available, choose which to use. A saved preference is preserved, including when its executable is missing.
-- If an agent is missing, its **Install** button downloads and runs the official installer. Codex and Claude Code have independent buttons, so you can install both. Installation starts only when you press the corresponding button.
+- An available preferred agent starts automatically, even when both Claude Code and Codex are installed. If it is missing, Yorishiro selects an installed Codex or the first other available agent and saves the choice. Setup appears only when no usable agent is detected.
+- In **Agent installation**, **Install official CLI** downloads and runs the official installer. Codex and Claude Code have independent buttons, so you can install both. Installation starts only when you press the corresponding button.
 - Keep Yorishiro open until installation finishes, then choose **Use Codex** or **Use Claude Code**. Sign in through the agent’s official login flow with your own account when prompted. “Installed” does not mean “signed in”; provider terms and any account or usage charges apply.
-- To install externally, open **Official setup** or copy the displayed command and run it yourself. Return and choose **Check again**. If installation fails, expand **Installation details**, retry, or follow the official instructions.
+- Expand **Details** for account information, provider terms, **Official setup**, and **Install command**. Use **Copy** to the right of the command to run it yourself. After an external installation, return to the Yorishiro window; it checks availability automatically when active again. If installation fails, expand **Installation details**, retry, or follow the official instructions.
 - **Set up later** continues in a shell without starting an agent. You can configure the Agent setting and restart when ready. Existing shell or custom-command profiles keep their own startup behavior.
 
 Built-in installer controls are available on macOS/Linux environments; other

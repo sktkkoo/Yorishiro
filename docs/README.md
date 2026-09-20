@@ -22,7 +22,7 @@
 | 設計上踏んではいけない line を確認したい | [`decisions/critical-constraints.md`](decisions/critical-constraints.md) |
 | `~/.yorishiro/config.json` の field を確認したい | [`configuration.md`](configuration.md) |
 | Terminal の session profile / shell integration / カスタマイズを確認したい | [`terminal.md`](terminal.md) |
-| 初回の agent 検出・導入・選択と認証の境界を確認したい | [`decisions/agent-onboarding.md`](decisions/agent-onboarding.md) |
+| 初回の agent 自動選択・未導入時の案内と認証の境界を確認したい | [`decisions/agent-onboarding.md`](decisions/agent-onboarding.md) |
 | 起動失敗・壊れた pack・safe mode の復旧手順を確認したい | [`troubleshooting.md`](troubleshooting.md) |
 | Release 前の smoke test 手順を確認したい | [`release-checklist.md`](release-checklist.md) |
 | Build / lint / test の動かし方を知りたい | [project root `DEVELOPMENT.md`](../DEVELOPMENT.md) §Linting & formatting |

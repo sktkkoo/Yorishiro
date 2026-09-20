@@ -142,14 +142,47 @@ describe("resolveAgentStartup", () => {
     ).toEqual({ kind: "ready", agentId: installedId, automatic: true });
   });
 
-  it("asks for a choice when multiple agents are installed on first launch", () => {
+  it.each([
+    "claude",
+    "codex",
+  ])("starts the preferred %s without setup when both agents are installed on first launch", (preferredAgent) => {
     expect(
       resolveAgentStartup({
         agents: [agent("claude", "/bin/claude"), agent("codex", "/bin/codex")],
-        preferredAgent: "claude",
+        preferredAgent,
         hasSavedChoice: false,
       }),
-    ).toEqual({ kind: "setup", reason: "choose" });
+    ).toEqual({ kind: "ready", agentId: preferredAgent, automatic: true });
+  });
+
+  it("prefers the default Codex when multiple agents are installed without a preference", () => {
+    expect(
+      resolveAgentStartup({
+        agents: [agent("claude", "/bin/claude"), agent("codex", "/bin/codex")],
+        preferredAgent: "",
+        hasSavedChoice: false,
+      }),
+    ).toEqual({ kind: "ready", agentId: "codex", automatic: true });
+  });
+
+  it("uses the first available adapter when neither the preference nor Codex is installed", () => {
+    expect(
+      resolveAgentStartup({
+        agents: [agent("opencode", "/bin/opencode"), agent("claude", "/bin/claude")],
+        preferredAgent: "removed-adapter",
+        hasSavedChoice: false,
+      }),
+    ).toEqual({ kind: "ready", agentId: "opencode", automatic: true });
+  });
+
+  it("preserves the saved Claude choice when Codex is also installed", () => {
+    expect(
+      resolveAgentStartup({
+        agents: [agent("codex", "/bin/codex"), agent("claude", "/bin/claude")],
+        preferredAgent: "claude",
+        hasSavedChoice: true,
+      }),
+    ).toEqual({ kind: "ready", agentId: "claude", automatic: false });
   });
 
   it.each([
@@ -175,35 +208,45 @@ describe("resolveAgentStartup", () => {
   it.each([
     "claude",
     "removed-adapter",
-  ])("does not replace an unavailable saved choice: %s", (preferredAgent) => {
+  ])("automatically replaces an unavailable saved choice: %s", (preferredAgent) => {
     expect(
       resolveAgentStartup({
         agents: [agent("claude", null), agent("codex", "/bin/codex")],
         preferredAgent,
         hasSavedChoice: true,
       }),
-    ).toEqual({ kind: "setup", reason: "missing" });
+    ).toEqual({ kind: "ready", agentId: "codex", automatic: true });
   });
 
-  it("distinguishes failure to detect a saved agent from a missing executable", () => {
+  it("uses another installed agent when detection of the saved choice fails", () => {
     expect(
       resolveAgentStartup({
         agents: [agent("claude", null, "Permission denied"), agent("codex", "/bin/codex")],
         preferredAgent: "claude",
         hasSavedChoice: true,
       }),
-    ).toEqual({ kind: "setup", reason: "detection-error" });
+    ).toEqual({ kind: "ready", agentId: "codex", automatic: true });
+  });
+
+  it("starts a known installed agent despite another discovery error on first launch", () => {
+    expect(
+      resolveAgentStartup({
+        agents: [agent("claude", null, "Permission denied"), agent("codex", "/bin/codex")],
+        preferredAgent: "claude",
+        hasSavedChoice: false,
+      }),
+    ).toEqual({ kind: "ready", agentId: "codex", automatic: true });
   });
 
   it.each([
-    null,
-    "/bin/codex",
-  ])("does not infer available choices when another agent's status is unknown: %s", (codexPath) => {
+    false,
+    true,
+  ])("shows detection errors when no executable was verified, saved choice: %s", (hasSavedChoice) => {
     expect(
       resolveAgentStartup({
-        agents: [agent("claude", null, "Permission denied"), agent("codex", codexPath)],
+        agents: [agent("claude", null, "Permission denied"), agent("codex", null)],
         preferredAgent: "claude",
-        hasSavedChoice: false,
+        hasSavedChoice,
       }),
     ).toEqual({ kind: "setup", reason: "detection-error" });
   });

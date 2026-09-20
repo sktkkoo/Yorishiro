@@ -66,6 +66,32 @@ describe("AgentSetupController", () => {
     expect(h.persistChoice).not.toHaveBeenCalled();
   });
 
+  it("starts directly when both agents are already installed without asking for a choice", async () => {
+    const h = harness([agent("claude", true), agent("codex", true)]);
+    expect(await h.prepare()).toBe("codex");
+    expect(h.persistChoice).toHaveBeenCalledWith("codex");
+    expect(h.controller.getSnapshot().visible).toBe(false);
+    expect(h.controller.wasPresented).toBe(false);
+    expect(h.install).not.toHaveBeenCalled();
+    expect(h.listen).not.toHaveBeenCalled();
+  });
+
+  it("saves an installed fallback when the existing choice is no longer available", async () => {
+    const h = harness([agent("claude", true), agent("codex")]);
+    expect(await h.prepare(true)).toBe("claude");
+    expect(h.persistChoice).toHaveBeenCalledWith("claude");
+    expect(h.controller.wasPresented).toBe(false);
+    expect(h.install).not.toHaveBeenCalled();
+  });
+
+  it("starts a verified agent when another agent cannot be checked", async () => {
+    const h = harness([agent("claude", true), { ...agent("codex"), error: "Permission denied" }]);
+    expect(await h.prepare()).toBe("claude");
+    expect(h.persistChoice).toHaveBeenCalledWith("claude");
+    expect(h.controller.wasPresented).toBe(false);
+    expect(h.install).not.toHaveBeenCalled();
+  });
+
   it("keeps a failed preference write recoverable instead of starting an unsaved agent", async () => {
     const h = harness([agent("codex", true)]);
     h.persistChoice.mockRejectedValueOnce(new Error("Cannot save settings"));
@@ -125,9 +151,11 @@ describe("AgentSetupController", () => {
   });
 
   it("rechecks the executable before selecting and does not launch a removed agent", async () => {
-    const h = harness([agent("codex", true), agent("claude", true)]);
+    const h = harness();
     const ready = h.prepare();
     await vi.waitFor(() => expect(h.controller.getSnapshot().visible).toBe(true));
+    h.detect.mockResolvedValue([agent("codex", true), agent("claude", true)]);
+    await h.controller.refresh();
     h.detect.mockResolvedValue([agent("codex"), agent("claude", true)]);
     await h.controller.select("codex");
     expect(h.persistChoice).not.toHaveBeenCalled();
