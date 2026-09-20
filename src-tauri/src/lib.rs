@@ -3,6 +3,7 @@ pub mod attach;
 mod auxiliary_windows;
 mod bundled_examples_gen;
 mod camera_preview;
+mod claude_screen_sharing;
 mod history;
 mod journal;
 mod mcp;
@@ -3881,6 +3882,7 @@ pub fn run() {
         .manage(tts::TtsState::new())
         .manage(mcp::McpServerStatus::default())
         .manage(screen_annotation::ScreenAnnotationState::default())
+        .manage(claude_screen_sharing::ClaudeScreenSharingState::default())
         .manage(auxiliary_windows::AuxiliaryWindowsState::default())
         .manage(camera_preview::CameraPreviewState::default())
         .manage(screen_preview::ScreenPreviewState::default())
@@ -3889,6 +3891,7 @@ pub fn run() {
                 && matches!(payload.event(), tauri::webview::PageLoadEvent::Started)
             {
                 screen_annotation::document_reloaded(webview.app_handle());
+                claude_screen_sharing::reset(webview.app_handle());
                 auxiliary_windows::close_owned_windows(webview.app_handle());
                 camera_preview::close_owned_windows(webview.app_handle());
                 screen_preview::close_owned_windows(webview.app_handle());
@@ -3901,12 +3904,16 @@ pub fn run() {
             }
             if window.label() == "main" && matches!(event, tauri::WindowEvent::Destroyed) {
                 screen_annotation::shutdown(window.app_handle());
+                claude_screen_sharing::reset(window.app_handle());
                 auxiliary_windows::close_owned_windows(window.app_handle());
                 camera_preview::close_owned_windows(window.app_handle());
                 screen_preview::close_owned_windows(window.app_handle());
             }
         })
         .invoke_handler(tauri::generate_handler![
+            claude_screen_sharing::claude_screen_sharing_begin,
+            claude_screen_sharing::claude_screen_sharing_publish,
+            claude_screen_sharing::claude_screen_sharing_end,
             agent_setup::install_terminal_agent,
             media_permissions::open_media_permission_settings,
             screen_preview::screen_preview_begin,
@@ -4056,6 +4063,7 @@ pub fn run() {
         .run(|app, event| {
             if let tauri::RunEvent::Exit = event {
                 screen_annotation::shutdown(app);
+                claude_screen_sharing::reset(app);
                 // 全 PTY session と codex app-server sidecar を明示的に teardown する。
                 // managed state の Drop は process exit では走らない（issue #109）。
                 let registry: State<'_, Arc<SessionRegistry>> = app.state();

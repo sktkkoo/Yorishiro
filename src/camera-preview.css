@@ -216,6 +216,8 @@ html:is([data-window-view="camera-preview"], [data-window-view="screen-preview"]
 }
 
 .camera-preview header .camera-preview-stop {
+  flex-shrink: 0;
+  white-space: nowrap;
   gap: 4px;
   padding: 4px 7px;
   background: #c63845;

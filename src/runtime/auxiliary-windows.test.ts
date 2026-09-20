@@ -52,6 +52,14 @@ function transport() {
 }
 
 describe("auxiliary window ownership", () => {
+  it("publishes the delivery mode and defaults existing callers to context delivery", () => {
+    expect(createScreenSharingSnapshot(model(), "revision").deliveryMode).toBe("context");
+    expect(
+      createScreenSharingSnapshot({ ...model(), deliveryMode: "on-demand" }, "revision")
+        .deliveryMode,
+    ).toBe("on-demand");
+  });
+
   it("publishes restricted source state and allows Start to draw the first region", async () => {
     const port = transport();
     const host = new ScreenSharingAuxiliaryHost(vi.fn(), port);

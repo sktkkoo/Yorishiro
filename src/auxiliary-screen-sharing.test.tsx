@@ -56,6 +56,22 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("independent screen-sharing controls", () => {
+  it.each([
+    ["ja", "更新間隔", "画面について尋ねると、最新の画像を確認します。", "送信間隔"],
+    ["en", "Refresh interval", "Ask about the screen to share the latest image.", "Send interval"],
+  ] as const)("uses the owner's on-demand delivery mode in %s", async (language, interval, hint, contextInterval) => {
+    state = { ...state, snapshot: { ...state.snapshot, language, deliveryMode: "on-demand" } };
+    vi.mocked(readAuxiliarySnapshot).mockResolvedValue(state);
+    const view = render(<AuxiliaryScreenSharing />);
+    expect(await screen.findByRole("slider", { name: interval })).toBeTruthy();
+    expect(screen.getByText(hint)).toBeTruthy();
+    expect(view.container.textContent).not.toMatch(/tokens|トークン/);
+    await act(async () =>
+      receive({ version: 2, snapshot: { ...state.snapshot, deliveryMode: "context" } }),
+    );
+    expect(screen.getByRole("slider", { name: contextInterval })).toBeTruthy();
+  });
+
   it("turns motion off through the owner and hides the frame count", async () => {
     render(<AuxiliaryScreenSharing />);
     fireEvent.click(
