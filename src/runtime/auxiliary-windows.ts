@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { ScreenCaptureRegion, ScreenSourceKind } from "../bindings/tauri-commands";
+import { isValidContactSheetFrameCount } from "./contact-sheet-settings";
 import { getMediaPermissionKind, type MediaPermissionKind } from "./media-permissions";
 import { MAX_SHARING_INTERVAL_SECONDS, MIN_SHARING_INTERVAL_SECONDS } from "./sharing-interval";
 
@@ -406,7 +407,7 @@ export class ScreenSharingAuxiliaryHost {
       case "set-contact-sheet-frame-count":
         if (
           !model.setContactSheetFrameCount ||
-          ![4, 9, 16, 25].includes(action.contactSheetFrameCount)
+          !isValidContactSheetFrameCount(action.contactSheetFrameCount)
         )
           return false;
         model.setContactSheetFrameCount(action.contactSheetFrameCount);

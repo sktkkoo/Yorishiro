@@ -49,6 +49,29 @@ function props(): ScreenSharingControlProps {
   };
 }
 describe("screen sharing control", () => {
+  it.each([
+    "screen",
+    "camera",
+  ] as const)("shows frame count only when motion is enabled for %s", (sourceKind) => {
+    const p = {
+      ...props(),
+      sourceKind,
+      contactSheetFrameCount: 9,
+      onContactSheetFrameCountChange: vi.fn(),
+    };
+    const view = render(<ScreenSharingControl {...p} />);
+    fireEvent.click(
+      screen.getByRole("button", { name: sourceKind === "camera" ? "カメラ共有" : "画面共有" }),
+    );
+    expect(screen.getByRole("slider", { name: "まとめるコマ数" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("switch", { name: "コマ送りで動きを伝える" }));
+    expect(p.onContactSheetFrameCountChange).toHaveBeenLastCalledWith(1);
+    view.rerender(<ScreenSharingControl {...p} contactSheetFrameCount={1} />);
+    expect(screen.queryByRole("slider", { name: "まとめるコマ数" })).toBeNull();
+    fireEvent.click(screen.getByRole("switch", { name: "コマ送りで動きを伝える" }));
+    expect(p.onContactSheetFrameCountChange).toHaveBeenLastCalledWith(9);
+  });
+
   it("starts region selection from Start without a separate picker action", () => {
     const p = {
       ...props(),

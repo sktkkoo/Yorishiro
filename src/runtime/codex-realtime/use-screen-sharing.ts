@@ -92,9 +92,9 @@ let annotationBeginQueue: Promise<void> = Promise.resolve();
 // Native owns one picker. Stop invalidates its result but cannot dismiss the
 // system interaction; a later lease must wait until that picker settles.
 let regionPickerQueue: Promise<void> = Promise.resolve();
-const DEFAULT_CONTACT_SHEET_FRAME_COUNT = 16;
+const DEFAULT_CONTACT_SHEET_FRAME_COUNT = 1;
 
-import { CONTACT_SHEET_FRAME_COUNTS } from "../contact-sheet-settings";
+import { isValidContactSheetFrameCount } from "../contact-sheet-settings";
 
 // Native rotates this epoch when the main WebView reloads. One lookup per JS
 // document prevents a Start waiting on permission from borrowing a new epoch.
@@ -511,22 +511,20 @@ export function useScreenSharing({
             );
           }
           let outgoingFrame = frame;
-          if (reason === "periodic") {
+          if (reason === "periodic" && latest.current.contactSheetFrameCount > 1) {
+            const frameCount = latest.current.contactSheetFrameCount;
             contactSheetSamples.current.push({
               dataUrl: frame.dataUrl,
               capturedAt: frame.capturedAt,
             });
-            if (contactSheetSamples.current.length < latest.current.contactSheetFrameCount) {
+            if (contactSheetSamples.current.length < frameCount) {
               outcome = "shared";
               return;
             }
-            const sheet = await buildContactSheet(
-              contactSheetSamples.current,
-              latest.current.contactSheetFrameCount,
-            );
+            const sheet = await buildContactSheet(contactSheetSamples.current, frameCount);
             // Composition decodes images asynchronously; the lease may have
             // ended or been replaced while the canvas was being built.
-            if (!isCurrent()) return;
+            if (!isCurrent() || latest.current.contactSheetFrameCount !== frameCount) return;
             contactSheetSamples.current = [];
             outgoingFrame = {
               ...frame,
@@ -895,9 +893,9 @@ export function useScreenSharing({
       if (Number.isFinite(value)) setIntervalSeconds(normalizeIntervalSeconds(value));
     },
     setContactSheetFrameCount: (value: number) => {
-      if (
-        CONTACT_SHEET_FRAME_COUNTS.includes(value as (typeof CONTACT_SHEET_FRAME_COUNTS)[number])
-      ) {
+      if (isValidContactSheetFrameCount(value) && value !== latest.current.contactSheetFrameCount) {
+        contactSheetSamples.current = [];
+        latest.current = { ...latest.current, contactSheetFrameCount: value };
         setContactSheetFrameCount(value);
       }
     },

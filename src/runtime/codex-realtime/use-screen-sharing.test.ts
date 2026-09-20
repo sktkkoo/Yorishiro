@@ -100,7 +100,7 @@ describe("useScreenSharing", () => {
     vi.useRealTimers();
   });
 
-  function setup() {
+  function setup(motionEnabled = true) {
     const share = vi.fn(async (_frame: ScreenObservationFrame, _signal: AbortSignal) => ({
       status: "shared" as const,
       capturedAt: new Date(frame.capturedAt).toISOString(),
@@ -109,6 +109,8 @@ describe("useScreenSharing", () => {
       ({ ownerKey, available }) => useScreenSharing({ available, ownerKey, share }),
       { initialProps: { ownerKey: "main:thread:active", available: true } },
     );
+    // Existing scheduling tests exercise motion sheets explicitly.
+    if (motionEnabled) act(() => hook.result.current.setContactSheetFrameCount(16));
     return { ...hook, share };
   }
 
@@ -942,6 +944,7 @@ describe("useScreenSharing", () => {
         onTiming,
       }),
     );
+    act(() => result.current.setContactSheetFrameCount(16));
     await act(async () => result.current.refreshSources());
     await act(async () => result.current.start());
     await act(async () => vi.advanceTimersByTimeAsync(sampleInterval * 14));
@@ -961,6 +964,61 @@ describe("useScreenSharing", () => {
       totalMs: 180,
       outcome: "shared",
     });
+  });
+
+  it.each([
+    "screen",
+    "camera",
+  ] as const)("defaults to a single %s image without motion composition", async (sourceKind) => {
+    vi.mocked(listCameraSources).mockResolvedValue([{ id: 1, name: "Camera" }]);
+    vi.mocked(openCamera).mockResolvedValue({
+      stream: {} as MediaStream,
+      capture: vi.fn(() => frame),
+      close: vi.fn(),
+    });
+    const { result, share } = setup(false);
+    if (sourceKind === "camera") await act(async () => result.current.setSourceKind("camera"));
+    else await act(async () => result.current.refreshSources());
+    await act(async () => result.current.start());
+    expect(result.current.contactSheetFrameCount).toBe(1);
+    expect(buildContactSheet).not.toHaveBeenCalled();
+    expect(share).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        sourceKind,
+        imageDataUrl: frame.dataUrl,
+        width: frame.width,
+        height: frame.height,
+      }),
+      expect.any(AbortSignal),
+    );
+    vi.mocked(screenCaptureFrame).mockResolvedValue({
+      ...frame,
+      frameId: "frame-2",
+      dataUrl: "data:image/jpeg;base64,Yg==",
+    });
+    await act(async () => vi.advanceTimersByTimeAsync(29_999));
+    expect(share).toHaveBeenCalledTimes(1);
+    await act(async () => vi.advanceTimersByTimeAsync(1));
+    expect(share).toHaveBeenCalledTimes(2);
+    expect(buildContactSheet).not.toHaveBeenCalled();
+  });
+
+  it("discards a composing sheet when motion is disabled", async () => {
+    const pending = deferred<typeof sheet>();
+    vi.mocked(buildContactSheet).mockReturnValueOnce(pending.promise);
+    const { result, share } = setup();
+    await act(async () => result.current.refreshSources());
+    await act(async () => result.current.start());
+    await act(async () => vi.advanceTimersByTimeAsync(sampleInterval * 15));
+    expect(buildContactSheet).toHaveBeenCalledOnce();
+    act(() => result.current.setContactSheetFrameCount(1));
+    await act(async () => pending.resolve(sheet));
+    expect(share).not.toHaveBeenCalled();
+    await act(async () => vi.advanceTimersByTimeAsync(30_000));
+    expect(share).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ imageDataUrl: frame.dataUrl }),
+      expect.any(AbortSignal),
+    );
   });
 
   it("clamps sheet intervals to ten seconds and stops sampling on owner change", async () => {
