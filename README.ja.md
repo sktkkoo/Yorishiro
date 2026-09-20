@@ -39,10 +39,11 @@ AIと働く時間は、これからもっと長くなります。かつてフィ
 
 ### 前提条件
 
-Yorishiroはユーザーのローカル環境にインストールされたClaude CodeまたはCodexをターミナル上で自動起動する仕組みです。そのため：
+Yorishiroはローカルの[Claude Code](https://code.claude.com/docs/en/setup)または[Codex](https://developers.openai.com/codex/cli)をターミナル内で起動します。
 
-- **事前に[Claude Code](https://docs.anthropic.com/en/docs/claude-code)または[Codex](https://github.com/openai/codex)の環境構築が必要です**
-- YorishiroがAPIキーを要求・保存・直接利用することはありません。ユーザー環境で認証済みのterminal agentをそのまま起動します。そのため、Claude Code/Codex側でログイン済み、またはAPIキー等が設定済みの場合、そのagentが通常どおり外部APIを利用する可能性があります
+- **初回のhealth checkでエージェントをインストールできます。** 各エージェントの「インストール」を押すと、提供元の公式インストーラーをダウンロードして実行します。ボタンは個別に用意されており、片方でも両方でも導入できます。自動ではインストールしません。
+- インストールにはインターネット接続が必要です。公式セットアップへのリンクやコマンドのコピーから手動で導入し、「再確認」で検出することもできます。
+- ログインは、選んだエージェントの公式手順でご自身のアカウントを使用します。CLIのインストールだけではログインされず、提供元のサブスクリプションも付属しません。提供元の利用規約と、アカウント・利用に応じた料金が適用されます。Yorishiroのセットアップが認証情報を収集・仲介することはありません。
 
 ### インストール（macOS）
 
@@ -73,7 +74,9 @@ npm run tauri dev
 
 起動すると設定済みのterminal agentがターミナル内で立ち上がり、同梱のVRMキャラクター **Yori**（ヨリ）が隣に表示されます。普段通りにClaude CodeまたはCodexを使えます。
 
-初回起動時には、選択中のagent、ユーザーデータディレクトリ、safe mode、pack、startup reportを確認するhealth checkが表示されます。同じ内容は後から設定画面の「Status」セクションでも確認できます。
+初回起動時は、terminal agentを起動する前にインストール状況を確認します。選択が未保存で、対応エージェントが1つだけ見つかった場合は自動選択し、それ以外はセットアップ画面から導入・選択できます。保存済みの選択は尊重します。「あとで設定する」を選ぶと、エージェントを起動せずshellで続けられます。
+
+health checkではユーザーデータディレクトリ、safe mode、pack、startup reportも確認します。同じ内容は後から設定画面の「Status」セクションでも確認できます。詳しくは[初回起動のトラブルシューティング](docs/troubleshooting.ja.md#初回起動と-health-check)を参照してください。
 
 ### ビューモード
 
@@ -315,7 +318,7 @@ packやinit.jsが変わるたびに、チェックポイントが自動で作ら
 
 ## Agent support
 
-[Claude Code](https://docs.anthropic.com/en/docs/claude-code)または[Codex](https://github.com/openai/codex)をMain Agentとして使用できます。エージェント未設定時の既定値はCodexです。設定画面または`~/.yorishiro/config.json`から選択してください。どちらも自動起動・persona prompt overlay・PTY observation・Yorishiro MCP accessに対応しています。
+[Claude Code](https://code.claude.com/docs/en/setup)または[Codex](https://developers.openai.com/codex/cli)をMain Agentとして使用できます。初回セットアップでインストール済みのエージェントを検出し、選択を保存します。あとから設定画面または`~/.yorishiro/config.json`で変更できます。どちらも自動起動・persona prompt overlay・PTY observation・Yorishiro MCP accessに対応しています。
 
 agentによってコマンド記法が異なります。詳しくは[Yorishiroのコマンドとスキル](#yorishiroのコマンドとスキル)を参照してください。
 

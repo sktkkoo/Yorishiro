@@ -22,9 +22,10 @@
 | 設計上踏んではいけない line を確認したい | [`decisions/critical-constraints.md`](decisions/critical-constraints.md) |
 | `~/.yorishiro/config.json` の field を確認したい | [`configuration.md`](configuration.md) |
 | Terminal の session profile / shell integration / カスタマイズを確認したい | [`terminal.md`](terminal.md) |
+| 初回の agent 検出・導入・選択と認証の境界を確認したい | [`decisions/agent-onboarding.md`](decisions/agent-onboarding.md) |
 | 起動失敗・壊れた pack・safe mode の復旧手順を確認したい | [`troubleshooting.md`](troubleshooting.md) |
 | Release 前の smoke test 手順を確認したい | [`release-checklist.md`](release-checklist.md) |
-| Build / lint / test の動かし方を知りたい | [project root `CLAUDE.md`](../CLAUDE.md) §Linting & formatting |
+| Build / lint / test の動かし方を知りたい | [project root `DEVELOPMENT.md`](../DEVELOPMENT.md) §Linting & formatting |
 | 自動生成された API doc を見たい | `npm run doc && open docs/api/typescript/index.html` |
 
 ---
@@ -86,7 +87,7 @@ Source code 内で参照するときは：
 | Directory | 責務 | 詳細 |
 |---|---|---|
 | `src/core/` | Presence Harness の primitive 層（body / time / perception / expression / space / scene / interaction / log-bridge / two-layer / dev-log / ui-layout / attention / tween） | [../src/core/README.md](../src/core/README.md) |
-| `src/runtime/` | Pack 管理 / event dispatch / module registry / singleton services / ui-pack-registry / project-context / attention-runtime / workspace-attention / ambient-ui-pack-registry / ambient-audio / session-tabs / surface-registry | [../src/runtime/README.md](../src/runtime/README.md) |
+| `src/runtime/` | Pack 管理 / event dispatch / module registry / singleton services / agent setup / ui-pack-registry / project-context / attention-runtime / workspace-attention / ambient-ui-pack-registry / ambient-audio / session-tabs / surface-registry | [../src/runtime/README.md](../src/runtime/README.md) |
 | `src/sdk/` | Pack 作者向け型定義と API contract（公開 surface） | [../src/sdk/README.md](../src/sdk/README.md) |
 | `src/bindings/` | Tauri command bridge（TS ↔ Rust） | — |
 
@@ -95,6 +96,7 @@ Source code 内で参照するときは：
 | Module | 責務 | 詳細 |
 |---|---|---|
 | `lib.rs` / `main.rs` | Tauri app entry / command 登録 / setup hook | [../src-tauri/README.md](../src-tauri/README.md) |
+| `agent_setup.rs` | ユーザーが選んだ公式 CLI installer の取得・実行・進捗 IO | [decisions/agent-onboarding.md](decisions/agent-onboarding.md) |
 | `pty.rs` | Legacy PTY facade / per-instance dynamic-port hook server | 同上 |
 | `sessions/` | Per-session PTY lifecycle / registry / shell wrapper / terminal agent adapter | 同上 |
 | `mcp/` | MCP 1.5 server (18743 preferred / per-instance endpoint) / pack diagnostics + self-referential tools | 同上 |
@@ -125,7 +127,7 @@ Source code 内で参照するときは：
 | Function / variable | camelCase | snake_case | 慣習 |
 | Constant | SCREAMING_SNAKE_CASE | SCREAMING_SNAKE_CASE | 慣習 |
 
-詳細は CLAUDE.md §Coding conventions。**TS / Rust で directory 構造は 1:1 mirror、命名のみ言語 idiom**。
+詳細は DEVELOPMENT.md §Coding conventions。**TS / Rust で directory 構造は 1:1 mirror、命名のみ言語 idiom**。
 
 ---
 

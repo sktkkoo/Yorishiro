@@ -9,8 +9,19 @@ On first launch, Yorishiro shows a health check with the selected terminal
 agent, user data path, safe mode state, pack status, and startup report path.
 The same information is available later from Settings → Health.
 
-If the selected agent is missing, install Claude Code or Codex first, or switch
-the Agent setting and restart Yorishiro.
+Agent setup is part of this initial health check, before an agent starts:
+
+- With no saved choice, one detected agent is selected automatically; when several are available, choose which to use. A saved preference is preserved, including when its executable is missing.
+- If an agent is missing, its **Install** button downloads and runs the official installer. Codex and Claude Code have independent buttons, so you can install both. Installation starts only when you press the corresponding button.
+- Keep Yorishiro open until installation finishes, then choose **Use Codex** or **Use Claude Code**. Sign in through the agent’s official login flow with your own account when prompted. “Installed” does not mean “signed in”; provider terms and any account or usage charges apply.
+- To install externally, open **Official setup** or copy the displayed command and run it yourself. Return and choose **Check again**. If installation fails, expand **Installation details**, retry, or follow the official instructions.
+- **Set up later** continues in a shell without starting an agent. You can configure the Agent setting and restart when ready. Existing shell or custom-command profiles keep their own startup behavior.
+
+Built-in installer controls are available on macOS/Linux environments; other
+environments show official setup links. This does not expand Yorishiro’s current
+macOS-only product support. Installation requires internet access. Official guides:
+[Codex](https://developers.openai.com/codex/cli) and
+[Claude Code](https://code.claude.com/docs/en/setup).
 
 ## Important paths
 

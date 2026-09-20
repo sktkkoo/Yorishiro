@@ -38,10 +38,11 @@ Much of Yorishiro itself has been developed in collaboration with the inhabitant
 
 ### Prerequisites
 
-Yorishiro automatically launches Claude Code or Codex installed on your local machine inside its terminal. This means:
+Yorishiro runs [Claude Code](https://code.claude.com/docs/en/setup) or [Codex](https://developers.openai.com/codex/cli) locally inside its terminal.
 
-- **You need [Claude Code](https://docs.anthropic.com/en/docs/claude-code) or [Codex](https://github.com/openai/codex) already set up on your system**
-- Yorishiro never asks for, stores, or directly uses API keys. It launches the terminal agent already authenticated in your environment; if Claude Code or Codex is logged in or configured with API credentials, that agent may use its normal external APIs after launch
+- **You can install an agent during the initial health check.** Choose its Install button to download and run the provider’s official installer. Each agent has its own button, so you can install either one or both. Nothing is installed automatically.
+- An internet connection is required for installation. You can also follow the official setup link or copy the installation command, then choose **Check again**.
+- Sign in using your own account through the selected agent’s official login flow. Installing the CLI does not sign you in or include a provider subscription. Provider terms and any account or usage charges apply; Yorishiro’s setup does not collect or mediate your credentials.
 
 ### Install (macOS)
 
@@ -72,7 +73,9 @@ npm run tauri dev
 
 On launch, the configured terminal agent starts inside the terminal and **Yori**, the bundled VRM character, appears beside it. Use Claude Code or Codex as you normally would.
 
-The first launch runs a health check for the selected agent, user data directory, safe mode state, packs, and startup report. The same report is available later from the "Status" section in Settings.
+The first launch checks agent availability before starting the terminal agent. If exactly one supported agent is installed and no choice has been saved, Yorishiro selects it; otherwise, setup lets you install or choose an agent. Existing preferences are preserved. **Set up later** opens a shell without starting an agent.
+
+The health check also covers the user data directory, safe mode state, packs, and startup report. The same report is available later from the "Status" section in Settings. See [first-run troubleshooting](docs/troubleshooting.md#first-run-and-health-checks).
 
 ### View modes
 
@@ -323,7 +326,7 @@ What works today:
 
 ## Agent support
 
-Use either [Claude Code](https://docs.anthropic.com/en/docs/claude-code) or [Codex](https://github.com/openai/codex) as the Main Agent. Codex is the default when no agent is configured. Select one in Settings or `~/.yorishiro/config.json`. Both support auto-launch, persona prompt overlay, PTY observation, and Yorishiro MCP access.
+Use either [Claude Code](https://code.claude.com/docs/en/setup) or [Codex](https://developers.openai.com/codex/cli) as the Main Agent. Initial setup detects installed agents and saves your choice. You can change it in Settings or `~/.yorishiro/config.json`. Both support auto-launch, persona prompt overlay, PTY observation, and Yorishiro MCP access.
 
 Command syntax differs by agent; see [Yorishiro commands and skills](#yorishiro-commands-and-skills).
 

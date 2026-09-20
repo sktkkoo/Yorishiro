@@ -24,7 +24,7 @@ import type {
 import { LevaPanel } from "leva";
 import * as Postprocessing from "postprocessing";
 import * as React from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import * as ReactJsxRuntime from "react/jsx-runtime";
 import * as ReactDomClient from "react-dom/client";
 import * as THREE from "three";
@@ -97,6 +97,7 @@ import {
 } from "./bundled-packs";
 import { CameraPreview } from "./camera-preview";
 import CharacterSurface from "./character-surface";
+import { AgentSetupDialog } from "./components/AgentSetupDialog";
 import { QuickChatInput, QuickVoiceIndicator } from "./components/QuickChatInput";
 import { RestoreConfirmDialog } from "./components/RestoreConfirmDialog";
 import {
@@ -141,6 +142,8 @@ import {
   restoreConfirmStrings,
 } from "./i18n/strings";
 import { useReloadCurtain } from "./reload-curtain";
+import { hasSavedAgentChoice } from "./runtime/agent-setup";
+import { AgentSetupController } from "./runtime/agent-setup-controller";
 import { createBodyStateExpressionAdapter } from "./runtime/agent-state-expression";
 import { createVoiceStateExpressionBridge } from "./runtime/agent-state-expression/voice-state-expression-bridge";
 import { type AmbientAudioRuntime, initAmbientAudio } from "./runtime/ambient-audio";
@@ -945,6 +948,7 @@ function emitPresenceLevelChanged(level: PresenceLevel): void {
 }
 
 const FIRST_RUN_HEALTH_SEEN_KEY = "yorishiro:first-run-health-seen";
+const AGENT_CHOICE_SAVED_KEY = "yorishiro:agent-choice-saved";
 
 function FirstRunHealthPanel({
   report,
@@ -995,8 +999,7 @@ function FirstRunHealthPanel({
         </div>
         {report.summary === "error" && (
           <div className="first-run-health-note">
-            The terminal may already be trying to start in the background. Open Settings to switch
-            agents or continue after reviewing the issue.
+            Open Settings to review these checks, or continue after reviewing the issue.
           </div>
         )}
         <div className="first-run-health-actions">
@@ -1362,6 +1365,12 @@ function App() {
   }, []);
 
   // ── Runtime stack (HMR-surviving singleton) ─────────────────
+
+  const agentSetupController = getOrInit("app:agent-setup", () => new AgentSetupController());
+  const agentSetup = useSyncExternalStore(
+    agentSetupController.subscribe,
+    agentSetupController.getSnapshot,
+  );
 
   const runtime = getOrInit("app:runtime", () => {
     const time = new Time();
@@ -1830,6 +1839,53 @@ function App() {
         }
         // 実起動 agent の解決は resolveEffectiveAgent に集約する（health-check と共有）。
         terminalAgent = resolveEffectiveAgent(config);
+        // 初回 health check の agent 導入を PTY spawn より前に完了させる。
+        // 明示的な shell / カスタム実行ファイルの profile は自動検出で上書きしない。
+        if (defaultSpec?.kind !== "shell" && !defaultSpec?.command) {
+          let hasSavedChoice = config.defaultProfile !== null;
+          try {
+            const rawConfig: unknown = JSON.parse(configText || "{}");
+            hasSavedChoice = hasSavedAgentChoice({
+              hasConfiguredChoice:
+                hasSavedChoice ||
+                (rawConfig !== null &&
+                  typeof rawConfig === "object" &&
+                  "terminalAgent" in rawConfig),
+              savedChoiceMarker: localStorage.getItem(AGENT_CHOICE_SAVED_KEY),
+              legacyHealthSeen: localStorage.getItem(FIRST_RUN_HEALTH_SEEN_KEY) === "1",
+            });
+            // 未選択も記録し、「あとで」の health check を旧版の選択と誤認しない。
+            localStorage.setItem(AGENT_CHOICE_SAVED_KEY, hasSavedChoice ? "1" : "0");
+          } catch {
+            // 壊れた設定は未選択として扱い、復旧可能な導入画面を出す。
+          }
+          const selectedAgent = await agentSetupController.prepare({
+            preferredAgent: terminalAgent,
+            hasSavedChoice,
+            persistChoice: async (agent) => {
+              await updateYorishiroConfig((current) => ({
+                ...current,
+                terminalAgent: agent,
+                defaultProfile:
+                  resolveEffectiveAgent(current) === agent ? current.defaultProfile : null,
+              }));
+              try {
+                localStorage.setItem(AGENT_CHOICE_SAVED_KEY, "1");
+              } catch {
+                // 設定ファイルへの保存が成功していれば起動を続けられる。
+              }
+            },
+          });
+          if (selectedAgent === null) {
+            // 「あとで」は未導入 agent を起動せず、通常の shell で続ける。
+            defaultSpec = { kind: "shell", integration: true };
+            markMainSessionRespawnPending();
+          } else if (selectedAgent !== terminalAgent) {
+            terminalAgent = selectedAgent;
+            defaultSpec = null;
+            markMainSessionRespawnPending();
+          }
+        }
         personaRegistry.setPrimaryPersona(
           resolvePrimaryPersonaForLanguage(config.primaryPersona, resolvedLanguage),
         );
@@ -2589,15 +2645,14 @@ function App() {
       // フラグは pre-fill 成功直後に立てる（AI の判断に依存しない確実な経路）。
       try {
         const done = await checkTutorialDone();
-        if (!done) {
+        if (!done && defaultSpec?.kind !== "shell") {
           setTimeout(async () => {
             try {
-              const config = parseConfig(await readYorishiroConfigText());
               await ptyWrite({
                 data: resolveFixedTerminalPrompt(
                   "tutorial",
                   appLanguageRef.current.resolved,
-                  config.terminalAgent,
+                  terminalAgent,
                 ),
               });
               await markTutorialDone();
@@ -2985,6 +3040,9 @@ function App() {
     isSessionRestoreReady,
     resolvedSystemPrompt !== undefined,
   );
+  // 導入を後回しにした Main の shell には会話入力を送らない。
+  // 表示中の tab は問わず、別の shell tab で作業中も Main Agent は利用できる。
+  const mainAgentAvailable = canMountTerminals && defaultSpec?.kind !== "shell";
   const getTerminalSpec = useCallback(
     (sessionId: SessionId): SpawnSpec => {
       if (sessionId !== DEFAULT_SESSION_ID) {
@@ -3227,12 +3285,23 @@ function App() {
     if (localStorage.getItem(FIRST_RUN_HEALTH_SEEN_KEY) === "1") return;
     let cancelled = false;
     void collectAppHealthReport().then((report) => {
-      if (!cancelled) setFirstRunHealth(report);
+      if (cancelled) return;
+      // 導入画面を済ませた直後に同じ案内を重ねない。他の問題は引き続き表示する。
+      if (
+        agentSetupController.wasPresented &&
+        !report.items.some(
+          (item) => item.id !== "agent" && item.id !== "agent-options" && item.status !== "ok",
+        )
+      ) {
+        localStorage.setItem(FIRST_RUN_HEALTH_SEEN_KEY, "1");
+        return;
+      }
+      setFirstRunHealth(report);
     });
     return () => {
       cancelled = true;
     };
-  }, [isUserLayerReady, collectAppHealthReport]);
+  }, [isUserLayerReady, collectAppHealthReport, agentSetupController]);
 
   const dismissFirstRunHealth = useCallback(() => {
     localStorage.setItem(FIRST_RUN_HEALTH_SEEN_KEY, "1");
@@ -4066,8 +4135,9 @@ function App() {
   // GPT Live は Main Agent が所有する。表示中の terminal tab は接続寿命に影響させず、
   // shell で手作業中も音声会話を継続する。Main の置換中だけ tracker/client を畳み、
   // voice intent を保ったまま新 thread へ自動再接続する。
-  const codexVoiceAvailable = terminalAgent === "codex" && !mainSessionReplacing;
-  const voiceEntryAvailable = isVoiceEntryAvailable();
+  const codexVoiceAvailable =
+    mainAgentAvailable && terminalAgent === "codex" && !mainSessionReplacing;
+  const voiceEntryAvailable = mainAgentAvailable && isVoiceEntryAvailable();
   const greetedRef = useRef(false);
   const inTurnRef = useRef(false);
   const applyRealtimeLipSyncSource = useCallback((source: LipSyncSource) => {
@@ -4200,6 +4270,7 @@ function App() {
   }, [codexRealtimeState.status, mainSessionReplacing, voiceReconnectPending]);
 
   const handleToggleVoice = useCallback(async () => {
+    if (!mainAgentAvailable) return;
     if (isConversationTransitionActive(mainConversationTransitionGateRef.current)) return;
     if (voiceReconnectPending) {
       stopCodexRealtime();
@@ -4226,6 +4297,7 @@ function App() {
     });
   }, [
     codexVoiceAvailable,
+    mainAgentAvailable,
     stopCodexRealtime,
     terminalAgent,
     toggleCodexRealtime,
@@ -4954,7 +5026,7 @@ function App() {
   }, [cwd, homeDir, tabManager, tabState.mainSessionId, tabState.sessions]);
 
   const readCurrentMainConversationSelection = useCallback(async () => {
-    if (!supportsConversationNavigation(terminalAgent)) return null;
+    if (!mainAgentAvailable || !supportsConversationNavigation(terminalAgent)) return null;
     const mainSessionId = tabManager.getState().mainSessionId;
     const generation = mainConversationGenerationRef.current;
     try {
@@ -4967,7 +5039,7 @@ function App() {
       console.warn("[session-navigation] failed to read provider conversation state", error);
       return null;
     }
-  }, [tabManager, terminalAgent]);
+  }, [mainAgentAvailable, tabManager, terminalAgent]);
 
   const readConfirmedMainConversationId = useCallback(async (): Promise<string | null> => {
     const selected = await readConversationSelectionWithin(
@@ -4984,6 +5056,7 @@ function App() {
   }, [readCurrentMainConversationSelection]);
 
   const spawnFreshMainConversation = useCallback(async (): Promise<string | null> => {
+    if (!mainAgentAvailable) return null;
     const mainSessionId = tabManager.getState().mainSessionId;
     const sessionCwd = getSessionCwd(mainSessionId);
     const params = {
@@ -4993,7 +5066,7 @@ function App() {
     mainConversationGenerationRef.current += 1;
     const result = await getTerminalRuntime(mainSessionId).forceRespawnWithParams(params);
     return result?.replacedConfirmedSessionId ?? null;
-  }, [cwd, getSessionCwd, getTerminalSpec, tabManager]);
+  }, [cwd, getSessionCwd, getTerminalSpec, mainAgentAvailable, tabManager]);
 
   const resumeMainConversationExactly = useCallback(
     async (
@@ -5002,6 +5075,7 @@ function App() {
       readonly sessionId: string;
       readonly replacedConfirmedSessionId: string | null;
     }> => {
+      if (!mainAgentAvailable) throw new Error("The main session is not an agent.");
       const mainSessionId = tabManager.getState().mainSessionId;
       const sessionCwd = getSessionCwd(mainSessionId);
       const params = {
@@ -5039,6 +5113,7 @@ function App() {
       cwd,
       getSessionCwd,
       getTerminalSpec,
+      mainAgentAvailable,
       readCurrentMainConversationSelection,
       tabManager,
       terminalAgent,
@@ -5065,7 +5140,7 @@ function App() {
 
   const tryHydrateActiveDraft = useCallback(
     async (timeoutMs: number, coalesceByGeneration: boolean): Promise<string | null> => {
-      if (!supportsConversationNavigation(terminalAgent)) return null;
+      if (!mainAgentAvailable || !supportsConversationNavigation(terminalAgent)) return null;
       const trail = mainConversationTrailRef.current;
       const entry = currentConversationEntry(trail);
       if (entry?.kind !== "new-draft") return null;
@@ -5120,6 +5195,7 @@ function App() {
     },
     [
       dispatchMainConversationTrail,
+      mainAgentAvailable,
       readConfirmedMainConversationId,
       readCurrentMainConversationSelection,
       terminalAgent,
@@ -5222,14 +5298,14 @@ function App() {
   );
 
   useEffect(() => {
-    if (!supportsConversationNavigation(terminalAgent)) {
+    if (!mainAgentAvailable || !supportsConversationNavigation(terminalAgent)) {
       dispatchMainConversationTrail({ type: "reset" });
     }
-  }, [dispatchMainConversationTrail, terminalAgent]);
+  }, [dispatchMainConversationTrail, mainAgentAvailable, terminalAgent]);
 
   useEffect(() => {
     if (
-      !canMountTerminals ||
+      !mainAgentAvailable ||
       !supportsConversationNavigation(terminalAgent) ||
       mainConversationTrail.entries.length > 0 ||
       mainConversationTrail.transient !== null
@@ -5256,8 +5332,8 @@ function App() {
       cancelled = true;
     };
   }, [
-    canMountTerminals,
     dispatchMainConversationTrail,
+    mainAgentAvailable,
     mainConversationTrail.entries.length,
     mainConversationTrail.transient,
     readConfirmedMainConversationId,
@@ -5265,7 +5341,7 @@ function App() {
   ]);
 
   const handleNewMainConversation = useCallback(async () => {
-    if (!canMountTerminals) return;
+    if (!mainAgentAvailable) return;
     const transitionLease = beginMainConversationTransition("new");
     if (transitionLease === null) return;
     let handedOffToSpawnEffect = false;
@@ -5311,10 +5387,10 @@ function App() {
     }
   }, [
     beginMainConversationTransition,
-    canMountTerminals,
     codexRealtimeState.status,
     dispatchMainConversationTrail,
     finishMainConversationTransition,
+    mainAgentAvailable,
     prepareActiveDraftForReplacement,
     reconcileCachedConversationSelectionBeforeTransition,
     refreshCachedConversationSelectionImmediately,
@@ -5323,7 +5399,7 @@ function App() {
   ]);
 
   useEffect(() => {
-    if (!canMountTerminals || mainFreshRequestSeq === 0) return;
+    if (!mainAgentAvailable || mainFreshRequestSeq === 0) return;
     if (mainFreshEnqueuedSeqRef.current >= mainFreshRequestSeq) return;
 
     const rollbackLaunch = pendingFreshRollbackLaunchRef.current;
@@ -5390,9 +5466,9 @@ function App() {
         finishMainConversationTransition(transitionLease);
       });
   }, [
-    canMountTerminals,
     dispatchMainConversationTrail,
     finishMainConversationTransition,
+    mainAgentAvailable,
     mainFreshRequestSeq,
     reconcileReplacedConfirmedSession,
     restoreMainConversationLaunch,
@@ -5402,7 +5478,7 @@ function App() {
 
   const handleMainConversationNavigation = useCallback(
     async (direction: ConversationNavigationDirection) => {
-      if (!supportsConversationNavigation(terminalAgent)) return;
+      if (!mainAgentAvailable || !supportsConversationNavigation(terminalAgent)) return;
       const transitionLease = beginMainConversationTransition(direction);
       if (transitionLease === null) return;
       let currentEntry: ActiveConversationEntry | null = null;
@@ -5506,6 +5582,7 @@ function App() {
       codexRealtimeState.status,
       dispatchMainConversationTrail,
       finishMainConversationTransition,
+      mainAgentAvailable,
       prepareActiveDraftForReplacement,
       reconcileReplacedConfirmedSession,
       reconcileCachedConversationSelectionBeforeTransition,
@@ -5519,7 +5596,7 @@ function App() {
   );
 
   useEffect(() => {
-    if (!canMountTerminals || !supportsConversationNavigation(terminalAgent)) return;
+    if (!mainAgentAvailable || !supportsConversationNavigation(terminalAgent)) return;
     const runtime = getTerminalRuntime(tabManager.getState().mainSessionId);
     const subscription = runtime.subscribeUserInput((data) => {
       if (!data || isConversationTransitionActive(mainConversationTransitionGateRef.current)) {
@@ -5559,7 +5636,7 @@ function App() {
     });
     return () => subscription.dispose();
   }, [
-    canMountTerminals,
+    mainAgentAvailable,
     observeConversationSelectionAfterSubmit,
     tabManager,
     terminalAgent,
@@ -5596,7 +5673,7 @@ function App() {
   const conversationPaletteMode = supportsQuickChatForViewMode(activePresentationViewModeIdValue);
   const conversationShortcutEnabled =
     conversationPaletteMode &&
-    canMountTerminals &&
+    mainAgentAvailable &&
     !mainSessionReplacing &&
     firstRunHealth === null &&
     restoreDialog === null &&
@@ -5651,7 +5728,7 @@ function App() {
 
   const handleQuickChatSubmit = useCallback(() => {
     const prompt = quickChatDraft.trim();
-    if (!quickChatEnabled || prompt.length === 0) return;
+    if (!mainAgentAvailable || !quickChatEnabled || prompt.length === 0) return;
     const mainSessionId = tabManager.getState().mainSessionId;
     tabManager.switchTo(mainSessionId);
     setQuickChatDraft("");
@@ -5662,7 +5739,7 @@ function App() {
         quickChatSpeechPendingRef.current = requestId ? { requestId, explicitSpeech: false } : null;
         getTerminalRuntime(mainSessionId).submitUserText(prompt);
       });
-  }, [quickChatDraft, quickChatEnabled, tabManager, trackQuickChatPrompt]);
+  }, [mainAgentAvailable, quickChatDraft, quickChatEnabled, tabManager, trackQuickChatPrompt]);
 
   // ── PTY exit → auto-respawn / tab close ────────────────────
   const ptyExitCleanupRef = useRef<(() => void) | null>(null);
@@ -5920,7 +5997,7 @@ function App() {
         activeViewModeId={pickerActiveViewModeId}
         onSelectViewMode={handleSelectViewMode}
         voiceAvailable={voiceEntryAvailable}
-        voiceDisabled={mainSessionReplacing}
+        voiceDisabled={!mainAgentAvailable || mainSessionReplacing}
         voiceState={titleBarVoiceState}
         voiceMicrophoneActive={codexRealtimeState.microphoneActive === true}
         voiceLabel={
@@ -5994,10 +6071,12 @@ function App() {
                   : strings.noBackConversation
             }
             backConversationDisabled={
-              mainSessionReplacing || !canNavigateConversation(mainConversationTrail, "back")
+              !mainAgentAvailable ||
+              mainSessionReplacing ||
+              !canNavigateConversation(mainConversationTrail, "back")
             }
             onBackConversation={
-              supportsConversationNavigation(terminalAgent)
+              mainAgentAvailable && supportsConversationNavigation(terminalAgent)
                 ? () => void handleMainConversationNavigation("back")
                 : undefined
             }
@@ -6009,17 +6088,19 @@ function App() {
                   : strings.noForwardConversation
             }
             forwardConversationDisabled={
-              mainSessionReplacing || !canNavigateConversation(mainConversationTrail, "forward")
+              !mainAgentAvailable ||
+              mainSessionReplacing ||
+              !canNavigateConversation(mainConversationTrail, "forward")
             }
             onForwardConversation={
-              supportsConversationNavigation(terminalAgent)
+              mainAgentAvailable && supportsConversationNavigation(terminalAgent)
                 ? () => void handleMainConversationNavigation("forward")
                 : undefined
             }
             newConversationLabel={
               mainSessionReplacing ? strings.switchingConversation : strings.newConversation
             }
-            newConversationDisabled={mainSessionReplacing}
+            newConversationDisabled={!mainAgentAvailable || mainSessionReplacing}
             onNewConversation={() => void handleNewMainConversation()}
             onAddSession={() => tabManager.openShell(cwd)}
             onCloseSession={(sessionId) => tabManager.close(sessionId)}
@@ -6121,7 +6202,27 @@ function App() {
           onStop={stopCodexRealtime}
         />
       ) : null}
-      {firstRunHealth && (
+      {agentSetup.visible && (
+        <AgentSetupDialog
+          language={appLanguage.resolved}
+          agents={agentSetup.agents}
+          reason={agentSetup.reason}
+          busy={agentSetup.busy}
+          error={agentSetup.error}
+          installations={agentSetup.installations}
+          onInstall={(agent) => {
+            void agentSetupController.install(agent);
+          }}
+          onSelect={(agent) => {
+            void agentSetupController.select(agent);
+          }}
+          onRefresh={() => {
+            void agentSetupController.refresh();
+          }}
+          onSkip={agentSetupController.skip}
+        />
+      )}
+      {firstRunHealth && !agentSetup.visible && (
         <FirstRunHealthPanel
           report={firstRunHealth}
           onOpenSettings={handleOpenSettings}
