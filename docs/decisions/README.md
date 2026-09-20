@@ -158,3 +158,5 @@
 - 未整理の思考過程（→ 内部設計記録、非公開）
 
 「**Topic から検索して、最新の **結論** を 1 ページで掴む**」ためだけの場所。
+
+- [Chat View Mode](chat-view-mode.md): preserve resident framing and handle approvals through conversation cards.

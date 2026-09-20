@@ -45,6 +45,8 @@ export { default as mistyGrasslandsPack } from "../bundled-packs/scenes/misty-gr
 export { default as simpleRoomManifest } from "../bundled-packs/scenes/simple-room/manifest.json";
 export { default as simpleRoomPack } from "../bundled-packs/scenes/simple-room/scene";
 // UI
+export { default as chatManifest } from "../bundled-packs/ui/chat/manifest.json";
+export { default as chatPack } from "../bundled-packs/ui/chat/ui";
 export { default as companionManifest } from "../bundled-packs/ui/companion/manifest.json";
 export { default as companionPack } from "../bundled-packs/ui/companion/ui";
 export { default as immersiveManifest } from "../bundled-packs/ui/immersive/manifest.json";

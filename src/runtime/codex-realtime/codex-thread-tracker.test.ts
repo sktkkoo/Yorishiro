@@ -23,7 +23,11 @@ const bridge = vi.hoisted(() => ({
   pendingInjections: false,
   injectionResponders: [] as Array<() => void>,
   pendingReads: false,
+  pendingTurnLists: false,
+  turnListResponders: [] as Array<() => void>,
   turnListFailuresRemaining: 0,
+  turnListErrorMessage:
+    "thread thread-1 is not materialized yet; thread/turns/list is unavailable before first user message",
   selectedThread: null as string | null,
   connectFailuresRemaining: 0,
   readResponders: [] as Array<() => void>,
@@ -84,11 +88,13 @@ vi.mock("../../bindings/tauri-commands", () => ({
     } else if (request.method === "thread/turns/list") {
       if (bridge.turnListFailuresRemaining > 0) {
         bridge.turnListFailuresRemaining -= 1;
-        reject("history is not materialized");
+        reject(bridge.turnListErrorMessage);
         return;
       }
       const threadId = request.params?.threadId;
-      respond({ data: typeof threadId === "string" ? (bridge.turns[threadId] ?? []) : [] });
+      const result = { data: typeof threadId === "string" ? (bridge.turns[threadId] ?? []) : [] };
+      if (bridge.pendingTurnLists) bridge.turnListResponders.push(() => respond(result));
+      else respond(result);
     }
   }),
 }));
@@ -102,9 +108,13 @@ describe("CodexThreadTracker", () => {
     bridge.parents = {};
     bridge.ephemeralThreads = new Set();
     bridge.pendingReads = false;
+    bridge.pendingTurnLists = false;
+    bridge.turnListResponders = [];
     bridge.pendingInjections = false;
     bridge.injectionResponders = [];
     bridge.turnListFailuresRemaining = 0;
+    bridge.turnListErrorMessage =
+      "thread thread-1 is not materialized yet; thread/turns/list is unavailable before first user message";
     bridge.selectedThread = null;
     bridge.connectFailuresRemaining = 0;
     bridge.readResponders = [];
@@ -119,6 +129,89 @@ describe("CodexThreadTracker", () => {
 
     expect(tracker.getCurrentThreadId()).toBe("thread-1");
     tracker.stop();
+  });
+
+  it("reads a selected transcript even when the first prompt was submitted through the terminal", async () => {
+    const tracker = new CodexThreadTracker("main-session");
+    await tracker.start();
+    bridge.turns["thread-1"] = [
+      {
+        id: "first-turn",
+        status: "completed",
+        items: [
+          { id: "user", type: "userMessage", content: [{ type: "text", text: "hello" }] },
+          { id: "assistant", type: "agentMessage", text: "hi", phase: "final_answer" },
+        ],
+      },
+    ];
+    expect(await tracker.readChatTranscript()).toEqual({
+      conversationId: "thread-1",
+      working: false,
+      messages: [
+        { id: "thread-1:first-turn:user", role: "user", text: "hello" },
+        { id: "thread-1:first-turn:assistant", role: "assistant", text: "hi" },
+      ],
+    });
+    expect(bridge.sent[bridge.sent.length - 1]).toMatchObject({
+      method: "thread/turns/list",
+      params: { threadId: "thread-1", limit: 100, sortDirection: "desc", itemsView: "full" },
+    });
+    tracker.stop();
+  });
+
+  it("returns an empty chat snapshot without guessing an unavailable conversation", async () => {
+    const tracker = new CodexThreadTracker("main-session");
+    expect(await tracker.readChatTranscript()).toEqual({
+      conversationId: null,
+      messages: [],
+      working: false,
+    });
+    expect(bridge.sent).toEqual([]);
+  });
+
+  it("allows the first Chat send before the selected thread has materialized history", async () => {
+    const tracker = new CodexThreadTracker("main-session");
+    await tracker.start();
+    bridge.turnListFailuresRemaining = 1;
+    await expect(tracker.readChatTranscript()).resolves.toEqual({
+      conversationId: "thread-1",
+      messages: [],
+      working: false,
+    });
+    tracker.stop();
+  });
+
+  it("surfaces other provider read failures instead of presenting an empty conversation", async () => {
+    const tracker = new CodexThreadTracker("main-session");
+    await tracker.start();
+    bridge.turnListFailuresRemaining = 1;
+    bridge.turnListErrorMessage = "failed to check whether thread persistence is materialized";
+    await expect(tracker.readChatTranscript()).rejects.toThrow(bridge.turnListErrorMessage);
+    tracker.stop();
+  });
+
+  it("rejects an in-flight transcript after the selected conversation changes", async () => {
+    const tracker = new CodexThreadTracker("main-session");
+    await tracker.start();
+    bridge.pendingTurnLists = true;
+    const read = tracker.readChatTranscript();
+    const rejected = expect(read).rejects.toThrow("selected conversation changed");
+    bridge.selectedThread = "thread-2";
+    await vi.waitFor(() => expect(tracker.getCurrentThreadId()).toBe("thread-2"));
+    bridge.turnListResponders.shift()?.();
+    await rejected;
+    tracker.stop();
+  });
+
+  it("rejects an in-flight transcript when its tracker stops", async () => {
+    const tracker = new CodexThreadTracker("main-session");
+    await tracker.start();
+    bridge.pendingTurnLists = true;
+    const read = tracker.readChatTranscript();
+    const rejected = expect(read).rejects.toThrow();
+    tracker.stop();
+    await rejected;
+    bridge.turnListResponders.shift()?.();
   });
 
   it("shares directly with its validated owner and immediately stops on unload", async () => {

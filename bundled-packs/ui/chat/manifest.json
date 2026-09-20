@@ -1,0 +1,17 @@
+{
+  "$schema": "https://yorishiro.dev/schemas/pack-manifest.schema.json",
+  "id": "chat",
+  "name": "Chat",
+  "type": "ui",
+  "version": "0.1.0",
+  "yorishiroVersion": "^0.1.0",
+  "description": "A conversation view beside the resident, keeping the terminal camera and scene.",
+  "entry": "ui.tsx",
+  "viewMode": {
+    "enabled": true,
+    "label": "Chat",
+    "icon": "overlay",
+    "order": 50,
+    "category": "presentation"
+  }
+}

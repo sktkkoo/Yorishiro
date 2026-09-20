@@ -51,6 +51,7 @@ const mockState = vi.hoisted(() => {
       write(data: unknown, callback?: () => void): void;
       clearCalls: number;
       disposed: boolean;
+      modes: { bracketedPasteMode: boolean };
       textarea: HTMLTextAreaElement;
       customKeyEventHandler?: (event: KeyboardEvent) => boolean;
       dataHandler?: (data: string) => void;
@@ -145,6 +146,7 @@ vi.mock("@xterm/xterm", () => ({
     writes: unknown[] = [];
     clearCalls = 0;
     disposed = false;
+    modes = { bracketedPasteMode: false };
     textarea = document.createElement("textarea");
     customKeyEventHandler?: (event: KeyboardEvent) => boolean;
     dataHandler?: (data: string) => void;
@@ -1394,6 +1396,352 @@ describe("TerminalRuntime", () => {
       data: "\r",
     });
     sub.dispose();
+  });
+
+  it("sends multiline Chat as one bracketed paste followed by Enter and preserves user observers", async () => {
+    const runtime = getTerminalRuntime("shell-1");
+    await runtime.forceRespawnWithParams({ spec: shellSpec, cwd: "/workspace" });
+    mockState.terminals[0].modes.bracketedPasteMode = true;
+    const received: string[] = [];
+    runtime.subscribeUserInput((data) => received.push(data));
+    const onUserInput = vi.fn();
+    runtime.setPerception({ onUserInput } as unknown as Perception);
+
+    await runtime.submitChatText("  first\r\n\tsecond\rthird\n  ");
+
+    const paste = "\x1b[200~  first\r\tsecond\rthird\r  \x1b[201~";
+    expect(mockState.sessionWrite.mock.calls).toEqual([
+      [{ sessionId: "shell-1", data: paste }],
+      [{ sessionId: "shell-1", data: "\r" }],
+    ]);
+    expect(received).toEqual([paste, "\r"]);
+    expect(onUserInput.mock.calls).toEqual([[paste], ["\r"]]);
+  });
+
+  it("allows single-line Chat when bracketed paste is unavailable", async () => {
+    const runtime = getTerminalRuntime("shell-1");
+    await runtime.forceRespawnWithParams({ spec: shellSpec, cwd: "/workspace" });
+
+    await runtime.submitChatText("hello");
+
+    expect(mockState.sessionWrite.mock.calls).toEqual([
+      [{ sessionId: "shell-1", data: "hello" }],
+      [{ sessionId: "shell-1", data: "\r" }],
+    ]);
+  });
+
+  it.each([
+    "first\nsecond",
+    "first\r\nsecond",
+    "first\rsecond",
+    "first\tsecond",
+  ])("rejects Chat input requiring paste when bracketed paste is unavailable: %j", async (text) => {
+    const runtime = getTerminalRuntime("shell-1");
+    await runtime.forceRespawnWithParams({ spec: shellSpec, cwd: "/workspace" });
+    const listener = vi.fn();
+    runtime.subscribeUserInput(listener);
+
+    await expect(runtime.submitChatText(text)).rejects.toThrow("does not support");
+
+    expect(mockState.sessionWrite).not.toHaveBeenCalled();
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    "\x1b[201~danger",
+    "bad\x00text",
+    "bad\x03text",
+    "bad\x7ftext",
+    "bad\x9btext",
+  ])("rejects terminal control bytes in Chat before writing: %j", async (text) => {
+    const runtime = getTerminalRuntime("shell-1");
+    await runtime.forceRespawnWithParams({ spec: shellSpec, cwd: "/workspace" });
+    mockState.terminals[0].modes.bracketedPasteMode = true;
+
+    await expect(runtime.submitChatText(text)).rejects.toThrow("control characters");
+
+    expect(mockState.sessionWrite).not.toHaveBeenCalled();
+  });
+
+  it("rejects failed Chat content without sending Enter and keeps later input writable", async () => {
+    const runtime = getTerminalRuntime("shell-1");
+    await runtime.forceRespawnWithParams({ spec: shellSpec, cwd: "/workspace" });
+    const failure = new Error("PTY closed");
+    mockState.sessionWrite.mockRejectedValueOnce(failure);
+    const received: string[] = [];
+    runtime.subscribeUserInput((data) => received.push(data));
+
+    await expect(runtime.submitChatText("message")).rejects.toBe(failure);
+
+    expect(mockState.sessionWrite).toHaveBeenCalledOnce();
+    expect(received).toEqual(["message"]);
+    await expect(runtime.submitChatText("message")).rejects.toMatchObject({
+      reason: "native-input-uncertain",
+    });
+    expect(mockState.sessionWrite).toHaveBeenCalledOnce();
+    mockState.dataHandlers[0]?.("x");
+    await flushMicrotasks();
+    expect(mockState.sessionWrite).toHaveBeenLastCalledWith({ sessionId: "shell-1", data: "x" });
+  });
+
+  it("blocks blind Chat retry after submission Enter fails without pasting twice", async () => {
+    const runtime = getTerminalRuntime("shell-1");
+    await runtime.forceRespawnWithParams({ spec: shellSpec, cwd: "/workspace" });
+    const failure = new Error("Enter failed");
+    mockState.sessionWrite.mockResolvedValueOnce(undefined).mockRejectedValueOnce(failure);
+
+    await expect(runtime.submitChatText("message")).rejects.toBe(failure);
+    await expect(runtime.submitChatText("message")).rejects.toMatchObject({
+      reason: "native-input-uncertain",
+    });
+
+    expect(mockState.sessionWrite).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps Chat content and Enter together between queued native inputs", async () => {
+    const runtime = getTerminalRuntime("shell-1");
+    await runtime.forceRespawnWithParams({ spec: shellSpec, cwd: "/workspace" });
+    const pendingWrite = deferred<void>();
+    mockState.sessionWrite.mockReturnValueOnce(pendingWrite.promise);
+    mockState.dataHandlers[0]?.("\r");
+    const sent = runtime.submitChatText("message");
+    mockState.dataHandlers[0]?.("after");
+
+    pendingWrite.resolve(undefined);
+    await sent;
+    await flushMicrotasks();
+
+    expect(mockState.sessionWrite.mock.calls.map(([args]) => args.data)).toEqual([
+      "\r",
+      "message",
+      "\r",
+      "after",
+    ]);
+  });
+
+  it("rejects queued Chat after disposal without writing its content", async () => {
+    const runtime = getTerminalRuntime("shell-1");
+    await runtime.forceRespawnWithParams({ spec: shellSpec, cwd: "/workspace" });
+    const pendingWrite = deferred<void>();
+    mockState.sessionWrite.mockReturnValueOnce(pendingWrite.promise);
+    mockState.dataHandlers[0]?.("\x1b[I");
+    await flushMicrotasks();
+    const sent = runtime.submitChatText("message");
+    runtime.dispose();
+    pendingWrite.resolve(undefined);
+
+    await expect(sent).rejects.toThrow("not ready or has changed");
+    expect(mockState.sessionWrite).toHaveBeenCalledOnce();
+  });
+
+  it("rejects queued Chat after PTY replacement without writing into the new session", async () => {
+    const runtime = getTerminalRuntime("shell-1");
+    await runtime.forceRespawnWithParams({ spec: shellSpec, cwd: "/workspace" });
+    const pendingWrite = deferred<void>();
+    mockState.sessionWrite.mockReturnValueOnce(pendingWrite.promise);
+    mockState.dataHandlers[0]?.("before");
+    await flushMicrotasks();
+    const sent = runtime.submitChatText("message");
+    await runtime.forceRespawnWithParams({ spec: shellSpec, cwd: "/other" });
+    pendingWrite.resolve(undefined);
+
+    await expect(sent).rejects.toThrow("not ready or has changed");
+    expect(mockState.sessionWrite).toHaveBeenCalledOnce();
+  });
+
+  it("does not send Chat Enter if the runtime is disposed during the content write", async () => {
+    const runtime = getTerminalRuntime("shell-1");
+    await runtime.forceRespawnWithParams({ spec: shellSpec, cwd: "/workspace" });
+    const pendingWrite = deferred<void>();
+    mockState.sessionWrite.mockReturnValueOnce(pendingWrite.promise);
+    const sent = runtime.submitChatText("message");
+    await flushMicrotasks();
+    runtime.dispose();
+    pendingWrite.resolve(undefined);
+
+    await expect(sent).rejects.toThrow("not ready or has changed");
+    expect(mockState.sessionWrite).toHaveBeenCalledOnce();
+  });
+
+  it("rejects Chat before PTY startup and after PTY exit", async () => {
+    const runtime = getTerminalRuntime("shell-1");
+    await expect(runtime.submitChatText("before")).rejects.toThrow("not ready");
+    await runtime.forceRespawnWithParams({ spec: shellSpec, cwd: "/workspace" });
+    await vi.waitFor(() => expect(mockState.eventListeners.get("pty-exit")?.length).toBe(1));
+    for (const listener of mockState.eventListeners.get("pty-exit") ?? []) {
+      listener({ payload: { session_id: "shell-1", code: 0 } });
+    }
+
+    await expect(runtime.submitChatText("after")).rejects.toThrow("not ready");
+    expect(mockState.sessionWrite).not.toHaveBeenCalled();
+  });
+
+  it("preserves clear-command scrollback handling for single-line Chat paste", async () => {
+    const runtime = getTerminalRuntime("shell-1");
+    await runtime.forceRespawnWithParams({ spec: shellSpec, cwd: "/workspace" });
+    const terminal = mockState.terminals[0];
+    terminal.modes.bracketedPasteMode = true;
+
+    await runtime.submitChatText("/clear");
+
+    expect(terminal.clearCalls).toBe(0);
+    expect(terminal.writes).toContain("\x1b[3J");
+  });
+
+  it("rechecks bracketed-paste support after earlier queued input completes", async () => {
+    const runtime = getTerminalRuntime("shell-1");
+    await runtime.forceRespawnWithParams({ spec: shellSpec, cwd: "/workspace" });
+    const terminal = mockState.terminals[0];
+    terminal.modes.bracketedPasteMode = true;
+    const pendingWrite = deferred<void>();
+    mockState.sessionWrite.mockReturnValueOnce(pendingWrite.promise);
+    mockState.dataHandlers[0]?.("\x1b[I");
+    await flushMicrotasks();
+    const sent = runtime.submitChatText("first\nsecond");
+    terminal.modes.bracketedPasteMode = false;
+    pendingWrite.resolve(undefined);
+
+    await expect(sent).rejects.toThrow("does not support");
+    expect(mockState.sessionWrite).toHaveBeenCalledOnce();
+  });
+
+  it("keeps an already-exited PTY unavailable if spawn completion arrives late", async () => {
+    const runtime = getTerminalRuntime("shell-1");
+    const pendingSpawn = deferred<{ replacedConfirmedSessionId: null }>();
+    mockState.sessionSpawn.mockReturnValueOnce(pendingSpawn.promise);
+    const started = runtime.forceRespawnWithParams({ spec: shellSpec, cwd: "/workspace" });
+    await vi.waitFor(() => expect(mockState.eventListeners.get("pty-exit")?.length).toBe(1));
+    for (const listener of mockState.eventListeners.get("pty-exit") ?? []) {
+      listener({ payload: { session_id: "shell-1", code: 0 } });
+    }
+    pendingSpawn.resolve({ replacedConfirmedSessionId: null });
+    await started;
+
+    await expect(runtime.submitChatText("message")).rejects.toThrow("not ready");
+    expect(mockState.sessionWrite).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    "unfinished",
+    "\x1b[200~pasted\x1b[201~",
+    "\x1b[A",
+    "\x7f",
+    "\x15",
+    "\x03",
+  ])("blocks Chat while native input may contain a draft: %j", async (data) => {
+    const runtime = getTerminalRuntime("shell-1");
+    await runtime.forceRespawnWithParams({ spec: shellSpec, cwd: "/workspace" });
+    mockState.dataHandlers[0]?.(data);
+
+    await expect(runtime.submitChatText("message")).rejects.toMatchObject({
+      reason: "native-input-pending",
+    });
+
+    expect(mockState.sessionWrite).toHaveBeenCalledOnce();
+    expect(mockState.sessionWrite).toHaveBeenCalledWith({ sessionId: "shell-1", data });
+  });
+
+  it("successful explicit native Enter allows queued Chat again", async () => {
+    const runtime = getTerminalRuntime("shell-1");
+    await runtime.forceRespawnWithParams({ spec: shellSpec, cwd: "/workspace" });
+    mockState.dataHandlers[0]?.("unfinished");
+    await expect(runtime.submitChatText("message")).rejects.toMatchObject({
+      reason: "native-input-pending",
+    });
+    mockState.dataHandlers[0]?.("\r");
+    await runtime.submitChatText("message");
+
+    expect(mockState.sessionWrite.mock.calls.map(([args]) => args.data)).toEqual([
+      "unfinished",
+      "\r",
+      "message",
+      "\r",
+    ]);
+  });
+
+  it.each([
+    "\x1b[I",
+    "\x1b[O",
+    "\x1b[<0;12;4M",
+    "\x1b[<0;12;4m",
+    "\x1b[M !!",
+    "\x1b[12;4R",
+    "\x1b[?12;4R",
+    "\x1b[0n",
+    "\x1b[?1;2c",
+    "\x1b[>0;276;0c",
+    "\x1b[?2004;1$y",
+    "\x1b[8;24;80t",
+    "\x1b]11;rgb:ffff/ffff/ffff\x1b\\",
+    "\x1bP1$r0m\x1b\\",
+  ])("does not treat terminal protocol reports as a native draft: %j", async (report) => {
+    const runtime = getTerminalRuntime("shell-1");
+    await runtime.forceRespawnWithParams({ spec: shellSpec, cwd: "/workspace" });
+    mockState.dataHandlers[0]?.(report);
+
+    await runtime.submitChatText("message");
+
+    expect(mockState.sessionWrite.mock.calls.map(([args]) => args.data)).toEqual([
+      report,
+      "message",
+      "\r",
+    ]);
+  });
+
+  it("treats restored PTY input as uncertain until explicit native Enter succeeds", async () => {
+    const runtime = getTerminalRuntime("shell-1");
+    mockState.sessionAttach.mockResolvedValueOnce({ attached: true, replay: [] });
+    runtime.updatePtyParams({ spec: shellSpec, cwd: "/workspace" }, { attachFirst: true });
+    await vi.waitFor(() => expect(mockState.sessionResize).toHaveBeenCalled());
+
+    await expect(runtime.submitChatText("message")).rejects.toMatchObject({
+      reason: "native-input-uncertain",
+    });
+    expect(mockState.sessionWrite).not.toHaveBeenCalled();
+    mockState.dataHandlers[0]?.("\r");
+    await runtime.submitChatText("message");
+
+    expect(mockState.sessionWrite.mock.calls.map(([args]) => args.data)).toEqual([
+      "\r",
+      "message",
+      "\r",
+    ]);
+  });
+
+  it("a successful Chat submission leaves the next Chat submission clean", async () => {
+    const runtime = getTerminalRuntime("shell-1");
+    await runtime.forceRespawnWithParams({ spec: shellSpec, cwd: "/workspace" });
+
+    await runtime.submitChatText("first");
+    await runtime.submitChatText("second");
+
+    expect(mockState.sessionWrite.mock.calls.map(([args]) => args.data)).toEqual([
+      "first",
+      "\r",
+      "second",
+      "\r",
+    ]);
+  });
+
+  it("terminal reference insertion blocks Chat until its native draft is submitted", async () => {
+    const runtime = getTerminalRuntime("shell-1");
+    runtime.updatePtyParams({ spec: shellSpec, cwd: "/workspace" });
+    await flushMicrotasks();
+    await flushMicrotasks();
+    mockState.oscHandlers.get(633)?.(`E;${encodeOsc633Value("npm test")}`);
+    mockState.oscHandlers.get(133)?.("C");
+    mockState.oscHandlers.get(133)?.("D;1");
+    expect(runtime.attachLastFailedRun()).toBe(true);
+
+    await expect(runtime.submitChatText("message")).rejects.toMatchObject({
+      reason: "native-input-pending",
+    });
+
+    expect(mockState.sessionWrite).toHaveBeenCalledOnce();
+    expect(mockState.sessionWrite).toHaveBeenCalledWith({
+      sessionId: "shell-1",
+      data: "[#Term1] ",
+    });
   });
 
   it("allows first Ctrl+C data and suppresses repeated Ctrl+C data in repeated mode", async () => {

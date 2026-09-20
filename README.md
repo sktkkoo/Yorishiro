@@ -76,7 +76,7 @@ The first launch runs a health check for the selected agent, user data directory
 
 ### View modes
 
-Switch from the View Mode menu in the title bar, or press `Option+Command+0` through `4`.
+Switch from the View Mode menu in the title bar, or press `Option+Command+0` through `5`.
 
 | Mode | Preview | Description |
 |---|---|---|
@@ -85,6 +85,7 @@ Switch from the View Mode menu in the title bar, or press `Option+Command+0` thr
 | **Call** | <img src="docs/assets/view-mode-call.png" alt="Call view mode" width="320" /> | A compact window for conversation |
 | **Theater** | <img src="docs/assets/view-mode-theater.png" alt="Theater view mode" width="320" /> | A full stage with the terminal and app chrome hidden |
 | **Immersive** | <img src="docs/assets/view-mode-immersive.png" alt="Immersive view mode" width="320" /> | A transparent terminal layered over the resident and scene |
+| **Chat** | [Usage](bundled-packs/ui/chat/README.md) | A conversation beside the resident, with approval buttons above the composer |
 
 In Portrait, Call, and Theater, tap Command to open Quick Chat near the bottom-center of the view, or hold Command to start GPT Live. Quick Chat replies are spoken through the normal macOS Voice Summary path, so the response remains available outside Terminal. While voice is connected, tap Command to mute or unmute the microphone. Both continue the Main Agent conversation without returning to Terminal.
 
@@ -311,7 +312,7 @@ What works today:
 - `/yori:*` commands for interactive pack creation and editing
 - Guided tutorial via `/yori:tutorial`
 - Localization: Japanese / English auto-detection with per-language persona and prompts
-- Extensible View Modes: Terminal, Portrait, Call, Theater, and Immersive layouts, switchable from the title bar or with `Option+Command+0` through `4`
+- Extensible View Modes: Terminal, Portrait, Call, Theater, and Immersive layouts, switchable from the title bar or with `Option+Command+0` through `5`
 - Pack diagnostics: health checks, repair handoff, and local pack validation
 - [Safe mode](docs/troubleshooting.md) (`YORISHIRO_SAFE_MODE=1`) to recover from broken packs
 - Signed macOS builds via GitHub Actions (code signing + notarization)
