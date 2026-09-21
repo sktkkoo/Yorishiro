@@ -351,6 +351,7 @@ interface SelectOption {
 export const TERMINAL_AGENT_OPTIONS = [
   { value: "claude", label: "Claude Code" },
   { value: "codex", label: "Codex" },
+  { value: "opencode", label: "OpenCode" },
 ] as const satisfies readonly SelectOption[];
 
 /** セッション再起動を伴う設定変更の種別。確認ダイアログの文言を分岐する。 */

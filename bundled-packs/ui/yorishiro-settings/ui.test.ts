@@ -488,17 +488,17 @@ describe("terminal agent options", () => {
     expect(TERMINAL_AGENT_OPTIONS).toEqual([
       { value: "claude", label: "Claude Code" },
       { value: "codex", label: "Codex" },
+      { value: "opencode", label: "OpenCode" },
     ]);
   });
 
   it("uses only agent ids accepted by config validation", () => {
-    // 設定画面は config が受け付ける agent の subset。内部 adapter があっても
-    // 初回リリースでは user-facing option に出さない agent がある。
+    // 設定画面の選択肢は config が受け付ける agent id を使う。
     for (const option of TERMINAL_AGENT_OPTIONS) {
       expect(KNOWN_AGENT_IDS.has(option.value)).toBe(true);
     }
     const optionIds = new Set<string>(TERMINAL_AGENT_OPTIONS.map((option) => option.value));
-    expect(optionIds.has("opencode")).toBe(false);
+    expect(optionIds.has("opencode")).toBe(true);
   });
 
   it("resolves dialog labels from the options table and falls back to raw ids", () => {
@@ -506,6 +506,7 @@ describe("terminal agent options", () => {
     // 表に足すだけで文言に流れ、未知 id でも壊れず raw id を表示する。
     expect(terminalAgentLabel("claude")).toBe("Claude Code");
     expect(terminalAgentLabel("codex")).toBe("Codex");
+    expect(terminalAgentLabel("opencode")).toBe("OpenCode");
     expect(terminalAgentLabel("some-future-agent")).toBe("some-future-agent");
   });
 });
