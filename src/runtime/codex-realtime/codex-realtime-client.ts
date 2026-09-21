@@ -26,6 +26,12 @@ import {
 } from "./realtime-diagnostics";
 import type { ScreenPointerAvailability } from "./screen-observation";
 import { screenCaptureNotice, screenPointerPreferenceNotice } from "./screen-sharing-prompts";
+import {
+  type VoiceApproval,
+  VoiceApprovalController,
+  type VoiceApprovalReply,
+  voiceApprovalNotice,
+} from "./voice-approval";
 import { isCodexVoiceRejectionMessage } from "./voice-rejection";
 
 export type CodexRealtimeStatus = "idle" | "connecting" | "active" | "error";
@@ -34,6 +40,8 @@ export type CodexRealtimeBilling = "subscription" | "api";
 export interface CodexRealtimeState {
   readonly status: CodexRealtimeStatus;
   readonly billing?: CodexRealtimeBilling;
+  readonly voiceApprovalEnabled?: boolean;
+  readonly voiceApproval?: VoiceApproval;
   /**
    * The local microphone is currently producing a live capture track.
    * This is deliberately separate from `status`: a realtime conversation can remain
@@ -125,7 +133,7 @@ interface JsonRpcResponse extends JsonRpcMessage {
 }
 
 interface JsonRpcServerRequest extends JsonRpcMessage {
-  readonly id: number;
+  readonly id: number | string;
   readonly method: string;
 }
 
@@ -185,6 +193,11 @@ export class CodexRealtimeClient implements LipSyncSource {
   private remoteSpeechSampleInterval: ReturnType<typeof globalThis.setInterval> | null = null;
   private threadId: string | null = null;
   private nextRequestId = 1;
+  private readonly voiceApprovals = new VoiceApprovalController();
+  private voiceApprovalEnabled = false;
+  private readonly submittedVoiceApprovals = new Set<string | number>();
+  private voiceApprovalTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
+  private voiceApprovalExpiry: ReturnType<typeof globalThis.setTimeout> | null = null;
   private pending = new Map<number, PendingRequest>();
   private acceptRemoteSdp: ((sdp: string) => void) | null = null;
   private rejectRemoteSdp: ((reason: Error) => void) | null = null;
@@ -272,8 +285,119 @@ export class CodexRealtimeClient implements LipSyncSource {
     this.assertAttemptOwner(attempt);
   }
 
+  /** 音声承認はユーザーの明示 opt-in。再接続時は無効へ戻す。 */
+  setVoiceApprovalEnabled(enabled: boolean): void {
+    this.voiceApprovalEnabled = enabled && this.state.status === "active";
+    this.clearVoiceApproval();
+    this.publishVoiceApproval();
+  }
+
+  private publishVoiceApproval(): void {
+    const { voiceApproval: _old, voiceApprovalEnabled: _enabled, ...state } = this.state;
+    const current = this.voiceApprovals.getCurrent();
+    this.setState({
+      ...state,
+      ...(this.voiceApprovalEnabled ? { voiceApprovalEnabled: true } : {}),
+      ...(current ? { voiceApproval: current } : {}),
+    });
+  }
+
+  private clearVoiceApproval(): void {
+    this.voiceApprovals.reset();
+    this.submittedVoiceApprovals.clear();
+    if (this.voiceApprovalTimer !== null) globalThis.clearTimeout(this.voiceApprovalTimer);
+    if (this.voiceApprovalExpiry !== null) globalThis.clearTimeout(this.voiceApprovalExpiry);
+    this.voiceApprovalTimer = null;
+    this.voiceApprovalExpiry = null;
+  }
+
+  private async surfaceVoiceApproval(approval: VoiceApproval, attempt: number): Promise<void> {
+    this.publishVoiceApproval();
+    if (this.voiceApprovalExpiry !== null) globalThis.clearTimeout(this.voiceApprovalExpiry);
+    this.voiceApprovalExpiry = globalThis.setTimeout(() => this.publishVoiceApproval(), 120_000);
+    try {
+      await this.request("thread/realtime/appendText", {
+        threadId: approval.threadId,
+        role: "developer",
+        text: voiceApprovalNotice(approval),
+      });
+      if (!this.isAttemptOwner(attempt) || !this.voiceApprovalEnabled) return;
+      this.voiceApprovals.markAnnounced(approval);
+    } catch {
+      if (!this.isAttemptOwner(attempt)) return;
+      this.voiceApprovals.disarm();
+      this.publishVoiceApproval();
+    }
+  }
+
+  private handleApprovalAudioEvent(value: unknown, attempt: number): void {
+    if (
+      !this.isAttemptOwner(attempt) ||
+      this.state.status !== "active" ||
+      !this.voiceApprovalEnabled ||
+      !this.isMicrophoneCaptureActive()
+    )
+      return;
+    if (
+      !isRecord(value) ||
+      ![
+        "session.input_transcript.delta",
+        "input_audio_buffer.speech_started",
+        "conversation.item.input_audio_transcription.completed",
+      ].includes(String(value.type))
+    )
+      return;
+    const previous = this.voiceApprovals.getCurrent();
+    const reply = this.voiceApprovals.audioEvent(value);
+    if (reply) this.sendVoiceApproval(reply, attempt);
+    if (isRecord(value) && value.type === "session.input_transcript.delta") {
+      if (this.voiceApprovalTimer !== null) globalThis.clearTimeout(this.voiceApprovalTimer);
+      this.voiceApprovalTimer = globalThis.setTimeout(() => {
+        this.voiceApprovalTimer = null;
+        if (
+          !this.isAttemptOwner(attempt) ||
+          !this.voiceApprovalEnabled ||
+          !this.isMicrophoneCaptureActive()
+        )
+          return;
+        const decision = this.voiceApprovals.flushLiveTranscript();
+        if (decision) this.sendVoiceApproval(decision, attempt);
+      }, 1600);
+    }
+    if (previous !== this.voiceApprovals.getCurrent()) this.publishVoiceApproval();
+  }
+
+  private sendVoiceApproval(reply: VoiceApprovalReply, attempt: number): void {
+    const connectionId = this.connectionId;
+    if (!connectionId || !this.isAttemptOwner(attempt)) return;
+    // server request ID をそのまま使う。PTY 入力や session-wide 許可を生成しない。
+    this.publishVoiceApproval();
+    this.submittedVoiceApprovals.add(reply.id);
+    void sessionRealtimeSend({ connectionId, message: JSON.stringify(reply) }).catch(() => {
+      if (!this.isAttemptOwner(attempt)) return;
+      this.submittedVoiceApprovals.delete(reply.id);
+      this.notifyVoiceApprovalOutcome(
+        "The voice decision could not be delivered. Ask the user to answer in the terminal.",
+      );
+      // 配送失敗時に再送・自動承認しない。従来の TUI が引き続き回答を所有する。
+    });
+  }
+
+  private notifyVoiceApprovalOutcome(text: string): void {
+    if (!this.threadId || this.state.status !== "active") return;
+    void this.request("thread/realtime/appendText", {
+      threadId: this.threadId,
+      role: "developer",
+      text,
+    }).catch(() => {});
+  }
+
   setMicrophoneMuted(muted: boolean): void {
     this.microphoneMuted = muted;
+    if (muted) {
+      this.voiceApprovals.disarm();
+      this.publishVoiceApproval();
+    }
     for (const track of this.microphone?.getAudioTracks() ?? []) {
       if (track.readyState === "live") track.enabled = !muted;
     }
@@ -711,6 +835,14 @@ export class CodexRealtimeClient implements LipSyncSource {
       peer.addTrack(track, microphone);
     }
     this.eventChannel = peer.createDataChannel("oai-events");
+    this.eventChannel.onmessage = (event) => {
+      if (typeof event.data !== "string") return;
+      try {
+        this.handleApprovalAudioEvent(JSON.parse(event.data), attempt);
+      } catch {
+        /* malformed event */
+      }
+    };
 
     this.currentStage = "webrtc-offer";
     const offer = await peer.createOffer();
@@ -909,7 +1041,12 @@ export class CodexRealtimeClient implements LipSyncSource {
     }
 
     if (isJsonRpcServerRequest(message)) {
-      // bridge は approval request に自動応答しない。承認 UI は TUI だけを正本とする。
+      // 明示 opt-in 時のみ host に提示。モデル自身は approval response を生成しない。
+      if (this.voiceApprovalEnabled && this.state.status === "active" && this.threadId) {
+        const approval = this.voiceApprovals.receive(message, this.threadId);
+        this.publishVoiceApproval();
+        if (approval) void this.surfaceVoiceApproval(approval, attempt);
+      }
       return;
     }
 
@@ -929,6 +1066,9 @@ export class CodexRealtimeClient implements LipSyncSource {
     const params = message.params as
       | {
           readonly threadId?: string;
+          readonly requestId?: unknown;
+          readonly turnId?: unknown;
+          readonly turn?: { readonly id?: unknown };
           readonly sdp?: string;
           readonly message?: string;
           readonly role?: string;
@@ -937,6 +1077,23 @@ export class CodexRealtimeClient implements LipSyncSource {
           readonly audio?: { readonly itemId?: unknown };
         }
       | undefined;
+    if (params?.threadId === this.threadId && message.method === "serverRequest/resolved") {
+      if (
+        (typeof params.requestId === "string" || typeof params.requestId === "number") &&
+        this.submittedVoiceApprovals.delete(params.requestId)
+      ) {
+        this.notifyVoiceApprovalOutcome(
+          "The server has resolved the approval request. The terminal and voice use first-response-wins; do not claim the command succeeded. Wait for the actual tool result.",
+        );
+      }
+      this.voiceApprovals.resolve(params.requestId);
+      this.publishVoiceApproval();
+      return;
+    }
+    if (params?.threadId === this.threadId && message.method === "turn/completed") {
+      this.voiceApprovals.invalidateTurn(params.turn?.id ?? params.turnId);
+      this.publishVoiceApproval();
+    }
     if (message.method === "thread/realtime/sdp" && params?.sdp) {
       this.acceptRemoteSdp?.(params.sdp);
     } else if (message.method === "thread/realtime/error") {
@@ -971,6 +1128,7 @@ export class CodexRealtimeClient implements LipSyncSource {
       message.method === "thread/realtime/itemAdded" &&
       params?.threadId === this.threadId
     ) {
+      this.handleApprovalAudioEvent(params.item, attempt);
       this.routeRealtimeItemBoundary(params.item);
     } else if (
       message.method === "thread/realtime/outputAudio/delta" &&
@@ -1098,6 +1256,10 @@ export class CodexRealtimeClient implements LipSyncSource {
   private publishMicrophoneActivity(attempt: number): void {
     if (!this.isAttemptOwner(attempt) || this.state.status !== "active") return;
     const microphoneActive = this.isMicrophoneCaptureActive();
+    if (!microphoneActive && this.voiceApprovals.getCurrent()) {
+      this.voiceApprovals.disarm();
+      this.publishVoiceApproval();
+    }
     const microphoneMuted = this.microphoneMuted ? true : undefined;
     if (
       this.state.microphoneActive === microphoneActive &&
@@ -1201,6 +1363,8 @@ export class CodexRealtimeClient implements LipSyncSource {
   }
 
   private disposeResources(finalMessage?: string): void {
+    this.clearVoiceApproval();
+    this.voiceApprovalEnabled = false;
     this.stateExpressionController?.cancelAll();
     this.stopRemoteSpeechObservation();
     this.rejectAllPending(new Error("Codex realtime conversation stopped"));
@@ -1279,7 +1443,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function isJsonRpcServerRequest(message: JsonRpcMessage): message is JsonRpcServerRequest {
-  return typeof message.id === "number" && typeof message.method === "string";
+  return (
+    (typeof message.id === "number" || typeof message.id === "string") &&
+    typeof message.method === "string"
+  );
 }
 
 function isJsonRpcResponse(message: JsonRpcMessage): message is JsonRpcResponse {
