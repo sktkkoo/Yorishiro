@@ -1032,7 +1032,7 @@ function App() {
   // ── State placement rule ────────────────────────────────────
   // 5 種類の置き場が混在する。**何を入れるかで決める**：
   //   useState        : UI が直接読む / mount/unmount に追従させたい React state（cwd, vrmPath, isUserLayerReady, activeScene, primaryPersona, vrmUrl）
-  //   useRef          : render を起こさない mutable cell（bodyRef, greetedRef, inTurnRef）
+  //   useRef          : render を起こさない mutable cell（bodyRef, inTurnRef）
   //   useMemo         : derive が安いが ref-stable に保ちたい view-side compute（bodyDevLog, folderName）
   //   hot-data        : HMR 越しに 1 instance のみ生かしたい runtime singleton（runtime stack 全体、各 registry）
   //   module-registry : 各 trigger / swap-in module の registry（getModuleRegistry()）
@@ -4140,7 +4140,6 @@ function App() {
   const codexVoiceAvailable =
     mainAgentAvailable && terminalAgent === "codex" && !mainSessionReplacing;
   const voiceEntryAvailable = mainAgentAvailable && isVoiceEntryAvailable();
-  const greetedRef = useRef(false);
   const inTurnRef = useRef(false);
   const applyRealtimeLipSyncSource = useCallback((source: LipSyncSource) => {
     bodyRef.current?.setLipSyncSource(source);
@@ -4417,20 +4416,6 @@ function App() {
             personaRegistry,
           }),
         );
-        if (!greetedRef.current) {
-          greetedRef.current = true;
-          // Delay the greeting nod so it feels like a considered "hello"
-          // instead of a reflex the moment the VRM appears on screen.
-          setTimeout(() => {
-            bodyRef.current?.createCharacterAPI().play("anim:VRMA_small_nod", {
-              mask: "upper-body",
-              fadeInMs: 1200,
-              fadeOutMs: 800,
-              weight: 0.8,
-              speed: 0.7,
-            });
-          }, 3000);
-        }
       } else {
         bodyRef.current?.setLipSyncSource(null);
         dispatcher.setContextFactory(createStubPersonaContextFactory());
