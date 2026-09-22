@@ -153,15 +153,34 @@ conversationを含む別のtop-level threadも同じstatusを発するため、o
 
 ### approval ownership
 
-approval UI の正本は TUI である。
+TUI は常に利用できる承認経路として残す。音声セッションごとにユーザーが title bar の
+「音声承認」を明示的に有効にした場合のみ、host が command approval の音声回答を受け付ける。
+デフォルトは無効で、再接続時も無効へ戻す。PTY へのキー入力ではなく同じ app-server の
+JSON-RPC request ID へ一度限りの `accept` / `decline` を返す。
 
-- `id + method` は server-initiated request として分類する
-- `id + result` または `id + error` だけを client request の response として扱う
-- bridge は approval request に自動 approve / decline を返さない
-- TUI が利用不能な状態で自動承認する fallback を作らない
+- 対象は active な同一 thread の `item/commandExecution/requestApproval`、kind は command のみ。
+- `availableDecisions` に存在する一回限りの選択肢だけを使う。session grant / policy amendment、
+  writeStdin、file change、追加権限付与は従来の TUI に残す。
+- command、cwd、reason、全 request details を host UI でそのまま確認できる。音声には JSON を
+  untrusted operation data として渡して説明を促す。LLM の要約は承認対象の正本ではない。
+- 返答は「承認 4321 確定」「拒否 4321 確定」または `approve 4321 confirm` / `deny 4321 confirm`。
+  番号は request ごとに生成する。「はい」「お願い」や説明中の引用では承認しない。
+- authority は raw microphone transcription event だけ。通常の thread transcript、assistant の
+  発話、tool 出力、モデルによる承認 tool call は回答として扱わない。
+- GPT Live の `session.input_transcript.delta` は final event / item ID を持たないため、専用の
+  確定語を含む完全一致と最後の delta から 1.6 秒の静止を要求する。これは**認識の完了保証ではない**。
+  大きな配送遅延、ASR の誤認識、録音音声やスピーカー回り込みに対する本人確認は提供しない。
+  実験的な opt-in 機能として扱い、危険な操作は引き続き TUI で確認する。
+- 旧 Realtime の completed audio transcript を受け取る場合は、提示後に始まった同一 audio item と
+  相関させる。flat `thread/realtime/transcript/done` に fallback しない。
+- `serverRequest/resolved`（typed request ID 一致）、turn completion、mute、stop、thread 切替、
+  120 秒の期限、別承認との競合で失効する。曖昧な複数待機は自動再開しない。
+- fan-out の first-response-wins を維持する。TUI が先に解決すれば音声側は失効し、送信エラーで
+  自動再送や代替キー入力をしない。接続後に新たに届いた要求のみ対象（既存要求の replay はしない）。
 
-approvalは全subscriberへfan-outされ、first-response-winsである。bridgeが独自応答するとTUIと競合する。
-voice approval UIを正式に設計するまではTUIへ委ねる。
+実機の microphone → GPT Live delta → app-server response → TUI 消去の通し確認は未実施。
+自動テストは模擬 transport による承認・拒否、誤った provenance、否定の続き、手動回答との競合、
+停止と期限切れを検証する。実機検証なしに「音声で確実に承認できる」とは扱わない。
 
 ### start / stop ownership
 
@@ -274,7 +293,7 @@ credential、SDP / ICE credential、server由来のraw error messageは永続化
 未実装:
 
 - 委任作業の状態を会話向けに投影するWork Status Ledger
-- voice UIだけでのapproval確定
+- command 以外の voice approval と、実機での音声承認フロー検証
 - progress / completionの構造化通知台帳
 - Main Agent capabilityに応じたprovider別voice adapter選択
 - Claude / OpenCodeがnative realtime voiceを提供した場合の専用adapter
@@ -374,7 +393,7 @@ leaseをinvalidateしない。fallbackへのrestore IPCは一時失敗に備え�
 - Codex 0.146.0 の実測では、`thread/realtime/start` を呼んだ bridge client は対象 thread へ
   自動購読され、TUI と bridge の双方へ realtime transcript、handoff、通常 turn event が届く
 - approval request は同じ thread の subscriber 全員へ届く。bridge は自動応答せず、v1 の
-  承認 UI は TUI だけを正本とする
+  TUI を維持しつつ明示 opt-in の host-owned 音声承認を追加する
 - `thread/loaded/list` の順序には active thread の意味がない。subagent は `parentThreadId` で除外し、
   複数の top-level thread が loaded の場合は tracker の `/clear`・`/resume` 通知由来の明示 ID がなければ
   誤接続を避けて voice を開始しない
@@ -405,9 +424,10 @@ experience を失う。
 
 却下。agent teamを使うだけでsubagent threadが複数loadedになる。top-levelとsubagentを区別する。
 
-### F. voice bridgeもapprovalへ返答する
+### F. voice bridge が自動で approval へ返答する
 
-却下。全subscriberへのfan-outとfirst-response-winsによりTUIと競合する。
+自動承認は却下。2026-09-21 に、上記の明示 opt-in・request 相関・raw 音声確認に限定した
+実験的 UI を追加した。モデル自身が判断して返答する経路は作らない。
 
 ### G. spoken textへexpression tagを埋め込む
 
@@ -441,3 +461,11 @@ experience を失う。
 - `src/title-bar.tsx` — host-owned microphone UI
 - [OpenAI Codex app-server README](https://github.com/openai/codex/blob/main/codex-rs/app-server/README.md)
 - [critical-constraints.md](critical-constraints.md) §1 PTY observation only
+
+
+## 改訂履歴
+
+- 2026-09-21: セッション opt-in の command 音声承認試作を追加。GPT Live の streaming transcript
+  制約、手動承認との競合、実機未検証を明記。
+
+音声イベント仕様: [GPT Live transcript deltas](https://developers.openai.com/api/docs/guides/live-conversations#transcript-deltas)

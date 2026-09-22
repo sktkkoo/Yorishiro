@@ -10,6 +10,7 @@ import {
 import type { ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import { MediaPermissionHelp } from "./media-permission-help";
+import type { VoiceApproval } from "./runtime/codex-realtime/voice-approval";
 import { getMediaPermissionKind } from "./runtime/media-permissions";
 import type { UiPackEntry } from "./runtime/ui-pack-registry";
 
@@ -42,6 +43,9 @@ export interface TitleBarProps {
   readonly voiceMicrophoneActive?: boolean;
   readonly voiceLabel?: string;
   readonly voiceError?: string;
+  readonly voiceApproval?: VoiceApproval;
+  readonly voiceApprovalEnabled?: boolean;
+  readonly onToggleVoiceApproval?: () => void;
   readonly language?: string;
   readonly onToggleVoice?: () => void;
   readonly screenSharingControl?: ReactNode;
@@ -70,6 +74,9 @@ export default function TitleBar({
   voiceMicrophoneActive = false,
   voiceLabel = "",
   voiceError,
+  voiceApproval,
+  voiceApprovalEnabled = false,
+  onToggleVoiceApproval,
   language,
   onToggleVoice,
   screenSharingControl,
@@ -78,6 +85,8 @@ export default function TitleBar({
   activeViewModeId = null,
   onSelectViewMode,
 }: TitleBarProps) {
+  const japanese = language === "ja";
+  const approvalVisible = voiceState === "active" && voiceApprovalEnabled && !!voiceApproval;
   const permissionKind = getMediaPermissionKind(voiceError);
   const SidebarIcon = sidebarOpen ? PanelLeftClose : PanelLeftOpen;
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -100,7 +109,7 @@ export default function TitleBar({
   }, [pickerOpen]);
 
   return (
-    <header className="title-bar" data-tauri-drag-region="">
+    <header className="title-bar" data-voice-approval={approvalVisible} data-tauri-drag-region="">
       <div className="title-bar-controls">
         {showSidebarToggle ? (
           <button
@@ -261,6 +270,77 @@ export default function TitleBar({
               <span className="title-bar-voice-status-dot" aria-hidden="true" />
             ) : null}
           </button>
+        ) : null}
+        {voiceState === "active" && onToggleVoiceApproval ? (
+          <div className="voice-approval-control">
+            <button
+              type="button"
+              className="title-bar-button voice-approval-toggle"
+              aria-pressed={voiceApprovalEnabled}
+              onClick={onToggleVoiceApproval}
+              title={
+                japanese
+                  ? "この音声セッションで音声承認を有効化（実験的）"
+                  : "Enable voice approval for this voice session (experimental)"
+              }
+            >
+              {japanese ? "音声承認" : "Voice approval"}
+            </button>
+            {approvalVisible && voiceApproval ? (
+              <section
+                className="voice-approval-panel"
+                aria-label={japanese ? "音声承認の確認" : "Review voice approval"}
+              >
+                <strong>{japanese ? "実行内容を確認してください" : "Review this operation"}</strong>
+                <dl>
+                  <dt>{japanese ? "コマンド" : "Command"}</dt>
+                  <dd>
+                    <pre>{voiceApproval.command}</pre>
+                  </dd>
+                  <dt>{japanese ? "作業ディレクトリ" : "Working directory"}</dt>
+                  <dd>
+                    <pre>{voiceApproval.cwd}</pre>
+                  </dd>
+                  <dt>{japanese ? "理由" : "Reason"}</dt>
+                  <dd>
+                    {voiceApproval.reason || (japanese ? "理由の指定なし" : "No reason provided")}
+                  </dd>
+                </dl>
+                <p>
+                  {japanese
+                    ? "内容を確認し、次のフレーズを話してください。"
+                    : "Review the details, then say one of these phrases."}
+                </p>
+                {voiceApproval.canAccept ? (
+                  <p>
+                    <code>
+                      {japanese
+                        ? `承認 ${voiceApproval.code} 確定`
+                        : `approve ${voiceApproval.code} confirm`}
+                    </code>
+                  </p>
+                ) : null}
+                {voiceApproval.canDecline ? (
+                  <p>
+                    <code>
+                      {japanese
+                        ? `拒否 ${voiceApproval.code} 確定`
+                        : `deny ${voiceApproval.code} confirm`}
+                    </code>
+                  </p>
+                ) : null}
+                <details>
+                  <summary>{japanese ? "リクエストの詳細" : "Request details"}</summary>
+                  <pre>{voiceApproval.details}</pre>
+                </details>
+                <p className="voice-approval-note">
+                  {japanese
+                    ? "実験的な機能です。ターミナルでの手動承認も引き続き使えます。"
+                    : "Experimental. Manual approval in the terminal remains available."}
+                </p>
+              </section>
+            ) : null}
+          </div>
         ) : null}
         {screenSharingControl}
       </div>

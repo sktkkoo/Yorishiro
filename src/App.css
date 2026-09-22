@@ -364,7 +364,8 @@ html[data-rounded-view] body {
     transform 160ms ease;
 }
 .app.view-mode-chrome-hidden.view-mode-hud-visible .title-bar,
-.app.view-mode-chrome-hidden .title-bar:focus-within {
+.app.view-mode-chrome-hidden .title-bar:focus-within,
+.app.view-mode-chrome-hidden .title-bar[data-voice-approval="true"] {
   opacity: 1;
   pointer-events: auto;
   transform: translateY(0);
@@ -1754,4 +1755,76 @@ html[data-rounded-view] body {
   to {
     transform: rotate(360deg);
   }
+}
+
+.voice-approval-control {
+  position: relative;
+}
+
+.title-bar-button.voice-approval-toggle {
+  width: auto;
+  padding: 0 7px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.voice-approval-toggle[aria-pressed="true"] {
+  color: #d6e7ff;
+  background: #283c56;
+}
+
+.voice-approval-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 1100;
+  box-sizing: border-box;
+  width: min(420px, calc(100vw - 220px));
+  max-height: calc(100vh - 64px);
+  overflow: auto;
+  padding: 16px;
+  border: 1px solid #586778;
+  border-radius: 10px;
+  background: #181c22;
+  box-shadow: 0 8px 28px #0008;
+  color: #e0e6ee;
+  font-size: 12px;
+  line-height: 1.5;
+  user-select: text;
+  overflow-wrap: anywhere;
+}
+
+.voice-approval-panel dl,
+.voice-approval-panel p {
+  margin: 10px 0;
+}
+
+.voice-approval-panel dt {
+  margin-top: 8px;
+  font-weight: 600;
+}
+
+.voice-approval-panel dd {
+  margin: 3px 0;
+}
+
+.voice-approval-panel pre {
+  margin: 4px 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 11px;
+}
+
+.voice-approval-panel code {
+  color: #c4ddff;
+  font-weight: 600;
+}
+
+.voice-approval-panel summary {
+  cursor: pointer;
+}
+
+.voice-approval-note {
+  color: #adb8c6;
+  font-size: 11px;
 }

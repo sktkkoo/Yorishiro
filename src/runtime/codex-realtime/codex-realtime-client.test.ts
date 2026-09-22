@@ -236,6 +236,7 @@ class FakeMediaStream extends EventTarget {
 }
 
 class FakeDataChannel {
+  onmessage: ((event: { data: string }) => void) | null = null;
   readonly close = vi.fn();
 }
 
@@ -1783,5 +1784,147 @@ describe("CodexRealtimeClient", () => {
 
     expect(microphoneTrack.stop).toHaveBeenCalledTimes(1);
     expect(client.getStatus()).toBe("idle");
+  });
+  it.each([
+    "accept",
+    "decline",
+  ])("submits %s only from an explicitly armed microphone confirmation", async (decision) => {
+    const states: CodexRealtimeState[] = [];
+    const client = new CodexRealtimeClient("main-session", (state) => states.push(state));
+    await client.start();
+    client.setVoiceApprovalEnabled(true);
+    const request = {
+      id: "approval-77",
+      method: "item/commandExecution/requestApproval",
+      params: {
+        threadId: "thread-1",
+        turnId: "turn-1",
+        itemId: "item-1",
+        command: "npm test",
+        cwd: "/project",
+      },
+    };
+    bridge.channel?.onmessage(JSON.stringify(request));
+    await Promise.resolve();
+    await Promise.resolve();
+    const approval = states[states.length - 1]?.voiceApproval;
+    expect(approval).toBeDefined();
+    const text = `${decision === "accept" ? "approve" : "deny"} ${approval?.code} confirm`;
+    bridge.channel?.onmessage(
+      JSON.stringify({
+        method: "thread/realtime/transcript/done",
+        params: { threadId: "thread-1", role: "user", text },
+      }),
+    );
+    FakePeerConnection.latest?.channel.onmessage?.({
+      data: JSON.stringify({
+        type: "session.output_transcript.delta",
+        event_id: "assistant",
+        delta: text,
+        start_ms: 0,
+        end_ms: 100,
+      }),
+    });
+    expect(bridge.sent.filter((message) => message.result !== undefined)).toEqual([]);
+    vi.useFakeTimers();
+    FakePeerConnection.latest?.channel.onmessage?.({
+      data: JSON.stringify({
+        type: "session.input_transcript.delta",
+        event_id: "microphone-1",
+        delta: text,
+        start_ms: 0,
+        end_ms: 100,
+      }),
+    });
+    expect(bridge.sent.filter((message) => message.result !== undefined)).toEqual([]);
+    await vi.advanceTimersByTimeAsync(1600);
+    expect(bridge.sent.filter((message) => message.result !== undefined)).toEqual([
+      { id: "approval-77", result: { decision } },
+    ]);
+    expect(states[states.length - 1]?.voiceApproval).toBeUndefined();
+    client.stop();
+  });
+
+  it.each([
+    "manual",
+    "mute",
+    "stop",
+    "disable",
+    "turn-completed",
+  ])("cancels a captured voice confirmation after %s", async (reason) => {
+    const states: CodexRealtimeState[] = [];
+    const client = new CodexRealtimeClient("main-session", (state) => states.push(state));
+    await client.start();
+    client.setVoiceApprovalEnabled(true);
+    bridge.channel?.onmessage(
+      JSON.stringify({
+        id: 77,
+        method: "item/commandExecution/requestApproval",
+        params: {
+          threadId: "thread-1",
+          turnId: "turn-1",
+          itemId: "item-1",
+          command: "npm test",
+          cwd: "/project",
+        },
+      }),
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+    const code = states[states.length - 1]?.voiceApproval?.code;
+    vi.useFakeTimers();
+    FakePeerConnection.latest?.channel.onmessage?.({
+      data: JSON.stringify({
+        type: "session.input_transcript.delta",
+        event_id: "microphone-1",
+        delta: `approve ${code} confirm`,
+        start_ms: 0,
+        end_ms: 100,
+      }),
+    });
+    if (reason === "manual")
+      bridge.channel?.onmessage(
+        JSON.stringify({
+          method: "serverRequest/resolved",
+          params: { threadId: "thread-1", requestId: 77 },
+        }),
+      );
+    if (reason === "turn-completed")
+      bridge.channel?.onmessage(
+        JSON.stringify({
+          method: "turn/completed",
+          params: { threadId: "thread-1", turn: { id: "turn-1" } },
+        }),
+      );
+    if (reason === "mute") client.setMicrophoneMuted(true);
+    if (reason === "stop") client.stop();
+    if (reason === "disable") client.setVoiceApprovalEnabled(false);
+    await vi.advanceTimersByTimeAsync(1600);
+    expect(bridge.sent.filter((message) => message.result !== undefined)).toEqual([]);
+    client.stop();
+  });
+
+  it("leaves approvals entirely manual until session opt-in", async () => {
+    const states: CodexRealtimeState[] = [];
+    const client = new CodexRealtimeClient("main-session", (state) => states.push(state));
+    await client.start();
+    bridge.channel?.onmessage(
+      JSON.stringify({
+        id: 77,
+        method: "item/commandExecution/requestApproval",
+        params: {
+          threadId: "thread-1",
+          turnId: "turn-1",
+          itemId: "item-1",
+          command: "npm test",
+          cwd: "/project",
+        },
+      }),
+    );
+    expect(states[states.length - 1]?.voiceApproval).toBeUndefined();
+    expect(bridge.sent.some((message) => message.method === "thread/realtime/appendText")).toBe(
+      false,
+    );
+    client.stop();
   });
 });
