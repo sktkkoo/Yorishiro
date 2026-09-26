@@ -53,13 +53,9 @@ export const DEFAULT_CHARACTER_MOTION_PROFILE: CharacterMotionProfile = {
     occasionalWaitMs: [90_000, 150_000],
   },
   programs: [
-    ...[
-      "speech-appreciate",
-      "speech-chat",
-      "speech-celebrate",
-      "speech-thoughtful",
-      "speech-present",
-    ].map(
+    // Thoughtful Head Shake is manual-only after user-confirmed jerky head/torso
+    // movement when transitioning from conversational hand gestures.
+    ...["speech-appreciate", "speech-chat", "speech-celebrate", "speech-present"].map(
       (id): MotionProgram => ({
         review: "docs/decisions/motion-orchestration.md",
         entry: reviewedEntry(id),

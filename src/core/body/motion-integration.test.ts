@@ -40,8 +40,6 @@ function testProgram(id: string): MotionProgram {
   return program;
 }
 
-import { OCCASIONAL_IDLE_ANIMATIONS } from "./occasional-idle-selector";
-
 type Playback = Awaited<ReturnType<AnimationPlayer["play"]>>;
 
 function deferred<T>() {
@@ -485,7 +483,8 @@ describe("recorded motion Body integration", () => {
         ([animation]) =>
           animation === "anim:Idle Chatting 2" ||
           animation.includes("Shrugging") ||
-          animation.includes("HandOnHip"),
+          animation.includes("HandOnHip") ||
+          animation.includes("Thoughtful Head Shake"),
       ),
     ).toBe(false);
   });
@@ -511,9 +510,10 @@ describe("recorded motion Body integration", () => {
     expect(body.getRecordedBodySnapshot().active?.id).toBe("standing");
     expect(base.stop).not.toHaveBeenCalled();
     expect(base.cancel).not.toHaveBeenCalled();
+    expect(body.acquireSemanticMotion({ ...speechRequest, intent: "uncertain" })).toBeNull();
     expect(
-      body.acquireSemanticMotion({ ...speechRequest, intent: "uncertain" })?.animation,
-    ).not.toContain("Shrugging");
+      preload.mock.calls.some(([animation]) => animation.includes("Thoughtful Head Shake")),
+    ).toBe(false);
   });
 
   it("keeps supporting motion during a failed full-body load and commits ownership only when a replacement succeeds", async () => {
@@ -1573,6 +1573,7 @@ describe("recorded motion Body integration", () => {
   it.each([
     "anim:Thankful",
     "anim:Idle Chatting 2",
+    "/animations/mixamo/Thoughtful Head Shake.vrma",
   ])("preserves explicit manual playback of %s regardless of automatic admission", async (animation) => {
     mockPerformanceLibrary();
     const active = playback();
@@ -1673,11 +1674,11 @@ describe("recorded motion Body integration", () => {
     await first;
     expect(preload).toHaveBeenCalledTimes(
       1 +
-        DEFAULT_MOTION_CATALOG.length +
-        DEFAULT_MOTION_CATALOG.filter(
-          (entry) => entry.intents.includes("explain") && entry.playback !== "once",
-        ).length +
-        OCCASIONAL_IDLE_ANIMATIONS.length,
+        TEST_MOTION_PROFILE.programs.length +
+        TEST_MOTION_PROFILE.programs.filter(
+          ({ role, entry }) =>
+            role === "speech" && entry.intents.includes("explain") && entry.playback !== "once",
+        ).length,
     );
     expect(preload).toHaveBeenCalledWith("anim:Idle", { mask: "upper-body", loop: true });
     expect(preload).toHaveBeenCalledWith("/animations/recorded-idle/survey.vrma", {
