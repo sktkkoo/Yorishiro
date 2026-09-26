@@ -14,6 +14,8 @@ Pack 管理、event dispatch、module registry、singleton service。core primit
 | `agent-setup-controller.ts` | 初回 health check の選択待ち、独立した導入進捗、ウィンドウ復帰時の再検出・選択保存・shell での続行 | `AgentSetupController` | host-owned store。導入完了だけでは agent を起動しない |
 | `agent-install.ts` | 公式 installer を実行する Tauri command と main window 宛ての進捗 event の bridge | `installTerminalAgent` / `listenAgentInstallOutput` | 明示的な install 操作からのみ呼ぶ |
 | `ambient-audio/` | Scene Pack の `ambient` 宣言を Howler.js で再生する engine と ScenePackRegistry への配線 | `index.ts` | [README](./ambient-audio/README.md) |
+| `claude-screen-observation.ts` / `use-claude-screen-sharing.ts` | 明示共有の最新画像を現在のClaude会話に限定して公開し、会話変更・停止で失効 | `ClaudeScreenObservationTransport` / `useClaudeScreenSharing` | [claude-screen-sharing.md](../../docs/decisions/claude-screen-sharing.md) |
+| `sharing-delivery.ts` | 会話へ添付済みと必要時に取得可能な状態を区別するUI契約 | `SharingDeliveryMode` | inline / auxiliary controls・previewで共通 |
 | `codex-realtime/` | Codex TUI と同じ app-server thread に WebRTC 音声を接続し、remote audio を lip sync source にする | `index.ts` | experimental、host-owned UI |
 | `event-bus/` | Trigger dispatch engine — 環境 event → trigger match → reaction emit | `event-bus.ts` | Twin-trigger / Synthetic event の dispatch loop |
 | `persona-registry/` | Persona の state 管理 — **single-active**（複数 register 可、外に出すのは 1 個） | `persona-registry-impl.ts` | [decisions/persona-multi-instance.md](../../docs/decisions/persona-multi-instance.md) |

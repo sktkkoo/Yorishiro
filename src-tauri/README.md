@@ -14,6 +14,7 @@ src-tauri/src/
 ├── main.rs        — minimal entry, calls yorishiro_lib::run()
 ├── lib.rs         — Tauri app builder + #[tauri::command] 登録 + setup hook
 ├── agent_setup.rs — 明示操作による公式 CLI installer の取得・実行・進捗 IO
+├── claude_screen_sharing.rs — 会話・起動に紐づく最新共有画像のメモリ保持とMCP取得
 ├── pty.rs         — Legacy PTY facade / per-instance dynamic-port hook server
 ├── sessions/
 │   ├── pty_session.rs — Per-session PTY resource lifecycle
@@ -41,6 +42,7 @@ src-tauri/src/
 | Module | 責務 | TS 側との関係 |
 |---|---|---|
 | `agent_setup.rs` | Claude Code / Codex の固定された公式 installer を一般ユーザー権限で実行。出力制限・timeout・process group cleanup・agent ごとの重複防止 | `runtime/agent-install.ts` から明示操作で呼び、進捗は main window 宛ての `agent-install-output` event。初回選択の判断は TS が所有 |
+| `claude_screen_sharing.rs` | main windowのbegin / publish / end、認証済みhookへのcapability通知、`shared_screen_get`による画像取得。native owner・TTL・document lifecycleを検証 | TSが開始・停止・撮影を所有。保存は最新1枚のメモリのみ。[設計](../docs/decisions/claude-screen-sharing.md) |
 | `pty.rs` | Legacy Tauri command facade / hook server / default-session delegation | TS 側 perception primitive が PTY output を **read のみ** で受け取る。terminal agent launch 引数差分は `sessions/agent_adapter/` で吸収 |
 | `sessions/pty_session.rs` | Per-session PTY spawn / I/O / resize / kill / replay (HMR 越し) | `SpawnSpec` を受け取り、agent は adapter lookup、shell は wrapper 経由で起動。Codex では同寿命の app-server も所有。attach replay は invoke response、live は raw Channel |
 | `sessions/agent_adapter/` | TerminalAgent trait + Claude / Codex / OpenCode adapter registry | CLI args / env / temp config file の差を `LaunchArgs` に閉じる。capability flag は feature 有無の宣言 |

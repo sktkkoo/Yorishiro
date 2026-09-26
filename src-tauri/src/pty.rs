@@ -123,7 +123,7 @@ fn build_hook_stdin_command(port: u16, endpoint: &str, windows: bool) -> String 
     let url = format!("http://127.0.0.1:{}{}", port, endpoint);
     if windows {
         format!(
-            "powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \"$body = [Console]::In.ReadToEnd(); Invoke-WebRequest -UseBasicParsing -TimeoutSec 1 -Method Post -Uri {} -Body $body | Out-Null\"",
+            "powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \"$body = [Console]::In.ReadToEnd(); $response = Invoke-WebRequest -UseBasicParsing -TimeoutSec 1 -Method Post -Uri {} -Body $body; [Console]::Out.Write([string]$response.Content)\"",
             powershell_single_quote(&url),
         )
     } else {
@@ -434,6 +434,7 @@ fn handle_hook_stream(app: AppHandle, mut stream: TcpStream, expected_token: &st
     let agent = query_param(query, "agent");
     let hook_launch_id = query_param(query, "launch");
     let token_matches = hook_token_matches(query, expected_token);
+    let mut response_body = "ok".to_string();
     if token_matches {
         if let Some(body_start) = data.find("\r\n\r\n") {
             let body = data[body_start + 4..].trim();
@@ -478,6 +479,18 @@ fn handle_hook_stream(app: AppHandle, mut stream: TcpStream, expected_token: &st
                     _ => false,
                 };
                 if launch_accepted {
+                    if let (Some(session), Some(agent), Some(launch), Ok(payload)) = (
+                        session_id.as_deref(),
+                        agent.as_deref(),
+                        hook_launch_id.as_deref(),
+                        parsed_body.as_ref(),
+                    ) {
+                        if let Some(response) = crate::claude_screen_sharing::hook_response(
+                            &app, path, session, agent, launch, payload,
+                        ) {
+                            response_body = response.to_string();
+                        }
+                    }
                     // 同一 signal を immediate event と polling fallback の両方で配るので、
                     // monotonic な _yorishiro_seq を必ず載せて frontend が 1 回だけ処理できるようにする。
                     let seq = HOOK_SEQ.fetch_add(1, Ordering::Relaxed);
@@ -513,7 +526,11 @@ fn handle_hook_stream(app: AppHandle, mut stream: TcpStream, expected_token: &st
             }
         }
     }
-    let resp = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok";
+    let resp = format!(
+        "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{}",
+        response_body.len(),
+        response_body
+    );
     let _ = stream.write_all(resp.as_bytes());
 }
 
@@ -777,6 +794,33 @@ mod tests {
         assert!(stdin.contains("Invoke-WebRequest"));
         assert!(stdin.contains("[Console]::In.ReadToEnd()"));
         assert!(stdin.contains("http://127.0.0.1:19001/hook/pre-tool-use"));
+    }
+
+    #[test]
+    fn windows_hooks_forward_response_body_without_powershell_formatting() {
+        // UserPromptSubmit の capability JSON と、通常 hook の ok を同じ経路で返す。
+        for path in ["/hook/prompt", "/hook/pre-tool-use", "/hook/stop"] {
+            let endpoint = scoped_hook_endpoint(
+                path,
+                "main session",
+                "claude",
+                "instance-token",
+                "launch-token",
+            );
+            let command = build_hook_stdin_command(19001, &endpoint, true);
+            assert!(command.contains(
+                "$response = Invoke-WebRequest -UseBasicParsing -TimeoutSec 1 -Method Post"
+            ));
+            assert!(
+                command.contains("-Body $body; [Console]::Out.Write([string]$response.Content)")
+            );
+            assert!(command.contains(
+                "sessionId=main%20session&agent=claude&token=instance-token&launch=launch-token"
+            ));
+            assert!(!command.contains("Out-Null"));
+            assert!(!command.contains("Out-String"));
+            assert_eq!(command.matches("Invoke-WebRequest").count(), 1);
+        }
     }
 
     #[test]

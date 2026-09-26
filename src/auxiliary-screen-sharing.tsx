@@ -13,6 +13,7 @@ import {
   type ScreenSharingAuxiliaryAction,
 } from "./runtime/auxiliary-windows";
 import { CONTACT_SHEET_FRAME_COUNTS } from "./runtime/contact-sheet-settings";
+import { sharingDeliveryLabels } from "./runtime/sharing-delivery";
 import {
   formatSharingInterval,
   MAX_SHARING_INTERVAL_SECONDS,
@@ -31,9 +32,7 @@ const text = {
     display: "Display",
     noDisplays: "No displays available",
     refresh: "Refresh displays",
-    interval: "Send interval",
     frameCount: "Frames to combine",
-    hint: "Shorter intervals use more tokens.",
     seconds: (value: number) => formatSharingInterval(value, "en"),
     unavailable: "Choose an agent that supports screen sharing in the main window.",
     cancel: "Cancel",
@@ -48,9 +47,7 @@ const text = {
     display: "画面選択",
     noDisplays: "共有できる画面がありません",
     refresh: "画面一覧を更新",
-    interval: "送信間隔",
     frameCount: "まとめるコマ数",
-    hint: "間隔が短いほどトークン消費が増えます。",
     seconds: (value: number) => formatSharingInterval(value, "ja"),
     unavailable: "メインウィンドウで画面共有に対応するエージェントを選択してください。",
     cancel: "キャンセル",
@@ -92,6 +89,11 @@ export default function AuxiliaryScreenSharing() {
   const language = state?.language ?? (navigator.language.startsWith("ja") ? "ja" : "en");
   const japanese = language === "ja";
   const camera = state?.sourceKind === "camera";
+  const deliveryLabels = sharingDeliveryLabels(
+    state?.deliveryMode ?? "context",
+    language,
+    camera ? "camera" : "screen",
+  );
   const screenSourceKind = state?.screenSourceKind ?? "display";
   const chooser =
     state?.sourceKind !== undefined &&
@@ -276,6 +278,7 @@ export default function AuxiliaryScreenSharing() {
           active={state.active}
           busy={state.busy}
           lastObservedAt={state.lastObservedAt ?? undefined}
+          deliveryMode={state.deliveryMode}
           language={state.language}
         />
       </header>
@@ -313,7 +316,7 @@ export default function AuxiliaryScreenSharing() {
 
           <div className="screen-sharing-interval-heading">
             <label className="screen-sharing-label" htmlFor="viewing-interval">
-              {labels.interval}
+              {deliveryLabels.interval}
             </label>
             <output htmlFor="viewing-interval">{labels.seconds(intervalDraft)}</output>
           </div>
@@ -332,7 +335,9 @@ export default function AuxiliaryScreenSharing() {
             onKeyUp={(event) => commitInterval(event.currentTarget.value)}
             onBlur={(event) => commitInterval(event.currentTarget.value)}
           />
-          <p className="screen-sharing-description screen-sharing-interval-hint">{labels.hint}</p>
+          <p className="screen-sharing-description screen-sharing-interval-hint">
+            {deliveryLabels.hint}
+          </p>
           <MotionSharingToggle
             frameCount={publishedFrameCount ?? 1}
             disabled={requesting || publishedFrameCount === undefined}

@@ -3,6 +3,8 @@
 **Status**: experimental implementation
 **Date**: 2026-09-05
 
+2026-09-21: Claude Codeにも共有UIを拡張。必要時に最新画像をMCPで取得する経路は[Claude screen sharing](claude-screen-sharing.md)を参照。以下はCodex実験導入時の記録で、現在の更新間隔は10〜180秒。
+
 ## Experience
 
 Yori shares the user's screen context while they read, watch, or work. While sharing

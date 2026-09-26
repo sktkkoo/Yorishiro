@@ -50,6 +50,27 @@ function props(): ScreenSharingControlProps {
 }
 describe("screen sharing control", () => {
   it.each([
+    ["ja", "画面共有", "更新間隔", "画面について尋ねると、最新の画像を確認します。", "送信間隔"],
+    [
+      "en",
+      "Screen sharing",
+      "Refresh interval",
+      "Ask about the screen to share the latest image.",
+      "Send interval",
+    ],
+  ])("explains on-demand delivery without per-capture token claims in %s", (language, title, interval, hint, contextInterval) => {
+    const p = { ...props(), language };
+    const view = render(<ScreenSharingControl {...p} deliveryMode="on-demand" />);
+    fireEvent.click(screen.getByRole("button", { name: title }));
+    expect(screen.getByRole("slider", { name: interval })).toBeTruthy();
+    expect(screen.getByText(hint)).toBeTruthy();
+    expect(view.container.textContent).not.toMatch(/tokens|トークン/);
+    view.rerender(<ScreenSharingControl {...p} />);
+    expect(screen.getByRole("slider", { name: contextInterval })).toBeTruthy();
+    expect(view.container.textContent).toMatch(/tokens|トークン/);
+  });
+
+  it.each([
     "screen",
     "camera",
   ] as const)("shows frame count only when motion is enabled for %s", (sourceKind) => {

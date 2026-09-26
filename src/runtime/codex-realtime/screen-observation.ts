@@ -25,7 +25,7 @@ export interface ScreenPointerAvailability {
 }
 
 export interface ScreenObservationResult {
-  /** `shared` means appended to context, not that the model has interpreted the image. */
+  /** `shared` means delivered to the agent transport (context or on-demand cache), not interpreted. */
   readonly status: "shared" | "busy";
   readonly capturedAt: string;
 }

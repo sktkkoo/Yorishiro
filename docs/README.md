@@ -97,6 +97,7 @@ Source code 内で参照するときは：
 |---|---|---|
 | `lib.rs` / `main.rs` | Tauri app entry / command 登録 / setup hook | [../src-tauri/README.md](../src-tauri/README.md) |
 | `agent_setup.rs` | ユーザーが選んだ公式 CLI installer の取得・実行・進捗 IO | [decisions/agent-onboarding.md](decisions/agent-onboarding.md) |
+| `claude_screen_sharing.rs` | Claudeの起動・会話に紐づく最新画像のメモリ保持、hook通知、MCP取得 | [decisions/claude-screen-sharing.md](decisions/claude-screen-sharing.md) |
 | `pty.rs` | Legacy PTY facade / per-instance dynamic-port hook server | 同上 |
 | `sessions/` | Per-session PTY lifecycle / registry / shell wrapper / terminal agent adapter | 同上 |
 | `mcp/` | MCP 1.5 server (18743 preferred / per-instance endpoint) / pack diagnostics + self-referential tools | 同上 |

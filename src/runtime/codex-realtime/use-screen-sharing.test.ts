@@ -100,13 +100,13 @@ describe("useScreenSharing", () => {
     vi.useRealTimers();
   });
 
-  function setup(motionEnabled = true) {
+  function setup(motionEnabled = true, deduplicate = true) {
     const share = vi.fn(async (_frame: ScreenObservationFrame, _signal: AbortSignal) => ({
       status: "shared" as const,
       capturedAt: new Date(frame.capturedAt).toISOString(),
     }));
     const hook = renderHook(
-      ({ ownerKey, available }) => useScreenSharing({ available, ownerKey, share }),
+      ({ ownerKey, available }) => useScreenSharing({ available, ownerKey, share, deduplicate }),
       { initialProps: { ownerKey: "main:thread:active", available: true } },
     );
     // Existing scheduling tests exercise motion sheets explicitly.
@@ -1144,6 +1144,23 @@ describe("useScreenSharing", () => {
       expect.objectContaining({ frameId: "after-expiry", imageDataUrl: frame.dataUrl }),
       expect.any(AbortSignal),
     );
+  });
+
+  it("refreshes identical images for on-demand transports so the cache stays current", async () => {
+    const { result, share } = setup(false, false);
+    await act(async () => result.current.refreshSources());
+    await act(async () => result.current.start());
+    await act(async () => result.current.captureNow());
+    const firstCount = share.mock.calls.length;
+    await act(async () => result.current.captureNow());
+    expect(share).toHaveBeenCalledTimes(firstCount + 1);
+    expect(share).toHaveBeenLastCalledWith(
+      expect.objectContaining({ frameId: frame.frameId, imageDataUrl: frame.dataUrl }),
+      expect.any(AbortSignal),
+    );
+    act(() => result.current.stop());
+    await act(async () => result.current.captureNow());
+    expect(share).toHaveBeenCalledTimes(firstCount + 1);
   });
 
   it("continues sharing images with the native OFF and invalid-pointer-frame metadata", async () => {
