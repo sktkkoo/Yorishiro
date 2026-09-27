@@ -8,10 +8,13 @@ import {
   type PreviewStatus,
 } from "./preview-host";
 
+import type { SharingDeliveryMode } from "./sharing-delivery";
+
 export const PREVIEW_WINDOW_LABEL = "auxiliary-screen-preview";
 export const PREVIEW_STATE_EVENT = "screen-preview-state";
 const PREVIEW_ACTION_EVENT = "screen-preview-action";
 export interface ScreenPreviewFrame {
+  deliveryMode?: SharingDeliveryMode;
   leaseId: string;
   imageDataUrl: string;
   lastCapturedAt?: number;
@@ -43,6 +46,7 @@ export function requestScreenPreviewAction(
   return invoke("screen_preview_request_action", { leaseId, action });
 }
 export interface ScreenPreviewModel {
+  deliveryMode?: SharingDeliveryMode;
   visible?: boolean;
   initiallyDetached?: boolean;
   sourceKey: string | null;
@@ -74,6 +78,7 @@ export function startScreenPreviewRelay(
   let lastImage: string | undefined;
   let lastSharedAt: number | undefined;
   let lastLanguage: string | undefined;
+  let lastDeliveryMode: SharingDeliveryMode | undefined;
   const tick = () => {
     if (stopped || inFlight) return;
     const next = frame();
@@ -81,7 +86,8 @@ export function startScreenPreviewRelay(
       !next ||
       (next.imageDataUrl === lastImage &&
         next.lastSharedAt === lastSharedAt &&
-        next.language === lastLanguage)
+        next.language === lastLanguage &&
+        next.deliveryMode === lastDeliveryMode)
     )
       return;
     inFlight = true;
@@ -90,6 +96,7 @@ export function startScreenPreviewRelay(
         lastImage = next.imageDataUrl;
         lastSharedAt = next.lastSharedAt;
         lastLanguage = next.language;
+        lastDeliveryMode = next.deliveryMode;
       })
       .catch((error: unknown) => {
         if (!stopped) fail(error);
@@ -132,6 +139,7 @@ export class ScreenPreviewHost extends PreviewHost<ScreenPreviewModel, string, S
                 ? {
                     ...current.frame,
                     leaseId,
+                    deliveryMode: current.deliveryMode ?? "context",
                     language: current.language.startsWith("ja") ? "ja" : "en",
                   }
                 : null;

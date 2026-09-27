@@ -39,7 +39,7 @@ function fixture() {
       return vi.fn();
     }),
   };
-  const relay = vi.fn(() => cleanup);
+  const relay = vi.fn<typeof startScreenPreviewRelay>(() => cleanup);
   const changed = vi.fn();
   const host = new ScreenPreviewHost(model, changed, transport, relay);
   return {
@@ -145,5 +145,34 @@ it("keeps the detached window while a resized crop waits for a fresh frame", asy
   expect(f.transport.revoke).not.toHaveBeenCalled();
   expect(f.cleanup).not.toHaveBeenCalled();
   expect(f.changed).toHaveBeenLastCalledWith({ detached: true, opening: false });
+  f.host.dispose();
+});
+
+it("republishes delivery mode changes even when the image has not changed", async () => {
+  vi.useFakeTimers();
+  let frame: ScreenPreviewFrame = {
+    leaseId: "lease",
+    language: "en",
+    imageDataUrl: "same-image",
+    deliveryMode: "context",
+  };
+  const publish = vi.fn(async (_frame: ScreenPreviewFrame) => {});
+  const close = startScreenPreviewRelay("source", () => frame, publish, vi.fn());
+  await vi.advanceTimersByTimeAsync(125);
+  frame = { ...frame, deliveryMode: "on-demand" };
+  await vi.advanceTimersByTimeAsync(125);
+  expect(publish).toHaveBeenCalledTimes(2);
+  expect(publish).toHaveBeenLastCalledWith(expect.objectContaining({ deliveryMode: "on-demand" }));
+  close();
+});
+
+it("passes delivery mode from the current owner to detached screen frames", async () => {
+  const f = fixture();
+  f.host.update({ ...f.model, deliveryMode: "on-demand" });
+  await f.host.detach();
+  const readFrame = f.relay.mock.calls[0][1];
+  expect(readFrame()?.deliveryMode).toBe("on-demand");
+  f.host.update(f.model);
+  expect(readFrame()?.deliveryMode).toBe("context");
   f.host.dispose();
 });

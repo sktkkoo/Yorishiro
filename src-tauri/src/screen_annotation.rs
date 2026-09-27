@@ -607,7 +607,12 @@ pub(crate) fn window_id() -> Option<u32> {
 #[tauri::command]
 pub fn screen_annotation_document(window: tauri::WebviewWindow) -> Result<String, String> {
     require_host(&window)?;
-    let managed = window.state::<ScreenAnnotationState>();
+    current_document(window.app_handle())
+}
+
+/// 同じメイン WebView の有効期間を画像共有にも適用する。
+pub(crate) fn current_document(app: &AppHandle) -> Result<String, String> {
+    let managed = app.state::<ScreenAnnotationState>();
     let state = managed
         .0
         .lock()

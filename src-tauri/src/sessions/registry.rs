@@ -119,6 +119,35 @@ impl SessionRegistry {
         self.lock().pty_sessions.get(id).cloned()
     }
 
+    /// 起動中の Claude の選択会話を、PTY 置換・hook 更新と同じ lock 境界で利用する。
+    pub(crate) fn with_live_claude_selection<T>(
+        &self,
+        id: &str,
+        action: impl FnOnce(&str, &AgentSelectedConversation) -> Result<T, String>,
+    ) -> Result<T, String> {
+        let guard = self.lock();
+        let descriptor = guard
+            .descriptors
+            .get(id)
+            .ok_or("Claude session is unavailable.")?;
+        if descriptor.profile_id != "claude" || descriptor.kind != super::types::SessionKind::Agent
+        {
+            return Err("Screen sharing requires the current Claude Code agent.".into());
+        }
+        let session = guard
+            .pty_sessions
+            .get(id)
+            .ok_or("Claude session is unavailable.")?;
+        if !session.is_alive() {
+            return Err("Claude session is no longer running.".into());
+        }
+        let selection = session
+            .realtime_selected_thread()
+            .filter(|selection| selection.confirmed)
+            .ok_or("Claude conversation is not ready.")?;
+        action(session.hook_launch_id(), &selection)
+    }
+
     /// hook acceptance と replace snapshot が同じ registry lock 上で全順序になるようにする。
     /// true を返した signal の SessionStart selection は、後続の detach snapshot に必ず入る。
     pub fn accept_hook_signal(

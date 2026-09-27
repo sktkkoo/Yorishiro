@@ -6,6 +6,7 @@ import { MediaPermissionHelp } from "./media-permission-help";
 import { MotionSharingToggle } from "./motion-sharing-toggle";
 import { CONTACT_SHEET_FRAME_COUNTS } from "./runtime/contact-sheet-settings";
 import { getMediaPermissionKind } from "./runtime/media-permissions";
+import { type SharingDeliveryMode, sharingDeliveryLabels } from "./runtime/sharing-delivery";
 import {
   formatSharingInterval,
   MAX_SHARING_INTERVAL_SECONDS,
@@ -18,6 +19,7 @@ import { SharingStatus } from "./sharing-status";
 import "./screen-sharing-control.css";
 
 export interface ScreenSharingControlProps {
+  readonly deliveryMode?: SharingDeliveryMode;
   readonly screenSourceKind?: ScreenSourceKind;
   readonly screenSelectionSupported?: boolean;
   readonly region?: ScreenCaptureRegion | null;
@@ -61,9 +63,7 @@ const strings = {
     chooseDisplay: "Choose a display",
     noDisplays: "No displays available",
     refresh: "Refresh displays",
-    interval: "Send interval",
     frameCount: "Frames to combine",
-    hint: "Shorter intervals use more tokens.",
     seconds: (value: number) => formatSharingInterval(value, "en"),
     unavailable: "Select an agent that supports screen sharing to start.",
     cancel: "Cancel",
@@ -81,9 +81,7 @@ const strings = {
     chooseDisplay: "画面を選択",
     noDisplays: "共有できる画面がありません",
     refresh: "画面一覧を更新",
-    interval: "送信間隔",
     frameCount: "まとめるコマ数",
-    hint: "間隔が短いほどトークン消費が増えます。",
     seconds: (value: number) => formatSharingInterval(value, "ja"),
     unavailable: "画面共有に対応するエージェントを選択してください。",
     cancel: "キャンセル",
@@ -116,6 +114,7 @@ function panelPosition(trigger: HTMLButtonElement | null, compactError = false) 
 
 /** Controlled screen-sharing settings. Opening the panel never starts capture. */
 export function ScreenSharingControl({
+  deliveryMode = "context",
   previewVisible = true,
   onPreviewVisibleChange,
   sourceKind = "screen",
@@ -167,6 +166,7 @@ export function ScreenSharingControl({
   const isJapanese = language.startsWith("ja");
   const baseLabels = strings[isJapanese ? "ja" : "en"];
   const camera = sourceKind === "camera";
+  const deliveryLabels = sharingDeliveryLabels(deliveryMode, language, sourceKind);
   const chooser = Boolean(onSourceKindChange) && choosingSource && !active && !busy;
   const labels = camera
     ? {
@@ -447,6 +447,7 @@ export function ScreenSharingControl({
               active={active}
               busy={busy}
               lastObservedAt={lastObservedAt}
+              deliveryMode={deliveryMode}
               language={language}
             />
             <button
@@ -490,7 +491,7 @@ export function ScreenSharingControl({
 
               <div className="screen-sharing-interval-heading">
                 <label className="screen-sharing-label" htmlFor={intervalId}>
-                  {labels.interval}
+                  {deliveryLabels.interval}
                 </label>
                 <output htmlFor={intervalId}>{labels.seconds(intervalSeconds)}</output>
               </div>
@@ -506,7 +507,7 @@ export function ScreenSharingControl({
                 onChange={(event) => onIntervalChange(Number(event.currentTarget.value))}
               />
               <p className="screen-sharing-description screen-sharing-interval-hint">
-                {labels.hint}
+                {deliveryLabels.hint}
               </p>
               {onContactSheetFrameCountChange ? (
                 <>

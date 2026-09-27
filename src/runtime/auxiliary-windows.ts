@@ -3,6 +3,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { ScreenCaptureRegion, ScreenSourceKind } from "../bindings/tauri-commands";
 import { isValidContactSheetFrameCount } from "./contact-sheet-settings";
 import { getMediaPermissionKind, type MediaPermissionKind } from "./media-permissions";
+import type { SharingDeliveryMode } from "./sharing-delivery";
 import { MAX_SHARING_INTERVAL_SECONDS, MIN_SHARING_INTERVAL_SECONDS } from "./sharing-interval";
 
 export const AUXILIARY_CONTROLS_LABEL = "auxiliary-screen-sharing-controls";
@@ -32,6 +33,7 @@ export function resolveWindowView(label: string, search: string) {
 }
 
 export interface ScreenSharingSnapshot {
+  readonly deliveryMode?: SharingDeliveryMode;
   readonly uiColors?: Record<string, string>;
   readonly permissionKind?: MediaPermissionKind;
   readonly previewVisible?: boolean;
@@ -82,6 +84,7 @@ export function isPointerSettingsAction(action: ScreenSharingAuxiliaryAction): b
 }
 
 export interface ScreenSharingAuxiliaryModel {
+  readonly deliveryMode?: SharingDeliveryMode;
   readonly uiColors?: Record<string, string>;
   readonly previewVisible?: boolean;
   readonly setPreviewVisible?: (visible: boolean) => void;
@@ -123,6 +126,7 @@ export function createScreenSharingSnapshot(
 ): ScreenSharingSnapshot {
   return {
     revision,
+    deliveryMode: model.deliveryMode ?? "context",
     uiColors: model.uiColors,
     pointerRevision,
     available: model.available,

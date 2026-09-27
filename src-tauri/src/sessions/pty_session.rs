@@ -785,6 +785,7 @@ impl PtySession {
         let child_arc = Arc::clone(&self.child);
         let registry_for_thread = Arc::clone(&self.registry);
         let session_id_for_thread = self.session_id.clone();
+        let hook_launch_id_for_thread = self.hook_launch_id.clone();
         let suppress_exit = Arc::clone(&self.suppress_exit_event);
         std::thread::spawn(move || {
             let mut reader = reader;
@@ -850,6 +851,11 @@ impl PtySession {
                 .and_then(|c| c.try_wait().ok().flatten().map(|s| s.exit_code() as i32))
                 .unwrap_or(-1);
             drop(child_guard);
+            crate::claude_screen_sharing::revoke_launch(
+                &app_handle,
+                &session_id_for_thread,
+                &hook_launch_id_for_thread,
+            );
             broadcast_external_control(
                 &external_clients_arc,
                 &ControlMessage::Exit { code: Some(code) },
@@ -904,7 +910,6 @@ impl PtySession {
         *lock_or_recover(&self.output_channel) = None;
     }
 
-    #[cfg(target_os = "macos")]
     pub(crate) fn is_alive(&self) -> bool {
         let mut guard = lock_or_recover(&self.child);
         guard
@@ -1109,7 +1114,6 @@ impl PtySession {
         hook_launch_id == self.hook_launch_id
     }
 
-    #[cfg(test)]
     pub(crate) fn hook_launch_id(&self) -> &str {
         &self.hook_launch_id
     }

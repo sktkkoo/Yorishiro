@@ -340,6 +340,7 @@ import {
 } from "./runtime/ui-pack-transition/stage-transition";
 import { getUiStateStore } from "./runtime/ui-state-store";
 import { useAuxiliaryScreenSharing } from "./runtime/use-auxiliary-screen-sharing";
+import { useClaudeScreenSharing } from "./runtime/use-claude-screen-sharing";
 import { useViewModeCamera } from "./runtime/use-view-mode-camera";
 import {
   loadUserLayer,
@@ -4310,12 +4311,26 @@ function App() {
     persist: (screenPointersEnabled) => updateConfig({ screenPointersEnabled }),
     notify: notifyScreenPointersEnabled,
   });
-  const screenSharingAvailable = codexVoiceAvailable && screenThreadId !== null;
+  const claudeScreenAvailable =
+    mainAgentAvailable && terminalAgent === "claude" && !mainSessionReplacing;
+  const claudeScreenSharing = useClaudeScreenSharing({
+    available: claudeScreenAvailable,
+    sessionId: tabState.mainSessionId,
+  });
+  const claudeSharing = terminalAgent === "claude";
+  const sharingDeliveryMode = claudeSharing ? "on-demand" : "context";
+  const screenSharingAvailable = claudeSharing
+    ? claudeScreenSharing.available
+    : codexVoiceAvailable && screenThreadId !== null;
+  const screenSharingOwnerKey = claudeSharing
+    ? claudeScreenSharing.ownerKey
+    : `${tabState.mainSessionId}:${screenThreadId ?? ""}`;
   const screenSharing = useScreenSharing({
     available: screenSharingAvailable,
     screenAvailable: /Mac/i.test(navigator.platform),
-    ownerKey: `${tabState.mainSessionId}:${screenThreadId ?? ""}`,
-    share: shareScreenObservation,
+    ownerKey: screenSharingOwnerKey,
+    share: claudeSharing ? claudeScreenSharing.share : shareScreenObservation,
+    deduplicate: !claudeSharing,
     onTiming: (timing) => {
       devLog.write({ subsystem: "ScreenSharing", phase: "capture-context", data: timing });
     },
@@ -4354,6 +4369,7 @@ function App() {
     activePresentationViewModeIdValue === "portrait" ||
     activePresentationViewModeIdValue === "companion";
   const screenPreviewWindow = useScreenPreviewWindow({
+    deliveryMode: sharingDeliveryMode,
     sourceKey: screenSharing.screenPreviewKey,
     visible: screenPreviewVisible,
     initiallyDetached: initiallyDetachedPreview,
@@ -4366,6 +4382,7 @@ function App() {
   const setPreviewVisible =
     screenSharing.sourceKind === "camera" ? setCameraPreviewVisible : setScreenPreviewVisible;
   const cameraPreviewWindow = useCameraPreviewWindow({
+    deliveryMode: sharingDeliveryMode,
     stream: screenSharing.cameraStream,
     visible: cameraPreviewVisible,
     initiallyDetached: initiallyDetachedPreview,
@@ -4376,6 +4393,7 @@ function App() {
   });
   speechScreenCaptureRef.current = screenSharing.active ? screenSharing.captureNow : null;
   const auxiliaryScreenSharing = useAuxiliaryScreenSharing({
+    deliveryMode: sharingDeliveryMode,
     ...screenSharing,
     previewVisible,
     setPreviewVisible,
@@ -4390,7 +4408,7 @@ function App() {
           (screenSharing.screenSourceKind === "display" ? screenPointerSettings.error : undefined))
         : undefined),
     available: screenSharing.available,
-    ownerKey: `${tabState.mainSessionId}:${screenThreadId ?? ""}`,
+    ownerKey: screenSharingOwnerKey,
     language: appLanguage.resolved,
   });
 
@@ -5936,6 +5954,7 @@ function App() {
     >
       {screenSharing.active && cameraPreviewVisible && cameraPreviewWindow.inlineVisible ? (
         <CameraPreview
+          deliveryMode={sharingDeliveryMode}
           stream={
             screenSharing.screenPreviewFrame ? undefined : (screenSharing.cameraStream ?? undefined)
           }
@@ -5956,6 +5975,7 @@ function App() {
       screenSharing.screenPreviewFrame &&
       screenPreviewWindow.inlineVisible ? (
         <CameraPreview
+          deliveryMode={sharingDeliveryMode}
           sourceKind="screen"
           imageDataUrl={screenSharing.screenPreviewFrame.imageDataUrl}
           opening={screenPreviewWindow.opening}
@@ -6005,8 +6025,9 @@ function App() {
         }
         onToggleVoice={() => void handleToggleVoice()}
         screenSharingControl={
-          codexVoiceAvailable ? (
+          codexVoiceAvailable || claudeScreenAvailable ? (
             <ScreenSharingControl
+              deliveryMode={sharingDeliveryMode}
               activeViewModeId={activePresentationViewModeIdValue}
               previewVisible={previewVisible}
               onPreviewVisibleChange={setPreviewVisible}

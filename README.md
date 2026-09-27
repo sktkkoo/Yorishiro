@@ -146,13 +146,13 @@ Codex 0.145.0 or newer supports voice conversation through GPT Live. Press the m
 
 Set `codexRealtimeVoice` in `~/.yorishiro/config.json` to choose the GPT Live output voice globally (default: `sol`), and `realtimeVoiceByPersona` to override it per persona pack id. The values are read whenever a new voice session starts, so stop and restart an active voice conversation to apply a change. If the app-server explicitly rejects the selected voice as invalid or unsupported, Yorishiro retries with the next candidate (persona → global → default); other connection failures surface as errors. See [configuration](docs/configuration.md#codex-gpt-live-voice).
 
-### Screen sharing / Camera sharing (Codex)
+### Screen sharing / Camera sharing (Codex and Claude Code)
 
-Use the sharing icon in the title bar to send screen or camera stills to the current Codex conversation. Screen sharing on macOS supports entire-display, window, and area-selection modes. In area-selection mode, you can move and resize the shared area. For camera sharing, select a camera and start sharing.
+Use the sharing icon in the title bar to share screen or camera stills with the current Codex or Claude Code conversation. Screen sharing on macOS supports entire-display, window, and area-selection modes. In area-selection mode, you can move and resize the shared area. For camera sharing, select a camera and start sharing.
 
-Set the update interval to **10–180 seconds**; shorter intervals use more tokens. Use **Stop sharing** to stop sending images.
+Set the update interval to **10–180 seconds**. Codex receives images in its conversation context; shorter intervals can use more tokens. With Claude Code, ask about the shared screen or camera after starting sharing: it can retrieve the latest image when needed. “Ready to share” means an image is available, not that Claude has read it. Use **Stop sharing** to stop capture and make the cached image unavailable. See [Claude Code screen sharing](docs/decisions/claude-screen-sharing.md) for details.
 
-**Agent pointing is experimental.** During entire-display sharing, ask the AI to point out a location, and it will mark it with an arrow or outline. We recommend Astra or a higher-capability model for agent pointing. It is unavailable for window sharing, area-selection mode, and camera sharing.
+**Agent pointing is experimental.** During entire-display sharing, ask the AI to point out a location, and it will mark it with an arrow or outline. For Codex, we recommend Astra or a higher-capability model for agent pointing. It is unavailable for window sharing, area-selection mode, and camera sharing.
 
 <p align="center">
   <img src="docs/assets/screen-sharing-controls-en.png" alt="Screen sharing settings with display, window, and area-selection tabs, update interval, and preview toggle" width="320" />
@@ -306,7 +306,7 @@ What works today:
 - Fireworks celebrate a successful `git push` by the inhabitant (bundled Yori persona)
 - Light Alert: a light comes on when the agent waits for your input or approval
 - Terminal links: Cmd+click a visible HTTP/HTTPS URL to open it in the default browser
-- Screen sharing / Camera sharing: still images for the current Codex conversation at 10–180 second intervals; macOS supports display, window, and area-selection modes, with experimental agent pointing for entire displays
+- Screen sharing / Camera sharing: still images for Codex and Claude Code at 10–180 second intervals (Claude retrieves the latest image on demand); macOS supports display, window, and area-selection modes, with experimental agent pointing for entire displays
 - Context sharing: Voice Summary and Terminal Reference Markers (Cmd+Shift+click / Option+Shift+drag)
 - Journal: long-term memory across sessions, with recall at session start
 - Restore: automatic checkpoints for packs / init.js / settings, with reversible rollback
