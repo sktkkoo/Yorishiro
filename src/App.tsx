@@ -4152,7 +4152,6 @@ function App() {
   const speechScreenCaptureRef = useRef<(() => Promise<void>) | null>(null);
   const {
     state: codexRealtimeState,
-    setVoiceApprovalEnabled,
     stop: stopCodexRealtime,
     toggle: toggleCodexRealtime,
     setMicrophoneMuted: setCodexMicrophoneMuted,
@@ -6018,11 +6017,6 @@ function App() {
                 : strings.gptLiveVoiceStart
         }
         voiceError={codexRealtimeState.error}
-        voiceApproval={codexRealtimeState.voiceApproval}
-        voiceApprovalEnabled={codexRealtimeState.voiceApprovalEnabled === true}
-        onToggleVoiceApproval={() =>
-          setVoiceApprovalEnabled(codexRealtimeState.voiceApprovalEnabled !== true)
-        }
         onToggleVoice={() => void handleToggleVoice()}
         screenSharingControl={
           codexVoiceAvailable || claudeScreenAvailable ? (

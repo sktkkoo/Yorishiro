@@ -23,7 +23,6 @@ export interface CodexRealtimeClientLike extends LipSyncSource {
   start(): Promise<void>;
   stop(): void;
   setMicrophoneMuted(muted: boolean): void;
-  setVoiceApprovalEnabled?(enabled: boolean): void;
   notifyScreenContext?(capturedAt: string, availability?: ScreenPointerAvailability): Promise<void>;
   notifyScreenPointersEnabled?(enabled: boolean): Promise<void>;
 }
@@ -126,7 +125,6 @@ interface UseCodexRealtimeResult {
   readonly stop: () => void;
   readonly toggle: () => Promise<void>;
   readonly setMicrophoneMuted: (muted: boolean) => void;
-  readonly setVoiceApprovalEnabled: (enabled: boolean) => void;
   readonly trackQuickChatPrompt: (prompt: string) => Promise<string | null>;
   readonly getLipSyncSource: () => LipSyncSource;
 }
@@ -592,10 +590,6 @@ export function useCodexRealtime({
     await start();
   }, [start, stop]);
 
-  const setVoiceApprovalEnabled = useCallback((enabled: boolean) => {
-    clientRef.current?.setVoiceApprovalEnabled?.(enabled);
-  }, []);
-
   const setMicrophoneMuted = useCallback((muted: boolean) => {
     clientRef.current?.setMicrophoneMuted(muted);
   }, []);
@@ -770,7 +764,6 @@ export function useCodexRealtime({
     stop,
     toggle,
     setMicrophoneMuted,
-    setVoiceApprovalEnabled,
     trackQuickChatPrompt,
     getLipSyncSource,
   };
