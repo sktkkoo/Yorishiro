@@ -340,7 +340,6 @@ import {
 } from "./runtime/ui-pack-transition/stage-transition";
 import { getUiStateStore } from "./runtime/ui-state-store";
 import { useAuxiliaryScreenSharing } from "./runtime/use-auxiliary-screen-sharing";
-import { useClaudeScreenSharing } from "./runtime/use-claude-screen-sharing";
 import { useViewModeCamera } from "./runtime/use-view-mode-camera";
 import {
   loadUserLayer,
@@ -4310,26 +4309,15 @@ function App() {
     persist: (screenPointersEnabled) => updateConfig({ screenPointersEnabled }),
     notify: notifyScreenPointersEnabled,
   });
-  const claudeScreenAvailable =
-    mainAgentAvailable && terminalAgent === "claude" && !mainSessionReplacing;
-  const claudeScreenSharing = useClaudeScreenSharing({
-    available: claudeScreenAvailable,
-    sessionId: tabState.mainSessionId,
-  });
-  const claudeSharing = terminalAgent === "claude";
-  const sharingDeliveryMode = claudeSharing ? "on-demand" : "context";
-  const screenSharingAvailable = claudeSharing
-    ? claudeScreenSharing.available
-    : codexVoiceAvailable && screenThreadId !== null;
-  const screenSharingOwnerKey = claudeSharing
-    ? claudeScreenSharing.ownerKey
-    : `${tabState.mainSessionId}:${screenThreadId ?? ""}`;
+  const sharingDeliveryMode = "context";
+  const screenSharingAvailable = codexVoiceAvailable && screenThreadId !== null;
+  const screenSharingOwnerKey = `${tabState.mainSessionId}:${screenThreadId ?? ""}`;
   const screenSharing = useScreenSharing({
     available: screenSharingAvailable,
     screenAvailable: /Mac/i.test(navigator.platform),
     ownerKey: screenSharingOwnerKey,
-    share: claudeSharing ? claudeScreenSharing.share : shareScreenObservation,
-    deduplicate: !claudeSharing,
+    share: shareScreenObservation,
+    deduplicate: true,
     onTiming: (timing) => {
       devLog.write({ subsystem: "ScreenSharing", phase: "capture-context", data: timing });
     },
@@ -6019,7 +6007,7 @@ function App() {
         voiceError={codexRealtimeState.error}
         onToggleVoice={() => void handleToggleVoice()}
         screenSharingControl={
-          codexVoiceAvailable || claudeScreenAvailable ? (
+          codexVoiceAvailable ? (
             <ScreenSharingControl
               deliveryMode={sharingDeliveryMode}
               activeViewModeId={activePresentationViewModeIdValue}
