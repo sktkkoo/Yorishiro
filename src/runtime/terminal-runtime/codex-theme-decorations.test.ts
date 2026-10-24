@@ -154,6 +154,30 @@ describe("Codex cached surface adaptation", () => {
     adapter.dispose();
   });
 
+  it("adapts streamed fills before xterm's next render and retains unchanged rows", () => {
+    const { adapter, cells, stale, term, fire, decorations, markers } = setup();
+    cells[0] = [{ color: stale }, { color: stale }];
+    cells[1] = [{ color: stale }];
+    adapter.update({ enabled: true, background: "#ffffff" });
+    expect(term.registerDecoration).toHaveBeenCalledTimes(2);
+
+    cells[1].push({ color: stale });
+    fire("write");
+
+    // No separate RAF: the render already scheduled by xterm sees the new fill.
+    expect(term.registerDecoration).toHaveBeenCalledTimes(3);
+    expect(decorations[0].dispose).not.toHaveBeenCalled();
+    expect(markers[0].isDisposed).toBe(false);
+    expect(decorations[1].dispose).toHaveBeenCalledOnce();
+    expect(markers[1].isDisposed).toBe(true);
+
+    fire("write");
+    expect(term.registerDecoration).toHaveBeenCalledTimes(3);
+    adapter.dispose();
+    expect(decorations[0].dispose).toHaveBeenCalledOnce();
+    expect(decorations[2].dispose).toHaveBeenCalledOnce();
+  });
+
   it("supports observed light startup palettes, reverse transitions, and returning to original colors", () => {
     const { adapter, cells, term } = setup();
     adapter.recordStartupBackground("rgba(231,231,217,1)");
