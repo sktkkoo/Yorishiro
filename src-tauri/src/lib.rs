@@ -3927,6 +3927,8 @@ pub fn run() {
             autonomy::autonomy_consult,
             autonomy::autonomy_review,
             autonomy::draft::autonomy_draft_get,
+            autonomy::draft::autonomy_draft_snapshot,
+            autonomy::draft::autonomy_draft_edit,
             autonomy::draft::autonomy_draft_dismiss,
             media_permissions::open_media_permission_settings,
             screen_preview::screen_preview_begin,

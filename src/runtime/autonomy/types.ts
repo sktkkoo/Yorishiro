@@ -22,6 +22,23 @@ export interface AutonomyDraft {
   readonly explanation: string;
 }
 
+export type AutonomyDraftPatch = Partial<
+  Pick<
+    AutonomyDraft,
+    "goal" | "root" | "allowedOperations" | "intervalMinutes" | "maxRunsPerDay" | "reviewMode"
+  >
+>;
+
+export interface AutonomyDraftSnapshot {
+  readonly revision: number;
+  readonly draft: AutonomyDraft | null;
+}
+
+export interface DraftEditResult {
+  readonly snapshot: AutonomyDraftSnapshot;
+  readonly conflict: boolean;
+}
+
 export interface PendingWork {
   readonly id: string;
   readonly goal: string;
@@ -64,6 +81,8 @@ export interface SetupMessage {
 }
 
 export interface SetupReply {
+  readonly draftSnapshot?: AutonomyDraftSnapshot;
+  readonly draftConflict?: boolean;
   readonly reply: string;
   readonly suggestedGoal: string;
   readonly suggestedOperations: readonly AutonomyOperation[];

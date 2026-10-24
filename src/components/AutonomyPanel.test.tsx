@@ -7,20 +7,26 @@ import {
   approvePendingWork,
   consultAutonomy,
   declinePendingWork,
+  editAutonomyDraft,
   pauseAutonomy,
   runAutonomyNow,
   saveAutonomyContract,
   undoAutonomyRun,
-  useAutonomyDraft,
+  useAutonomyDraftSnapshot,
   useAutonomyStatus,
 } from "../runtime/autonomy/client";
-import type { AutonomyContract, AutonomyStatus } from "../runtime/autonomy/types";
+import type {
+  AutonomyContract,
+  AutonomyDraftSnapshot,
+  AutonomyStatus,
+} from "../runtime/autonomy/types";
 import { AutonomyPanel } from "./AutonomyPanel";
 
 vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn() }));
 vi.mock("../runtime/autonomy/client", () => ({
   useAutonomyStatus: vi.fn(),
-  useAutonomyDraft: vi.fn(),
+  useAutonomyDraftSnapshot: vi.fn(),
+  editAutonomyDraft: vi.fn(),
   approvePendingWork: vi.fn(),
   declinePendingWork: vi.fn(),
   consultAutonomy: vi.fn(),
@@ -40,6 +46,22 @@ const contract: AutonomyContract = {
   reviewMode: "daily",
 };
 
+const draftDefaults = {
+  id: "empty",
+  goal: "",
+  root: "",
+  allowedOperations: [] as AutonomyContract["allowedOperations"],
+  intervalMinutes: 30,
+  maxRunsPerDay: 4,
+  reviewMode: "daily" as const,
+  explanation: "",
+};
+let sharedDraft: AutonomyDraftSnapshot = { revision: 0, draft: null };
+function setDraft(snapshot: AutonomyDraftSnapshot) {
+  sharedDraft = snapshot;
+  vi.mocked(useAutonomyDraftSnapshot).mockReturnValue(snapshot);
+}
+
 function status(overrides: Partial<AutonomyStatus> = {}): AutonomyStatus {
   return { contract: null, phase: "idle", nextRunAt: null, runs: [], error: null, ...overrides };
 }
@@ -51,7 +73,21 @@ function openPanel() {
 
 beforeEach(() => {
   vi.mocked(useAutonomyStatus).mockReturnValue(status());
-  vi.mocked(useAutonomyDraft).mockReturnValue(null);
+  sharedDraft = { revision: 0, draft: null };
+  setDraft(sharedDraft);
+  vi.mocked(editAutonomyDraft).mockImplementation(async (_baseId, patch) => {
+    const next = {
+      revision: sharedDraft.revision + 1,
+      draft: {
+        ...draftDefaults,
+        ...sharedDraft.draft,
+        ...patch,
+        id: `edited-${sharedDraft.revision + 1}`,
+      },
+    };
+    setDraft(next);
+    return { snapshot: next, conflict: false };
+  });
   vi.mocked(choosePath).mockResolvedValue("/Users/test/notes");
   vi.mocked(saveAutonomyContract).mockResolvedValue(undefined);
   vi.mocked(pauseAutonomy).mockResolvedValue(undefined);
@@ -68,14 +104,26 @@ afterEach(() => {
 
 describe("AutonomyPanel", () => {
   it("turns AI suggestions into an editable draft and grants scope only after explicit save", async () => {
-    vi.mocked(consultAutonomy).mockResolvedValue({
-      reply: "文章の整理を任せてもらうのがよさそうです。",
-      suggestedGoal: contract.goal,
-      suggestedOperations: ["write", "trash"],
-      suggestedRoot: contract.root,
-      suggestedIntervalMinutes: 30,
-      suggestedMaxRunsPerDay: 4,
-      suggestedReviewMode: "daily",
+    vi.mocked(consultAutonomy).mockImplementation(async () => {
+      setDraft({
+        revision: 1,
+        draft: {
+          ...draftDefaults,
+          ...contract,
+          id: "voice-1",
+          allowedOperations: ["write", "trash"],
+          reviewMode: "daily",
+        },
+      });
+      return {
+        reply: "文章の整理を任せてもらうのがよさそうです。",
+        suggestedGoal: contract.goal,
+        suggestedOperations: ["write", "trash"],
+        suggestedRoot: contract.root,
+        suggestedIntervalMinutes: 30,
+        suggestedMaxRunsPerDay: 4,
+        suggestedReviewMode: "daily",
+      };
     });
     openPanel();
     fireEvent.click(screen.getByRole("button", { name: "文字で相談する" }));
@@ -94,11 +142,17 @@ describe("AutonomyPanel", () => {
     expect(saveAutonomyContract).not.toHaveBeenCalled();
     expect(runAutonomyNow).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByText("設定案を調整"));
     fireEvent.click(screen.getByLabelText("ファイルの退避"));
-    await screen.findByText(contract.root);
+    expect((screen.getByLabelText("対象フォルダ") as HTMLInputElement).value).toBe(contract.root);
+    await waitFor(() =>
+      expect(
+        (screen.getByRole("button", { name: "この範囲で任せる" }) as HTMLButtonElement).disabled,
+      ).toBe(false),
+    );
     fireEvent.click(screen.getByRole("button", { name: "この範囲で任せる" }));
-    await waitFor(() => expect(saveAutonomyContract).toHaveBeenCalledExactlyOnceWith(contract));
+    await waitFor(() =>
+      expect(saveAutonomyContract).toHaveBeenCalledExactlyOnceWith(contract, sharedDraft.draft?.id),
+    );
   });
 
   it("keeps setup failure visible without saving or starting work", async () => {
@@ -125,7 +179,7 @@ describe("AutonomyPanel", () => {
       suggestedReviewMode: "daily",
     });
     openPanel();
-    expect(screen.queryByLabelText("任せる目的")).toBeNull();
+    expect((screen.getByLabelText("任せる目的") as HTMLTextAreaElement).value).toBe("");
     fireEvent.click(screen.getByRole("button", { name: "文字で相談する" }));
     fireEvent.click(screen.getByRole("button", { name: "AIと相談する" }));
     await waitFor(() =>
@@ -149,7 +203,7 @@ describe("AutonomyPanel", () => {
     try {
       openPanel();
       fireEvent.click(screen.getByRole("button", { name: "音声で相談する" }));
-      expect(requestId).not.toBe("");
+      await waitFor(() => expect(requestId).not.toBe(""));
       fireEvent(
         window,
         new CustomEvent("yorishiro:autonomy-voice-setup-status", {
@@ -183,30 +237,115 @@ describe("AutonomyPanel", () => {
     };
     const view = render(<AutonomyPanel />);
     fireEvent.click(screen.getByRole("button", { name: "おまかせ作業" }));
-    vi.mocked(useAutonomyDraft).mockReturnValue(draft);
+    setDraft({ revision: 1, draft });
     view.rerender(<AutonomyPanel />);
     await screen.findByText(draft.explanation);
-    expect(screen.getByText("60分ごと・24時間に最大2回")).toBeTruthy();
-    expect(screen.getByText(contract.root)).toBeTruthy();
+    expect((screen.getByLabelText("確認する間隔（分）") as HTMLInputElement).value).toBe("60");
+    expect((screen.getByLabelText("対象フォルダ") as HTMLInputElement).value).toBe(contract.root);
     expect(saveAutonomyContract).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByText("設定案を調整"));
     fireEvent.change(screen.getByLabelText("任せる目的"), {
       target: { value: "手で調整した目的" },
     });
-    vi.mocked(useAutonomyDraft).mockReturnValue({ ...draft });
+    setDraft({ revision: 1, draft: { ...draft } });
     view.rerender(<AutonomyPanel />);
     expect((screen.getByLabelText("任せる目的") as HTMLTextAreaElement).value).toBe(
       "手で調整した目的",
     );
+    await waitFor(() =>
+      expect(
+        (screen.getByRole("button", { name: "この範囲で任せる" }) as HTMLButtonElement).disabled,
+      ).toBe(false),
+    );
     fireEvent.click(screen.getByRole("button", { name: "この範囲で任せる" }));
     await waitFor(() =>
-      expect(saveAutonomyContract).toHaveBeenCalledExactlyOnceWith({
+      expect(saveAutonomyContract).toHaveBeenCalledExactlyOnceWith(
+        {
+          ...contract,
+          goal: "手で調整した目的",
+          intervalMinutes: 60,
+          maxRunsPerDay: 2,
+        },
+        sharedDraft.draft?.id,
+      ),
+    );
+  });
+
+  it("keeps pending input across close and reopen and shares it without enabling work", async () => {
+    openPanel();
+    fireEvent.change(screen.getByLabelText("任せる目的"), {
+      target: { value: "まだ入力中の目的" },
+    });
+    fireEvent.change(screen.getByLabelText("対象フォルダ"), { target: { value: "/my-notes" } });
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    fireEvent.click(screen.getByRole("button", { name: "おまかせ作業" }));
+    expect((screen.getByLabelText("任せる目的") as HTMLTextAreaElement).value).toBe(
+      "まだ入力中の目的",
+    );
+    await waitFor(() =>
+      expect(editAutonomyDraft).toHaveBeenCalledWith(
+        null,
+        expect.objectContaining({
+          goal: "まだ入力中の目的",
+          root: "/my-notes",
+        }),
+      ),
+    );
+    expect(saveAutonomyContract).not.toHaveBeenCalled();
+    expect(runAutonomyNow).not.toHaveBeenCalled();
+  });
+
+  it("updates clean fields immediately while keeping a conflicting human field for review", async () => {
+    setDraft({
+      revision: 1,
+      draft: { ...draftDefaults, ...contract, id: "first", reviewMode: "daily" },
+    });
+    const view = render(<AutonomyPanel />);
+    fireEvent.click(screen.getByRole("button", { name: "おまかせ作業" }));
+    fireEvent.change(screen.getByLabelText("任せる目的"), {
+      target: { value: "自分が書いた目的" },
+    });
+    setDraft({
+      revision: 2,
+      draft: {
+        ...draftDefaults,
         ...contract,
-        goal: "手で調整した目的",
-        intervalMinutes: 60,
-        maxRunsPerDay: 2,
+        id: "second",
+        goal: "AIが書いた目的",
+        root: "/new-folder",
+        reviewMode: "daily",
+      },
+    });
+    view.rerender(<AutonomyPanel />);
+    expect((screen.getByLabelText("任せる目的") as HTMLTextAreaElement).value).toBe(
+      "自分が書いた目的",
+    );
+    expect((screen.getByLabelText("対象フォルダ") as HTMLInputElement).value).toBe("/new-folder");
+    expect(
+      (screen.getByRole("button", { name: "この範囲で任せる" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    fireEvent.click(screen.getByRole("button", { name: "おまかせ作業" }));
+    expect(screen.getByRole("group", { name: "目的の更新を確認" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "自分の入力を残す" }));
+    await waitFor(() =>
+      expect(editAutonomyDraft).toHaveBeenCalledExactlyOnceWith("second", {
+        goal: "自分が書いた目的",
       }),
     );
+    expect(saveAutonomyContract).not.toHaveBeenCalled();
+  });
+
+  it("publishes typing before immediately starting the next text consultation", async () => {
+    vi.mocked(consultAutonomy).mockImplementation(async () => {
+      expect(sharedDraft.draft?.goal).toBe("今入力した目的");
+      return { reply: "この目的で相談しましょう", suggestedGoal: "", suggestedOperations: [] };
+    });
+    openPanel();
+    fireEvent.change(screen.getByLabelText("任せる目的"), { target: { value: "今入力した目的" } });
+    fireEvent.click(screen.getByRole("button", { name: "文字で相談する" }));
+    fireEvent.click(screen.getByRole("button", { name: "AIと相談する" }));
+    await waitFor(() => expect(consultAutonomy).toHaveBeenCalledOnce());
+    expect(saveAutonomyContract).not.toHaveBeenCalled();
   });
 
   it("offers immediate pause while a worker is running and prevents duplicate manual starts", async () => {

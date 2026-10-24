@@ -9,9 +9,10 @@ import {
   runAutonomyNow,
   saveAutonomyContract,
   undoAutonomyRun,
-  useAutonomyDraft,
+  useAutonomyDraftSnapshot,
   useAutonomyStatus,
 } from "../runtime/autonomy/client";
+import { type DraftField, useAutonomyDraftEditor } from "../runtime/autonomy/draft-editor";
 import type { AutonomyOperation, SetupMessage } from "../runtime/autonomy/types";
 import {
   AUTONOMY_VOICE_SETUP_REQUEST,
@@ -48,6 +49,14 @@ const RUN_LABELS = {
 
 const OPEN_EVENT = "yorishiro:autonomy-setup-requested";
 const START_CONVERSATION = "おまかせ作業の目的と範囲を一緒に決めたいです。質問から始めてください。";
+const DRAFT_LABELS: Record<DraftField, string> = {
+  goal: "目的",
+  root: "フォルダ",
+  allowedOperations: "許可する操作",
+  intervalMinutes: "確認する間隔",
+  maxRunsPerDay: "実行上限",
+  reviewMode: "進め方",
+};
 
 /** Opens the host dialog only; never creates or enables an agreement. */
 export function requestAutonomySetup(): void {
@@ -65,20 +74,28 @@ interface ConversationMessage extends SetupMessage {
 /** Host-owned scope agreement and recovery UI. AI suggestions never grant permission. */
 export function AutonomyPanel() {
   const status = useAutonomyStatus();
-  const proposedDraft = useAutonomyDraft();
+  const proposedDraft = useAutonomyDraftSnapshot();
+  const { editor, state: draftState } = useAutonomyDraftEditor(proposedDraft, status?.contract);
+  const {
+    goal,
+    root,
+    allowedOperations: operations,
+    intervalMinutes,
+    maxRunsPerDay,
+    reviewMode,
+  } = draftState.values;
+  const explanation = draftState.explanation;
+  const setGoal = (value: string) => editor.edit("goal", value);
+  const setRoot = (value: string) => editor.edit("root", value);
+  const setIntervalMinutes = (value: number) => editor.edit("intervalMinutes", value);
+  const setMaxRunsPerDay = (value: number) => editor.edit("maxRunsPerDay", value);
+  const setReviewMode = (value: "automatic" | "daily") => editor.edit("reviewMode", value);
+  const setOperations = (next: (current: AutonomyOperation[]) => AutonomyOperation[]) =>
+    editor.edit("allowedOperations", next([...editor.getSnapshot().values.allowedOperations]));
   const [visible, setVisible] = useState(false);
   const [textOpen, setTextOpen] = useState(false);
-  const [explanation, setExplanation] = useState("");
   const [voiceStatus, setVoiceStatus] = useState<AutonomyVoiceSetupStatus | null>(null);
   const voiceRequestId = useRef<string | null>(null);
-  const appliedDraftId = useRef<string | null>(null);
-  const initialized = useRef(false);
-  const [goal, setGoal] = useState("");
-  const [root, setRoot] = useState("");
-  const [operations, setOperations] = useState<AutonomyOperation[]>(["write"]);
-  const [intervalMinutes, setIntervalMinutes] = useState(30);
-  const [maxRunsPerDay, setMaxRunsPerDay] = useState(4);
-  const [reviewMode, setReviewMode] = useState<"automatic" | "daily">("daily");
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
   const nextMessageId = useRef(0);
   const [message, setMessage] = useState("");
@@ -103,34 +120,6 @@ export function AutonomyPanel() {
   }, []);
 
   useEffect(() => {
-    if (!visible || initialized.current || !status) return;
-    const contract = status.contract;
-    if (contract) {
-      setGoal(contract.goal);
-      setRoot(contract.root);
-      setOperations([...contract.allowedOperations]);
-      setIntervalMinutes(contract.intervalMinutes);
-      setMaxRunsPerDay(contract.maxRunsPerDay);
-      setReviewMode(contract.reviewMode ?? "automatic");
-    }
-    initialized.current = true;
-  }, [visible, status]);
-
-  useEffect(() => {
-    if (!proposedDraft || appliedDraftId.current === proposedDraft.id) return;
-    appliedDraftId.current = proposedDraft.id;
-    initialized.current = true;
-    setGoal(proposedDraft.goal);
-    setRoot(proposedDraft.root);
-    setOperations([...proposedDraft.allowedOperations]);
-    setIntervalMinutes(proposedDraft.intervalMinutes);
-    setMaxRunsPerDay(proposedDraft.maxRunsPerDay);
-    setReviewMode(proposedDraft.reviewMode ?? "daily");
-    setExplanation(proposedDraft.explanation);
-    setNotice("相談した内容を設定案に反映しました。範囲を確認して任せてください。");
-  }, [proposedDraft]);
-
-  useEffect(() => {
     window.addEventListener(OPEN_EVENT, openPanel);
     return () => window.removeEventListener(OPEN_EVENT, openPanel);
   }, [openPanel]);
@@ -145,12 +134,18 @@ export function AutonomyPanel() {
     return () => window.removeEventListener(AUTONOMY_VOICE_SETUP_STATUS, onVoiceStatus);
   }, []);
 
-  function startVoiceConversation() {
-    const requestId = crypto.randomUUID();
-    voiceRequestId.current = requestId;
-    setVoiceStatus({ requestId, phase: "starting", message: "音声での相談を開始しています…" });
-    setError(null);
-    window.dispatchEvent(new CustomEvent(AUTONOMY_VOICE_SETUP_REQUEST, { detail: { requestId } }));
+  async function startVoiceConversation() {
+    if (busy) return;
+    await act("voice", async () => {
+      await editor.flush();
+      const requestId = crypto.randomUUID();
+      voiceRequestId.current = requestId;
+      setVoiceStatus({ requestId, phase: "starting", message: "音声での相談を開始しています…" });
+      setError(null);
+      window.dispatchEvent(
+        new CustomEvent(AUTONOMY_VOICE_SETUP_REQUEST, { detail: { requestId } }),
+      );
+    });
   }
 
   async function act(name: string, action: () => Promise<void>, success?: string) {
@@ -177,22 +172,18 @@ export function AutonomyPanel() {
     setMessages(history);
     setMessage("");
     await act("consult", async () => {
+      await editor.flush();
       const answer = await consultAutonomy(history.map(({ role, content }) => ({ role, content })));
       setMessages([
         ...history,
         { id: nextMessageId.current++, role: "assistant", content: answer.reply },
       ]);
-      if (answer.suggestedGoal.trim()) setGoal(answer.suggestedGoal);
-      setOperations(
-        answer.suggestedOperations.filter((op) => OPERATIONS.some(({ id }) => id === op)),
-      );
-      if (answer.suggestedRoot?.trim()) setRoot(answer.suggestedRoot);
-      if (answer.suggestedIntervalMinutes !== undefined)
-        setIntervalMinutes(answer.suggestedIntervalMinutes);
-      if (answer.suggestedMaxRunsPerDay !== undefined)
-        setMaxRunsPerDay(answer.suggestedMaxRunsPerDay);
-      if (answer.suggestedReviewMode) setReviewMode(answer.suggestedReviewMode);
-      setExplanation(answer.reply);
+      if (answer.draftConflict)
+        setNotice(
+          "相談中に設定案が更新されました。今の入力を残しています。変更したい内容をもう一度相談できます。",
+        );
+      // The consultation publishes into the same shared draft. Native draft
+      // events reconcile fields without overwriting pending human edits.
     });
   }
 
@@ -205,6 +196,38 @@ export function AutonomyPanel() {
       });
       if (typeof selected === "string") setRoot(selected);
     });
+  }
+
+  function conflictFor(field: DraftField) {
+    if (!draftState.conflicts.includes(field)) return null;
+    const value = draftState.remoteValues[field];
+    const remoteText =
+      field === "allowedOperations"
+        ? OPERATIONS.filter(({ id }) => Array.isArray(value) && value.includes(id))
+            .map(({ label }) => label)
+            .join("、")
+        : field === "reviewMode"
+          ? value === "daily"
+            ? "その日の仕事を先に相談"
+            : "範囲内で自動的に進める"
+          : String(value);
+    return (
+      <fieldset
+        className="autonomy-field-conflict"
+        aria-label={`${DRAFT_LABELS[field]}の更新を確認`}
+      >
+        <p>AIもこの項目を更新しました。入力した内容は保持しています。</p>
+        <p className="autonomy-muted">AIの案: {remoteText || "未設定"}</p>
+        <div className="autonomy-conversation-actions">
+          <button type="button" onClick={() => editor.resolve(field, "remote")}>
+            AIの案を使う
+          </button>
+          <button type="button" onClick={() => editor.resolve(field, "local")}>
+            自分の入力を残す
+          </button>
+        </div>
+      </fieldset>
+    );
   }
 
   return (
@@ -361,6 +384,9 @@ export function AutonomyPanel() {
                     <p className="autonomy-muted">
                       やりたいことを話すと、AIが目的やフォルダ、進め方を設定案にまとめます。
                     </p>
+                    <p className="autonomy-muted">
+                      話した内容がここに反映されます。直接編集した内容もAIに共有されます。
+                    </p>
                     <div className="autonomy-conversation-actions">
                       <button
                         className="autonomy-primary"
@@ -425,15 +451,16 @@ export function AutonomyPanel() {
                       </>
                     )}
                   </section>
-                  {goal.trim() || explanation || status.contract ? (
-                    <form
-                      className="autonomy-scope"
-                      onSubmit={(event) => {
-                        event.preventDefault();
-                        void act(
-                          "save",
-                          () =>
-                            saveAutonomyContract({
+                  <form
+                    className="autonomy-scope"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      if (!draftState.synced) return;
+                      void act(
+                        "save",
+                        () =>
+                          saveAutonomyContract(
+                            {
                               goal: goal.trim(),
                               root,
                               allowedOperations: operations,
@@ -441,152 +468,154 @@ export function AutonomyPanel() {
                               maxRunsPerDay,
                               reviewMode,
                               enabled: true,
-                            }),
-                          "この範囲で作業を開始します。範囲はいつでも変更できます。",
-                        );
-                      }}
-                    >
-                      <h3>継続して任せる範囲</h3>
-                      {explanation && <p className="autonomy-draft-explanation">{explanation}</p>}
-                      <p className="autonomy-muted">
-                        {status.contract
-                          ? "ここでの相談は設定案です。新しい範囲を保存するまでは、現在の設定が使われます。"
-                          : "相談中には作業を始めません。下の内容を確認して任せてください。"}
-                      </p>
-                      <dl className="autonomy-draft-summary" aria-label="設定案">
-                        <dt>目的</dt>
-                        <dd>{goal || "相談して決めます"}</dd>
-                        <dt>フォルダ</dt>
-                        <dd className="autonomy-path">{root || "相談して決めます"}</dd>
-                        <dt>許可する操作</dt>
-                        <dd>
-                          {OPERATIONS.filter(({ id }) => operations.includes(id))
-                            .map(({ label }) => label)
-                            .join("、") || "相談して決めます"}
-                        </dd>
-                        <dt>進め方</dt>
-                        <dd>
-                          {reviewMode === "daily"
-                            ? "その日の仕事を先に相談"
-                            : "範囲内で自動的に進める"}
-                        </dd>
-                        <dt>頻度</dt>
-                        <dd>
-                          {intervalMinutes}分ごと・24時間に最大{maxRunsPerDay}回
-                        </dd>
-                      </dl>
-                      <details className="autonomy-draft-adjustments">
-                        <summary>設定案を調整</summary>
-                        <label className="autonomy-field">
-                          任せる目的
-                          <textarea
-                            value={goal}
-                            onChange={(event) => setGoal(event.target.value)}
-                            rows={3}
-                            required
-                            maxLength={2000}
-                          />
-                        </label>
-                        <label className="autonomy-field">
-                          対象フォルダ
-                          <input
-                            value={root}
-                            onChange={(event) => setRoot(event.target.value)}
-                            placeholder="会話で決めたフォルダ"
-                          />
-                        </label>
-                        <button
-                          type="button"
-                          disabled={busy !== null}
-                          onClick={() => void selectRoot()}
-                        >
-                          フォルダを選ぶ
-                        </button>
-                        <fieldset disabled={busy !== null}>
-                          <legend>自動で進めてよい操作</legend>
-                          {OPERATIONS.map((operation) => (
-                            <label key={operation.id} className="autonomy-check">
-                              <input
-                                type="checkbox"
-                                checked={operations.includes(operation.id)}
-                                onChange={(event) =>
-                                  setOperations((current) =>
-                                    event.target.checked
-                                      ? [...current, operation.id]
-                                      : current.filter((id) => id !== operation.id),
-                                  )
-                                }
-                              />
-                              {operation.label}
-                            </label>
-                          ))}
-                        </fieldset>
-                        <fieldset disabled={busy !== null}>
-                          <legend>進め方</legend>
-                          <label className="autonomy-check">
-                            <input
-                              type="radio"
-                              name="autonomy-review-mode"
-                              checked={reviewMode === "daily"}
-                              onChange={() => setReviewMode("daily")}
-                            />
-                            その日の仕事を先に相談
-                          </label>
-                          <label className="autonomy-check">
-                            <input
-                              type="radio"
-                              name="autonomy-review-mode"
-                              checked={reviewMode === "automatic"}
-                              onChange={() => setReviewMode("automatic")}
-                            />
-                            範囲内で自動的に進める
-                          </label>
-                        </fieldset>
-                        <div className="autonomy-numbers">
-                          <label className="autonomy-field">
-                            確認する間隔（分）
-                            <input
-                              type="number"
-                              min={5}
-                              max={1440}
-                              required
-                              value={intervalMinutes}
-                              onChange={(event) => setIntervalMinutes(Number(event.target.value))}
-                            />
-                          </label>
-                          <label className="autonomy-field">
-                            24時間の実行上限（回）
-                            <input
-                              type="number"
-                              min={1}
-                              max={48}
-                              required
-                              value={maxRunsPerDay}
-                              onChange={(event) => setMaxRunsPerDay(Number(event.target.value))}
-                            />
-                          </label>
-                        </div>
-                      </details>
-                      <p className="autonomy-muted">
-                        最初はテキスト文書の整理・編集に対応します。変更前の内容を保存し、履歴から元に戻せます。メールなどは下書きまでで、送信は行いません。
-                      </p>
-                      <p className="autonomy-muted">
-                        Claude
-                        Codeへのログインが必要です。Yorishiroを開いている間に動作し、AIの利用枠を消費します。
-                      </p>
-                      <button
-                        className="autonomy-primary"
-                        type="submit"
-                        disabled={busy !== null || !goal.trim() || !root || operations.length === 0}
-                      >
-                        {busy === "save" ? "保存しています…" : "この範囲で任せる"}
-                      </button>
-                    </form>
-                  ) : (
+                            },
+                            draftState.draftId,
+                          ),
+                        "この範囲で作業を開始します。範囲はいつでも変更できます。",
+                      );
+                    }}
+                  >
+                    <h3>継続して任せる範囲</h3>
+                    {explanation && <p className="autonomy-draft-explanation">{explanation}</p>}
                     <p className="autonomy-muted">
-                      会話で決めた範囲が、ここに設定案としてまとまります。最後に内容を確認して任せられます。
+                      {status.contract
+                        ? "ここでの相談は設定案です。新しい範囲を保存するまでは、現在の設定が使われます。"
+                        : "相談中には作業を始めません。下の内容を確認して任せてください。"}
                     </p>
-                  )}
+                    <label className="autonomy-field">
+                      任せる目的
+                      <textarea
+                        value={goal}
+                        onChange={(event) => setGoal(event.target.value)}
+                        rows={3}
+                        required
+                        maxLength={2000}
+                      />
+                    </label>
+                    {conflictFor("goal")}
+                    <label className="autonomy-field">
+                      対象フォルダ
+                      <input
+                        value={root}
+                        onChange={(event) => setRoot(event.target.value)}
+                        placeholder="会話で決めたフォルダ"
+                      />
+                    </label>
+                    {conflictFor("root")}
+                    <button
+                      type="button"
+                      disabled={busy !== null}
+                      onClick={() => void selectRoot()}
+                    >
+                      フォルダを選ぶ
+                    </button>
+                    <fieldset disabled={busy === "save"}>
+                      <legend>自動で進めてよい操作</legend>
+                      {OPERATIONS.map((operation) => (
+                        <label key={operation.id} className="autonomy-check">
+                          <input
+                            type="checkbox"
+                            checked={operations.includes(operation.id)}
+                            onChange={(event) =>
+                              setOperations((current) =>
+                                event.target.checked
+                                  ? [...current, operation.id]
+                                  : current.filter((id) => id !== operation.id),
+                              )
+                            }
+                          />
+                          {operation.label}
+                        </label>
+                      ))}
+                    </fieldset>
+                    {conflictFor("allowedOperations")}
+                    <fieldset disabled={busy === "save"}>
+                      <legend>進め方</legend>
+                      <label className="autonomy-check">
+                        <input
+                          type="radio"
+                          name="autonomy-review-mode"
+                          checked={reviewMode === "daily"}
+                          onChange={() => setReviewMode("daily")}
+                        />
+                        その日の仕事を先に相談
+                      </label>
+                      <label className="autonomy-check">
+                        <input
+                          type="radio"
+                          name="autonomy-review-mode"
+                          checked={reviewMode === "automatic"}
+                          onChange={() => setReviewMode("automatic")}
+                        />
+                        範囲内で自動的に進める
+                      </label>
+                    </fieldset>
+                    {conflictFor("reviewMode")}
+                    <div className="autonomy-numbers">
+                      <label className="autonomy-field">
+                        確認する間隔（分）
+                        <input
+                          type="number"
+                          min={5}
+                          max={1440}
+                          required
+                          value={intervalMinutes}
+                          onChange={(event) => setIntervalMinutes(Number(event.target.value))}
+                        />
+                      </label>
+                      <label className="autonomy-field">
+                        24時間の実行上限（回）
+                        <input
+                          type="number"
+                          min={1}
+                          max={48}
+                          required
+                          value={maxRunsPerDay}
+                          onChange={(event) => setMaxRunsPerDay(Number(event.target.value))}
+                        />
+                      </label>
+                    </div>
+                    {conflictFor("intervalMinutes")}
+                    {conflictFor("maxRunsPerDay")}
+                    <p className="autonomy-muted" role="status">
+                      {draftState.error
+                        ? "編集内容をAIに反映できませんでした。"
+                        : draftState.conflicts.length > 0
+                          ? "同じ項目の更新を確認してください。"
+                          : draftState.syncing || !draftState.synced
+                            ? "編集内容をAIに反映しています…"
+                            : "内容を確認して任せてください。実行は最後の確認後に始まります。"}
+                    </p>
+                    {draftState.error && (
+                      <div role="alert" className="autonomy-error">
+                        <p>{draftState.error}</p>
+                        <button type="button" onClick={() => editor.retry()}>
+                          反映を再試行
+                        </button>
+                      </div>
+                    )}
+
+                    <p className="autonomy-muted">
+                      最初はテキスト文書の整理・編集に対応します。変更前の内容を保存し、履歴から元に戻せます。メールなどは下書きまでで、送信は行いません。
+                    </p>
+                    <p className="autonomy-muted">
+                      Claude
+                      Codeへのログインが必要です。Yorishiroを開いている間に動作し、AIの利用枠を消費します。
+                    </p>
+                    <button
+                      className="autonomy-primary"
+                      type="submit"
+                      disabled={
+                        busy !== null ||
+                        !draftState.synced ||
+                        !goal.trim() ||
+                        !root ||
+                        operations.length === 0
+                      }
+                    >
+                      {busy === "save" ? "保存しています…" : "この範囲で任せる"}
+                    </button>
+                  </form>
                   {status.runs.length > 0 && (
                     <section className="autonomy-history" aria-label="作業履歴">
                       <h3>進めた仕事</h3>

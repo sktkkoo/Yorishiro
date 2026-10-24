@@ -318,9 +318,14 @@ export class CodexRealtimeClient implements LipSyncSource {
         "Keep enduring permission separate from today's concrete task. Ask whether to discuss today's work before execution: reviewMode daily requires user confirmation of that day's work card; automatic permits work within the agreed scope without a daily gate. Propose daily when unspecified. " +
         "Supported operations are write/move/trash for text documents only; emails can be drafted but never sent, and no shell/code/external app execution is available. " +
         "Propose useful specifics rather than asking them to fill out settings. Ask only for missing scope information; never invent a folder or infer expanded permission. " +
-        "When enough is known, delegate to the main agent to call Yorishiro MCP autonomy_propose with the agreed draft, including reviewMode, so the settings populate automatically. " +
+        "The setup is a shared editable form, not a Markdown document or a document-writing task. Do not create a file to represent these settings. " +
+        "Update the editable fields progressively as choices become clear during the conversation; do not wait until the whole consultation ends. " +
+        "At each setup turn, before reasoning from current form values and before every revised proposal, delegate to the main agent to call Yorishiro MCP autonomy_setup_context. The user may have edited the same form manually since your previous response. " +
+        "Then call autonomy_propose with the latest shared draft and only the intended conversational changes, including reviewMode. Pass the exact current draft.id as baseDraftId; use null only when the context reports no draft. " +
+        "The tool takes a complete proposal: copy all unrelated fields from the latest draft, preserving manual edits and incomplete values rather than rebuilding it from old conversation memory or defaults. The inactive draft permits empty goal and root; keep unknown values empty and preserve unfinished manual text exactly instead of inventing a goal or folder just to fill a field. Final activation validates the completed scope separately. " +
+        "If the tool reports a draft conflict, fetch autonomy_setup_context again and compare it with the version you read. Preserve newer unrelated fields; if the same field was edited differently by the user, ask one short clarification rather than silently overwriting it. Never retry the old proposal blindly. " +
         "That tool only proposes settings. Do not call save/enable/run or begin background work; the user reviews the populated draft and explicitly enables it in the host UI. " +
-        "Only say the draft was populated after the main agent confirms autonomy_propose succeeded. If the tool is unavailable, say so clearly.",
+        "Only say the editable fields were updated after the main agent confirms a successful autonomy_propose receipt for that revision. A spoken suggestion or tool request alone does not mean the form changed. If the tool is unavailable, say so clearly.",
     });
     assertSetupOwner();
     // Codex's native speakable-text route is distinct from developer context.

@@ -438,6 +438,21 @@ describe("CodexRealtimeClient", () => {
     expect(text).toContain("Keep enduring permission separate from today's concrete task");
     expect(text).toContain("reviewMode daily");
     expect(text).toContain("including reviewMode");
+    expect(text).toContain("shared editable form, not a Markdown document");
+    expect(text).toContain("Do not create a file");
+    expect(text).toContain("progressively");
+    expect(text).toContain("do not wait until the whole consultation ends");
+    expect(text).toContain("before every revised proposal");
+    expect(text).toContain("autonomy_setup_context");
+    expect(text).toContain("current draft.id as baseDraftId");
+    expect(text).toContain("use null only when the context reports no draft");
+    expect(text).toContain("copy all unrelated fields from the latest draft");
+    expect(text).toContain("preserving manual edits and incomplete values");
+    expect(text).toContain("inactive draft permits empty goal and root");
+    expect(text).toContain("preserve unfinished manual text exactly");
+    expect(text).toContain("same field was edited differently");
+    expect(text).toContain("Never retry the old proposal blindly");
+    expect(text).toContain("successful autonomy_propose receipt for that revision");
     expect(bridge.sent[1]).toMatchObject({
       method: "thread/realtime/appendSpeech",
       params: { threadId: "thread-1", text: "まず、普段どんな仕事を任せたいですか？" },

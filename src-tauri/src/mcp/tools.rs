@@ -15,7 +15,7 @@ use rmcp::{
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 
 use crate::mcp::server::emit_tool_event;
 use crate::mcp::types::{ListLoadErrorsResponse, LoadError};
@@ -504,7 +504,7 @@ impl Yorishiro {
 impl Yorishiro {
     /// Conversation setup reads only the current scope and inactive proposal.
     #[tool(
-        description = "Read Yorishiro's current autonomous-work scope and inactive setup draft before discussing setup with the user in the current voice/text conversation. Discuss the enduring purpose, document folder, reversible operations, schedule, and whether to discuss today's concrete work before execution. Enduring permission and daily task approval are separate. This tool does not read document contents or start work."
+        description = "Read Yorishiro's current autonomous-work scope and latest shared inactive setup draft, including manual user edits, before discussing setup with the user in the current voice/text conversation. Discuss the enduring purpose, document folder, reversible operations, schedule, and whether to discuss today's concrete work before execution. Enduring permission and daily task approval are separate. This tool does not read document contents or start work."
     )]
     async fn autonomy_setup_context(
         &self,
@@ -521,7 +521,7 @@ impl Yorishiro {
 
     /// A proposal can update the review card, never the execution contract.
     #[tool(
-        description = "Prepare an INACTIVE autonomous-work setup draft from the user's current voice/text conversation and show it for review in Yorishiro. First discuss the enduring goal, one existing document folder, reversible operations (write/move/trash), interval (5–1440 minutes), rolling daily run limit (1–48), and reviewMode (daily or automatic). daily means discuss today's specific work and wait for explicit user confirmation before execution; default daily. Keep the enduring goal distinct from today's task. Leave root empty when the user has not selected an exact folder. This tool never grants permissions, enables work, approves a daily task, sends anything, or executes file changes. The user must review and confirm the draft in the app. Do not claim the proposal is already active."
+        description = "Prepare an INACTIVE autonomous-work setup draft from the user's current voice/text conversation and show it for review in Yorishiro. Update the shared draft progressively as choices become clear. Refresh autonomy_setup_context before every update, preserve unrelated manual edits, and send its current draft id as baseDraftId (null only when no draft exists). A stale or omitted baseDraftId cannot replace an existing draft: reread and reconcile the latest edits before retrying. Discuss the enduring goal, one document folder, reversible operations (write/move/trash), interval (5–1440 minutes), rolling daily run limit (1–48), and reviewMode (daily or automatic). daily means discuss today's specific work and wait for explicit user confirmation before execution; default daily. Keep the enduring goal distinct from today's task. Leave unknown goal/root empty, preserve unfinished manual path input, and never invent folder permission. The final app confirmation validates completeness and the existing folder. This tool never grants permissions, enables work, approves a daily task, sends anything, or executes file changes. The user must review and confirm the draft in the app. Do not claim the proposal is already active."
     )]
     async fn autonomy_propose(
         &self,
@@ -529,6 +529,9 @@ impl Yorishiro {
     ) -> Result<CallToolResult, McpError> {
         let receipt = crate::autonomy::draft::propose(proposal)
             .map_err(|e| McpError::invalid_params(e, None))?;
+        let _ = self
+            .app_handle
+            .emit("autonomy:draft-changed", &receipt.snapshot);
         Ok(CallToolResult::success(vec![Content::json(receipt)?]))
     }
 

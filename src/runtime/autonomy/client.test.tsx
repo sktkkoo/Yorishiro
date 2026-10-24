@@ -3,8 +3,13 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const invoke = vi.hoisted(() => vi.fn());
+const { invoke, listen, unlisten } = vi.hoisted(() => ({
+  invoke: vi.fn(),
+  listen: vi.fn(),
+  unlisten: vi.fn(),
+}));
 vi.mock("@tauri-apps/api/core", () => ({ invoke }));
+vi.mock("@tauri-apps/api/event", () => ({ listen }));
 
 const idle = { contract: null, phase: "idle", nextRunAt: null, runs: [], error: null };
 
@@ -12,6 +17,8 @@ describe("autonomous host polling", () => {
   beforeEach(() => {
     vi.resetModules();
     invoke.mockReset();
+    unlisten.mockReset();
+    listen.mockReset().mockResolvedValue(unlisten);
     invoke.mockImplementation(async (command: string) =>
       command === "autonomy_status" ? idle : undefined,
     );
@@ -127,6 +134,171 @@ describe("autonomous host polling", () => {
     if (action === "toggle") {
       expect(invoke).toHaveBeenCalledWith("autonomy_set_enabled", { enabled: false });
     }
+    view.unmount();
+  });
+});
+
+const draft = (id: string) => ({
+  id,
+  goal: `目的 ${id}`,
+  root: "/notes",
+  allowedOperations: ["write"] as const,
+  intervalMinutes: 30,
+  maxRunsPerDay: 4,
+  reviewMode: "daily" as const,
+  explanation: "相談中",
+});
+
+describe("live shared setup draft", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    unlisten.mockReset();
+    listen.mockReset().mockResolvedValue(unlisten);
+    invoke.mockReset().mockImplementation(async (command: string) => {
+      if (command === "autonomy_status") return idle;
+      if (command === "autonomy_draft_snapshot") return { revision: 0, draft: null };
+    });
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("keeps a failed subscription visible across polls and reconnects automatically", async () => {
+    vi.useFakeTimers();
+    listen.mockRejectedValueOnce(new Error("event bridge offline"));
+    const client = await import("./client");
+    const view = renderHook(() => ({
+      status: client.useAutonomyStatus(),
+      draft: client.useAutonomyDraftSnapshot(),
+    }));
+    await act(async () => {});
+    expect(view.result.current.status?.error).toContain("event bridge offline");
+    await act(async () => {
+      await client.pauseAutonomy();
+    });
+    expect(view.result.current.status?.error).toContain("event bridge offline");
+    expect(listen).toHaveBeenCalledTimes(1);
+    await act(async () => vi.advanceTimersByTimeAsync(5_000));
+    expect(listen).toHaveBeenCalledTimes(2);
+    expect(view.result.current.status?.error).toBeNull();
+    act(() => listen.mock.calls[1][1]({ payload: { revision: 1, draft: draft("reconnected") } }));
+    expect(view.result.current.draft.draft?.id).toBe("reconnected");
+    view.unmount();
+    await act(async () => vi.advanceTimersByTimeAsync(30_000));
+    expect(listen).toHaveBeenCalledTimes(2);
+  });
+
+  it("reflects native voice changes immediately and never regresses to stale polls or edits", async () => {
+    vi.useFakeTimers();
+    const client = await import("./client");
+    const view = renderHook(client.useAutonomyDraftSnapshot);
+    await act(async () => {});
+    const emit = listen.mock.calls[0][1];
+    expect(listen.mock.calls[0][0]).toBe("autonomy:draft-changed");
+    act(() => emit({ payload: { revision: 3, draft: draft("voice") } }));
+    expect(view.result.current.draft?.id).toBe("voice");
+    await act(async () => vi.advanceTimersByTimeAsync(15_000));
+    expect(view.result.current.revision).toBe(3);
+    invoke.mockImplementation(async (command: string) =>
+      command === "autonomy_draft_edit"
+        ? { snapshot: { revision: 2, draft: draft("old") }, conflict: false }
+        : idle,
+    );
+    await act(async () => {
+      await client.editAutonomyDraft("old", { goal: "手入力" });
+    });
+    expect(view.result.current.draft?.id).toBe("voice");
+    act(() => emit({ payload: { revision: 4, draft: null } }));
+    act(() => emit({ payload: { revision: 3, draft: draft("voice") } }));
+    expect(view.result.current).toEqual({ revision: 4, draft: null });
+    view.unmount();
+    expect(unlisten).toHaveBeenCalledOnce();
+    act(() => emit({ payload: { revision: 5, draft: draft("late") } }));
+    expect(view.result.current.revision).toBe(4);
+  });
+
+  it("fetches again after listener registration closes an initial read gap", async () => {
+    let resolveListen!: (stop: () => void) => void;
+    listen.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveListen = resolve;
+        }),
+    );
+    const client = await import("./client");
+    const view = renderHook(client.useAutonomyDraftSnapshot);
+    await waitFor(() => expect(view.result.current.revision).toBe(0));
+    invoke.mockImplementation(async (command: string) =>
+      command === "autonomy_draft_snapshot" ? { revision: 1, draft: draft("gap") } : idle,
+    );
+    await act(async () => {
+      resolveListen(unlisten);
+    });
+    expect(view.result.current.draft?.id).toBe("gap");
+    view.unmount();
+  });
+
+  it("disposes a listener that finishes registering after unmount", async () => {
+    let resolveListen!: (stop: () => void) => void;
+    listen.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveListen = resolve;
+        }),
+    );
+    const client = await import("./client");
+    const view = renderHook(client.useAutonomyDraftSnapshot);
+    await act(async () => {});
+    view.unmount();
+    await act(async () => {
+      resolveListen(unlisten);
+    });
+    expect(unlisten).toHaveBeenCalledOnce();
+  });
+
+  it("shares a consultation's committed snapshot without activating permissions", async () => {
+    const client = await import("./client");
+    const view = renderHook(client.useAutonomyDraftSnapshot);
+    await act(async () => {});
+    const reply = {
+      reply: "更新しました",
+      suggestedGoal: "相談結果",
+      suggestedOperations: [],
+      draftSnapshot: { revision: 2, draft: draft("consult") },
+      draftConflict: false,
+    };
+    invoke.mockImplementation(async () => reply);
+    await act(async () => {
+      expect(await client.consultAutonomy([])).toEqual(reply);
+    });
+    expect(view.result.current.draft?.id).toBe("consult");
+    expect(invoke.mock.calls.some(([name]) => name === "autonomy_save")).toBe(false);
+    view.unmount();
+  });
+
+  it("dismisses only the reviewed ID even when a newer voice draft arrives during save", async () => {
+    const client = await import("./client");
+    const view = renderHook(client.useAutonomyDraftSnapshot);
+    await act(async () => {});
+    const emit = listen.mock.calls[0][1];
+    let resolveSave!: () => void;
+    invoke.mockImplementation(async (command: string) => {
+      if (command === "autonomy_save")
+        return new Promise<void>((resolve) => {
+          resolveSave = resolve;
+        });
+      if (command === "autonomy_status") return idle;
+      if (command === "autonomy_draft_snapshot") return { revision: 3, draft: draft("newer") };
+    });
+    let saving!: Promise<void>;
+    await act(async () => {
+      saving = client.saveAutonomyContract({ ...draft("reviewed"), enabled: true }, "reviewed");
+    });
+    act(() => emit({ payload: { revision: 3, draft: draft("newer") } }));
+    await act(async () => {
+      resolveSave();
+      await saving;
+    });
+    expect(invoke).toHaveBeenCalledWith("autonomy_draft_dismiss", { id: "reviewed" });
+    expect(view.result.current.draft?.id).toBe("newer");
     view.unmount();
   });
 });

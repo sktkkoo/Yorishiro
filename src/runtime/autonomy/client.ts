@@ -1,19 +1,78 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useEffect, useSyncExternalStore } from "react";
 import type {
   AutonomyContract,
   AutonomyDraft,
+  AutonomyDraftPatch,
+  AutonomyDraftSnapshot,
   AutonomyStatus,
+  DraftEditResult,
   SetupMessage,
   SetupReply,
 } from "./types";
 
 let snapshot: AutonomyStatus | null = null;
-let draftSnapshot: AutonomyDraft | null = null;
+let draftSnapshot: AutonomyDraftSnapshot = { revision: -1, draft: null };
 let announcedReviewId: string | null = null;
 const listeners = new Set<() => void>();
 let timer: ReturnType<typeof setTimeout> | null = null;
 let polling: Promise<void> | null = null;
+let draftUnlisten: UnlistenFn | null = null;
+let draftListenerEpoch = 0;
+let draftRetryTimer: ReturnType<typeof setTimeout> | null = null;
+let draftSyncError: string | null = null;
+
+function acceptDraft(next: AutonomyDraftSnapshot): void {
+  // An older poll or IPC response can finish after a live event. Never roll
+  // the visible shared form back, including a stale dismissal event.
+  if (!Number.isSafeInteger(next?.revision) || next.revision <= draftSnapshot.revision) return;
+  draftSnapshot = next;
+  for (const notify of listeners) notify();
+}
+
+async function refreshDraft(): Promise<void> {
+  acceptDraft(await invoke<AutonomyDraftSnapshot>("autonomy_draft_snapshot"));
+}
+
+function startDraftEvents(): void {
+  if (draftRetryTimer !== null) clearTimeout(draftRetryTimer);
+  draftRetryTimer = null;
+  const epoch = ++draftListenerEpoch;
+  void listen<AutonomyDraftSnapshot>("autonomy:draft-changed", (event) => {
+    if (epoch === draftListenerEpoch) acceptDraft(event.payload);
+  })
+    .then(async (unlisten) => {
+      if (epoch !== draftListenerEpoch || !listeners.size) {
+        unlisten();
+        return;
+      }
+      draftUnlisten = unlisten;
+      // Subscribe before fetching to close the gap between initial read and
+      // listener registration. Polling remains a recovery path for missed events.
+      await refreshDraft();
+      if (epoch !== draftListenerEpoch) return;
+      if (draftSyncError && snapshot?.error === draftSyncError) {
+        snapshot = { ...snapshot, error: null };
+        for (const notify of listeners) notify();
+      }
+      draftSyncError = null;
+    })
+    .catch((error: unknown) => {
+      if (epoch !== draftListenerEpoch) return;
+      draftUnlisten?.();
+      draftUnlisten = null;
+      draftSyncError = `設定案のリアルタイム同期を開始できません。再接続しています: ${String(error)}`;
+      if (snapshot) {
+        snapshot = { ...snapshot, error: draftSyncError };
+        for (const notify of listeners) notify();
+      }
+      draftRetryTimer = setTimeout(() => {
+        draftRetryTimer = null;
+        if (epoch === draftListenerEpoch && listeners.size) startDraftEvents();
+      }, 5_000);
+    });
+}
 
 async function readStatus(): Promise<void> {
   try {
@@ -26,8 +85,8 @@ async function readStatus(): Promise<void> {
       tickError = String(error);
     }
     snapshot = await invoke<AutonomyStatus>("autonomy_status");
-    draftSnapshot = (await invoke<AutonomyDraft | null>("autonomy_draft_get")) ?? null;
-    if (tickError) snapshot = { ...snapshot, error: tickError };
+    await refreshDraft();
+    if (tickError || draftSyncError) snapshot = { ...snapshot, error: tickError ?? draftSyncError };
     const review = snapshot.pendingWork;
     if (review && review.id !== announcedReviewId && typeof window !== "undefined") {
       announcedReviewId = review.id;
@@ -63,12 +122,21 @@ async function refreshAfterAction(): Promise<void> {
 }
 
 function subscribe(notify: () => void): () => void {
+  const first = listeners.size === 0;
   listeners.add(notify);
+  if (first) startDraftEvents();
   return () => {
     listeners.delete(notify);
     if (!listeners.size && timer !== null) {
       clearTimeout(timer);
       timer = null;
+    }
+    if (!listeners.size) {
+      ++draftListenerEpoch;
+      if (draftRetryTimer !== null) clearTimeout(draftRetryTimer);
+      draftRetryTimer = null;
+      draftUnlisten?.();
+      draftUnlisten = null;
     }
   };
 }
@@ -82,6 +150,10 @@ export function useAutonomyStatus(): AutonomyStatus | null {
 }
 
 export function useAutonomyDraft(): AutonomyDraft | null {
+  return useAutonomyDraftSnapshot().draft;
+}
+
+export function useAutonomyDraftSnapshot(): AutonomyDraftSnapshot {
   const value = useSyncExternalStore(subscribe, () => draftSnapshot);
   useEffect(() => {
     void poll();
@@ -89,15 +161,29 @@ export function useAutonomyDraft(): AutonomyDraft | null {
   return value;
 }
 
-export const consultAutonomy = (history: readonly SetupMessage[]): Promise<SetupReply> =>
-  invoke("autonomy_consult", { history });
+export async function editAutonomyDraft(
+  baseId: string | null,
+  patch: AutonomyDraftPatch,
+): Promise<DraftEditResult> {
+  const result = await invoke<DraftEditResult>("autonomy_draft_edit", { baseId, patch });
+  acceptDraft(result.snapshot);
+  return result;
+}
 
-export async function saveAutonomyContract(contract: AutonomyContract): Promise<void> {
-  const reviewedId = draftSnapshot?.id;
+export async function consultAutonomy(history: readonly SetupMessage[]): Promise<SetupReply> {
+  const result = await invoke<SetupReply>("autonomy_consult", { history });
+  if (result.draftSnapshot) acceptDraft(result.draftSnapshot);
+  return result;
+}
+
+export async function saveAutonomyContract(
+  contract: AutonomyContract,
+  reviewedDraftId: string | null = null,
+): Promise<void> {
   await invoke("autonomy_save", { contract });
-  if (reviewedId) {
+  if (reviewedDraftId) {
     // Acknowledge only the reviewed draft; a newer voice proposal must survive.
-    await invoke("autonomy_draft_dismiss", { id: reviewedId });
+    await invoke("autonomy_draft_dismiss", { id: reviewedDraftId });
   }
   await refreshAfterAction();
 }

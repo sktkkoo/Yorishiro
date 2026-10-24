@@ -269,3 +269,17 @@
     padding: 16px;
   }
 }
+
+.autonomy-panel .autonomy-field-conflict {
+  border: 1px solid var(--yorishiro-fg-dim, #bbb);
+  border-left: 3px solid currentColor;
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin: 8px 0 16px;
+  background: rgba(128, 128, 128, 0.12);
+  overflow-wrap: anywhere;
+}
+.autonomy-field-conflict p {
+  margin: 0 0 8px;
+  white-space: pre-wrap;
+}
