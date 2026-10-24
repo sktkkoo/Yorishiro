@@ -20,6 +20,94 @@ import {
 
 const ZERO_MOUTH: MouthValues = { aa: 0, ih: 0, ou: 0, ee: 0, oh: 0 };
 
+describe("autonomy voice setup", () => {
+  it("announces review proposals only on active voice and never starts a microphone", async () => {
+    const review = {
+      id: "review-1",
+      goal: "Organize notes",
+      reason: "Related notes",
+      summary: "Create summary.md",
+    };
+    const { result, clients } = setup([]);
+    await result.current.notifyAutonomyWorkReview(review);
+    expect(clients).toHaveLength(0);
+    await act(() => result.current.toggle());
+    await result.current.notifyAutonomyWorkReview(review);
+    expect(clients[0].notifyAutonomyWorkReview).not.toHaveBeenCalled();
+    act(() => clients[0].emit({ status: "active" }));
+    await result.current.notifyAutonomyWorkReview(review);
+    expect(clients[0].notifyAutonomyWorkReview).toHaveBeenCalledWith(review);
+    expect(clients[0].start).toHaveBeenCalledTimes(1);
+  });
+  it("reuses the current active voice session without toggling or reconnecting", async () => {
+    const { result, clients } = setup([]);
+    await act(() => result.current.toggle());
+    act(() => clients[0].emit({ status: "active" }));
+    await act(() => result.current.requestAutonomySetup());
+    expect(clients).toHaveLength(1);
+    expect(clients[0].start).toHaveBeenCalledTimes(1);
+    expect(clients[0].stop).not.toHaveBeenCalled();
+    expect(clients[0].requestAutonomySetup).toHaveBeenCalledTimes(1);
+  });
+
+  it("starts an idle session before delivering the setup action", async () => {
+    const connecting = deferred();
+    const { result, clients } = setup([connecting.promise]);
+    let requested!: Promise<void>;
+    act(() => {
+      requested = result.current.requestAutonomySetup();
+    });
+    await vi.waitFor(() => expect(clients[0]?.start).toHaveBeenCalledTimes(1));
+    expect(clients[0].requestAutonomySetup).not.toHaveBeenCalled();
+    await act(async () => {
+      clients[0].emit({ status: "active" });
+      connecting.resolve();
+      await requested;
+    });
+    expect(clients[0].requestAutonomySetup).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not stop a connection already in progress and reports unavailable providers", async () => {
+    const { result, clients, rerender } = setup([]);
+    await act(() => result.current.toggle());
+    await expect(result.current.requestAutonomySetup()).rejects.toThrow("接続");
+    expect(clients[0].stop).not.toHaveBeenCalled();
+    rerender({ sessionId: "main", available: false });
+    await expect(result.current.requestAutonomySetup()).rejects.toThrow("Codex");
+    expect(clients[0].requestAutonomySetup).not.toHaveBeenCalled();
+  });
+
+  it("rejects stale delivery after the conversation is stopped", async () => {
+    const { result, clients } = setup([]);
+    await act(() => result.current.toggle());
+    act(() => clients[0].emit({ status: "active" }));
+    const delivery = deferred();
+    clients[0].requestAutonomySetup.mockReturnValueOnce(delivery.promise);
+    const requested = result.current.requestAutonomySetup();
+    const rejected = expect(requested).rejects.toThrow("切り替わりました");
+    act(() => result.current.stop());
+    delivery.resolve();
+    await rejected;
+  });
+
+  it("does not seed a different conversation when startup spans a session switch", async () => {
+    const connecting = deferred();
+    const { result, clients, rerender } = setup([connecting.promise]);
+    let requested!: Promise<void>;
+    act(() => {
+      requested = result.current.requestAutonomySetup();
+    });
+    const rejected = expect(requested).rejects.toThrow("会話が切り替わりました");
+    await vi.waitFor(() => expect(clients[0]?.start).toHaveBeenCalledTimes(1));
+    rerender({ sessionId: "new-session", available: true });
+    await act(async () => {
+      connecting.resolve();
+      await rejected;
+    });
+    for (const client of clients) expect(client.requestAutonomySetup).not.toHaveBeenCalled();
+  });
+});
+
 function deferred(): {
   promise: Promise<void>;
   resolve: () => void;
@@ -35,6 +123,10 @@ function deferred(): {
 }
 
 class FakeClient implements CodexRealtimeClientLike {
+  readonly requestAutonomySetup = vi.fn(async () => {});
+  readonly notifyAutonomyWorkReview = vi.fn(
+    async (_review: { id: string; goal: string; reason: string; summary: string }) => {},
+  );
   readonly notifyScreenContext = vi.fn(
     async (_capturedAt: string, _availability?: ScreenPointerAvailability) => {},
   );

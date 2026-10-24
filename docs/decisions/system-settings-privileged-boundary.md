@@ -1,7 +1,7 @@
 # System settings UI の privileged boundary
 
 **Status**: active
-**Last updated**: 2026-08-12
+**Last updated**: 2026-10-24
 
 ## TL;DR
 
@@ -37,6 +37,7 @@ permission / isolation 設計が必要であり、この decision だけでは�
 | `@tauri-apps/plugin-dialog` | native file picker | privileged のまま。任意 file picker を UI Pack capability として開けない |
 | updater / process relaunch | network update、署名検証、app replace、再起動 | system-only。Pack API にしない |
 | `src/components/RestoreConfirmDialog` | app-level modal / reload UX | settings からの直接 import を除去。`ctx.history.restore()` の host-owned confirmation として維持し、Pack 向け component ABI にしない |
+| `src/components/AutonomySettings` | 合意済み自動作業の On/Off と初回設定への入口 | この component だけを system-owned composition として許可。language 以外の props、任意 scope、IPC callback を設定 Pack に渡さない。mutable autonomy API は SDK に昇格しない |
 | `src/i18n/strings` | app 固有 settings / recovery 文言 | system content。汎用 SDK にしない |
 | `src/runtime/history/describe-snapshot` | app 固有の snapshot 表示文言 | system presentation。history 操作自体は `ctx.history` へ公開 |
 | `src/runtime/language/language` | app language の optimistic UI 解決 | system presentation helper。設定値の正本は `ctx.app.getConfig()` / `setLanguage()` |
@@ -61,6 +62,31 @@ supported API contract である。community 配布や隔離済み UI Pack を�
 manifest permission、host-side gate、audit、rate limit、user approval を実装する必要がある。
 特に `openExternal` の HTTPS validator は `ctx.app` 経路だけの contract であり、same-realm
 code から raw Tauri opener / IPC へ到達できる現状の authority を狭めるものではない。
+
+### 4. 自動作業の設定 widget（2026-10-24 の追加監査）
+
+ユーザーの「設定画面から自動作業を On/Off する」操作は、host 所有の
+`AutonomySettings` を同梱設定画面へ組み込んで提供する。今回追加する internal import は
+この一つに限定し、設定 Pack の raw `invoke` command allowlist は変更しない。
+
+- component の props は表示言語のみ。設定 Pack は目的・対象フォルダ・許可操作や
+  書き込み callback を渡さず、`runtime/autonomy/client` を直接 import しない。
+- Off は進行中と将来の自動実行を停止する。On は host が保持する既存の合意を原子的に
+  有効化し、UI が読んだ古い scope を書き戻さない。未合意なら設定 dialog を開くだけである。
+- dialog を開く UI event に権限はなく、範囲の作成・変更は host dialog 内の明示操作に残す。
+- mount / status read は新たな合意を作らない。以前に有効化された作業の tick は、
+  host の既存契約・予算・同時実行制御を通る。
+
+この機能を一般 SDK の `setEnabled` や scope 更新 API にすると、任意 Pack に背景作業の
+開始や許可範囲変更の入口を渡すことになる。Pack ごとの permission / approval 設計がない
+現在は昇格せず、app と同じ review・release 単位の widget に閉じる。
+これは上記と同じ supported authoring boundary であり、same-realm の悪意ある code を
+隔離する sandbox ではない。`RestoreConfirmDialog` を一般公開しない既存判断も変更しない。
+
+conformance test は唯一の component import を名前で固定し、raw IPC allowlist と public SDK
+への未公開を検査する。widget の動作 test では、未合意の On が実行を開始しないこと、
+Off が停止を呼ぶこと、既存 scope の On が toggle だけを送ること、失敗を On/Off の成功と
+表示しないことを確認する。
 
 ## なぜそう決めたか
 
@@ -111,5 +137,6 @@ external link、既に確認 UX を内蔵する history は host-mediated capabi
 
 ## 改訂履歴
 
+- 2026-10-24: 自動作業 On/Off 用 `AutonomySettings` だけを host-owned widget として追加監査。raw IPC allowlist と通常 Pack の公開面は維持。
 - 2026-08-12: Fable review を反映。same-realm では SDK validation が sandbox/enforcement ではないこと、文書化だけの最小案を採らなかった理由、opener narrow 化の follow-up を明記。
 - 2026-08-12: 初版。settings の privileged/internal import を監査し、app version、制約付き HTTPS open、HistoryAPI を public UI Pack capability として切り出した。

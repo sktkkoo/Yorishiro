@@ -1,0 +1,271 @@
+.autonomy-launcher {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--yorishiro-border, #555);
+  border-radius: 18px;
+  padding: 7px 12px;
+  color: var(--yorishiro-fg, #eee);
+  background: var(--yorishiro-panel-bg, #222);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.autonomy-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--yorishiro-fg-dim, #999);
+}
+
+.autonomy-dot-active {
+  background: #92c9a0;
+}
+
+.autonomy-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9500;
+  display: grid;
+  justify-items: end;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.autonomy-panel {
+  width: min(540px, 100%);
+  min-width: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 24px;
+  border: 1px solid var(--yorishiro-border, #555);
+  border-radius: 16px;
+  color: var(--yorishiro-fg, #eee);
+  background: var(--yorishiro-panel-bg, #222);
+  box-shadow: 0 16px 60px rgba(0, 0, 0, 0.35);
+  font-size: 13px;
+  line-height: 1.6;
+  text-align: left;
+}
+
+.autonomy-header,
+.autonomy-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.autonomy-panel h2,
+.autonomy-panel h3 {
+  margin: 0 0 8px;
+  font-weight: 600;
+}
+
+.autonomy-panel h2 {
+  font-size: 20px;
+}
+.autonomy-panel h3 {
+  font-size: 14px;
+}
+.autonomy-panel p {
+  margin: 8px 0;
+}
+
+.autonomy-panel button {
+  padding: 7px 11px;
+  border: 1px solid var(--yorishiro-border, #555);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.autonomy-panel button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.autonomy-panel button:hover:not(:disabled) {
+  background: rgba(128, 128, 128, 0.15);
+}
+.autonomy-panel :focus-visible {
+  outline: 2px solid var(--yorishiro-fg, #eee);
+  outline-offset: 3px;
+}
+
+.autonomy-panel section,
+.autonomy-scope {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid var(--yorishiro-border, #555);
+}
+
+.autonomy-muted {
+  color: var(--yorishiro-fg-dim, #bbb);
+  font-size: 12px;
+}
+.autonomy-field {
+  display: grid;
+  gap: 6px;
+  margin: 12px 0;
+}
+.autonomy-field button {
+  justify-self: start;
+}
+
+.autonomy-field textarea,
+.autonomy-field input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--yorishiro-border, #555);
+  border-radius: 6px;
+  padding: 8px;
+  background: rgba(128, 128, 128, 0.08);
+  color: inherit;
+  font: inherit;
+}
+
+.autonomy-field textarea {
+  resize: vertical;
+  min-height: 60px;
+}
+.autonomy-path,
+.autonomy-history li {
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+.autonomy-panel fieldset {
+  border: 0;
+  padding: 0;
+  margin: 16px 0;
+}
+.autonomy-panel legend {
+  margin-bottom: 6px;
+}
+.autonomy-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0;
+}
+.autonomy-numbers {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.autonomy-panel .autonomy-primary {
+  margin-top: 8px;
+  border-color: currentColor;
+}
+
+.autonomy-conversation-actions {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.autonomy-draft-summary {
+  display: grid;
+  grid-template-columns: 90px minmax(0, 1fr);
+  gap: 10px 16px;
+  padding: 14px;
+  border-radius: 8px;
+  background: rgba(128, 128, 128, 0.08);
+}
+.autonomy-draft-summary dt {
+  color: var(--yorishiro-fg-dim, #bbb);
+}
+.autonomy-draft-summary dd {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.autonomy-draft-explanation {
+  white-space: pre-wrap;
+}
+.autonomy-draft-adjustments {
+  margin: 14px 0;
+}
+.autonomy-draft-adjustments summary {
+  cursor: pointer;
+  color: var(--yorishiro-fg-dim, #bbb);
+}
+.autonomy-message {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  padding: 10px;
+  border-radius: 8px;
+  background: rgba(128, 128, 128, 0.08);
+}
+.autonomy-message-user {
+  margin-left: 24px !important;
+}
+.autonomy-message strong {
+  font-size: 11px;
+  color: var(--yorishiro-fg-dim, #bbb);
+}
+.autonomy-history article {
+  margin: 16px 0;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--yorishiro-border, #555);
+}
+.autonomy-error {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: #f6aaa4;
+}
+
+.autonomy-settings {
+  margin-top: 24px;
+}
+.autonomy-settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.autonomy-settings-toggle {
+  min-width: 54px;
+  padding: 5px 10px;
+  border: 1px solid var(--yorishiro-border, #555);
+  border-radius: 14px;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+.autonomy-settings-toggle[aria-checked="true"] {
+  background: rgba(100, 170, 130, 0.22);
+}
+.autonomy-settings-toggle:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.autonomy-settings-configure {
+  border: 0;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.autonomy-settings :focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 3px;
+}
+
+@media (max-width: 600px) {
+  .autonomy-overlay {
+    padding: 8px;
+  }
+  .autonomy-panel {
+    box-sizing: border-box;
+    padding: 16px;
+  }
+}

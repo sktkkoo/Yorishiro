@@ -39,6 +39,7 @@ import {
 import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactDOM from "react-dom/client";
+import { AutonomySettings } from "../../../src/components/AutonomySettings";
 import { changeStrings, getStrings, type UiStrings } from "../../../src/i18n/strings";
 import { buildRestoreRows } from "../../../src/runtime/history/describe-snapshot";
 import { getBrowserLocales, resolveLanguage } from "../../../src/runtime/language/language";
@@ -4810,6 +4811,8 @@ export function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
             <Toggle checked={voiceFrequency === "on"} onChange={onVoiceToggle} />
           </div>
         </div>
+
+        <AutonomySettings language={resolvedLanguage} />
 
         {/* 24px gap */}
         <div style={{ height: "24px" }} />

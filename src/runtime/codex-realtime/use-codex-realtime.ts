@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { LipSyncSource } from "../../core/body";
 import type { StateExpressionSchedulerCallbacks } from "../agent-state-expression";
+import type { AutonomyWorkReviewNotice } from "../autonomy/voice-setup";
 import {
   CodexRealtimeClient,
   type CodexRealtimePersonaApplication,
@@ -25,6 +26,8 @@ export interface CodexRealtimeClientLike extends LipSyncSource {
   setMicrophoneMuted(muted: boolean): void;
   notifyScreenContext?(capturedAt: string, availability?: ScreenPointerAvailability): Promise<void>;
   notifyScreenPointersEnabled?(enabled: boolean): Promise<void>;
+  requestAutonomySetup?(): Promise<void>;
+  notifyAutonomyWorkReview?(review: AutonomyWorkReviewNotice): Promise<void>;
 }
 
 export type CodexRealtimeClientFactory = (
@@ -124,6 +127,8 @@ interface UseCodexRealtimeResult {
   readonly state: CodexRealtimeState;
   readonly stop: () => void;
   readonly toggle: () => Promise<void>;
+  readonly requestAutonomySetup: () => Promise<void>;
+  readonly notifyAutonomyWorkReview: (review: AutonomyWorkReviewNotice) => Promise<void>;
   readonly setMicrophoneMuted: (muted: boolean) => void;
   readonly trackQuickChatPrompt: (prompt: string) => Promise<string | null>;
   readonly getLipSyncSource: () => LipSyncSource;
@@ -590,8 +595,41 @@ export function useCodexRealtime({
     await start();
   }, [start, stop]);
 
+  const requestAutonomySetup = useCallback(async () => {
+    if (!available) {
+      throw new Error(
+        "音声での相談にはCodexの音声会話が必要です。Codexへ切り替えるか、文字で相談してください。",
+      );
+    }
+    // Never toggle an existing session: that would stop an ongoing conversation.
+    if (!clientRef.current) await start();
+    if (sessionIdRef.current !== sessionId) {
+      throw new Error("相談の準備中に会話が切り替わりました。もう一度お試しください。");
+    }
+    const client = clientRef.current;
+    if (!client || client.getStatus() !== "active") {
+      throw new Error(
+        "音声会話の接続が完了していません。音声接続とマイクの許可を確認して、もう一度お試しください。",
+      );
+    }
+    if (!client.requestAutonomySetup) {
+      throw new Error("この音声接続は設定の相談に対応していません。文字で相談してください。");
+    }
+    await client.requestAutonomySetup();
+    if (clientRef.current !== client || client.getStatus() !== "active") {
+      throw new Error("相談中に音声会話が切り替わりました。もう一度お試しください。");
+    }
+  }, [available, sessionId, start]);
+
   const setMicrophoneMuted = useCallback((muted: boolean) => {
     clientRef.current?.setMicrophoneMuted(muted);
+  }, []);
+
+  const notifyAutonomyWorkReview = useCallback(async (review: AutonomyWorkReviewNotice) => {
+    const client = clientRef.current;
+    // Background proposals never start microphone capture or reconnect voice.
+    if (client?.getStatus() !== "active") return;
+    await client.notifyAutonomyWorkReview?.(review);
   }, []);
 
   useEffect(() => {
@@ -763,6 +801,8 @@ export function useCodexRealtime({
     state,
     stop,
     toggle,
+    requestAutonomySetup,
+    notifyAutonomyWorkReview,
     setMicrophoneMuted,
     trackQuickChatPrompt,
     getLipSyncSource,

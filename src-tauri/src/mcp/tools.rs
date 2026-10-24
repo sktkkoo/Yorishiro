@@ -15,7 +15,7 @@ use rmcp::{
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 
 use crate::mcp::server::emit_tool_event;
 use crate::mcp::types::{ListLoadErrorsResponse, LoadError};
@@ -502,6 +502,36 @@ impl Yorishiro {
 
 #[tool_router]
 impl Yorishiro {
+    /// Conversation setup reads only the current scope and inactive proposal.
+    #[tool(
+        description = "Read Yorishiro's current autonomous-work scope and inactive setup draft before discussing setup with the user in the current voice/text conversation. Discuss the enduring purpose, document folder, reversible operations, schedule, and whether to discuss today's concrete work before execution. Enduring permission and daily task approval are separate. This tool does not read document contents or start work."
+    )]
+    async fn autonomy_setup_context(
+        &self,
+        _params: Parameters<crate::autonomy::draft::AutonomySetupContextRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let state = self
+            .app_handle
+            .try_state::<crate::autonomy::AutonomyState>()
+            .ok_or_else(|| McpError::internal_error("Autonomy state is unavailable", None))?;
+        let context = crate::autonomy::draft::setup_context(&state)
+            .map_err(|e| McpError::internal_error(e, None))?;
+        Ok(CallToolResult::success(vec![Content::json(context)?]))
+    }
+
+    /// A proposal can update the review card, never the execution contract.
+    #[tool(
+        description = "Prepare an INACTIVE autonomous-work setup draft from the user's current voice/text conversation and show it for review in Yorishiro. First discuss the enduring goal, one existing document folder, reversible operations (write/move/trash), interval (5–1440 minutes), rolling daily run limit (1–48), and reviewMode (daily or automatic). daily means discuss today's specific work and wait for explicit user confirmation before execution; default daily. Keep the enduring goal distinct from today's task. Leave root empty when the user has not selected an exact folder. This tool never grants permissions, enables work, approves a daily task, sends anything, or executes file changes. The user must review and confirm the draft in the app. Do not claim the proposal is already active."
+    )]
+    async fn autonomy_propose(
+        &self,
+        Parameters(proposal): Parameters<crate::autonomy::draft::AutonomyProposal>,
+    ) -> Result<CallToolResult, McpError> {
+        let receipt = crate::autonomy::draft::propose(proposal)
+            .map_err(|e| McpError::invalid_params(e, None))?;
+        Ok(CallToolResult::success(vec![Content::json(receipt)?]))
+    }
+
     /// list_load_errors: Rust 側完結。~/.yorishiro/last-startup.json を読んで
     /// `status == "failed"` の entries を JSON で返す。
     #[tool(description = "List user packs that failed to load on last startup")]
@@ -1297,6 +1327,7 @@ const SERVER_INSTRUCTIONS: &str = concat!(
                 "## ツール選択ガイド\n",
                 "- 声に出す → voice_say。発話するかどうかは system prompt の Voice セクションに従う\n",
                 "- 現在の状態確認 → state_get\n",
+                "- おまかせ作業の設定を相談する → autonomy_setup_context で現在の範囲を確認し、継続的な目的・フォルダ・操作・頻度・毎日の相談有無を話し合う。設定案は autonomy_propose で画面へ渡す（提案のみ。保存・開始・当日の承認はユーザーが画面で行う）。継続的な許可範囲と今日の具体的な仕事は区別する\n",
                 "- ユーザーが terminal 上で指し示したテキストを読む → terminal_context_get（Cmd+Shift+click で行、Option+Shift+drag で矩形。メッセージに [#TermN] マーカーがあればここで解決する）\n",
                 "- 直近の terminal command run metadata を読む → terminal_runs_recent（output text は返らない。referenceIds がある場合だけ terminal_context_get で user gesture 済み context を解決できる）\n",
                 "- 照明・カメラ等のパラメータ確認 → controls_get（scene pack 依存のパスを確認）\n",
@@ -1437,6 +1468,27 @@ mod tests {
         let _ = fs::remove_dir_all(&tmp);
         fs::create_dir_all(tmp.join(".yorishiro")).expect("mkdir");
         tmp
+    }
+
+    #[test]
+    fn autonomy_mcp_surface_can_propose_but_cannot_activate_or_approve() {
+        let tools = Yorishiro::tool_router().list_all();
+        let names: Vec<_> = tools.iter().map(|tool| tool.name.as_ref()).collect();
+        assert!(names.contains(&"autonomy_setup_context"));
+        assert!(names.contains(&"autonomy_propose"));
+        for forbidden in [
+            "autonomy_save",
+            "autonomy_run",
+            "autonomy_tick",
+            "autonomy_approve_day",
+            "autonomy_resume",
+            "autonomy_apply",
+        ] {
+            assert!(!names.contains(&forbidden));
+        }
+        assert!(SERVER_INSTRUCTIONS.contains("autonomy_setup_context"));
+        assert!(SERVER_INSTRUCTIONS.contains("autonomy_propose"));
+        assert!(SERVER_INSTRUCTIONS.contains("当日の承認はユーザーが画面で行う"));
     }
 
     /// 住人 AI は instructions のツール選択ガイドを頼りに tool を探すため、
