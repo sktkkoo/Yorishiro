@@ -110,6 +110,21 @@ afterEach(() => {
 });
 
 describe("AutonomyPanel", () => {
+  it("keeps stop visibly pending and prevents another run until teardown finishes", () => {
+    vi.mocked(useAutonomyStatus).mockReturnValue(
+      status({ contract: { ...contract, enabled: false }, phase: "stopping" }),
+    );
+    openPanel();
+    expect(screen.getByText("作業プロセスの終了を待っています")).toBeTruthy();
+    expect(
+      (screen.getByRole("button", { name: "今すぐ進める" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect((screen.getByRole("button", { name: "一時停止" }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+    expect(screen.queryByText("一時停止中")).toBeNull();
+  });
+
   it("keeps old saved scopes unchanged while showing one objective and scope flow", () => {
     vi.mocked(useAutonomyStatus).mockReturnValue(
       status({

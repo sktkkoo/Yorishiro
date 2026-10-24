@@ -7,6 +7,7 @@ mod development;
 pub(crate) mod draft;
 mod files;
 mod policy;
+mod process_supervisor;
 // Retained for a future concrete-action confirmation flow. Unified work never
 // calls publishing automatically or treats local scope as permission to send.
 #[allow(dead_code)]
@@ -139,6 +140,12 @@ struct Runtime {
     cancel: Option<CancellationToken>,
     consulting: Option<Consultation>,
     active_run_id: Option<String>,
+    // Transient process-supervision diagnostic, tracked separately so its
+    // acknowledgment never clears an unrelated operation/persistence error.
+    cleanup_error: Option<String>,
+    cleanup_pending: bool,
+    cleanup_phase: Option<String>,
+    deferred_finish: Option<DeferredFinish>,
     #[cfg(test)]
     storage_root: Option<PathBuf>,
 }
@@ -146,6 +153,14 @@ struct Runtime {
 struct Consultation {
     id: String,
     cancel: CancellationToken,
+    guard_dropped: bool,
+}
+
+struct DeferredFinish {
+    id: String,
+    revision: u64,
+    cancel: CancellationToken,
+    result: Result<Plan, String>,
 }
 
 #[derive(Clone, Default)]
@@ -283,7 +298,7 @@ fn load_status_at(dir: &Path, now: u64) -> Result<(Status, bool), String> {
     }
     validate_daily_state(&status)?;
     let interrupted = status.runs.iter().any(|run| run.status == "running")
-        || ["thinking", "applying"].contains(&status.phase.as_str());
+        || ["thinking", "applying", "stopping"].contains(&status.phase.as_str());
     let invalid_contract = status
         .contract
         .as_ref()
@@ -293,6 +308,7 @@ fn load_status_at(dir: &Path, now: u64) -> Result<(Status, bool), String> {
         "paused",
         "thinking",
         "applying",
+        "stopping",
         "failed",
         "completed",
         "blocked",
@@ -420,6 +436,151 @@ fn cancel_active(runtime: &mut Runtime) {
     runtime.revision = runtime.revision.wrapping_add(1);
     runtime.status.pending_work = None;
     runtime.status.daily_work = None;
+    if runtime.cancel.is_some() || runtime.consulting.is_some() {
+        runtime.status.phase = "stopping".into();
+    }
+}
+
+/// An occupied slot remains owned until its worker has acknowledged teardown.
+/// Changing the desired enabled state must not claim that shutdown finished.
+fn desired_phase(runtime: &Runtime, enabled: bool) -> &'static str {
+    if runtime.cancel.is_some() || runtime.consulting.is_some() {
+        "stopping"
+    } else if enabled {
+        "idle"
+    } else {
+        "paused"
+    }
+}
+
+fn settle_stopping(runtime: &mut Runtime) -> bool {
+    if runtime.status.phase != "stopping"
+        || runtime.cancel.is_some()
+        || runtime.consulting.is_some()
+    {
+        return false;
+    }
+    runtime.status.phase = desired_phase(
+        runtime,
+        runtime
+            .status
+            .contract
+            .as_ref()
+            .is_some_and(|scope| scope.enabled),
+    )
+    .into();
+    true
+}
+
+enum CleanupOwner {
+    Run(String),
+    Consultation(String),
+}
+
+fn cleanup_observer(
+    state: &AutonomyState,
+    owner: CleanupOwner,
+) -> Arc<dyn Fn(process_supervisor::CleanupProgress) + Send + Sync> {
+    let state = state.clone();
+    Arc::new(move |notice| {
+        use process_supervisor::CleanupProgress;
+        let Ok(mut runtime) = state.0.lock() else {
+            return;
+        };
+        let owns_slot = match &owner {
+            CleanupOwner::Run(id) => runtime.active_run_id.as_ref() == Some(id),
+            CleanupOwner::Consultation(id) => runtime
+                .consulting
+                .as_ref()
+                .is_some_and(|consult| &consult.id == id),
+        };
+        if !owns_slot {
+            return;
+        }
+        let mut deferred_finish = None;
+        if !matches!(notice, CleanupProgress::Complete) {
+            if !runtime.cleanup_pending && runtime.status.phase != "stopping" {
+                runtime.cleanup_phase = Some(runtime.status.phase.clone());
+            }
+            runtime.cleanup_pending = true;
+            // Waiting for natural completion is not cancellation. Do not
+            // change scope revision or cancel a successful worker here.
+            runtime.status.phase = "stopping".into();
+        }
+        match notice {
+            CleanupProgress::Pending => (),
+            CleanupProgress::Blocked(message) => {
+                // Supervisor diagnostics are sanitized, never command output
+                // or environment contents. Bound even these printable notices.
+                let next = format!(
+                    "作業プロセスの終了を確認できません。新しい作業は開始せず、終了確認を続けています。権限や実行中のプロセスを確認してください。{}",
+                    message.chars().filter(|character| !character.is_control()).take(500).collect::<String>()
+                );
+                let previous = runtime.cleanup_error.replace(next.clone());
+                if runtime.status.error.is_none()
+                    || (previous.is_some() && runtime.status.error == previous)
+                {
+                    runtime.status.error = Some(next);
+                }
+            }
+            CleanupProgress::Complete => {
+                runtime.cleanup_pending = false;
+                let previous_error = runtime.cleanup_error.take();
+                if previous_error.is_some() && runtime.status.error == previous_error {
+                    runtime.status.error = None;
+                }
+                let previous_phase = runtime.cleanup_phase.take();
+                let cancelled = runtime
+                    .cancel
+                    .as_ref()
+                    .is_some_and(CancellationToken::is_cancelled)
+                    || runtime
+                        .consulting
+                        .as_ref()
+                        .is_some_and(|consult| consult.cancel.is_cancelled());
+                if !cancelled && runtime.status.phase == "stopping" {
+                    if let Some(phase) = previous_phase {
+                        runtime.status.phase = phase;
+                    }
+                }
+                let deferred_drop = matches!(&owner, CleanupOwner::Consultation(_))
+                    && runtime
+                        .consulting
+                        .as_ref()
+                        .is_some_and(|consult| consult.guard_dropped);
+                if deferred_drop {
+                    runtime.consulting = None;
+                    if settle_stopping(&mut runtime) {
+                        persist_consultation_stop(&mut runtime);
+                    }
+                }
+                if matches!(&owner, CleanupOwner::Run(_)) {
+                    deferred_finish = runtime.deferred_finish.take();
+                }
+            }
+        }
+        drop(runtime);
+        if let Some(deferred) = deferred_finish {
+            finish(
+                &state,
+                &deferred.id,
+                deferred.revision,
+                &deferred.cancel,
+                deferred.result,
+            );
+        }
+    })
+}
+
+fn persist_consultation_stop(runtime: &mut Runtime) {
+    if let Err(error) = persist(runtime) {
+        if let Some(scope) = runtime.status.contract.as_mut() {
+            scope.enabled = false;
+        }
+        runtime.status.next_run_at = None;
+        runtime.status.phase = "failed".into();
+        runtime.status.error = Some(format!("相談の停止状態を保存できませんでした: {error}"));
+    }
 }
 
 fn authorized_result(
@@ -540,11 +701,15 @@ fn save_contract(state: &AutonomyState, mut contract: Contract) -> Result<(), St
     let mut runtime = lock(state)?;
     let mut next = runtime.status.clone();
     next.next_run_at = contract.enabled.then_some(clock_ms());
-    next.phase = if contract.enabled { "idle" } else { "paused" }.into();
+    next.phase = desired_phase(&runtime, contract.enabled).into();
     next.contract = Some(contract);
     next.pending_work = None;
     next.daily_work = None;
-    next.error = None;
+    next.error = if next.phase == "stopping" {
+        runtime.status.error.clone()
+    } else {
+        None
+    };
     // A failed save must not cancel the previously valid delegation.
     persist_at(&storage_dir(&runtime)?, &next)?;
     cancel_active(&mut runtime);
@@ -570,8 +735,12 @@ fn set_enabled(
         contract.enabled = enabled;
     }
     next.next_run_at = enabled.then_some(now);
-    next.phase = if enabled { "idle" } else { "paused" }.into();
-    next.error = None;
+    next.phase = desired_phase(runtime, enabled).into();
+    next.error = if next.phase == "stopping" {
+        runtime.status.error.clone()
+    } else {
+        None
+    };
     next.pending_work = None;
     next.daily_work = None;
     if enabled {
@@ -727,7 +896,12 @@ fn start(state: &AutonomyState, manual: bool) -> Result<(), String> {
     };
     let owned = state.clone();
     tauri::async_runtime::spawn(async move {
-        let result = execute(&owned, &contract, &id, revision, &cancel, &recent).await;
+        let observer = cleanup_observer(&owned, CleanupOwner::Run(id.clone()));
+        let result = process_supervisor::observe_cleanup(
+            observer,
+            execute(&owned, &contract, &id, revision, &cancel, &recent),
+        )
+        .await;
         finish(&owned, &id, revision, &cancel, result);
     });
     Ok(())
@@ -1124,6 +1298,18 @@ fn finish(
     if runtime.active_run_id.as_deref() != Some(id) {
         return;
     }
+    if runtime.cleanup_pending {
+        // A dropped/early-returning capture can signal cleanup independently.
+        // A result is not teardown acknowledgment; only Complete releases it.
+        runtime.deferred_finish = Some(DeferredFinish {
+            id: id.to_owned(),
+            revision,
+            cancel: cancel.clone(),
+            result,
+        });
+        runtime.status.phase = "stopping".into();
+        return;
+    }
     runtime.active_run_id = None;
     runtime.cancel = None;
     let current = runtime.revision == revision;
@@ -1266,6 +1452,7 @@ fn finish(
         .into();
         runtime.status.error = if stopped { None } else { error };
     }
+    settle_stopping(&mut runtime);
     if let Err(error) = persist(&runtime) {
         if let Some(contract) = runtime.status.contract.as_mut() {
             contract.enabled = false;
@@ -1502,7 +1689,17 @@ impl Drop for ConsultGuard {
                 .as_ref()
                 .is_some_and(|consultation| consultation.id == self.id)
             {
+                if runtime.cleanup_pending {
+                    // Supervisor Drop synchronously reports Pending before the
+                    // outer future drops this guard. Keep ownership until ack.
+                    runtime.consulting.as_mut().unwrap().guard_dropped = true;
+                    runtime.status.phase = "stopping".into();
+                    return;
+                }
                 runtime.consulting = None;
+                if settle_stopping(&mut runtime) {
+                    persist_consultation_stop(&mut runtime);
+                }
             }
         }
     }
@@ -1518,6 +1715,7 @@ fn begin_consult(state: &AutonomyState) -> Result<(ConsultGuard, u64), String> {
     runtime.consulting = Some(Consultation {
         id: id.clone(),
         cancel: cancel.clone(),
+        guard_dropped: false,
     });
     Ok((
         ConsultGuard {
@@ -1557,7 +1755,12 @@ pub async fn autonomy_consult(
         "suggestedRoot":{"type":"string"},"suggestedIntervalMinutes":{"type":"integer","minimum":5,"maximum":1440},
         "suggestedMaxRunsPerDay":{"type":"integer","minimum":1,"maximum":48},"suggestedReviewMode":{"enum":["automatic","daily"]}
     },"required":["reply","suggestedGoal","suggestedOperations","suggestedRoot","suggestedIntervalMinutes","suggestedMaxRunsPerDay","suggestedReviewMode"]});
-    let response = worker::run(prompt, schema, guard.cancel.clone()).await?;
+    let observer = cleanup_observer(&state, CleanupOwner::Consultation(guard.id.clone()));
+    let response = process_supervisor::observe_cleanup(
+        observer,
+        worker::run(prompt, schema, guard.cancel.clone()),
+    )
+    .await?;
     let reply = validate_setup_reply(response)?;
     let proposal = setup_proposal(&reply)?;
     let result = {
@@ -2302,9 +2505,11 @@ mod tests {
         runtime.consulting = Some(Consultation {
             id: "consult".into(),
             cancel: token.clone(),
+            guard_dropped: false,
         });
         set_enabled(&mut runtime, false, 200, |_| Ok(())).unwrap();
         assert!(token.is_cancelled());
+        assert_eq!(runtime.status.phase, "stopping");
         assert!(!runtime.status.contract.as_ref().unwrap().enabled);
         assert_eq!(runtime.status.next_run_at, None);
         runtime.consulting = None;
@@ -2395,6 +2600,317 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn stop_keeps_claim_occupied_until_teardown_ack_and_rejects_late_writes() {
+        let (_directory, state, workspace, store) = integration_fixture();
+        let (contract, id, revision, cancel, _) = fixture_claim(&state, &store);
+        let before = files::snapshot(&workspace).unwrap();
+        {
+            let mut runtime = lock(&state).unwrap();
+            set_enabled(&mut runtime, false, clock_ms(), |status| {
+                persist_at(&store, status)
+            })
+            .unwrap();
+            assert_eq!(runtime.status.phase, "stopping");
+            assert!(runtime.cancel.is_some());
+            assert_eq!(runtime.status.runs[0].status, "running");
+            assert!(
+                claim_due(&mut runtime, false, clock_ms(), |_| panic!("overlap"))
+                    .unwrap()
+                    .is_none()
+            );
+            assert!(claim_due(&mut runtime, true, clock_ms(), |_| panic!("overlap")).is_err());
+        }
+        let late = apply_plan(
+            &state,
+            &contract,
+            &id,
+            revision,
+            &cancel,
+            before,
+            summary_plan(),
+        )
+        .await;
+        assert!(late.is_err());
+        assert!(!workspace.join("summary.md").exists());
+        // execute returns only after process supervision acknowledges teardown.
+        finish(&state, &id, revision, &cancel, late);
+        let runtime = lock(&state).unwrap();
+        assert_eq!(runtime.status.phase, "paused");
+        assert_eq!(runtime.status.runs[0].status, "cancelled");
+        assert!(runtime.cancel.is_none());
+        assert!(runtime.active_run_id.is_none());
+        assert!(!runtime.status.contract.as_ref().unwrap().enabled);
+    }
+
+    #[test]
+    fn on_or_new_scope_waits_for_old_teardown_before_becoming_idle() {
+        for save_new_scope in [false, true] {
+            let (_directory, state, _workspace, store) = integration_fixture();
+            let (_, id, revision, cancel, _) = fixture_claim(&state, &store);
+            {
+                let mut runtime = lock(&state).unwrap();
+                set_enabled(&mut runtime, false, clock_ms(), |status| {
+                    persist_at(&store, status)
+                })
+                .unwrap();
+            }
+            if save_new_scope {
+                let mut replacement = lock(&state).unwrap().status.contract.clone().unwrap();
+                replacement.goal = "New explicitly saved scope".into();
+                replacement.enabled = true;
+                save_contract(&state, replacement).unwrap();
+            } else {
+                set_enabled(&mut lock(&state).unwrap(), true, clock_ms(), |status| {
+                    persist_at(&store, status)
+                })
+                .unwrap();
+            }
+            {
+                let mut runtime = lock(&state).unwrap();
+                assert_eq!(runtime.status.phase, "stopping");
+                assert!(runtime.status.contract.as_ref().unwrap().enabled);
+                assert!(
+                    claim_due(&mut runtime, false, clock_ms(), |_| panic!("overlap"))
+                        .unwrap()
+                        .is_none()
+                );
+            }
+            finish(&state, &id, revision, &cancel, Ok(summary_plan()));
+            let mut runtime = lock(&state).unwrap();
+            assert_eq!(runtime.status.phase, "idle");
+            assert_eq!(runtime.status.runs[0].status, "cancelled");
+            assert!(runtime.status.contract.as_ref().unwrap().enabled);
+            assert!(
+                claim_due(&mut runtime, false, clock_ms(), |status| persist_at(
+                    &store, status
+                ))
+                .unwrap()
+                .is_some()
+            );
+        }
+    }
+
+    #[test]
+    fn consultation_stop_waits_for_guard_teardown_and_preserves_queued_enabled_choice() {
+        for enabled_after_stop in [false, true] {
+            let (_directory, state, _workspace, store) = integration_fixture();
+            let (guard, _) = begin_consult(&state).unwrap();
+            {
+                let mut runtime = lock(&state).unwrap();
+                set_enabled(&mut runtime, false, clock_ms(), |status| {
+                    persist_at(&store, status)
+                })
+                .unwrap();
+                assert_eq!(runtime.status.phase, "stopping");
+                assert!(runtime.consulting.is_some());
+                if enabled_after_stop {
+                    set_enabled(&mut runtime, true, clock_ms(), |status| {
+                        persist_at(&store, status)
+                    })
+                    .unwrap();
+                    assert_eq!(runtime.status.phase, "stopping");
+                }
+                assert!(
+                    claim_due(&mut runtime, false, clock_ms(), |_| panic!("overlap"))
+                        .unwrap()
+                        .is_none()
+                );
+            }
+            assert!(guard.cancel.is_cancelled());
+            drop(guard);
+            let runtime = lock(&state).unwrap();
+            assert!(runtime.consulting.is_none());
+            assert_eq!(
+                runtime.status.phase,
+                if enabled_after_stop { "idle" } else { "paused" }
+            );
+            let stored: Status =
+                serde_json::from_slice(&std::fs::read(store.join("state.json")).unwrap()).unwrap();
+            assert_eq!(stored.phase, runtime.status.phase);
+        }
+    }
+
+    #[test]
+    fn restarting_during_consultation_teardown_never_claims_shutdown_finished() {
+        let (_directory, state, _workspace, store) = integration_fixture();
+        let mut status = lock(&state).unwrap().status.clone();
+        status.phase = "stopping".into();
+        assert!(status.runs.is_empty());
+        persist_at(&store, &status).unwrap();
+        let (restored, recovered) = load_status_at(&store, clock_ms()).unwrap();
+        assert!(recovered);
+        assert_eq!(restored.phase, "paused");
+        assert!(!restored.contract.unwrap().enabled);
+        assert!(restored.error.is_some());
+        assert!(restored.next_run_at.is_none());
+    }
+
+    #[test]
+    fn cleanup_progress_waits_without_cancelling_success_and_ignores_stale_owners() {
+        use process_supervisor::CleanupProgress;
+        let (_directory, state, _workspace, store) = integration_fixture();
+        let (_, id, revision, cancel, _) = fixture_claim(&state, &store);
+        let stale = cleanup_observer(&state, CleanupOwner::Run("old-run".into()));
+        stale(CleanupProgress::Blocked("stale".into()));
+        assert_eq!(lock(&state).unwrap().status.phase, "thinking");
+        assert!(lock(&state).unwrap().status.error.is_none());
+        let observer = cleanup_observer(&state, CleanupOwner::Run(id.clone()));
+        observer(CleanupProgress::Pending);
+        {
+            let mut runtime = lock(&state).unwrap();
+            assert_eq!(runtime.status.phase, "stopping");
+            assert_eq!(runtime.revision, revision);
+            assert!(!cancel.is_cancelled());
+            assert!(runtime.cleanup_pending);
+            assert!(
+                claim_due(&mut runtime, false, clock_ms(), |_| panic!("overlap"))
+                    .unwrap()
+                    .is_none()
+            );
+        }
+        observer(CleanupProgress::Blocked(
+            "process enumeration unavailable".into(),
+        ));
+        assert!(lock(&state)
+            .unwrap()
+            .status
+            .error
+            .as_ref()
+            .unwrap()
+            .contains("process enumeration unavailable"));
+        stale(CleanupProgress::Complete);
+        assert!(lock(&state).unwrap().cleanup_pending);
+        observer(CleanupProgress::Complete);
+        {
+            let runtime = lock(&state).unwrap();
+            assert_eq!(runtime.status.phase, "thinking");
+            assert!(runtime.status.error.is_none());
+            assert!(authorized_result(&runtime, &id, revision, &cancel));
+        }
+        finish(&state, &id, revision, &cancel, Ok(summary_plan()));
+        assert_eq!(lock(&state).unwrap().status.phase, "completed");
+        assert_eq!(lock(&state).unwrap().status.runs[0].status, "completed");
+    }
+
+    #[test]
+    fn cleanup_diagnostic_preserves_unrelated_error_and_waits_after_off() {
+        use process_supervisor::CleanupProgress;
+        let (_directory, state, _workspace, store) = integration_fixture();
+        let (_, id, revision, cancel, _) = fixture_claim(&state, &store);
+        let observer = cleanup_observer(&state, CleanupOwner::Run(id.clone()));
+        lock(&state).unwrap().status.error = Some("unrelated persistence error".into());
+        observer(CleanupProgress::Pending);
+        observer(CleanupProgress::Blocked("permission denied".into()));
+        assert_eq!(
+            lock(&state).unwrap().status.error.as_deref(),
+            Some("unrelated persistence error")
+        );
+        observer(CleanupProgress::Complete);
+        assert_eq!(
+            lock(&state).unwrap().status.error.as_deref(),
+            Some("unrelated persistence error")
+        );
+        lock(&state).unwrap().status.error = None;
+        observer(CleanupProgress::Pending);
+        observer(CleanupProgress::Blocked("permission denied".into()));
+        let reported = lock(&state).unwrap().status.error.clone();
+        set_enabled(&mut lock(&state).unwrap(), false, clock_ms(), |status| {
+            persist_at(&store, status)
+        })
+        .unwrap();
+        assert_eq!(lock(&state).unwrap().status.error, reported);
+        observer(CleanupProgress::Complete);
+        {
+            let runtime = lock(&state).unwrap();
+            assert_eq!(runtime.status.phase, "stopping");
+            assert!(runtime.status.error.is_none());
+            assert!(runtime.cancel.is_some());
+        }
+        finish(
+            &state,
+            &id,
+            revision,
+            &cancel,
+            Err("cancelled after cleanup".into()),
+        );
+        assert_eq!(lock(&state).unwrap().status.phase, "paused");
+    }
+
+    #[test]
+    fn dropped_consultation_retains_slot_until_supervisor_complete() {
+        use process_supervisor::CleanupProgress;
+        let (_directory, state, _workspace, store) = integration_fixture();
+        let (guard, _) = begin_consult(&state).unwrap();
+        let observer = cleanup_observer(&state, CleanupOwner::Consultation(guard.id.clone()));
+        observer(CleanupProgress::Pending);
+        drop(guard);
+        {
+            let mut runtime = lock(&state).unwrap();
+            assert_eq!(runtime.status.phase, "stopping");
+            assert!(runtime.consulting.as_ref().unwrap().guard_dropped);
+            assert!(
+                claim_due(&mut runtime, false, clock_ms(), |_| panic!("overlap"))
+                    .unwrap()
+                    .is_none()
+            );
+        }
+        assert!(begin_consult(&state).is_err());
+        observer(CleanupProgress::Blocked("cleanup pending".into()));
+        assert!(lock(&state).unwrap().status.error.is_some());
+        observer(CleanupProgress::Complete);
+        {
+            let runtime = lock(&state).unwrap();
+            assert!(runtime.consulting.is_none());
+            assert_eq!(runtime.status.phase, "idle");
+            assert!(runtime.status.error.is_none());
+        }
+        let stored: Status =
+            serde_json::from_slice(&std::fs::read(store.join("state.json")).unwrap()).unwrap();
+        assert_eq!(stored.phase, "idle");
+        let (next_guard, _) = begin_consult(&state).unwrap();
+        observer(CleanupProgress::Blocked("late old observer".into()));
+        assert!(lock(&state).unwrap().status.error.is_none());
+        drop(next_guard);
+    }
+
+    #[test]
+    fn ordinary_error_return_does_not_release_run_before_cleanup_ack() {
+        use process_supervisor::CleanupProgress;
+        let (_directory, state, _workspace, store) = integration_fixture();
+        let (_, id, revision, cancel, _) = fixture_claim(&state, &store);
+        let observer = cleanup_observer(&state, CleanupOwner::Run(id.clone()));
+        observer(CleanupProgress::Pending);
+        finish(
+            &state,
+            &id,
+            revision,
+            &cancel,
+            Err("post-spawn failure".into()),
+        );
+        {
+            let mut runtime = lock(&state).unwrap();
+            assert_eq!(runtime.status.phase, "stopping");
+            assert_eq!(runtime.active_run_id.as_deref(), Some(id.as_str()));
+            assert!(runtime.deferred_finish.is_some());
+            assert!(
+                claim_due(&mut runtime, false, clock_ms(), |_| panic!("overlap"))
+                    .unwrap()
+                    .is_none()
+            );
+        }
+        observer(CleanupProgress::Blocked("child remains".into()));
+        assert_eq!(lock(&state).unwrap().status.runs[0].status, "running");
+        observer(CleanupProgress::Complete);
+        let runtime = lock(&state).unwrap();
+        assert!(runtime.cancel.is_none());
+        assert!(runtime.active_run_id.is_none());
+        assert!(runtime.deferred_finish.is_none());
+        assert_eq!(runtime.status.phase, "failed");
+        assert_eq!(runtime.status.runs[0].status, "failed");
+        assert_eq!(runtime.status.error.as_deref(), Some("post-spawn failure"));
+    }
+
     #[test]
     fn restart_never_replays_partial_work_and_disables_invalid_contracts() {
         let temp = tempfile::tempdir().unwrap();
@@ -2433,7 +2949,9 @@ mod tests {
     #[test]
     fn consultation_is_cancellable_releases_on_drop_and_grants_no_authority() {
         let temp = tempfile::tempdir().unwrap();
-        let state = AutonomyState(Arc::new(Mutex::new(configured(temp.path(), 100))));
+        let mut runtime = configured(temp.path(), 100);
+        runtime.storage_root = Some(temp.path().join("host-state"));
+        let state = AutonomyState(Arc::new(Mutex::new(runtime)));
         let before = serde_json::to_value(&state.0.lock().unwrap().status).unwrap();
         let (guard, _) = begin_consult(&state).unwrap();
         assert!(begin_consult(&state).is_err());

@@ -106,7 +106,9 @@ async function readStatus(): Promise<void> {
   } finally {
     polling = null;
     if (timer !== null) clearTimeout(timer);
-    timer = listeners.size ? setTimeout(() => void poll(), 15_000) : null;
+    timer = listeners.size
+      ? setTimeout(() => void poll(), snapshot?.phase === "stopping" ? 1_000 : 15_000)
+      : null;
   }
 }
 
@@ -201,13 +203,19 @@ export async function declinePendingWork(id: string): Promise<void> {
 }
 
 export async function setAutonomyEnabled(enabled: boolean): Promise<void> {
-  await invoke("autonomy_set_enabled", { enabled });
-  await refreshAfterAction();
+  try {
+    await invoke("autonomy_set_enabled", { enabled });
+  } finally {
+    await refreshAfterAction();
+  }
 }
 
 export async function pauseAutonomy(): Promise<void> {
-  await invoke("autonomy_pause");
-  await refreshAfterAction();
+  try {
+    await invoke("autonomy_pause");
+  } finally {
+    await refreshAfterAction();
+  }
 }
 
 export async function runAutonomyNow(): Promise<void> {

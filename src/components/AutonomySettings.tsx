@@ -11,6 +11,7 @@ const COPY = {
       "Onにすると、合意した範囲で自動的に作業します。Offにすると、進行中の作業と次回以降の自動実行を停止します。",
     setup: "初めて使うときは、AIと相談して任せる範囲を決めます。",
     loading: "読み込んでいます…",
+    stopping: "作業プロセスの終了を待っています。",
   },
   en: {
     label: "Automatic work",
@@ -19,6 +20,7 @@ const COPY = {
       "On starts work within your agreed scope. Off stops current work and future automatic runs.",
     setup: "First, discuss and agree on the scope with your AI.",
     loading: "Loading…",
+    stopping: "Waiting for work processes to exit.",
   },
 } as const;
 
@@ -65,6 +67,7 @@ export function AutonomySettings({ language }: { readonly language: "ja" | "en" 
         </button>
       </div>
       <p className="autonomy-muted">{status === null ? copy.loading : copy.description}</p>
+      {status?.phase === "stopping" && <p role="status">{copy.stopping}</p>}
       {!status?.contract && <p className="autonomy-muted">{copy.setup}</p>}
       <button type="button" onClick={requestAutonomySetup} className="autonomy-settings-configure">
         {copy.configure}

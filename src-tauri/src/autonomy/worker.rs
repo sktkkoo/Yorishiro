@@ -50,7 +50,7 @@ const REQUIRED_FLAGS: &[&str] = &[
 ];
 
 /// Probe CLI capabilities without making a model request.
-#[cfg(test)]
+#[cfg(all(test, target_os = "macos"))]
 pub async fn available() -> Result<(), String> {
     let binary = checked_binary()?;
     probe(&binary, CancellationToken::new()).await
@@ -231,19 +231,11 @@ enum Output {
 
 struct Process {
     child: Child,
-    #[cfg(unix)]
-    group: Option<u32>,
+    supervisor: super::process_supervisor::Supervisor,
 }
 
 impl Process {
     fn terminate(&mut self) {
-        #[cfg(unix)]
-        if let Some(id) = self.group.take() {
-            // The child is spawned in its own process group, never the app's.
-            unsafe {
-                libc::kill(-(id as i32), libc::SIGKILL);
-            }
-        }
         let _ = self.child.start_kill();
     }
 }
@@ -275,24 +267,25 @@ async fn capture(
         .kill_on_drop(true);
     #[cfg(unix)]
     command.process_group(0);
-    let child = command
-        .spawn()
-        .map_err(|_| "Could not start the Claude reasoning process.")?;
-    let mut process = Process {
-        #[cfg(unix)]
-        group: child.id(),
-        child,
+    let mut supervisor = super::process_supervisor::Supervisor::prepare(&mut command)?;
+    let child = match command.spawn() {
+        Ok(child) => child,
+        Err(_) => {
+            supervisor.finish().await;
+            return Err("Could not start the Claude reasoning process.".into());
+        }
     };
-    let stdout = process
-        .child
-        .stdout
-        .take()
-        .ok_or("Missing worker stdout.")?;
-    let stderr = process
-        .child
-        .stderr
-        .take()
-        .ok_or("Missing worker stderr.")?;
+    if let Some(pid) = child.id() {
+        supervisor.attach(pid);
+    }
+    let mut process = Process { supervisor, child };
+    let (Some(stdout), Some(stderr)) = (process.child.stdout.take(), process.child.stderr.take())
+    else {
+        process.terminate();
+        process.supervisor.finish().await;
+        let _ = process.child.wait().await;
+        return Err("Could not prepare worker output.".into());
+    };
     let stdin = process.child.stdin.take();
     let work = async {
         let write = async {
@@ -337,6 +330,7 @@ async fn capture(
         result = work => result,
     };
     process.terminate();
+    process.supervisor.finish().await;
     let _ = process.child.wait().await;
     result
 }
@@ -600,6 +594,7 @@ mod tests {
     use serde_json::json;
 
     /// Explicit opt-in only: uses the installed CLI's authenticated model.
+    #[cfg(target_os = "macos")]
     #[tokio::test]
     #[ignore = "requires an authenticated Claude CLI and makes one model request"]
     async fn live_tool_free_cli_returns_structured_output() {
@@ -789,7 +784,7 @@ mod tests {
         assert!(read_stdout(&b"not-json\n"[..], true).await.is_err());
     }
 
-    #[cfg(unix)]
+    #[cfg(target_os = "macos")]
     #[tokio::test]
     async fn cancellation_and_timeout_terminate_and_reap_processes() {
         let directory = tempfile::tempdir().unwrap();

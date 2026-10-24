@@ -33,6 +33,7 @@ const PHASE_LABELS = {
   idle: "次の作業を待っています",
   thinking: "目的に沿って次の仕事を考えています",
   applying: "復元できる状態を確保して変更しています",
+  stopping: "作業プロセスの終了を待っています",
   paused: "一時停止中",
   failed: "作業を停止しました",
   completed: "今回の作業が終わりました",
@@ -130,6 +131,7 @@ export function AutonomyPanel() {
   const titleId = useId();
   const saveHintId = useId();
   const working = status?.phase === "thinking" || status?.phase === "applying";
+  const stopping = status?.phase === "stopping";
 
   useEffect(() => {
     if (!visible) return;
@@ -267,7 +269,7 @@ export function AutonomyPanel() {
       >
         <span
           aria-hidden="true"
-          className={working ? "autonomy-dot autonomy-dot-active" : "autonomy-dot"}
+          className={working || stopping ? "autonomy-dot autonomy-dot-active" : "autonomy-dot"}
         />
         {status?.pendingWork ? "今日の仕事を相談" : "おまかせ作業"}
       </button>
@@ -341,7 +343,9 @@ export function AutonomyPanel() {
                             <span
                               aria-hidden="true"
                               className={
-                                working ? "autonomy-dot autonomy-dot-active" : "autonomy-dot"
+                                working || stopping
+                                  ? "autonomy-dot autonomy-dot-active"
+                                  : "autonomy-dot"
                               }
                             />
                             {working
@@ -361,16 +365,18 @@ export function AutonomyPanel() {
                         <div className="autonomy-actions">
                           <button
                             type="button"
-                            disabled={(!status.contract.enabled && !working) || busy === "pause"}
-                            onClick={() =>
-                              void act("pause", pauseAutonomy, "作業を一時停止しました。")
+                            disabled={
+                              stopping || (!status.contract.enabled && !working) || busy === "pause"
                             }
+                            onClick={() => void act("pause", pauseAutonomy)}
                           >
                             一時停止
                           </button>
                           <button
                             type="button"
-                            disabled={working || busy !== null || status.pendingWork != null}
+                            disabled={
+                              working || stopping || busy !== null || status.pendingWork != null
+                            }
                             onClick={() => void act("run", runAutonomyNow)}
                           >
                             今すぐ進める

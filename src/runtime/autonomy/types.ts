@@ -80,6 +80,7 @@ export interface AutonomyStatus {
     | "idle"
     | "thinking"
     | "applying"
+    | "stopping"
     | "paused"
     | "failed"
     | "completed"

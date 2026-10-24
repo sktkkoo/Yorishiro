@@ -88,8 +88,8 @@ pub async fn run(
     goal: String,
     cancel: CancellationToken,
 ) -> Result<DevelopmentResult, String> {
-    if !cfg!(unix) {
-        return Err("開発のおまかせ作業は現在macOS/Linuxのみ対応しています".into());
+    if !cfg!(target_os = "macos") {
+        return Err("子プロセスまで確認して停止する開発作業は、現在macOSのみ対応しています".into());
     }
     if cancel.is_cancelled() {
         return Err("開発作業を停止しました".into());
@@ -390,6 +390,9 @@ fn profile_config(repository: &Path, dependency_roots: &[PathBuf]) -> String {
 approval_policy = "never"
 web_search = "disabled"
 cli_auth_credentials_store = "file"
+[shell_environment_policy]
+inherit = "all"
+include_only = ["PATH", "HOME", "LANG", "LC_ALL", "TMPDIR", "NPM_CONFIG_OFFLINE", "NPM_CONFIG_CACHE", "CARGO_NET_OFFLINE", "YORISHIRO_AUTONOMY_RUN_ID"]
 [features]
 apps = false
 plugins = false
@@ -770,16 +773,10 @@ struct Captured {
 }
 struct Process {
     child: tokio::process::Child,
-    group: Option<u32>,
+    supervisor: super::process_supervisor::Supervisor,
 }
 impl Drop for Process {
     fn drop(&mut self) {
-        if let Some(pid) = self.group.take() {
-            #[cfg(unix)]
-            unsafe {
-                libc::kill(-(pid as i32), libc::SIGKILL);
-            }
-        }
         let _ = self.child.start_kill();
     }
 }
@@ -820,23 +817,25 @@ async fn capture(
         .kill_on_drop(true);
     #[cfg(unix)]
     command.process_group(0);
-    let child = command
-        .spawn()
-        .map_err(|_| "開発プロセスを開始できません")?;
-    let mut process = Process {
-        group: child.id(),
-        child,
+    let mut supervisor = super::process_supervisor::Supervisor::prepare(&mut command)?;
+    let child = match command.spawn() {
+        Ok(child) => child,
+        Err(_) => {
+            supervisor.finish().await;
+            return Err("開発プロセスを開始できません".into());
+        }
     };
-    let stdout = process
-        .child
-        .stdout
-        .take()
-        .ok_or("開発プロセスの出力がありません")?;
-    let stderr = process
-        .child
-        .stderr
-        .take()
-        .ok_or("開発プロセスの診断出力がありません")?;
+    if let Some(pid) = child.id() {
+        supervisor.attach(pid);
+    }
+    let mut process = Process { supervisor, child };
+    let (Some(stdout), Some(stderr)) = (process.child.stdout.take(), process.child.stderr.take())
+    else {
+        let _ = process.child.start_kill();
+        process.supervisor.finish().await;
+        let _ = process.child.wait().await;
+        return Err("開発プロセスの出力を準備できません".into());
+    };
     let stdin = process.child.stdin.take();
     let work = async {
         let write = async {
@@ -867,13 +866,8 @@ async fn capture(
         })
     };
     let result = tokio::select! {biased;_=cancel.cancelled()=>Err("開発作業を停止しました。作業コピーは保持しています".into()),_=tokio::time::sleep(timeout)=>Err("開発作業が制限時間を超えました。作業コピーは保持しています".into()),result=work=>result};
-    if let Some(pid) = process.group.take() {
-        #[cfg(unix)]
-        unsafe {
-            libc::kill(-(pid as i32), libc::SIGKILL);
-        }
-    }
     let _ = process.child.start_kill();
+    process.supervisor.finish().await;
     let _ = process.child.wait().await;
     result
 }
@@ -882,6 +876,110 @@ async fn capture(
 mod tests {
     use super::*;
 
+    #[cfg(target_os = "macos")]
+    #[tokio::test]
+    #[ignore = "requires installed Codex sandbox and Python; no model call"]
+    async fn live_sandbox_detached_children_stop_on_every_capture_exit() {
+        let mut unrelated = Command::new("/bin/sleep")
+            .arg("30")
+            .kill_on_drop(true)
+            .spawn()
+            .unwrap();
+        for mode in ["normal", "cancel", "timeout", "overflow"] {
+            let directory = tempfile::tempdir().unwrap();
+            let root = directory.path().canonicalize().unwrap();
+            let repository = root.join("repository");
+            let home = root.join("auth");
+            std::fs::create_dir_all(repository.join(".git")).unwrap();
+            std::fs::create_dir(repository.join(".yorishiro-tmp")).unwrap();
+            std::fs::create_dir(&home).unwrap();
+            std::fs::write(home.join("config.toml"), profile_config(&repository, &[])).unwrap();
+            let script = repository.join("fixture.py");
+            std::fs::write(
+                &script,
+                r#"import os,sys,time,pathlib
+root=pathlib.Path(sys.argv[1]); mode=sys.argv[2]
+assert os.environ.get('YORISHIRO_AUTONOMY_RUN_ID')
+if os.fork()==0:
+ os.setsid()
+ if os.fork(): os._exit(0)
+ fd=os.open('/dev/null',os.O_RDWR)
+ for n in (0,1,2): os.dup2(fd,n)
+ (root/'detached.pid').write_text(str(os.getpid()))
+ time.sleep(2)
+ (root/'survived').write_text('leaked')
+ time.sleep(10)
+ os._exit(0)
+for n in range(200):
+ if (root/'detached.pid').exists(): break
+ time.sleep(.01)
+if mode=='normal': os._exit(0)
+if mode=='overflow':
+ sys.stdout.write('x'*5000000); sys.stdout.flush()
+time.sleep(20)
+"#,
+            )
+            .unwrap();
+            let binary = crate::resolve_command_path_impl("codex").unwrap();
+            let python = crate::resolve_command_path_impl("python3").unwrap();
+            let mut command = codex_command(Path::new(&binary), &home, &repository);
+            command
+                .args(["sandbox", "-P", PROFILE, "-C"])
+                .arg(&repository)
+                .arg("--")
+                .arg(python)
+                .arg(&script)
+                .arg(&repository)
+                .arg(mode);
+            let cancel = CancellationToken::new();
+            if mode == "cancel" {
+                let token = cancel.clone();
+                let ready = repository.join("detached.pid");
+                tokio::spawn(async move {
+                    for _ in 0..200 {
+                        if ready.exists() {
+                            break;
+                        }
+                        tokio::time::sleep(Duration::from_millis(10)).await;
+                    }
+                    token.cancel();
+                });
+            }
+            let limit = if mode == "timeout" {
+                Duration::from_millis(800)
+            } else {
+                Duration::from_secs(8)
+            };
+            let result = tokio::time::timeout(
+                Duration::from_secs(12),
+                capture(command, None, limit, cancel),
+            )
+            .await
+            .expect("cleanup acknowledged");
+            if mode == "normal" {
+                assert_eq!(result.unwrap().exit_code, 0);
+            } else {
+                assert!(result.is_err(), "{mode}");
+            }
+            assert!(
+                repository.join("detached.pid").exists(),
+                "fixture did not detach: {mode}"
+            );
+            tokio::time::sleep(Duration::from_millis(2100)).await;
+            assert!(
+                !repository.join("survived").exists(),
+                "detached process survived: {mode}"
+            );
+            assert!(
+                unrelated.try_wait().unwrap().is_none(),
+                "unrelated process was killed"
+            );
+        }
+        unrelated.kill().await.unwrap();
+        unrelated.wait().await.unwrap();
+    }
+
+    #[cfg(target_os = "macos")]
     #[tokio::test]
     #[ignore = "requires installed Codex execpolicy evaluator; no model call"]
     async fn live_native_policy_denies_host_checks_without_running_them() {
@@ -927,7 +1025,7 @@ mod tests {
         .unwrap());
     }
 
-    #[cfg(unix)]
+    #[cfg(target_os = "macos")]
     #[tokio::test]
     #[ignore = "requires installed Codex sandbox and Node; no model call"]
     async fn live_sandbox_blocks_source_auth_git_and_network() {
@@ -1026,6 +1124,7 @@ setTimeout(()=>process.exit(2),3000);
 
     /// Explicit local verification only: consumes one authenticated model call,
     /// runs only in a temporary toy repository, never the user's source files.
+    #[cfg(target_os = "macos")]
     #[tokio::test]
     #[ignore = "requires installed authenticated Codex CLI and makes a model request"]
     async fn live_development_changes_only_clone_and_runs_real_checks() {
@@ -1187,7 +1286,7 @@ setTimeout(()=>process.exit(2),3000);
         assert!(verify_transport(b"{\"type\":\"turn.failed\"}\n").is_err());
         assert!(verify_transport(b"{\"type\":\"item.completed\",\"item\":{\"type\":\"mcp_tool_call\"}}\n{\"type\":\"turn.completed\"}\n").is_err());
     }
-    #[cfg(unix)]
+    #[cfg(target_os = "macos")]
     #[tokio::test]
     async fn cancellation_and_output_bounds_stop_child() {
         let cancel = CancellationToken::new();

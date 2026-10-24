@@ -41,6 +41,18 @@ afterEach(() => {
 });
 
 describe("AutonomySettings", () => {
+  it("distinguishes an Off preference from processes still exiting", () => {
+    if (!status.contract) throw new Error("Test contract missing");
+    vi.mocked(useAutonomyStatus).mockReturnValue({
+      ...status,
+      contract: { ...status.contract, enabled: false },
+      phase: "stopping",
+    });
+    render(<AutonomySettings language="ja" />);
+    expect(screen.getByRole("switch").getAttribute("aria-checked")).toBe("false");
+    expect(screen.getByRole("status").textContent).toBe("作業プロセスの終了を待っています。");
+  });
+
   it("turns Off by stopping current and future work without changing scope", async () => {
     render(<AutonomySettings language="ja" />);
     const toggle = screen.getByRole("switch", { name: "自動作業" });

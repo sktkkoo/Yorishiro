@@ -47,6 +47,50 @@ describe("autonomous host polling", () => {
     view.unmount();
   });
 
+  it("observes teardown completion without waiting for the normal polling interval", async () => {
+    vi.useFakeTimers();
+    let phase = "stopping";
+    invoke.mockImplementation(async (command: string) => {
+      if (command === "autonomy_status") return { ...idle, phase };
+      if (command === "autonomy_draft_snapshot") return { revision: 0, draft: null };
+    });
+    const client = await import("./client");
+    const view = renderHook(client.useAutonomyStatus);
+    await act(async () => {});
+    expect(view.result.current?.phase).toBe("stopping");
+    phase = "paused";
+    await act(async () => vi.advanceTimersByTimeAsync(1_000));
+    expect(view.result.current?.phase).toBe("paused");
+    view.unmount();
+  });
+
+  it.each([
+    "pause",
+    "toggle",
+  ] as const)("refreshes cancelled state even if %s cannot persist it", async (action) => {
+    let stopped = false;
+    const failure = new Error("Could not persist stop");
+    invoke.mockImplementation(async (command: string) => {
+      if (command === "autonomy_status")
+        return { ...idle, phase: stopped ? "stopping" : "thinking" };
+      if (command === "autonomy_draft_snapshot") return { revision: 0, draft: null };
+      if (command === "autonomy_pause" || command === "autonomy_set_enabled") {
+        stopped = true;
+        throw failure;
+      }
+    });
+    const client = await import("./client");
+    const view = renderHook(client.useAutonomyStatus);
+    await waitFor(() => expect(view.result.current?.phase).toBe("thinking"));
+    await act(async () => {
+      await expect(
+        action === "pause" ? client.pauseAutonomy() : client.setAutonomyEnabled(false),
+      ).rejects.toBe(failure);
+    });
+    expect(view.result.current?.phase).toBe("stopping");
+    view.unmount();
+  });
+
   it("announces pending review transitions once and clears a withdrawn card", async () => {
     vi.useFakeTimers();
     const review = {
