@@ -3,7 +3,15 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tauri::ipc::Channel;
 use tokio::sync::mpsc::{self, UnboundedSender};
-use tokio_tungstenite::tungstenite::Message;
+use tokio_tungstenite::tungstenite::{protocol::WebSocketConfig, Message};
+
+/// Match Codex's remote transport limits. Plugin inventories can exceed the
+/// tungstenite default 16 MiB frame limit even without conversation history.
+pub(crate) fn codex_websocket_config() -> WebSocketConfig {
+    WebSocketConfig::default()
+        .max_frame_size(Some(128 << 20))
+        .max_message_size(Some(128 << 20))
+}
 
 enum BridgeCommand {
     Send(String),
@@ -26,9 +34,13 @@ impl RealtimeBridgeState {
         endpoint: String,
         on_message: Channel<String>,
     ) -> Result<String, String> {
-        let (socket, _) = tokio_tungstenite::connect_async(&endpoint)
-            .await
-            .map_err(|error| format!("Codex app-server connection failed: {error}"))?;
+        let (socket, _) = tokio_tungstenite::connect_async_with_config(
+            &endpoint,
+            Some(codex_websocket_config()),
+            false,
+        )
+        .await
+        .map_err(|error| format!("Codex app-server connection failed: {error}"))?;
         let (mut sink, mut stream) = socket.split();
         let (sender, mut receiver) = mpsc::unbounded_channel();
         let connection_id = uuid::Uuid::new_v4().to_string();
