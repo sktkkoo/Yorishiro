@@ -1,7 +1,10 @@
 export type AutonomyOperation = "write" | "move" | "trash";
+export type AutonomyWorkMode = "auto" | "documents" | "development";
 export type AutonomyReviewMode = "automatic" | "daily";
 
 export interface AutonomyContract {
+  readonly workMode?: AutonomyWorkMode;
+  readonly publishPullRequest?: boolean;
   readonly goal: string;
   readonly root: string;
   readonly allowedOperations: readonly AutonomyOperation[];
@@ -13,6 +16,8 @@ export interface AutonomyContract {
 
 export interface AutonomyDraft {
   readonly id: string;
+  readonly workMode?: AutonomyWorkMode;
+  readonly publishPullRequest?: boolean;
   readonly goal: string;
   readonly root: string;
   readonly allowedOperations: readonly AutonomyOperation[];
@@ -25,7 +30,14 @@ export interface AutonomyDraft {
 export type AutonomyDraftPatch = Partial<
   Pick<
     AutonomyDraft,
-    "goal" | "root" | "allowedOperations" | "intervalMinutes" | "maxRunsPerDay" | "reviewMode"
+    | "goal"
+    | "root"
+    | "allowedOperations"
+    | "intervalMinutes"
+    | "maxRunsPerDay"
+    | "reviewMode"
+    | "workMode"
+    | "publishPullRequest"
   >
 >;
 
@@ -48,6 +60,10 @@ export interface PendingWork {
 }
 
 export interface AutonomyRun {
+  readonly developmentPath?: string;
+  readonly pullRequestUrl?: string;
+  readonly branch?: string;
+  readonly validationSummary?: string;
   readonly id: string;
   readonly startedAt: number;
   readonly finishedAt: number | null;
@@ -90,4 +106,6 @@ export interface SetupReply {
   readonly suggestedIntervalMinutes?: number;
   readonly suggestedMaxRunsPerDay?: number;
   readonly suggestedReviewMode?: AutonomyReviewMode;
+  readonly suggestedWorkMode?: AutonomyWorkMode;
+  readonly suggestedPublishPullRequest?: boolean;
 }

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { open as choosePath } from "@tauri-apps/plugin-dialog";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -23,6 +24,7 @@ import type {
 import { AutonomyPanel } from "./AutonomyPanel";
 
 vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn() }));
+vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: vi.fn() }));
 vi.mock("../runtime/autonomy/client", () => ({
   useAutonomyStatus: vi.fn(),
   useAutonomyDraftSnapshot: vi.fn(),
@@ -37,6 +39,8 @@ vi.mock("../runtime/autonomy/client", () => ({
 }));
 
 const contract: AutonomyContract = {
+  workMode: "auto",
+  publishPullRequest: false,
   goal: "読みやすく整理する",
   root: "/Users/test/notes",
   allowedOperations: ["write"],
@@ -47,6 +51,8 @@ const contract: AutonomyContract = {
 };
 
 const draftDefaults = {
+  workMode: "auto" as const,
+  publishPullRequest: false,
   id: "empty",
   goal: "",
   root: "",
@@ -88,6 +94,7 @@ beforeEach(() => {
     setDraft(next);
     return { snapshot: next, conflict: false };
   });
+  vi.mocked(openUrl).mockResolvedValue(undefined);
   vi.mocked(choosePath).mockResolvedValue("/Users/test/notes");
   vi.mocked(saveAutonomyContract).mockResolvedValue(undefined);
   vi.mocked(pauseAutonomy).mockResolvedValue(undefined);
@@ -103,6 +110,123 @@ afterEach(() => {
 });
 
 describe("AutonomyPanel", () => {
+  it("keeps old saved scopes unchanged while showing one objective and scope flow", () => {
+    vi.mocked(useAutonomyStatus).mockReturnValue(
+      status({
+        contract: {
+          ...contract,
+          goal: "機能を実装してPRを作る",
+          workMode: undefined,
+          publishPullRequest: undefined,
+        },
+      }),
+    );
+    openPanel();
+    expect(screen.queryByLabelText("文書の整理・編集")).toBeNull();
+    expect(screen.queryByLabelText("開発・改善")).toBeNull();
+    expect(screen.queryByLabelText("このリポジトリにドラフトPRを作成する")).toBeNull();
+    expect((screen.getByLabelText("作成・編集") as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByLabelText("移動") as HTMLInputElement).checked).toBe(false);
+    const save = screen.getByRole("button", { name: "この範囲で任せる" });
+    const hintId = save.getAttribute("aria-describedby");
+    expect(hintId && document.getElementById(hintId)?.textContent).toContain(
+      "設定を保存して自動作業を有効にします",
+    );
+    expect(saveAutonomyContract).not.toHaveBeenCalled();
+    expect(editAutonomyDraft).not.toHaveBeenCalled();
+  });
+
+  it("grants purpose-driven repository work with explicit operations and never auto-publishing", async () => {
+    setDraft({
+      revision: 1,
+      draft: { ...draftDefaults, goal: "ユーザー体験を改善する", root: "/repo" },
+    });
+    openPanel();
+    const save = screen.getByRole("button", { name: "この範囲で任せる" }) as HTMLButtonElement;
+    expect(save.disabled).toBe(true);
+    expect(screen.getByText(/コミット済みの内容を別の作業場所/)).toBeTruthy();
+    fireEvent.click(screen.getByLabelText("作成・編集"));
+    fireEvent.click(screen.getByLabelText("移動"));
+    fireEvent.click(screen.getByLabelText("退避"));
+    await waitFor(() => expect(save.disabled).toBe(false));
+    expect(saveAutonomyContract).not.toHaveBeenCalled();
+    expect(runAutonomyNow).not.toHaveBeenCalled();
+    fireEvent.click(save);
+    await waitFor(() =>
+      expect(saveAutonomyContract).toHaveBeenCalledExactlyOnceWith(
+        {
+          goal: "ユーザー体験を改善する",
+          root: "/repo",
+          allowedOperations: ["write", "move", "trash"],
+          intervalMinutes: 30,
+          maxRunsPerDay: 4,
+          reviewMode: "daily",
+          enabled: true,
+          workMode: "auto",
+          publishPullRequest: false,
+        },
+        sharedDraft.draft?.id,
+      ),
+    );
+  });
+
+  it("requires explicit save to replace a legacy development scope and removes publication permission", async () => {
+    const legacy = { ...contract, workMode: "development" as const, publishPullRequest: true };
+    vi.mocked(useAutonomyStatus).mockReturnValue(status({ contract: legacy }));
+    openPanel();
+    expect(screen.queryByLabelText("このリポジトリにドラフトPRを作成する")).toBeNull();
+    expect(saveAutonomyContract).not.toHaveBeenCalled();
+    expect(editAutonomyDraft).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "この範囲で任せる" }));
+    await waitFor(() =>
+      expect(saveAutonomyContract).toHaveBeenCalledExactlyOnceWith(
+        {
+          ...legacy,
+          workMode: "auto",
+          publishPullRequest: false,
+        },
+        null,
+      ),
+    );
+  });
+
+  it("shows local development evidence and opens only a validated GitHub PR URL", async () => {
+    const baseRun = {
+      id: "development-1",
+      startedAt: 1,
+      finishedAt: 2,
+      status: "completed" as const,
+      summary: "設定画面を改善しました",
+      reason: "操作の迷いを減らすため",
+      changedPaths: [],
+      canUndo: false,
+      developmentPath: "/work/run-1/repository",
+      branch: "autonomy/run-1",
+      validationSummary: "12 tests passed",
+    };
+    vi.mocked(useAutonomyStatus).mockReturnValue(
+      status({
+        runs: [
+          { ...baseRun, pullRequestUrl: "https://github.com/example/project/pull/12" },
+          {
+            ...baseRun,
+            id: "malformed",
+            pullRequestUrl: "https://github.com.evil.test/example/project/pull/12",
+          },
+          { ...baseRun, id: "local", pullRequestUrl: "file:///etc/passwd" },
+        ],
+      }),
+    );
+    openPanel();
+    expect(screen.getAllByText("確認用の成果物: /work/run-1/repository")).toHaveLength(3);
+    expect(screen.getAllByText("検証: 12 tests passed")).toHaveLength(3);
+    expect(screen.getAllByRole("button", { name: "ドラフトPRを開く" })).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "ドラフトPRを開く" }));
+    await waitFor(() =>
+      expect(openUrl).toHaveBeenCalledExactlyOnceWith("https://github.com/example/project/pull/12"),
+    );
+  });
+
   it("turns AI suggestions into an editable draft and grants scope only after explicit save", async () => {
     vi.mocked(consultAutonomy).mockImplementation(async () => {
       setDraft({
@@ -142,7 +266,7 @@ describe("AutonomyPanel", () => {
     expect(saveAutonomyContract).not.toHaveBeenCalled();
     expect(runAutonomyNow).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByLabelText("ファイルの退避"));
+    fireEvent.click(screen.getByLabelText("退避"));
     expect((screen.getByLabelText("対象フォルダ") as HTMLInputElement).value).toBe(contract.root);
     await waitFor(() =>
       expect(
@@ -186,7 +310,7 @@ describe("AutonomyPanel", () => {
       expect(consultAutonomy).toHaveBeenCalledExactlyOnceWith([
         {
           role: "user",
-          content: "おまかせ作業の目的と範囲を一緒に決めたいです。質問から始めてください。",
+          content: "おまかせ作業の目的と範囲を相談したいです。質問から始めてください。",
         },
       ]),
     );
@@ -439,6 +563,134 @@ describe("AutonomyPanel", () => {
     await waitFor(() => expect(undoAutonomyRun).toHaveBeenCalledExactlyOnceWith("run-1"));
     expect((await screen.findByRole("alert")).textContent).toContain("その後の編集");
     expect(screen.queryByText("変更を元に戻しました。")).toBeNull();
+  });
+
+  it("keeps shared fields visible and gives the icon-only close button an accessible name", async () => {
+    openPanel();
+    expect(screen.getByRole("heading", { name: "AIに相談" })).toBeTruthy();
+    expect(screen.getByText("作業の目的・範囲・実行状況を管理")).toBeTruthy();
+    const close = screen.getByRole("button", { name: "おまかせ作業を閉じる" });
+    expect(close.textContent).toBe("");
+    expect(close.querySelector("svg")).toBeTruthy();
+    for (const label of [
+      "任せる目的",
+      "対象フォルダ",
+      "作成・編集",
+      "その日の仕事を先に相談",
+      "確認する間隔（分）",
+      "24時間の実行上限（回）",
+    ]) {
+      expect(screen.getByLabelText(label).closest("details")).toBeNull();
+    }
+    const help = screen.getByText("作業の範囲と実行条件").closest("details");
+    expect(help?.open).toBe(false);
+    fireEvent.click(close);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(saveAutonomyContract).not.toHaveBeenCalled();
+    expect(pauseAutonomy).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole("button", { name: "おまかせ作業" })),
+    );
+  });
+
+  it("shows newest work first without mutating history and omits empty failure details", () => {
+    const runs: AutonomyStatus["runs"] = [
+      {
+        id: "old",
+        startedAt: 1,
+        finishedAt: 2,
+        status: "completed",
+        summary: "以前の成果",
+        reason: "",
+        changedPaths: ["old.md"],
+        canUndo: false,
+      },
+      {
+        id: "failed",
+        startedAt: 3,
+        finishedAt: 4,
+        status: "failed",
+        summary: "起動できませんでした",
+        reason: "認証が必要です",
+        changedPaths: [],
+        canUndo: false,
+      },
+      {
+        id: "new",
+        startedAt: 5,
+        finishedAt: 6,
+        status: "completed",
+        summary: "最新の成果",
+        reason: "",
+        changedPaths: ["new.md"],
+        canUndo: false,
+      },
+    ];
+    vi.mocked(useAutonomyStatus).mockReturnValue(
+      status({ contract, runs, phase: "failed", error: "ログインしてから再開してください" }),
+    );
+    openPanel();
+    const articles = screen.getAllByRole("article");
+    expect(articles.map((article) => article.querySelector("p")?.textContent)).toEqual([
+      "最新の成果",
+      "起動できませんでした",
+      "以前の成果",
+    ]);
+    expect(articles[0].querySelector("details")?.open).toBe(true);
+    expect(articles[1].querySelector("details")).toBeNull();
+    expect(articles[2].querySelector("details")?.open).toBe(false);
+    expect(runs.map((run) => run.id)).toEqual(["old", "failed", "new"]);
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toBe("ログインしてから再開してください");
+    expect(
+      alert.compareDocumentPosition(screen.getByRole("region", { name: "作業状況" })) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(screen.getAllByText("ログインしてから再開してください")).toHaveLength(1);
+  });
+
+  it("wraps keyboard focus around visible controls and skips collapsed run actions", () => {
+    vi.mocked(useAutonomyStatus).mockReturnValue(
+      status({
+        contract,
+        runs: [
+          {
+            id: "latest",
+            startedAt: 2,
+            finishedAt: 3,
+            status: "completed",
+            summary: "最新の仕事",
+            reason: "",
+            changedPaths: ["latest.md"],
+            canUndo: false,
+          },
+          {
+            id: "older",
+            startedAt: 1,
+            finishedAt: 2,
+            status: "completed",
+            summary: "前の仕事",
+            reason: "",
+            changedPaths: [],
+            canUndo: false,
+            pullRequestUrl: "https://github.com/example/project/pull/1",
+          },
+        ],
+      }),
+    );
+    openPanel();
+    const close = screen.getByRole("button", { name: "おまかせ作業を閉じる" });
+    const summaries = screen.getAllByText("変更と検証の詳細");
+    expect(summaries[0].closest("details")?.open).toBe(true);
+    expect(summaries[1].closest("details")?.open).toBe(false);
+    close.focus();
+    fireEvent.keyDown(close, { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(summaries[1]);
+    fireEvent.keyDown(summaries[1], { key: "Tab" });
+    expect(document.activeElement).toBe(close);
+    expect(screen.getByRole("button", { name: "ドラフトPRを開く" }).closest("details")?.open).toBe(
+      false,
+    );
   });
 
   it("closes with Escape and restores focus without pausing scheduled work", async () => {

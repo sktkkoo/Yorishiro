@@ -21,7 +21,7 @@ import {
 const ZERO_MOUTH: MouthValues = { aa: 0, ih: 0, ou: 0, ee: 0, oh: 0 };
 
 describe("autonomy voice setup", () => {
-  it("announces review proposals only on active voice and never starts a microphone", async () => {
+  it("queues a review without opening a microphone and submits it once voice becomes active", async () => {
     const review = {
       id: "review-1",
       goal: "Organize notes",
@@ -34,10 +34,82 @@ describe("autonomy voice setup", () => {
     await act(() => result.current.toggle());
     await result.current.notifyAutonomyWorkReview(review);
     expect(clients[0].notifyAutonomyWorkReview).not.toHaveBeenCalled();
-    act(() => clients[0].emit({ status: "active" }));
+    await act(async () => clients[0].emit({ status: "active" }));
+    expect(clients[0].notifyAutonomyWorkReview).toHaveBeenCalledExactlyOnceWith(review);
     await result.current.notifyAutonomyWorkReview(review);
-    expect(clients[0].notifyAutonomyWorkReview).toHaveBeenCalledWith(review);
+    expect(clients[0].notifyAutonomyWorkReview).toHaveBeenCalledTimes(1);
     expect(clients[0].start).toHaveBeenCalledTimes(1);
+  });
+
+  it("forgets a reviewed or withdrawn card before a later voice connection", async () => {
+    const { result, clients } = setup([]);
+    await result.current.notifyAutonomyWorkReview({
+      id: "old",
+      goal: "notes",
+      reason: "",
+      summary: "",
+    });
+    await result.current.notifyAutonomyWorkReview(null);
+    expect(clients).toHaveLength(0);
+    await act(() => result.current.toggle());
+    await act(async () => clients[0].emit({ status: "active" }));
+    expect(clients[0].notifyAutonomyWorkReview).not.toHaveBeenCalled();
+  });
+
+  it("keeps only the latest pending card while voice is inactive", async () => {
+    const { result, clients } = setup([]);
+    await result.current.notifyAutonomyWorkReview({
+      id: "old",
+      goal: "old",
+      reason: "",
+      summary: "",
+    });
+    const latest = { id: "latest", goal: "current", reason: "", summary: "" };
+    await result.current.notifyAutonomyWorkReview(latest);
+    await act(() => result.current.toggle());
+    await act(async () => clients[0].emit({ status: "active" }));
+    expect(clients[0].notifyAutonomyWorkReview).toHaveBeenCalledExactlyOnceWith(latest);
+  });
+
+  it("retries an unaccepted review on the next user-started voice connection without polling nags", async () => {
+    const { result, clients } = setup([]);
+    await act(() => result.current.toggle());
+    act(() => clients[0].emit({ status: "active" }));
+    const review = { id: "retry", goal: "notes", reason: "", summary: "" };
+    clients[0].notifyAutonomyWorkReview.mockRejectedValueOnce(new Error("transport failed"));
+    await expect(result.current.notifyAutonomyWorkReview(review)).rejects.toThrow(
+      "transport failed",
+    );
+    await result.current.notifyAutonomyWorkReview(review);
+    await act(async () => clients[0].emit({ status: "active" }));
+    expect(clients[0].notifyAutonomyWorkReview).toHaveBeenCalledTimes(1);
+    expect(clients).toHaveLength(1);
+    act(() => result.current.stop());
+    await act(() => result.current.toggle());
+    await act(async () => clients[1].emit({ status: "active" }));
+    expect(clients[1].notifyAutonomyWorkReview).toHaveBeenCalledExactlyOnceWith(review);
+    act(() => result.current.stop());
+    await act(() => result.current.toggle());
+    await act(async () => clients[2].emit({ status: "active" }));
+    expect(clients[2].notifyAutonomyWorkReview).not.toHaveBeenCalled();
+  });
+
+  it("does not accept a review ACK from a stopped session and retries on the current session", async () => {
+    const { result, clients } = setup([]);
+    await act(() => result.current.toggle());
+    act(() => clients[0].emit({ status: "active" }));
+    const delivery = deferred();
+    const review = { id: "switch", goal: "notes", reason: "", summary: "" };
+    clients[0].notifyAutonomyWorkReview.mockReturnValueOnce(delivery.promise);
+    const pending = result.current.notifyAutonomyWorkReview(review);
+    act(() => result.current.stop());
+    await act(() => result.current.toggle());
+    await act(async () => {
+      clients[1].emit({ status: "active" });
+      delivery.resolve();
+      await pending;
+    });
+    expect(clients[1].notifyAutonomyWorkReview).toHaveBeenCalledExactlyOnceWith(review);
   });
   it("reuses the current active voice session without toggling or reconnecting", async () => {
     const { result, clients } = setup([]);

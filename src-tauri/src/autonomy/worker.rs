@@ -71,6 +71,7 @@ pub async fn run(
     }
     let binary = checked_binary()?;
     probe(&binary, cancel.clone()).await?;
+    super::policy::claude_preflight(None)?;
     // Recheck policy after the probe, immediately before starting the model call.
     check_managed_settings()?;
     let directory = tempfile::Builder::new()
@@ -95,7 +96,7 @@ fn checked_binary() -> Result<PathBuf, String> {
         .ok_or_else(|| "Install Claude Code to enable autonomous reasoning.".into())
 }
 
-fn check_managed_settings() -> Result<(), String> {
+pub(super) fn check_managed_settings() -> Result<(), String> {
     let mut paths = vec![
         PathBuf::from("/Library/Application Support/ClaudeCode/managed-settings.json"),
         PathBuf::from("/etc/claude-code/managed-settings.json"),
@@ -411,9 +412,6 @@ impl Protocol {
     }
 
     fn event(&mut self, event: &Value) -> Result<(), String> {
-        if self.result.is_some() {
-            return Err("Unexpected event after worker result.".into());
-        }
         let kind = event
             .get("type")
             .and_then(Value::as_str)
@@ -445,6 +443,15 @@ impl Protocol {
         }
         if !self.initialized {
             return Err("Worker did not verify its tool inventory first.".into());
+        }
+        // Stream-json also carries inert SDK lifecycle notifications. These do
+        // not grant tools, provide model output, or replace the verified result.
+        // A late quota/status notification may follow the successful result.
+        if lifecycle_event(event)? {
+            return Ok(());
+        }
+        if self.result.is_some() {
+            return Err("Unexpected event after worker result.".into());
         }
         match kind {
             "assistant" | "user" => {
@@ -488,6 +495,9 @@ impl Protocol {
                 {
                     return Err("Claude could not produce a structured proposal.".into());
                 }
+                if !self.structured_tools.is_empty() {
+                    return Err("Worker ended with an unfinished structured-output call.".into());
+                }
                 let result = event
                     .get("structured_output")
                     .filter(|value| value.is_object())
@@ -495,7 +505,7 @@ impl Protocol {
                 self.result = Some(result.clone());
                 Ok(())
             }
-            _ => Err("Unexpected worker protocol event.".into()),
+            _ => Err(unexpected_event(event)),
         }
     }
 
@@ -503,6 +513,85 @@ impl Protocol {
         self.result
             .ok_or_else(|| "Worker ended without a verified structured result.".into())
     }
+}
+
+// These shapes come from the published Claude Agent SDK and captured local
+// Claude 2.1.310 thinking-token notifications. Deliberately
+// do not accept arbitrary system events: hooks, background tasks, tool progress,
+// file persistence and control requests imply capabilities this worker lacks.
+fn lifecycle_event(event: &Value) -> Result<bool, String> {
+    let valid = match (
+        event.get("type").and_then(Value::as_str),
+        event.get("subtype").and_then(Value::as_str),
+    ) {
+        (Some("rate_limit_event"), None) => event
+            .get("rate_limit_info")
+            .and_then(|info| info.get("status"))
+            .and_then(Value::as_str)
+            .is_some_and(|status| matches!(status, "allowed" | "allowed_warning" | "rejected")),
+        (Some("system"), Some("status")) => {
+            if event
+                .get("permissionMode")
+                .is_some_and(|mode| mode.as_str() != Some("dontAsk"))
+            {
+                return Err("Worker attempted to change its permission mode.".into());
+            }
+            event
+                .get("status")
+                .is_some_and(|status| status.is_null() || status.as_str() == Some("compacting"))
+        }
+        (Some("system"), Some("thinking_tokens")) => ["estimated_tokens", "estimated_tokens_delta"]
+            .iter()
+            .all(|key| event.get(key).is_some_and(Value::is_u64)),
+        (Some("system"), Some("api_retry")) => {
+            ["attempt", "max_retries", "retry_delay_ms"]
+                .iter()
+                .all(|key| event.get(key).is_some_and(Value::is_u64))
+                && event
+                    .get("error_status")
+                    .is_some_and(|status| status.is_null() || status.is_u64())
+                && event.get("error").is_some_and(Value::is_string)
+        }
+        (Some("system"), Some("compact_boundary")) => {
+            event.get("compact_metadata").is_some_and(|metadata| {
+                metadata
+                    .get("trigger")
+                    .and_then(Value::as_str)
+                    .is_some_and(|trigger| matches!(trigger, "manual" | "auto"))
+                    && metadata.get("pre_tokens").is_some_and(Value::is_u64)
+            })
+        }
+        _ => return Ok(false),
+    };
+    if valid {
+        Ok(true)
+    } else {
+        Err("Invalid worker lifecycle notification.".into())
+    }
+}
+
+fn unexpected_event(event: &Value) -> String {
+    // Include only bounded protocol identifiers, never model text, credentials,
+    // paths or complete diagnostics. Future CLI changes become diagnosable.
+    let identifier = |key: &str| {
+        event
+            .get(key)
+            .and_then(Value::as_str)
+            .filter(|value| {
+                !value.is_empty()
+                    && value.len() <= 64
+                    && value
+                        .bytes()
+                        .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+            })
+            .unwrap_or("unknown")
+            .to_owned()
+    };
+    format!(
+        "Unexpected worker protocol event ({} / {}).",
+        identifier("type"),
+        identifier("subtype")
+    )
 }
 
 #[cfg(test)]
@@ -603,6 +692,80 @@ mod tests {
     }
 
     #[test]
+    fn lifecycle_notifications_do_not_replace_initialization_or_result() {
+        let notifications = [
+            json!({"type":"rate_limit_event","rate_limit_info":{"status":"allowed_warning","utilization":0.8}}),
+            json!({"type":"system","subtype":"status","status":"compacting","permissionMode":"dontAsk"}),
+            // Captured from installed Claude 2.1.310 with the exact restricted
+            // launch flags when a nontrivial reasoning request is streamed.
+            json!({"type":"system","subtype":"thinking_tokens","estimated_tokens":150,"estimated_tokens_delta":100}),
+            json!({"type":"system","subtype":"compact_boundary","compact_metadata":{"trigger":"auto","pre_tokens":1000}}),
+            json!({"type":"system","subtype":"api_retry","attempt":1,"max_retries":3,"retry_delay_ms":100,"error_status":529,"error":"overloaded"}),
+            json!({"type":"system","subtype":"status","status":null}),
+        ];
+        let mut protocol = Protocol::default();
+        assert!(protocol.event(&notifications[0]).is_err());
+        protocol.event(&init()).unwrap();
+        for event in &notifications {
+            protocol.event(event).unwrap();
+        }
+        assert!(protocol.finish().is_err(), "metadata is not a model result");
+        let mut protocol = Protocol::default();
+        protocol.event(&init()).unwrap();
+        for event in &notifications {
+            protocol.event(event).unwrap();
+        }
+        protocol.event(&success()).unwrap();
+        for event in &notifications {
+            protocol.event(event).unwrap();
+        }
+        assert_eq!(protocol.finish().unwrap(), json!({"action":"complete"}));
+    }
+
+    #[test]
+    fn lifecycle_allowlist_rejects_execution_and_malformed_notifications() {
+        let mut protocol = Protocol::default();
+        protocol.event(&init()).unwrap();
+        for event in [
+            json!({"type":"system","subtype":"hook_started"}),
+            json!({"type":"system","subtype":"task_started"}),
+            json!({"type":"system","subtype":"files_persisted"}),
+            json!({"type":"tool_progress","tool_name":"Bash"}),
+            json!({"type":"control_request"}),
+            json!({"type":"rate_limit_event"}),
+            json!({"type":"rate_limit_event","rate_limit_info":{"status":"unknown"}}),
+            json!({"type":"system","subtype":"status","status":"compacting","permissionMode":"bypassPermissions"}),
+            json!({"type":"system","subtype":"status","status":"executing"}),
+            json!({"type":"system","subtype":"api_retry","attempt":"1"}),
+            json!({"type":"system","subtype":"thinking_tokens","estimated_tokens":-1,"estimated_tokens_delta":100}),
+            json!({"type":"system","subtype":"compact_boundary","compact_metadata":{}}),
+        ] {
+            assert!(protocol.event(&event).is_err(), "accepted {event}");
+        }
+        protocol.event(&json!({"type":"assistant","message":{"content":[{"type":"tool_use","id":"unfinished","name":"StructuredOutput","input":{}}]}})).unwrap();
+        assert!(protocol
+            .event(&success())
+            .unwrap_err()
+            .contains("unfinished"));
+    }
+
+    #[test]
+    fn unknown_event_error_identifies_protocol_without_exposing_payload() {
+        let error = unexpected_event(
+            &json!({"type":"system","subtype":"new_notification","message":"private data"}),
+        );
+        assert!(error.contains("system / new_notification"));
+        assert!(!error.contains("private data"));
+        let error = unexpected_event(
+            &json!({"type":"https://private.example/key", "subtype":"secret \n value"}),
+        );
+        assert_eq!(
+            error,
+            "Unexpected worker protocol event (unknown / unknown)."
+        );
+    }
+
+    #[test]
     fn managed_settings_fail_closed_but_empty_cache_is_allowed() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("settings.json");
@@ -637,7 +800,11 @@ mod tests {
         tokio::spawn(async move {
             // Wait until the fake CLI has started before requesting cancellation.
             for _ in 0..100 {
-                if wait_path.exists() {
+                if std::fs::read_to_string(&wait_path)
+                    .ok()
+                    .and_then(|value| value.parse::<i32>().ok())
+                    .is_some_and(|pid| pid > 0)
+                {
                     break;
                 }
                 tokio::time::sleep(Duration::from_millis(10)).await;

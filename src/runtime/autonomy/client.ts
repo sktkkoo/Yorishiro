@@ -85,15 +85,17 @@ async function readStatus(): Promise<void> {
       tickError = String(error);
     }
     snapshot = await invoke<AutonomyStatus>("autonomy_status");
-    await refreshDraft();
-    if (tickError || draftSyncError) snapshot = { ...snapshot, error: tickError ?? draftSyncError };
     const review = snapshot.pendingWork;
-    if (review && review.id !== announcedReviewId && typeof window !== "undefined") {
-      announcedReviewId = review.id;
+    if ((review?.id ?? null) !== announcedReviewId && typeof window !== "undefined") {
+      announcedReviewId = review?.id ?? null;
       window.dispatchEvent(
-        new CustomEvent("yorishiro:autonomy-work-review-available", { detail: review }),
+        new CustomEvent("yorishiro:autonomy-work-review-available", { detail: review ?? null }),
       );
     }
+    // Clearing a reviewed card must not wait for the independent setup-draft
+    // channel; otherwise a draft sync failure could leave a stale voice prompt.
+    await refreshDraft();
+    if (tickError || draftSyncError) snapshot = { ...snapshot, error: tickError ?? draftSyncError };
     for (const notify of listeners) notify();
   } catch (error) {
     snapshot = {

@@ -36,6 +36,84 @@ function deferred<T>() {
 }
 
 describe("shared autonomy draft editor", () => {
+  it("clears an obsolete publication grant when hydrating a saved scope", async () => {
+    const submit = vi.fn().mockResolvedValue({
+      snapshot: snapshot(1, { goal: "edited", publishPullRequest: false }),
+      conflict: false,
+    });
+    const editor = new AutonomyDraftEditor(submit);
+    const previous = snapshot(1).draft;
+    if (!previous) throw new Error("Fixture draft missing");
+    editor.hydrate({
+      ...previous,
+      enabled: false,
+      workMode: "documents",
+      publishPullRequest: true,
+    });
+    expect(editor.getSnapshot().values).toMatchObject({
+      workMode: "documents",
+      publishPullRequest: false,
+    });
+    editor.edit("goal", "edited");
+    await editor.submit();
+    expect(submit).toHaveBeenCalledWith(
+      null,
+      expect.objectContaining({ workMode: "documents", publishPullRequest: false }),
+    );
+  });
+
+  it("explicitly removes a hidden legacy publication flag from a shared draft", async () => {
+    const submit = vi
+      .fn()
+      .mockResolvedValue({ snapshot: snapshot(2, { publishPullRequest: false }), conflict: false });
+    const editor = new AutonomyDraftEditor(submit);
+    editor.receive(snapshot(1, { publishPullRequest: true }));
+    expect(editor.getSnapshot().values.publishPullRequest).toBe(false);
+    expect(editor.getSnapshot().synced).toBe(false);
+    await editor.submit();
+    expect(submit).toHaveBeenCalledWith("draft-1", { publishPullRequest: false });
+    expect(editor.getSnapshot().synced).toBe(true);
+  });
+
+  it("starts new drafts in automatic work selection without publication permission", () => {
+    const editor = new AutonomyDraftEditor(vi.fn());
+    expect(editor.getSnapshot().values).toMatchObject({
+      workMode: "auto",
+      publishPullRequest: false,
+    });
+  });
+
+  it("normalizes old snapshots to document-only scope without inferring development from the goal", () => {
+    const editor = new AutonomyDraftEditor(vi.fn());
+    editor.receive(snapshot(1, { goal: "Write code and create pull requests" }));
+    expect(editor.getSnapshot().values).toMatchObject({
+      workMode: "documents",
+      publishPullRequest: false,
+    });
+  });
+
+  it("preserves a manual PR permission revocation across unrelated AI updates", async () => {
+    const submit = vi.fn().mockResolvedValue({
+      snapshot: snapshot(3, {
+        workMode: "development",
+        publishPullRequest: false,
+        goal: "改善を実装する",
+      }),
+      conflict: false,
+    });
+    const editor = new AutonomyDraftEditor(submit);
+    editor.receive(snapshot(1, { workMode: "development", publishPullRequest: true }));
+    editor.edit("publishPullRequest", false);
+    editor.receive(
+      snapshot(2, { workMode: "development", publishPullRequest: true, goal: "改善を実装する" }),
+    );
+    expect(editor.getSnapshot().values.publishPullRequest).toBe(false);
+    expect(editor.getSnapshot().values.goal).toBe("改善を実装する");
+    await editor.flush();
+    expect(submit).toHaveBeenCalledExactlyOnceWith("draft-2", { publishPullRequest: false });
+    expect(editor.getSnapshot().synced).toBe(true);
+  });
+
   it("fills clean fields immediately and publishes human edits only as a draft patch", async () => {
     const submit = vi.fn().mockResolvedValue({
       snapshot: snapshot(2, { goal: "読みやすく整理する" }),
@@ -155,6 +233,8 @@ describe("shared autonomy draft editor", () => {
       intervalMinutes: 30,
       maxRunsPerDay: 4,
       reviewMode: "automatic",
+      workMode: "documents",
+      publishPullRequest: false,
     });
   });
 

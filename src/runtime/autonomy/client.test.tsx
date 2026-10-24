@@ -47,6 +47,44 @@ describe("autonomous host polling", () => {
     view.unmount();
   });
 
+  it("announces pending review transitions once and clears a withdrawn card", async () => {
+    vi.useFakeTimers();
+    const review = {
+      id: "pending",
+      goal: "notes",
+      reason: "useful",
+      summary: "draft",
+      changedPaths: [],
+    };
+    let pendingWork: typeof review | null = review;
+    let draftUnavailable = false;
+    invoke.mockImplementation(async (command: string) => {
+      if (command === "autonomy_status") return { ...idle, pendingWork };
+      if (command === "autonomy_draft_snapshot") {
+        if (draftUnavailable) throw new Error("draft unavailable");
+        return { revision: 0, draft: null };
+      }
+    });
+    const receive = vi.fn();
+    window.addEventListener("yorishiro:autonomy-work-review-available", receive);
+    const client = await import("./client");
+    const view = renderHook(client.useAutonomyStatus);
+    await act(async () => {});
+    expect(receive).toHaveBeenCalledTimes(1);
+    expect((receive.mock.calls[0][0] as CustomEvent).detail).toEqual(review);
+    await act(async () => vi.advanceTimersByTimeAsync(30_000));
+    expect(receive).toHaveBeenCalledTimes(1);
+    pendingWork = null;
+    draftUnavailable = true;
+    await act(async () => vi.advanceTimersByTimeAsync(15_000));
+    expect(receive).toHaveBeenCalledTimes(2);
+    expect((receive.mock.calls[1][0] as CustomEvent).detail).toBeNull();
+    await act(async () => vi.advanceTimersByTimeAsync(15_000));
+    expect(receive).toHaveBeenCalledTimes(2);
+    view.unmount();
+    window.removeEventListener("yorishiro:autonomy-work-review-available", receive);
+  });
+
   it("keeps the saved contract visible when a due run cannot start", async () => {
     const saved = { ...idle, contract: { goal: "整理", enabled: true } };
     invoke.mockImplementation(async (command: string) => {

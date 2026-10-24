@@ -5,7 +5,7 @@
 //! save command remains the sole route to an active contract, and approval of a
 //! daily task remains a separate user action.
 
-use super::{AutonomyState, Contract};
+use super::{AutonomyState, Contract, WorkMode};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
@@ -38,7 +38,9 @@ pub struct AutonomyProposal {
     #[serde(default)]
     pub root: String,
     /// Only write, move and trash are supported. Empty means read-only. These
-    /// are reversible local document operations, never shell/network actions.
+    /// scope local changes. All three are required for isolated repository work;
+    /// a narrower grant permits only the corresponding document operations.
+    /// External sending is never authorized by these operations.
     pub allowed_operations: Vec<String>,
     /// Interval between work opportunities, 5–1440 minutes.
     pub interval_minutes: u64,
@@ -59,6 +61,12 @@ pub struct AutonomyProposal {
 pub struct Draft {
     pub id: String,
     pub goal: String,
+    /// Host-owned routing; old restricted drafts retain their scope until save.
+    #[serde(default = "auto_work_mode")]
+    pub work_mode: WorkMode,
+    /// Compatibility field only. Automatic publishing is never permitted.
+    #[serde(default)]
+    pub publish_pull_request: bool,
     pub root: String,
     pub allowed_operations: Vec<String>,
     pub interval_minutes: u64,
@@ -79,6 +87,8 @@ pub struct DraftSnapshot {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DraftPatch {
     pub goal: Option<String>,
+    pub work_mode: Option<WorkMode>,
+    pub publish_pull_request: Option<bool>,
     pub root: Option<String>,
     pub allowed_operations: Option<Vec<String>>,
     pub interval_minutes: Option<u64>,
@@ -117,7 +127,7 @@ pub struct SetupContext {
     pub guidance: &'static str,
 }
 
-const GUIDANCE: &str = "Discuss the enduring purpose, one existing document folder, reversible operations, schedule and daily review preference. Keep enduring permission separate from today's concrete work. daily review means the AI asks what to work on today and waits for the user's explicit app confirmation before execution. Use autonomy_propose to update the shared inactive setup draft as choices become clear. The user can edit this same draft directly; preserve their edits, pass its latest id as baseDraftId, and refresh autonomy_setup_context before each update. If an update conflicts, reread the latest draft and reconcile the user's changes before retrying, never blindly overwrite them. If the folder is unknown, leave root empty and let the user select it in the app. No MCP tool can activate a contract, approve today's work or execute file changes. External sends, shell commands and irreversible operations are outside this pilot.";
+const GUIDANCE: &str = "Discuss the enduring purpose, selected folder, permitted local operations, schedule and daily review preference. Do not ask the user to choose a document/development mode. The host routes work based on the agreed scope: an exact Git repository root with all write/move/trash permissions uses an isolated copy for documents or code, while narrower grants and other folders use reversible document operations. Never expand a selected subfolder to its parent repository. Keep enduring permission separate from today's concrete work. daily review means the AI asks what to work on today and waits for the user's explicit app confirmation before execution. Use autonomy_propose to update the shared inactive setup draft as choices become clear. The user can edit this same draft directly; preserve their edits, pass its latest id as baseDraftId, and refresh autonomy_setup_context before each update. If an update conflicts, reread the latest draft and reconcile the user's changes before retrying, never blindly overwrite them. If the folder is unknown, leave root empty and let the user select it in the app. No MCP tool can activate a contract, approve today's work or execute file changes. External publication, including draft PRs and email, requires review of the concrete result and a separate explicit confirmation; this setup never grants sending permission. Preserve legacy document-only permission until the user explicitly saves a new scope. Merging and deployment remain unsupported.";
 
 #[derive(Default)]
 struct DraftStore(Mutex<DraftSnapshot>);
@@ -144,7 +154,7 @@ impl DraftStore {
         expected_revision: Option<u64>,
     ) -> Result<DraftEditResult, String> {
         let base_id = proposal.base_draft_id.clone();
-        let draft = validate(proposal)?;
+        let mut draft = validate(proposal)?;
         let mut state = self.0.lock().map_err(|_| "設定案を保存できません")?;
         if state.draft.as_ref().map(|draft| &draft.id) != base_id.as_ref()
             || expected_revision.is_some_and(|revision| revision != state.revision)
@@ -153,6 +163,9 @@ impl DraftStore {
                 snapshot: state.clone(),
                 conflict: true,
             });
+        }
+        if let Some(existing) = &state.draft {
+            draft.work_mode = existing.work_mode;
         }
         let revision = next_revision(&state)?;
         *state = DraftSnapshot {
@@ -197,6 +210,8 @@ impl DraftStore {
         let mut draft = state.draft.clone().unwrap_or_else(|| Draft {
             id: String::new(),
             goal: String::new(),
+            work_mode: WorkMode::Auto,
+            publish_pull_request: false,
             root: String::new(),
             allowed_operations: Vec::new(),
             interval_minutes: 30,
@@ -204,6 +219,12 @@ impl DraftStore {
             review_mode: ReviewMode::Daily,
             explanation: String::new(),
         });
+        if let Some(mode) = patch.work_mode {
+            draft.work_mode = mode;
+        }
+        if let Some(publish) = patch.publish_pull_request {
+            draft.publish_pull_request = publish;
+        }
         if let Some(goal) = patch.goal {
             draft.goal = goal;
         }
@@ -242,6 +263,10 @@ fn next_revision(snapshot: &DraftSnapshot) -> Result<u64, String> {
 
 static DRAFT: LazyLock<DraftStore> = LazyLock::new(DraftStore::default);
 
+fn auto_work_mode() -> WorkMode {
+    WorkMode::Auto
+}
+
 fn validate(mut proposal: AutonomyProposal) -> Result<Draft, String> {
     proposal.explanation = proposal.explanation.trim().to_owned();
     if proposal.explanation.is_empty() || proposal.explanation.len() > 4_000 {
@@ -250,6 +275,8 @@ fn validate(mut proposal: AutonomyProposal) -> Result<Draft, String> {
     let draft = Draft {
         id: uuid::Uuid::new_v4().to_string(),
         goal: proposal.goal,
+        work_mode: WorkMode::Auto,
+        publish_pull_request: false,
         root: proposal.root,
         allowed_operations: proposal.allowed_operations,
         interval_minutes: proposal.interval_minutes,
@@ -262,6 +289,12 @@ fn validate(mut proposal: AutonomyProposal) -> Result<Draft, String> {
 }
 
 fn validate_bounds(draft: &Draft) -> Result<(), String> {
+    if draft.publish_pull_request {
+        return Err(
+            "外部への公開は成果物を確認してから個別に承認してください。設定案では許可できません"
+                .into(),
+        );
+    }
     if draft.goal.len() > 8_000 {
         return Err("目的は8000バイト以内で入力してください".into());
     }
@@ -377,6 +410,8 @@ mod tests {
         let store = DraftStore::default();
         let receipt = store.propose(proposal()).unwrap();
         let draft = store.get().unwrap().unwrap();
+        assert_eq!(draft.work_mode, WorkMode::Auto);
+        assert!(!draft.publish_pull_request);
         assert_eq!(draft.goal, "下書きを整理し、読みやすくする");
         assert!(draft.root.is_empty());
         assert!(!receipt.applied);
@@ -389,6 +424,44 @@ mod tests {
         let mut encoded = serde_json::to_value(proposal()).unwrap();
         encoded["dailyApproved"] = json!(true);
         assert!(serde_json::from_value::<AutonomyProposal>(encoded).is_err());
+    }
+
+    #[test]
+    fn model_cannot_select_execution_mode_or_grant_publication() {
+        for (key, value) in [
+            ("workMode", json!("development")),
+            ("publishPullRequest", json!(true)),
+        ] {
+            let mut encoded = serde_json::to_value(proposal()).unwrap();
+            encoded[key] = value;
+            assert!(serde_json::from_value::<AutonomyProposal>(encoded).is_err());
+        }
+        let store = DraftStore::default();
+        let first = store
+            .edit(
+                None,
+                DraftPatch {
+                    work_mode: Some(WorkMode::Documents),
+                    ..DraftPatch::default()
+                },
+            )
+            .unwrap();
+        let id = first.snapshot.draft.unwrap().id;
+        let mut candidate = proposal();
+        candidate.base_draft_id = Some(id.clone());
+        let revised = store.propose(candidate).unwrap();
+        assert_eq!(
+            revised.snapshot.draft.unwrap().work_mode,
+            WorkMode::Documents
+        );
+        let result = store.edit(
+            Some(&revised.draft_id),
+            DraftPatch {
+                publish_pull_request: Some(true),
+                ..DraftPatch::default()
+            },
+        );
+        assert!(result.is_err());
     }
 
     #[test]

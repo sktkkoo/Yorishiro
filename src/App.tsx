@@ -4329,17 +4329,16 @@ function App() {
     [codexVoiceAvailable, requestAutonomyVoiceSetup],
   );
 
-  const announcedAutonomyReviews = useRef(new Set<string>());
   useEffect(() => {
     const onReview = (event: Event) => {
-      const review = readAutonomyWorkReviewNotice(event);
-      if (!review || announcedAutonomyReviews.current.has(review.id)) return;
-      announcedAutonomyReviews.current.add(review.id);
-      // Keep only recent IDs; a long-lived app must not grow this set forever.
-      if (announcedAutonomyReviews.current.size > 128) {
-        const oldest = announcedAutonomyReviews.current.values().next().value;
-        if (oldest !== undefined) announcedAutonomyReviews.current.delete(oldest);
+      if ((event as CustomEvent<unknown>).detail === null) {
+        void notifyAutonomyWorkReview(null);
+        return;
       }
+      const review = readAutonomyWorkReviewNotice(event);
+      if (!review) return;
+      // The voice hook queues the latest pending card while disconnected and
+      // deduplicates only accepted native submissions, never mere host events.
       void notifyAutonomyWorkReview(review).catch((error: unknown) => {
         console.warn("[autonomy] voice review notice unavailable", error);
       });

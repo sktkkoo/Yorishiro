@@ -8,9 +8,18 @@ import type {
   DraftEditResult,
 } from "./types";
 
-export type DraftValues = Pick<
-  AutonomyDraft,
-  "goal" | "root" | "allowedOperations" | "intervalMinutes" | "maxRunsPerDay" | "reviewMode"
+export type DraftValues = Required<
+  Pick<
+    AutonomyDraft,
+    | "goal"
+    | "root"
+    | "allowedOperations"
+    | "intervalMinutes"
+    | "maxRunsPerDay"
+    | "reviewMode"
+    | "workMode"
+    | "publishPullRequest"
+  >
 >;
 export type DraftField = keyof DraftValues;
 type FieldValue = DraftValues[DraftField];
@@ -21,6 +30,8 @@ const FIELDS: readonly DraftField[] = [
   "intervalMinutes",
   "maxRunsPerDay",
   "reviewMode",
+  "workMode",
+  "publishPullRequest",
 ];
 const EMPTY: DraftValues = {
   goal: "",
@@ -29,6 +40,8 @@ const EMPTY: DraftValues = {
   intervalMinutes: 30,
   maxRunsPerDay: 4,
   reviewMode: "daily",
+  workMode: "auto",
+  publishPullRequest: false,
 };
 const same = (a: FieldValue, b: FieldValue) => JSON.stringify(a) === JSON.stringify(b);
 const valuesOf = (draft: AutonomyDraft): DraftValues => ({
@@ -38,6 +51,8 @@ const valuesOf = (draft: AutonomyDraft): DraftValues => ({
   intervalMinutes: draft.intervalMinutes,
   maxRunsPerDay: draft.maxRunsPerDay,
   reviewMode: draft.reviewMode,
+  workMode: draft.workMode ?? "documents",
+  publishPullRequest: draft.publishPullRequest ?? false,
 });
 
 interface Edit {
@@ -141,6 +156,9 @@ export class AutonomyDraftEditor {
       intervalMinutes: contract.intervalMinutes,
       maxRunsPerDay: contract.maxRunsPerDay,
       reviewMode: contract.reviewMode ?? "automatic",
+      workMode: contract.workMode ?? "documents",
+      // Old blanket publication grants are no longer offered by setup.
+      publishPullRequest: false,
     };
     this.remote = { ...this.values };
     this.publish();
@@ -199,7 +217,10 @@ export class AutonomyDraftEditor {
       }
     }
     this.remote = next;
-    this.publish();
+    // Revoke the obsolete inactive-draft flag explicitly so its next CAS edit
+    // is accepted by the host. Never carry a hidden external-action grant.
+    if (this.values.publishPullRequest) this.edit("publishPullRequest", false);
+    else this.publish();
   }
 
   resolve(key: DraftField, choice: "remote" | "local") {
