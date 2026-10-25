@@ -339,7 +339,7 @@ describe("AutonomyPanel", () => {
     expect(prepareAutonomyAction).not.toHaveBeenCalled();
   });
 
-  it("retains approved decisions without counting them as pending or resuming work", () => {
+  it("shows queued execution without counting an approved operation as pending", () => {
     vi.mocked(useAutonomyStatus).mockReturnValue(
       status({
         contract,
@@ -353,13 +353,54 @@ describe("AutonomyPanel", () => {
     expect(history.closest("details")?.open).toBe(false);
     fireEvent.click(history);
     expect(screen.queryByRole("region", { name: "承認待ち" })).toBeNull();
-    expect(screen.getByText("承認済み（実行は未確認）")).toBeTruthy();
-    expect(screen.getByText("承認済みの操作についてAIへの引き継ぎを待っています")).toBeTruthy();
+    expect(screen.getByText("承認済み・実行待ち")).toBeTruthy();
+    expect(screen.getByText("承認した操作の実行を準備しています")).toBeTruthy();
     expect(screen.queryByText("確認待ち 1件")).toBeNull();
     expect(
       (screen.getByRole("button", { name: "今すぐ進める" }) as HTMLButtonElement).disabled,
     ).toBe(true);
     expect(screen.getByRole("button", { name: "承認を取り消す" })).toBeTruthy();
+    expect(runAutonomyNow).not.toHaveBeenCalled();
+  });
+
+  it("shows approved-operation execution and prevents overlapping work", () => {
+    vi.mocked(useAutonomyStatus).mockReturnValue(
+      status({
+        contract,
+        phase: "executingAction",
+        pendingActions: [{ ...confirmation, status: "executing" }],
+      }),
+    );
+    openPanel();
+    expect(screen.getByText("承認した操作を実行しています")).toBeTruthy();
+    expect(
+      (screen.getByRole("button", { name: "今すぐ進める" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect(screen.getByRole("button", { name: "一時停止" })).toBeTruthy();
+    fireEvent.click(screen.getByText("承認履歴", { selector: "summary" }));
+    expect(screen.getByText("実行中")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "承認を取り消す" })).toBeNull();
+  });
+
+  it.each([
+    "completed",
+    "failed",
+    "interrupted",
+  ] as const)("does not block the next work after a %s operation", (actionStatus) => {
+    vi.mocked(useAutonomyStatus).mockReturnValue(
+      status({
+        contract,
+        phase: "idle",
+        nextRunAt: 1_800_000,
+        pendingActions: [{ ...confirmation, status: actionStatus }],
+      }),
+    );
+    openPanel();
+    expect(
+      (screen.getByRole("button", { name: "今すぐ進める" }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+    expect(screen.getByText(/^次回:/)).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "承認待ち" })).toBeNull();
     expect(runAutonomyNow).not.toHaveBeenCalled();
   });
 

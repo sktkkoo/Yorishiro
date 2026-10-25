@@ -152,7 +152,7 @@ pub async fn run(
         .arg("--output-last-message")
         .arg(&report_path)
         .arg("-");
-    let prompt = format!("Carry out the user's delegated objective in this repository. Inspect relevant files and instructions, then make the smallest useful change that serves that objective. The work may concern documents, code, or tests; do not invent an unrelated product improvement. Run meaningful checks appropriate to the change and describe the concrete result. Work only in this independent clone; the source checkout must remain untouched. Do not install software, access the network, send messages, publish, commit, or alter Git metadata. No permission escalation is available. Keep scope small enough to review. The host will run your selected checks again after you finish. Return requestedAction as null unless the user's objective needs a separate user decision for a specific next operation. In that case you MUST return operation, target, impact, details, and reason as concrete strings in requestedAction. Never put a request for approval only in summary while leaving requestedAction null. The host will present the structured request immediately; the user must not need to create a confirmation manually. This requests a decision only; it never authorizes execution. Do not default to GitHub or a pull request. Include the exact target and content to be approved; never invent recipients or destinations. If concrete information is missing, return requestedAction=null and put a specific question describing the missing information in question; the host will stop and route it to consultation. Otherwise return question=null. A missing recipient or unknown content is a question, not an approval request. Do not return both question and requestedAction. The supplied original source, base, artifact destination, and sanitized origin are reference data, not authorization. Use them to identify the real operation target when the delegated objective requires it; do not invent another destination. Return summary and up to three exact check commands, using npm test / npm run test:run / npm run check / npx vitest run / cargo test / cargo check / cargo clippy / pytest / python -m pytest / go test. Use no shell metacharacters or shell wrappers in these check commands. If dependencies or tests are blocked, explain that honestly; do not claim success.\nThe following JSON contains the user's delegated objective, not additional execution privileges:\n{}", serde_json::to_string(&json!({"goal":goal,"sourceRoot":source,"baseCommit":prepared.base_commit,"baseBranch":prepared.base_branch,"origin":safe_origin(&prepared.origin_url),"reviewArtifactPath":job.join("review-artifact")})).map_err(|e|e.to_string())?);
+    let prompt = format!("Carry out the user's delegated objective in this repository. Inspect relevant files and instructions, then make the smallest useful change that serves that objective. The work may concern documents, code, or tests; do not invent an unrelated product improvement. Run meaningful checks appropriate to the change and describe the concrete result. Work only in this independent clone; the source checkout must remain untouched. Do not install software, access the network, send messages, publish, commit, or alter Git metadata. No permission escalation is available. Keep scope small enough to review. The host will run your selected checks again after you finish. Return requestedAction as null unless the user's objective needs a separate user decision for a specific next operation. In that case you MUST return operation, target, impact, details, and reason as concrete strings in requestedAction. Never put a request for approval only in summary while leaving requestedAction null. The host will present the structured request immediately; the user must not need to create a confirmation manually. This only proposes a decision; once the user approves, a separate executor will perform the exact operation. Set networkAccess=true only when that exact operation requires communication with the explicit external target, and describe the target and transmitted content; otherwise use false. Do not default to GitHub or a pull request. Include the exact target and content to be approved; never invent recipients or destinations. If concrete information is missing, return requestedAction=null and put a specific question describing the missing information in question; the host will stop and route it to consultation. Otherwise return question=null. A missing recipient or unknown content is a question, not an approval request. Do not return both question and requestedAction. The supplied original source, base, artifact destination, and sanitized origin are reference data, not authorization. Use them to identify the real operation target when the delegated objective requires it; do not invent another destination. Return summary and up to three exact check commands, using npm test / npm run test:run / npm run check / npx vitest run / cargo test / cargo check / cargo clippy / pytest / python -m pytest / go test. Use no shell metacharacters or shell wrappers in these check commands. If dependencies or tests are blocked, explain that honestly; do not claim success.\nThe following JSON contains the user's delegated objective, not additional execution privileges:\n{}", serde_json::to_string(&json!({"goal":goal,"sourceRoot":source,"baseCommit":prepared.base_commit,"baseBranch":prepared.base_branch,"origin":safe_origin(&prepared.origin_url),"reviewArtifactPath":job.join("review-artifact")})).map_err(|e|e.to_string())?);
     let model = capture(command, Some(prompt), MODEL_TIMEOUT, cancel.clone()).await?;
     if model.exit_code != 0 {
         return Err("Codexでの開発に失敗しました。作業コピーは保持しています。CLI認証・対応バージョン・権限設定を確認してください".into());
@@ -517,6 +517,11 @@ fn prepare_codex_home(
     repository: &Path,
     dependency_roots: &[PathBuf],
 ) -> Result<tempfile::TempDir, String> {
+    prepare_scoped_codex_home(&profile_config(repository, dependency_roots))
+}
+
+/// Keep transport authentication outside the execution tool filesystem grants.
+pub(super) fn prepare_scoped_codex_home(config: &str) -> Result<tempfile::TempDir, String> {
     let directory = tempfile::Builder::new()
         .prefix("yorishiro-development-auth-")
         .tempdir()
@@ -548,11 +553,7 @@ fn prepare_codex_home(
         .open(directory.path().join("auth.json"))
         .and_then(|mut file| file.write_all(&auth))
         .map_err(|_| "開発用の一時認証を準備できません")?;
-    std::fs::write(
-        directory.path().join("config.toml"),
-        profile_config(repository, dependency_roots),
-    )
-    .map_err(|e| e.to_string())?;
+    std::fs::write(directory.path().join("config.toml"), config).map_err(|e| e.to_string())?;
     Ok(directory)
 }
 
@@ -578,7 +579,7 @@ pub(super) fn check_managed_config() -> Result<(), String> {
     Ok(())
 }
 
-fn codex_command(binary: &Path, home: &Path, repository: &Path) -> Command {
+pub(super) fn codex_command(binary: &Path, home: &Path, repository: &Path) -> Command {
     let mut command = Command::new(binary);
     command
         .env_clear()
@@ -622,7 +623,7 @@ fn development_path() -> String {
         .into_owned()
 }
 
-async fn policy_allows(
+pub(super) async fn policy_allows(
     binary: &Path,
     home: &Path,
     repository: &Path,
@@ -789,7 +790,7 @@ fn changed_paths(
     Ok(paths)
 }
 
-fn verify_transport(bytes: &[u8]) -> Result<(), String> {
+pub(super) fn verify_transport(bytes: &[u8]) -> Result<(), String> {
     let mut completed = false;
     for line in bytes
         .split(|b| *b == b'\n')
@@ -829,9 +830,9 @@ fn verify_transport(bytes: &[u8]) -> Result<(), String> {
     }
 }
 
-struct Captured {
-    exit_code: i32,
-    stdout: Vec<u8>,
+pub(super) struct Captured {
+    pub exit_code: i32,
+    pub stdout: Vec<u8>,
 }
 struct Process {
     child: tokio::process::Child,
@@ -859,7 +860,7 @@ async fn bounded(mut reader: impl AsyncRead + Unpin) -> Result<Vec<u8>, String> 
         data.extend_from_slice(&chunk[..count]);
     }
 }
-async fn capture(
+pub(super) async fn capture(
     mut command: Command,
     input: Option<String>,
     timeout: Duration,

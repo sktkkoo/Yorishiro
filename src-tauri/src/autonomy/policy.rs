@@ -73,6 +73,16 @@ fn roots(root: Option<&Path>) -> Result<BTreeSet<PathBuf>, String> {
 /// File-tool restrictions cannot be silently evaded by the host's file broker.
 /// Bash and other absent tools remain unavailable in the reasoning transport.
 pub fn claude_preflight(root: Option<&Path>) -> Result<(), String> {
+    claude_preflight_mode(root, false)
+}
+
+/// Tool-capable continuations cannot silently discard Claude command restrictions.
+/// Unsupported cross-provider rules stop execution instead of bypassing an ask/deny.
+pub fn claude_action_preflight(root: Option<&Path>) -> Result<(), String> {
+    claude_preflight_mode(root, true)
+}
+
+fn claude_preflight_mode(root: Option<&Path>, tool_execution: bool) -> Result<(), String> {
     // Managed restrictions must also be checked before the host reads files,
     // not only later when launching the reasoning CLI.
     super::worker::check_managed_settings()?;
@@ -87,7 +97,25 @@ pub fn claude_preflight(root: Option<&Path>) -> Result<(), String> {
             let path = dir.join(name);
             if let Some(text) = read_optional(&path)? {
                 check_claude(&text).map_err(|_| error(&path))?;
+                if tool_execution {
+                    check_claude_execution(&text).map_err(|_| error(&path))?;
+                }
             }
+        }
+    }
+    Ok(())
+}
+
+fn check_claude_execution(text: &str) -> Result<(), ()> {
+    let value: Value = serde_json::from_str(text).map_err(|_| ())?;
+    for key in ["deny", "ask"] {
+        if value
+            .get("permissions")
+            .and_then(|rules| rules.get(key))
+            .and_then(Value::as_array)
+            .is_some_and(|rules| !rules.is_empty())
+        {
+            return Err(());
         }
     }
     Ok(())
@@ -502,6 +530,12 @@ mod tests {
         ] {
             assert!(check_claude(text).is_err());
         }
+    }
+    #[test]
+    fn tool_capable_action_does_not_bypass_claude_command_restrictions() {
+        assert!(check_claude_execution(r#"{"permissions":{"ask":["Bash(git push:*)"]}}"#).is_err());
+        assert!(check_claude_execution(r#"{"permissions":{"deny":["Bash(rm:*)"]}}"#).is_err());
+        assert!(check_claude_execution(r#"{"permissions":{"allow":["Bash(npm test)"]}}"#).is_ok());
     }
     #[test]
     fn restrictive_or_unsupported_codex_profiles_fail_closed() {
