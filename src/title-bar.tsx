@@ -45,6 +45,7 @@ export interface TitleBarProps {
   readonly language?: string;
   readonly onToggleVoice?: () => void;
   readonly screenSharingControl?: ReactNode;
+  readonly autonomyControl?: ReactNode;
   readonly tabs?: ReactNode;
   readonly viewModes?: ReadonlyArray<UiPackEntry>;
   readonly activeViewModeId?: string | null;
@@ -73,6 +74,7 @@ export default function TitleBar({
   language,
   onToggleVoice,
   screenSharingControl,
+  autonomyControl,
   tabs,
   viewModes = [],
   activeViewModeId = null,
@@ -263,6 +265,7 @@ export default function TitleBar({
           </button>
         ) : null}
         {screenSharingControl}
+        {autonomyControl}
       </div>
       {voiceError ? (
         <div

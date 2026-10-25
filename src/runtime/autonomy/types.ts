@@ -59,6 +59,30 @@ export interface PendingWork {
   readonly changedPaths: readonly string[];
 }
 
+export interface AutonomyAction {
+  readonly id: string;
+  readonly runId: string;
+  readonly kind: "operation";
+  readonly payloadDigest: string;
+  readonly createdAt: number;
+  readonly status: "pending" | "approved" | "declined";
+  readonly summary: string;
+  readonly sourceRoot: string;
+  readonly operation: string;
+  readonly target: string;
+  readonly impact: string;
+  readonly details: string;
+  readonly artifactPath?: string | null;
+  readonly changedPaths: readonly string[];
+  readonly checks: readonly { readonly command: string; readonly exitCode: number }[];
+  readonly error?: string | null;
+}
+
+export type AutonomyConfirmationNotice = Pick<
+  AutonomyAction,
+  "id" | "runId" | "kind" | "summary" | "status"
+>;
+
 export interface AutonomyRun {
   readonly developmentPath?: string;
   readonly pullRequestUrl?: string;
@@ -85,11 +109,15 @@ export interface AutonomyStatus {
     | "failed"
     | "completed"
     | "blocked"
-    | "awaitingReview";
+    | "awaitingReview"
+    | "awaitingAction"
+    | "publishing";
+
   readonly nextRunAt: number | null;
   readonly runs: readonly AutonomyRun[];
   readonly error: string | null;
   readonly pendingWork?: PendingWork | null;
+  readonly pendingActions?: readonly AutonomyAction[];
 }
 
 export interface SetupMessage {

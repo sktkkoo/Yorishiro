@@ -31,12 +31,101 @@ describe("autonomous host polling", () => {
     const view = renderHook(useAutonomyStatus);
     await act(async () => {});
     expect(view.result.current).toEqual(idle);
-    expect(invoke.mock.calls.filter(([name]) => name === "autonomy_tick")).toHaveLength(1);
-    await act(async () => vi.advanceTimersByTimeAsync(15_000));
     expect(invoke.mock.calls.filter(([name]) => name === "autonomy_tick")).toHaveLength(2);
+    await act(async () => vi.advanceTimersByTimeAsync(15_000));
+    expect(invoke.mock.calls.filter(([name]) => name === "autonomy_tick")).toHaveLength(3);
     view.unmount();
     await act(async () => vi.advanceTimersByTimeAsync(60_000));
-    expect(invoke.mock.calls.filter(([name]) => name === "autonomy_tick")).toHaveLength(2);
+    expect(invoke.mock.calls.filter(([name]) => name === "autonomy_tick")).toHaveLength(3);
+  });
+
+  it("refreshes completion immediately and ignores events after cleanup", async () => {
+    vi.useFakeTimers();
+    let backend = idle;
+    invoke.mockImplementation(async (command: string) => {
+      if (command === "autonomy_status") return backend;
+      if (command === "autonomy_draft_snapshot") return { revision: 0, draft: null };
+    });
+    const { useAutonomyStatus } = await import("./client");
+    const view = renderHook(useAutonomyStatus);
+    await act(async () => {});
+    const emit = listen.mock.calls.find(([event]) => event === "autonomy:status-changed")?.[1];
+    expect(emit).toBeTypeOf("function");
+    backend = { ...idle, phase: "awaitingAction" };
+    await act(async () => emit({ payload: null }));
+    expect(view.result.current?.phase).toBe("awaitingAction");
+    const reads = invoke.mock.calls.filter(([command]) => command === "autonomy_status").length;
+    view.unmount();
+    expect(unlisten).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      emit({ payload: null });
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+    expect(invoke.mock.calls.filter(([command]) => command === "autonomy_status")).toHaveLength(
+      reads,
+    );
+  });
+
+  it("reads again after an in-flight stale result when completion events arrive", async () => {
+    vi.useFakeTimers();
+    let backend = idle;
+    let hold = false;
+    let release!: (value: typeof idle) => void;
+    let reads = 0;
+    invoke.mockImplementation(async (command: string) => {
+      if (command === "autonomy_status") {
+        reads++;
+        if (hold) {
+          hold = false;
+          return new Promise((resolve) => {
+            release = resolve;
+          });
+        }
+        return backend;
+      }
+      if (command === "autonomy_draft_snapshot") return { revision: 0, draft: null };
+    });
+    const { useAutonomyStatus } = await import("./client");
+    const view = renderHook(useAutonomyStatus);
+    await act(async () => {});
+    hold = true;
+    await act(async () => vi.advanceTimersByTimeAsync(15_000));
+    const staleReads = reads;
+    const emit = listen.mock.calls.find(([event]) => event === "autonomy:status-changed")?.[1];
+    backend = { ...idle, phase: "awaitingAction" };
+    await act(async () => {
+      emit({ payload: null });
+      emit({ payload: null });
+    });
+    expect(reads).toBe(staleReads);
+    await act(async () => release(idle));
+    expect(reads).toBe(staleReads + 1);
+    expect(view.result.current?.phase).toBe("awaitingAction");
+    view.unmount();
+  });
+
+  it("retains polling and retries a failed status subscription", async () => {
+    vi.useFakeTimers();
+    let statusAttempts = 0;
+    listen.mockImplementation(async (event: string) => {
+      if (event === "autonomy:status-changed" && ++statusAttempts === 1) throw new Error("offline");
+      return unlisten;
+    });
+    invoke.mockImplementation(async (command: string) => {
+      if (command === "autonomy_status") return idle;
+      if (command === "autonomy_draft_snapshot") return { revision: 0, draft: null };
+    });
+    const { useAutonomyStatus } = await import("./client");
+    const view = renderHook(useAutonomyStatus);
+    await act(async () => {});
+    expect(view.result.current).toEqual(idle);
+    await act(async () => vi.advanceTimersByTimeAsync(5_000));
+    expect(statusAttempts).toBe(2);
+    await act(async () => vi.advanceTimersByTimeAsync(15_000));
+    expect(
+      invoke.mock.calls.filter(([command]) => command === "autonomy_status").length,
+    ).toBeGreaterThan(1);
+    view.unmount();
   });
 
   it("shows a first-load backend failure instead of staying on a loading screen", async () => {
@@ -45,6 +134,138 @@ describe("autonomous host polling", () => {
     const view = renderHook(useAutonomyStatus);
     await waitFor(() => expect(view.result.current?.error).toContain("state unavailable"));
     view.unmount();
+  });
+
+  it("announces post-work confirmations separately and advances the persisted queue", async () => {
+    vi.useFakeTimers();
+    const first = {
+      id: "one",
+      runId: "run-1",
+      kind: "operation",
+      summary: "First result",
+      status: "pending",
+    };
+    const second = { ...first, id: "two", runId: "run-2", summary: "Second result" };
+    let pendingActions = [first, second];
+    let draftFails = false;
+    invoke.mockImplementation(async (command: string) => {
+      if (command === "autonomy_status") return { ...idle, pendingActions };
+      if (command === "autonomy_draft_snapshot") {
+        if (draftFails) throw new Error("draft unavailable");
+        return { revision: 0, draft: null };
+      }
+    });
+    const receive = vi.fn();
+    const daily = vi.fn();
+    window.addEventListener("yorishiro:autonomy-confirmation-available", receive);
+    window.addEventListener("yorishiro:autonomy-work-review-available", daily);
+    const client = await import("./client");
+    const view = renderHook(client.useAutonomyStatus);
+    await act(async () => {});
+    expect((receive.mock.calls[0][0] as CustomEvent).detail).toEqual(first);
+    await act(async () => vi.advanceTimersByTimeAsync(15_000));
+    expect(receive).toHaveBeenCalledTimes(1);
+    pendingActions = [{ ...first, status: "approved" }, second];
+    await act(async () => vi.advanceTimersByTimeAsync(15_000));
+    expect((receive.mock.calls[1][0] as CustomEvent).detail).toEqual(second);
+    draftFails = true;
+    pendingActions = [];
+    await act(async () => vi.advanceTimersByTimeAsync(15_000));
+    expect((receive.mock.calls[2][0] as CustomEvent).detail).toBeNull();
+    expect(daily).not.toHaveBeenCalled();
+    expect(invoke.mock.calls.some(([name]) => name === "autonomy_approve_action")).toBe(false);
+    view.unmount();
+    window.removeEventListener("yorishiro:autonomy-confirmation-available", receive);
+    window.removeEventListener("yorishiro:autonomy-work-review-available", daily);
+  });
+
+  it("sends only the reviewed identity and digest and refreshes after a lost approval response", async () => {
+    let outcome = "pending";
+    const failure = new Error("Approval response interrupted");
+    invoke.mockImplementation(async (command: string) => {
+      if (command === "autonomy_status")
+        return {
+          ...idle,
+          pendingActions: [
+            {
+              id: "action",
+              runId: "run",
+              kind: "operation",
+              summary: "Result",
+              status: outcome,
+            },
+          ],
+        };
+      if (command === "autonomy_draft_snapshot") return { revision: 0, draft: null };
+      if (command === "autonomy_approve_action") {
+        outcome = "approved";
+        throw failure;
+      }
+    });
+    const client = await import("./client");
+    const view = renderHook(client.useAutonomyStatus);
+    await waitFor(() => expect(view.result.current?.pendingActions?.[0].status).toBe("pending"));
+    await act(async () => {
+      await expect(client.approveAutonomyAction("action", "reviewed-digest")).rejects.toBe(failure);
+    });
+    expect(invoke).toHaveBeenCalledWith("autonomy_approve_action", {
+      id: "action",
+      digest: "reviewed-digest",
+    });
+    expect(view.result.current?.pendingActions?.[0].status).toBe("approved");
+    expect(invoke.mock.calls.filter(([name]) => name === "autonomy_approve_action")).toHaveLength(
+      1,
+    );
+    view.unmount();
+  });
+
+  it("clears a declined notice without executing or approving anything", async () => {
+    let status = "pending";
+    invoke.mockImplementation(async (command: string) => {
+      if (command === "autonomy_status")
+        return {
+          ...idle,
+          pendingActions: [
+            {
+              id: "request-1",
+              runId: "run",
+              kind: "operation",
+              status,
+              summary: "Share the report",
+            },
+          ],
+        };
+      if (command === "autonomy_draft_snapshot") return { revision: 0, draft: null };
+      if (command === "autonomy_decline_action") status = "declined";
+    });
+    const receive = vi.fn();
+    window.addEventListener("yorishiro:autonomy-confirmation-available", receive);
+    const client = await import("./client");
+    const view = renderHook(client.useAutonomyStatus);
+    await waitFor(() => expect(receive).toHaveBeenCalledOnce());
+    await act(async () => client.declineAutonomyAction("request-1"));
+    expect(invoke).toHaveBeenCalledWith("autonomy_decline_action", { id: "request-1" });
+    expect(
+      (receive.mock.calls[receive.mock.calls.length - 1]?.[0] as CustomEvent).detail,
+    ).toBeNull();
+    expect(invoke.mock.calls.some(([command]) => command === "autonomy_approve_action")).toBe(
+      false,
+    );
+    view.unmount();
+    window.removeEventListener("yorishiro:autonomy-confirmation-available", receive);
+  });
+
+  it("prepares a generic request without invoking any publication command", async () => {
+    invoke.mockImplementation(async (command: string) => {
+      if (command === "autonomy_status") return idle;
+      if (command === "autonomy_draft_snapshot") return { revision: 0, draft: null };
+    });
+    const client = await import("./client");
+    await client.prepareAutonomyAction("document-run");
+    expect(invoke).toHaveBeenCalledWith("autonomy_prepare_action", { runId: "document-run" });
+    expect(invoke.mock.calls.some(([name]) => /publication|publish|approve/.test(name))).toBe(
+      false,
+    );
   });
 
   it("observes teardown completion without waiting for the normal polling interval", async () => {
@@ -174,7 +395,7 @@ describe("autonomous host polling", () => {
     invoke.mockImplementation(async (command: string) => {
       if (command === "autonomy_status") {
         statusReads += 1;
-        return statusReads === 2 ? staleRead : backend;
+        return statusReads === 3 ? staleRead : backend;
       }
       if (command === "autonomy_pause" || command === "autonomy_set_enabled") {
         backend = disabled;
@@ -189,7 +410,7 @@ describe("autonomous host polling", () => {
 
     // A periodic status request began while the work was still enabled.
     await act(async () => vi.advanceTimersByTimeAsync(15_000));
-    expect(statusReads).toBe(2);
+    expect(statusReads).toBe(3);
     let settled = false;
     let completion = Promise.resolve();
     await act(async () => {
@@ -211,7 +432,7 @@ describe("autonomous host polling", () => {
       await completion;
     });
     expect(settled).toBe(true);
-    expect(statusReads).toBe(3);
+    expect(statusReads).toBe(4);
     expect(view.result.current).toEqual(disabled);
     if (action === "toggle") {
       expect(invoke).toHaveBeenCalledWith("autonomy_set_enabled", { enabled: false });
@@ -257,15 +478,15 @@ describe("live shared setup draft", () => {
       await client.pauseAutonomy();
     });
     expect(view.result.current.status?.error).toContain("event bridge offline");
-    expect(listen).toHaveBeenCalledTimes(1);
-    await act(async () => vi.advanceTimersByTimeAsync(5_000));
     expect(listen).toHaveBeenCalledTimes(2);
+    await act(async () => vi.advanceTimersByTimeAsync(5_000));
+    expect(listen).toHaveBeenCalledTimes(3);
     expect(view.result.current.status?.error).toBeNull();
-    act(() => listen.mock.calls[1][1]({ payload: { revision: 1, draft: draft("reconnected") } }));
+    act(() => listen.mock.calls[2][1]({ payload: { revision: 1, draft: draft("reconnected") } }));
     expect(view.result.current.draft.draft?.id).toBe("reconnected");
     view.unmount();
     await act(async () => vi.advanceTimersByTimeAsync(30_000));
-    expect(listen).toHaveBeenCalledTimes(2);
+    expect(listen).toHaveBeenCalledTimes(3);
   });
 
   it("reflects native voice changes immediately and never regresses to stale polls or edits", async () => {
@@ -292,18 +513,19 @@ describe("live shared setup draft", () => {
     act(() => emit({ payload: { revision: 3, draft: draft("voice") } }));
     expect(view.result.current).toEqual({ revision: 4, draft: null });
     view.unmount();
-    expect(unlisten).toHaveBeenCalledOnce();
+    expect(unlisten).toHaveBeenCalledTimes(2);
     act(() => emit({ payload: { revision: 5, draft: draft("late") } }));
     expect(view.result.current.revision).toBe(4);
   });
 
   it("fetches again after listener registration closes an initial read gap", async () => {
     let resolveListen!: (stop: () => void) => void;
-    listen.mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          resolveListen = resolve;
-        }),
+    listen.mockImplementation((event: string) =>
+      event === "autonomy:draft-changed"
+        ? new Promise((resolve) => {
+            resolveListen = resolve;
+          })
+        : Promise.resolve(unlisten),
     );
     const client = await import("./client");
     const view = renderHook(client.useAutonomyDraftSnapshot);
@@ -320,11 +542,12 @@ describe("live shared setup draft", () => {
 
   it("disposes a listener that finishes registering after unmount", async () => {
     let resolveListen!: (stop: () => void) => void;
-    listen.mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          resolveListen = resolve;
-        }),
+    listen.mockImplementation((event: string) =>
+      event === "autonomy:draft-changed"
+        ? new Promise((resolve) => {
+            resolveListen = resolve;
+          })
+        : Promise.resolve(unlisten),
     );
     const client = await import("./client");
     const view = renderHook(client.useAutonomyDraftSnapshot);
@@ -333,7 +556,7 @@ describe("live shared setup draft", () => {
     await act(async () => {
       resolveListen(unlisten);
     });
-    expect(unlisten).toHaveBeenCalledOnce();
+    expect(unlisten).toHaveBeenCalledTimes(2);
   });
 
   it("shares a consultation's committed snapshot without activating permissions", async () => {

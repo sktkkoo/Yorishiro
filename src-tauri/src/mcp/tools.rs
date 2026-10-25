@@ -21,6 +21,19 @@ use crate::mcp::server::emit_tool_event;
 use crate::mcp::types::{ListLoadErrorsResponse, LoadError};
 use crate::read_last_startup_report_impl;
 
+/// Prepare a confirmation request; this never records user approval.
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AutonomyActionRequest {
+    pub run_id: String,
+    pub request: crate::autonomy::actions::RequestedAction,
+}
+
+/// Read-only decision context for the current autonomous-work store.
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct AutonomyActionContextRequest {}
+
 /// `disable_pack` / `enable_pack` の引数。MCP client から `{"id": "..."}` で渡る。
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct PackIdRequest {
@@ -517,6 +530,40 @@ impl Yorishiro {
         let context = crate::autonomy::draft::setup_context(&state)
             .map_err(|e| McpError::internal_error(e, None))?;
         Ok(CallToolResult::success(vec![Content::json(context)?]))
+    }
+
+    #[tool(
+        description = "Read saved autonomous-work confirmation requests and the user's exact approved or declined decisions. The response is a decision record, not an execution capability or evidence of execution. Match request ID, source folder, target, details and content digest before using a decision. Artifact paths are references, not hashes of current file contents; revalidate the actual payload and obtain a new confirmation if it differs from the displayed details. Pending, declined and migrated requests are not approval. Do not resend an operation whose external result is uncertain. Existing provider/tool deny and approval policies still apply. This tool never executes, resumes or changes work."
+    )]
+    async fn autonomy_action_context(
+        &self,
+        _params: Parameters<AutonomyActionContextRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let state = self
+            .app_handle
+            .try_state::<crate::autonomy::AutonomyState>()
+            .ok_or_else(|| McpError::internal_error("Autonomy state is unavailable", None))?;
+        let actions = crate::autonomy::actions::action_context(&state)
+            .map_err(|e| McpError::internal_error(e, None))?;
+        Ok(CallToolResult::success(vec![Content::json(actions)?]))
+    }
+
+    #[tool(
+        description = "Prepare an operation-independent confirmation card for an existing finished autonomous-work run. Provide the concrete operation, exact target, impact, complete details and reason for confirmation; do not invent recipients or missing parameters. Use this for any operation requiring the user's decision, including non-Git projects. This proposes only: it never approves, executes, publishes or grants tool privileges. The user approves or declines in the app; read autonomy_action_context for their decision. Approval is distinct from execution. If execution has no supported continuation, report that limitation rather than claiming completion."
+    )]
+    async fn autonomy_request_action(
+        &self,
+        Parameters(proposal): Parameters<AutonomyActionRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let state = self
+            .app_handle
+            .try_state::<crate::autonomy::AutonomyState>()
+            .ok_or_else(|| McpError::internal_error("Autonomy state is unavailable", None))?;
+        let action =
+            crate::autonomy::actions::propose_action(&state, &proposal.run_id, proposal.request)
+                .map_err(|e| McpError::invalid_params(e, None))?;
+        let _ = self.app_handle.emit("autonomy:status-changed", ());
+        Ok(CallToolResult::success(vec![Content::json(action)?]))
     }
 
     /// A proposal can update the review card, never the execution contract.
@@ -1330,6 +1377,7 @@ const SERVER_INSTRUCTIONS: &str = concat!(
                 "## ツール選択ガイド\n",
                 "- 声に出す → voice_say。発話するかどうかは system prompt の Voice セクションに従う\n",
                 "- 現在の状態確認 → state_get\n",
+                "- おまかせ作業の結果に確認が必要 → autonomy_request_action で操作・対象・影響・具体的内容・理由を確認カードにする（提案のみ）。autonomy_action_context で画面上の承認・見送りを確認する。承認は実行完了ではなく、本体側の禁止設定を解除しない。対応する実行手段がなければ未実行と伝える\n",
                 "- おまかせ作業の設定を相談する → autonomy_setup_context で現在の範囲を確認し、継続的な目的・フォルダ・操作・頻度・毎日の相談有無を話し合う。設定案は autonomy_propose で画面へ渡す（提案のみ。保存・開始・当日の承認はユーザーが画面で行う）。継続的な許可範囲と今日の具体的な仕事は区別する\n",
                 "- ユーザーが terminal 上で指し示したテキストを読む → terminal_context_get（Cmd+Shift+click で行、Option+Shift+drag で矩形。メッセージに [#TermN] マーカーがあればここで解決する）\n",
                 "- 直近の terminal command run metadata を読む → terminal_runs_recent（output text は返らない。referenceIds がある場合だけ terminal_context_get で user gesture 済み context を解決できる）\n",
@@ -1479,7 +1527,12 @@ mod tests {
         let names: Vec<_> = tools.iter().map(|tool| tool.name.as_ref()).collect();
         assert!(names.contains(&"autonomy_setup_context"));
         assert!(names.contains(&"autonomy_propose"));
+        assert!(names.contains(&"autonomy_action_context"));
+        assert!(names.contains(&"autonomy_request_action"));
         for forbidden in [
+            "autonomy_approve_action",
+            "autonomy_decline_action",
+            "autonomy_prepare_publication",
             "autonomy_save",
             "autonomy_run",
             "autonomy_tick",

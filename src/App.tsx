@@ -169,8 +169,10 @@ import {
 } from "./runtime/attention-producers";
 import { getAttentionRuntime } from "./runtime/attention-runtime";
 import {
+  AUTONOMY_CONFIRMATION_AVAILABLE,
   AUTONOMY_WORK_REVIEW_AVAILABLE,
   installAutonomyVoiceSetupBridge,
+  readAutonomyConfirmationNotice,
   readAutonomyWorkReviewNotice,
 } from "./runtime/autonomy/voice-setup";
 import { registerBundledAttentionAura } from "./runtime/bundled-attention-aura";
@@ -4343,8 +4345,20 @@ function App() {
         console.warn("[autonomy] voice review notice unavailable", error);
       });
     };
+    const onConfirmation = (event: Event) => {
+      const detail = (event as CustomEvent<unknown>).detail;
+      const notice = readAutonomyConfirmationNotice(event);
+      if (detail !== null && !notice) return;
+      void notifyAutonomyWorkReview(notice, "confirmation").catch((error: unknown) => {
+        console.warn("[autonomy] confirmation voice notice unavailable", error);
+      });
+    };
     window.addEventListener(AUTONOMY_WORK_REVIEW_AVAILABLE, onReview);
-    return () => window.removeEventListener(AUTONOMY_WORK_REVIEW_AVAILABLE, onReview);
+    window.addEventListener(AUTONOMY_CONFIRMATION_AVAILABLE, onConfirmation);
+    return () => {
+      window.removeEventListener(AUTONOMY_WORK_REVIEW_AVAILABLE, onReview);
+      window.removeEventListener(AUTONOMY_CONFIRMATION_AVAILABLE, onConfirmation);
+    };
   }, [notifyAutonomyWorkReview]);
 
   const screenPointerSettings = useScreenPointerSettings({
@@ -6094,6 +6108,7 @@ function App() {
             />
           ) : null
         }
+        autonomyControl={<AutonomyPanel />}
         tabs={
           <TabIndicator
             state={tabState}
@@ -6240,7 +6255,6 @@ function App() {
           onStop={stopCodexRealtime}
         />
       ) : null}
-      <AutonomyPanel />
       {agentSetup.visible && (
         <AgentSetupDialog
           language={appLanguage.resolved}

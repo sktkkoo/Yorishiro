@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useEffect, useSyncExternalStore } from "react";
 import type {
+  AutonomyConfirmationNotice,
   AutonomyContract,
   AutonomyDraft,
   AutonomyDraftPatch,
@@ -15,6 +16,7 @@ import type {
 let snapshot: AutonomyStatus | null = null;
 let draftSnapshot: AutonomyDraftSnapshot = { revision: -1, draft: null };
 let announcedReviewId: string | null = null;
+let announcedConfirmationKey: string | null = null;
 const listeners = new Set<() => void>();
 let timer: ReturnType<typeof setTimeout> | null = null;
 let polling: Promise<void> | null = null;
@@ -22,6 +24,45 @@ let draftUnlisten: UnlistenFn | null = null;
 let draftListenerEpoch = 0;
 let draftRetryTimer: ReturnType<typeof setTimeout> | null = null;
 let draftSyncError: string | null = null;
+let statusUnlisten: UnlistenFn | null = null;
+let statusListenerEpoch = 0;
+let statusRetryTimer: ReturnType<typeof setTimeout> | null = null;
+
+async function refreshFromStatusEvent(epoch: number): Promise<void> {
+  // An event can arrive after a status request captured its old result. Read
+  // again after that request, while coalescing simultaneous event callbacks.
+  if (polling !== null) await polling;
+  if (epoch !== statusListenerEpoch || !listeners.size) return;
+  await poll();
+}
+
+function startStatusEvents(): void {
+  if (statusRetryTimer !== null) clearTimeout(statusRetryTimer);
+  statusRetryTimer = null;
+  const epoch = ++statusListenerEpoch;
+  void listen("autonomy:status-changed", () => {
+    if (epoch === statusListenerEpoch) void refreshFromStatusEvent(epoch);
+  })
+    .then(async (unlisten) => {
+      if (epoch !== statusListenerEpoch || !listeners.size) {
+        unlisten();
+        return;
+      }
+      statusUnlisten = unlisten;
+      // Close the gap if completion happened before subscription was ready.
+      await refreshFromStatusEvent(epoch);
+    })
+    .catch(() => {
+      if (epoch !== statusListenerEpoch || !listeners.size) return;
+      statusUnlisten?.();
+      statusUnlisten = null;
+      // The regular status poll remains available while the event bridge retries.
+      statusRetryTimer = setTimeout(() => {
+        statusRetryTimer = null;
+        if (epoch === statusListenerEpoch && listeners.size) startStatusEvents();
+      }, 5_000);
+    });
+}
 
 function acceptDraft(next: AutonomyDraftSnapshot): void {
   // An older poll or IPC response can finish after a live event. Never roll
@@ -92,6 +133,23 @@ async function readStatus(): Promise<void> {
         new CustomEvent("yorishiro:autonomy-work-review-available", { detail: review ?? null }),
       );
     }
+    const confirmation = snapshot.pendingActions?.find((action) => action.status === "pending");
+    const confirmationKey = confirmation ? `${confirmation.id}:${confirmation.status}` : null;
+    if (confirmationKey !== announcedConfirmationKey && typeof window !== "undefined") {
+      announcedConfirmationKey = confirmationKey;
+      const detail: AutonomyConfirmationNotice | null = confirmation
+        ? {
+            id: confirmation.id,
+            runId: confirmation.runId,
+            kind: confirmation.kind,
+            summary: confirmation.summary,
+            status: confirmation.status,
+          }
+        : null;
+      window.dispatchEvent(
+        new CustomEvent("yorishiro:autonomy-confirmation-available", { detail }),
+      );
+    }
     // Clearing a reviewed card must not wait for the independent setup-draft
     // channel; otherwise a draft sync failure could leave a stale voice prompt.
     await refreshDraft();
@@ -128,7 +186,10 @@ async function refreshAfterAction(): Promise<void> {
 function subscribe(notify: () => void): () => void {
   const first = listeners.size === 0;
   listeners.add(notify);
-  if (first) startDraftEvents();
+  if (first) {
+    startDraftEvents();
+    startStatusEvents();
+  }
   return () => {
     listeners.delete(notify);
     if (!listeners.size && timer !== null) {
@@ -136,6 +197,11 @@ function subscribe(notify: () => void): () => void {
       timer = null;
     }
     if (!listeners.size) {
+      ++statusListenerEpoch;
+      if (statusRetryTimer !== null) clearTimeout(statusRetryTimer);
+      statusRetryTimer = null;
+      statusUnlisten?.();
+      statusUnlisten = null;
       ++draftListenerEpoch;
       if (draftRetryTimer !== null) clearTimeout(draftRetryTimer);
       draftRetryTimer = null;
@@ -226,4 +292,28 @@ export async function runAutonomyNow(): Promise<void> {
 export async function undoAutonomyRun(runId: string): Promise<void> {
   await invoke("autonomy_undo", { runId });
   await refreshAfterAction();
+}
+
+export async function prepareAutonomyAction(runId: string): Promise<void> {
+  try {
+    await invoke("autonomy_prepare_action", { runId });
+  } finally {
+    await refreshAfterAction();
+  }
+}
+
+export async function approveAutonomyAction(id: string, digest: string): Promise<void> {
+  try {
+    await invoke("autonomy_approve_action", { id, digest });
+  } finally {
+    await refreshAfterAction();
+  }
+}
+
+export async function declineAutonomyAction(id: string): Promise<void> {
+  try {
+    await invoke("autonomy_decline_action", { id });
+  } finally {
+    await refreshAfterAction();
+  }
 }

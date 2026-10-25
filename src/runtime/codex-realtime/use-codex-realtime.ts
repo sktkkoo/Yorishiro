@@ -128,7 +128,10 @@ interface UseCodexRealtimeResult {
   readonly stop: () => void;
   readonly toggle: () => Promise<void>;
   readonly requestAutonomySetup: () => Promise<void>;
-  readonly notifyAutonomyWorkReview: (review: AutonomyWorkReviewNotice | null) => Promise<void>;
+  readonly notifyAutonomyWorkReview: (
+    review: AutonomyWorkReviewNotice | null,
+    channel?: "daily" | "confirmation",
+  ) => Promise<void>;
   readonly setMicrophoneMuted: (muted: boolean) => void;
   readonly trackQuickChatPrompt: (prompt: string) => Promise<string | null>;
   readonly getLipSyncSource: () => LipSyncSource;
@@ -195,12 +198,11 @@ export function useCodexRealtime({
   createThreadTracker = defaultCreateThreadTracker,
 }: UseCodexRealtimeOptions): UseCodexRealtimeResult {
   const clientRef = useRef<CodexRealtimeClientLike | null>(null);
-  const pendingAutonomyReview = useRef<AutonomyWorkReviewNotice | null>(null);
+  const pendingAutonomyReviews = useRef(
+    new Map<"daily" | "confirmation", AutonomyWorkReviewNotice>(),
+  );
   const acceptedAutonomyReviews = useRef(new Set<string>());
-  const autonomyReviewAttempt = useRef<{
-    client: CodexRealtimeClientLike;
-    id: string;
-  } | null>(null);
+  const autonomyReviewAttempts = useRef(new WeakMap<CodexRealtimeClientLike, Set<string>>());
   const autonomyReviewFlight = useRef<Promise<void> | null>(null);
   const threadTrackerRef = useRef<CodexThreadTrackerLike | null>(null);
   const screenNotificationsRef = useRef(new ScreenContextNotifications());
@@ -639,7 +641,12 @@ export function useCodexRealtime({
     }
     const client = clientRef.current;
     // Background proposals never start microphone capture or reconnect voice.
-    const review = pendingAutonomyReview.current;
+    const entry = [...pendingAutonomyReviews.current.entries()].find(
+      ([, notice]) =>
+        !acceptedAutonomyReviews.current.has(notice.id) &&
+        (!client || !autonomyReviewAttempts.current.get(client)?.has(notice.id)),
+    );
+    const review = entry?.[1];
     if (
       !review ||
       client?.getStatus() !== "active" ||
@@ -649,12 +656,14 @@ export function useCodexRealtime({
       return;
     // Retry a failed submission on the next user-started voice connection,
     // rather than repeating it on every poll or active-state notification.
-    if (
-      autonomyReviewAttempt.current?.client === client &&
-      autonomyReviewAttempt.current.id === review.id
-    )
-      return;
-    autonomyReviewAttempt.current = { client, id: review.id };
+    const attempts = autonomyReviewAttempts.current.get(client) ?? new Set<string>();
+    if (attempts.has(review.id)) return;
+    attempts.add(review.id);
+    autonomyReviewAttempts.current.set(client, attempts);
+    if (attempts.size > 128) {
+      const oldest = attempts.values().next().value;
+      if (oldest !== undefined) attempts.delete(oldest);
+    }
     const delivery = client.notifyAutonomyWorkReview(review);
     autonomyReviewFlight.current = delivery;
     try {
@@ -665,16 +674,22 @@ export function useCodexRealtime({
           const oldest = acceptedAutonomyReviews.current.values().next().value;
           if (oldest !== undefined) acceptedAutonomyReviews.current.delete(oldest);
         }
-        if (pendingAutonomyReview.current?.id === review.id) pendingAutonomyReview.current = null;
+        if (entry && pendingAutonomyReviews.current.get(entry[0])?.id === review.id)
+          pendingAutonomyReviews.current.delete(entry[0]);
       }
     } finally {
       autonomyReviewFlight.current = null;
     }
+    await flushAutonomyReview();
   }, []);
 
   const notifyAutonomyWorkReview = useCallback(
-    async (review: AutonomyWorkReviewNotice | null) => {
-      pendingAutonomyReview.current = review;
+    async (
+      review: AutonomyWorkReviewNotice | null,
+      channel: "daily" | "confirmation" = "daily",
+    ) => {
+      if (review) pendingAutonomyReviews.current.set(channel, review);
+      else pendingAutonomyReviews.current.delete(channel);
       await flushAutonomyReview();
     },
     [flushAutonomyReview],

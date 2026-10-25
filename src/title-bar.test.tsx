@@ -41,6 +41,17 @@ function renderTitleBar(overrides: Partial<Parameters<typeof TitleBar>[0]> = {})
 }
 
 describe("TitleBar View Mode picker", () => {
+  it("places the autonomous-work control directly after screen sharing", () => {
+    renderTitleBar({
+      screenSharingControl: <button type="button">Screen sharing</button>,
+      autonomyControl: <button type="button">Autonomous work</button>,
+    });
+    const sharing = screen.getByRole("button", { name: "Screen sharing" });
+    expect(sharing.nextElementSibling).toBe(
+      screen.getByRole("button", { name: "Autonomous work" }),
+    );
+  });
+
   it("exposes active state and selects a mode in two clicks", () => {
     const select = vi.fn();
     renderTitleBar({

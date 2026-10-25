@@ -561,6 +561,30 @@ describe("CodexRealtimeClient", () => {
     client.stop();
   });
 
+  it("notifies about result confirmation without treating speech as operation approval", async () => {
+    const client = new CodexRealtimeClient("main-session");
+    const notice = {
+      kind: "confirmation" as const,
+      id: "result-1",
+      goal: "Send the prepared document",
+      reason: "",
+      summary: "Review the recipient and document",
+    };
+    await client.notifyAutonomyWorkReview(notice);
+    expect(bridge.sent).toEqual([]);
+    await client.start();
+    bridge.sent = [];
+    await client.notifyAutonomyWorkReview(notice);
+    expect(bridge.sent.map((message) => message.method)).toEqual([
+      "thread/realtime/appendText",
+      "thread/realtime/appendSpeech",
+    ]);
+    expect(String(bridge.sent[0].params?.text)).toContain("A spoken response is not authorization");
+    expect(String(bridge.sent[1].params?.text)).toContain("確認カード");
+    expect(String(bridge.sent[1].params?.text)).not.toContain("今日はこちらの作業");
+    client.stop();
+  });
+
   it("does not speak a review after its voice session is stopped during context delivery", async () => {
     const client = new CodexRealtimeClient("main-session");
     await client.start();

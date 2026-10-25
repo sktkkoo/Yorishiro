@@ -5,6 +5,7 @@ import {
   AUTONOMY_VOICE_SETUP_STATUS,
   type AutonomyVoiceSetupStatus,
   installAutonomyVoiceSetupBridge,
+  readAutonomyConfirmationNotice,
   readAutonomyWorkReviewNotice,
 } from "./voice-setup";
 
@@ -26,6 +27,23 @@ function setup(request: () => Promise<void>) {
 }
 
 describe("autonomy voice setup feedback", () => {
+  it("bounds confirmation data and gives different statuses distinct notice IDs", () => {
+    const detail = {
+      id: "action-1",
+      status: "pending",
+      summary: "Review this result",
+      approved: true,
+    };
+    const notice = readAutonomyConfirmationNotice(new CustomEvent("confirmation", { detail }));
+    expect(notice).toMatchObject({ kind: "confirmation", id: "confirmation:action-1:pending" });
+    expect(notice).not.toHaveProperty("approved");
+    expect(
+      readAutonomyConfirmationNotice(
+        new CustomEvent("confirmation", { detail: { ...detail, summary: "x".repeat(8001) } }),
+      ),
+    ).toBeNull();
+  });
+
   it("accepts only bounded work-review data", () => {
     const data = {
       id: "review-1",
