@@ -57,3 +57,7 @@ docs/api/
 
 # Local motion reviews may contain third-party application captures.
 .motion-review/
+
+# Private working notes and autonomous-work runtime settings
+WORKING_AGREEMENT.draft.md
+.yorishiro/autonomy/

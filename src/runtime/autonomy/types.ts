@@ -65,17 +65,27 @@ export interface AutonomyAction {
   readonly kind: "operation";
   readonly payloadDigest: string;
   readonly createdAt: number;
-  readonly status: "pending" | "approved" | "declined";
+  readonly status:
+    | "pending"
+    | "approved"
+    | "executing"
+    | "completed"
+    | "failed"
+    | "interrupted"
+    | "declined";
   readonly summary: string;
   readonly sourceRoot: string;
   readonly operation: string;
   readonly target: string;
   readonly impact: string;
   readonly details: string;
+  readonly networkAccess?: boolean;
   readonly artifactPath?: string | null;
   readonly changedPaths: readonly string[];
   readonly checks: readonly { readonly command: string; readonly exitCode: number }[];
   readonly error?: string | null;
+  readonly executionSummary?: string | null;
+  readonly resultUrl?: string | null;
 }
 
 export type AutonomyConfirmationNotice = Pick<
@@ -111,6 +121,7 @@ export interface AutonomyStatus {
     | "blocked"
     | "awaitingReview"
     | "awaitingAction"
+    | "executingAction"
     | "publishing";
 
   readonly nextRunAt: number | null;

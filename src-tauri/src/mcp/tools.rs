@@ -533,7 +533,7 @@ impl Yorishiro {
     }
 
     #[tool(
-        description = "Read saved autonomous-work confirmation requests and the user's exact approved or declined decisions. The response is a decision record, not an execution capability or evidence of execution. Match request ID, source folder, target, details and content digest before using a decision. Artifact paths are references, not hashes of current file contents; revalidate the actual payload and obtain a new confirmation if it differs from the displayed details. Pending, declined and migrated requests are not approval. Do not resend an operation whose external result is uncertain. Existing provider/tool deny and approval policies still apply. This tool never executes, resumes or changes work."
+        description = "Read saved autonomous-work confirmation requests, exact user decisions, and execution results. The host automatically claims approved operations for execution; approved is queued, executing is active, completed has finished, and failed/interrupted require inspecting the result. Do not independently execute or resend queued, active, completed, or uncertain operations. A decision alone is not evidence of completion. Match request ID, source folder, target, details and content digest before using a decision. Artifact paths are references, not hashes of current file contents; revalidate the actual payload and obtain a new confirmation if it differs from the displayed details. Pending, declined and migrated requests are not approval. Do not resend an operation whose external result is uncertain. Existing provider/tool deny and approval policies still apply. This tool never executes, resumes or changes work."
     )]
     async fn autonomy_action_context(
         &self,
@@ -549,7 +549,7 @@ impl Yorishiro {
     }
 
     #[tool(
-        description = "Prepare an operation-independent confirmation card for an existing finished autonomous-work run. Provide the concrete operation, exact target, impact, complete details and reason for confirmation; do not invent recipients or missing parameters. Use this for any operation requiring the user's decision, including non-Git projects. This proposes only: it never approves, executes, publishes or grants tool privileges. The user approves or declines in the app; read autonomy_action_context for their decision. Approval is distinct from execution. If execution has no supported continuation, report that limitation rather than claiming completion."
+        description = "Prepare an operation-independent confirmation card for an existing finished autonomous-work run. Provide the concrete operation, exact target, impact, complete details and reason for confirmation; do not invent recipients or missing parameters. Use this for any operation requiring the user's decision, including non-Git projects. This proposes only: it never approves, executes, publishes or grants tool privileges. The user approves or declines in the app; read autonomy_action_context for their decision. Set networkAccess=true only when the exact operation needs communication to its explicit external target; this capability is shown before approval. The host automatically executes approved operations within the saved folder and capabilities, records completed/failed/interrupted results and resumes scheduling after a terminal result. Never execute the same request independently. Unsupported capabilities are reported as failures, never as completed work."
     )]
     async fn autonomy_request_action(
         &self,
@@ -1377,7 +1377,7 @@ const SERVER_INSTRUCTIONS: &str = concat!(
                 "## ツール選択ガイド\n",
                 "- 声に出す → voice_say。発話するかどうかは system prompt の Voice セクションに従う\n",
                 "- 現在の状態確認 → state_get\n",
-                "- おまかせ作業の結果に確認が必要 → autonomy_request_action で操作・対象・影響・具体的内容・理由を確認カードにする（提案のみ）。autonomy_action_context で画面上の承認・見送りを確認する。承認は実行完了ではなく、本体側の禁止設定を解除しない。対応する実行手段がなければ未実行と伝える\n",
+                "- おまかせ作業の結果に確認が必要 → autonomy_request_action で操作・対象・影響・具体的内容・理由を確認カードにする（提案のみ）。autonomy_action_context で画面上の承認・見送りを確認する。承認後は本体が対象操作を実行し結果を記録する。実行中や完了した操作を別に再実行しない。外部通信が必要な場合はnetworkAccess=trueとし送信先・内容を明示する。本体側の禁止設定は解除しない\n",
                 "- おまかせ作業の設定を相談する → autonomy_setup_context で現在の範囲を確認し、継続的な目的・フォルダ・操作・頻度・毎日の相談有無を話し合う。設定案は autonomy_propose で画面へ渡す（提案のみ。保存・開始・当日の承認はユーザーが画面で行う）。継続的な許可範囲と今日の具体的な仕事は区別する\n",
                 "- ユーザーが terminal 上で指し示したテキストを読む → terminal_context_get（Cmd+Shift+click で行、Option+Shift+drag で矩形。メッセージに [#TermN] マーカーがあればここで解決する）\n",
                 "- 直近の terminal command run metadata を読む → terminal_runs_recent（output text は返らない。referenceIds がある場合だけ terminal_context_get で user gesture 済み context を解決できる）\n",

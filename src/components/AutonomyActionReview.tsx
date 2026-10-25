@@ -1,14 +1,31 @@
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { useId, useRef, useState } from "react";
 import { approveAutonomyAction, declineAutonomyAction } from "../runtime/autonomy/client";
 import type { AutonomyAction } from "../runtime/autonomy/types";
 
 const STATUS_LABELS = {
   pending: "確認待ち",
-  approved: "承認済み（実行は未確認）",
+  approved: "承認済み・実行待ち",
+  executing: "実行中",
+  completed: "実行完了",
+  failed: "実行失敗",
+  interrupted: "実行結果の確認が必要",
   declined: "見送り",
 };
 
-/** Records a decision about this exact request; it does not execute the operation. */
+function resultLink(value: string | null | undefined): string | null {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    return ["https:", "http:"].includes(url.protocol) && !url.username && !url.password
+      ? url.href
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Reviews the exact operation and shows its execution outcome. */
 export function AutonomyActionReview({
   action,
   disabled,
@@ -21,6 +38,7 @@ export function AutonomyActionReview({
   const [busy, setBusy] = useState(false);
   const inFlight = useRef(false);
   const [error, setError] = useState<string | null>(null);
+  const resultUrl = resultLink(action.resultUrl);
 
   async function perform(operation: () => Promise<void>) {
     if (inFlight.current) return;
@@ -67,6 +85,11 @@ export function AutonomyActionReview({
         <summary>操作の内容</summary>
         <pre className="autonomy-review-content">{action.details}</pre>
       </details>
+      {action.networkAccess && (
+        <p className="autonomy-muted">
+          承認した対象への通信を含む操作です。必要に応じて、そのサービスの保存済みログインを使用します。
+        </p>
+      )}
       {(action.artifactPath || action.changedPaths.length > 0 || action.checks.length > 0) && (
         <details className="autonomy-run-details">
           <summary>成果物と検証結果</summary>
@@ -92,10 +115,22 @@ export function AutonomyActionReview({
           {error || action.error}
         </p>
       )}
+      {action.executionSummary && (
+        <p className="autonomy-execution-result">{action.executionSummary}</p>
+      )}
+      {resultUrl && (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => void perform(() => openUrl(resultUrl))}
+        >
+          実行結果を開く
+        </button>
+      )}
       {action.status === "pending" && (
         <>
           <p id={hintId} className="autonomy-muted">
-            表示した操作への承認を記録します。このボタンでは操作を実行しません。担当AIが承認結果を確認できます。
+            承認した内容で実行します。対象・影響・操作の内容を確認してください。
           </p>
           <div className="autonomy-actions">
             <button
@@ -107,7 +142,7 @@ export function AutonomyActionReview({
                 void perform(() => approveAutonomyAction(action.id, action.payloadDigest))
               }
             >
-              {busy ? "記録しています…" : "承認する"}
+              {busy ? "開始しています…" : "承認する"}
             </button>
             <button
               type="button"
@@ -122,7 +157,7 @@ export function AutonomyActionReview({
       {action.status === "approved" && (
         <>
           <p className="autonomy-muted">
-            承認を記録しました。実行はまだ確認されていません。承認結果はAIから参照できます。別の操作や変更された内容には適用されません。
+            承認した操作の実行を準備しています。実行が始まるまでは承認を取り消せます。
           </p>
           <button
             type="button"
@@ -131,10 +166,20 @@ export function AutonomyActionReview({
           >
             承認を取り消す
           </button>
-          <p className="autonomy-muted">
-            取り消しは承認の記録にだけ適用されます。実行済みの操作を元に戻すことはできません。
-          </p>
         </>
+      )}
+      {action.status === "executing" && (
+        <p className="autonomy-muted">承認した内容で実行しています。</p>
+      )}
+      {action.status === "failed" && (
+        <p className="autonomy-muted">
+          操作は完了しませんでした。表示された結果を確認してください。自動では再実行しません。
+        </p>
+      )}
+      {action.status === "interrupted" && (
+        <p className="autonomy-muted">
+          実行が中断され、完了したか確認できません。対象の状態を確認してください。重複を避けるため自動では再実行しません。
+        </p>
       )}
       {action.status === "declined" && (
         <p className="autonomy-muted">この操作を見送りました。成果物は保存されています。</p>

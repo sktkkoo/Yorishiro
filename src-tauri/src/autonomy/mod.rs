@@ -2,6 +2,8 @@
 //! exact repository roots to isolated local work when full operations are allowed;
 //! narrower scopes use reversible document transactions. Models never grant
 //! authority, expand scope, or authorize external publication.
+mod action_execution;
+mod action_worker;
 pub(crate) mod actions;
 mod artifact;
 mod development;
@@ -150,6 +152,7 @@ struct Runtime {
     cleanup_pending: bool,
     cleanup_phase: Option<String>,
     deferred_finish: Option<DeferredFinish>,
+    deferred_action_finish: Option<action_execution::DeferredFinish>,
     #[cfg(test)]
     storage_root: Option<PathBuf>,
 }
@@ -319,6 +322,7 @@ fn load_status_at(dir: &Path, now: u64) -> Result<(Status, bool), String> {
         "blocked",
         "awaitingReview",
         "awaitingAction",
+        "executingAction",
         "publishing",
     ]
     .contains(&status.phase.as_str())
@@ -484,6 +488,7 @@ fn settle_stopping(runtime: &mut Runtime) -> bool {
 
 enum CleanupOwner {
     Run(String),
+    Action(String),
     Consultation(String),
 }
 
@@ -498,7 +503,9 @@ fn cleanup_observer(
             return;
         };
         let owns_slot = match &owner {
-            CleanupOwner::Run(id) => runtime.active_run_id.as_ref() == Some(id),
+            CleanupOwner::Run(id) | CleanupOwner::Action(id) => {
+                runtime.active_run_id.as_ref() == Some(id)
+            }
             CleanupOwner::Consultation(id) => runtime
                 .consulting
                 .as_ref()
@@ -508,6 +515,7 @@ fn cleanup_observer(
             return;
         }
         let mut deferred_finish = None;
+        let mut deferred_action_finish = None;
         if !matches!(notice, CleanupProgress::Complete) {
             if !runtime.cleanup_pending && runtime.status.phase != "stopping" {
                 runtime.cleanup_phase = Some(runtime.status.phase.clone());
@@ -567,9 +575,15 @@ fn cleanup_observer(
                 if matches!(&owner, CleanupOwner::Run(_)) {
                     deferred_finish = runtime.deferred_finish.take();
                 }
+                if matches!(&owner, CleanupOwner::Action(_)) {
+                    deferred_action_finish = runtime.deferred_action_finish.take();
+                }
             }
         }
         drop(runtime);
+        if let Some(deferred) = deferred_action_finish {
+            action_execution::finish(&state, deferred);
+        }
         if let Some(deferred) = deferred_finish {
             finish(
                 &state,
@@ -906,6 +920,9 @@ fn start(
     manual: bool,
     window: Option<tauri::WebviewWindow>,
 ) -> Result<(), String> {
+    if action_execution::start(state, manual, window.clone())? {
+        return Ok(());
+    }
     let claim = {
         let mut runtime = lock(state)?;
         let dir = storage_dir(&runtime)?;
@@ -1033,7 +1050,7 @@ async fn execute(
         reviewMode=dailyではgoalは継続的に任された領域です。approvedTodayGoalがなければ状況から今日進めたい具体的な仕事を自分で提案しworkGoalに入れてください。この段階では変更は適用されずユーザーに先に相談します。approvedTodayGoalがあればその仕事の範囲内だけで進め、新しい別の仕事に勝手に広げないでください。状況から見つけた改善案も理由と共に説明してください。\n\
         この実行ではテキスト文書(.txt/.md/.markdown/.rst/.csv/.tsv/.log)の作成・編集・移動・退避のみ可能です。\n\
         相対パスを使い、既存のディレクトリ内で作業してください。隠しファイル、設定、コード、AGENTS.md、CLAUDE.mdは操作不可です。\n\
-        shell実行・外部送信・公開・他アプリ操作はできません。権限外の操作が必要で対象と内容が具体的に確定している場合はrequestedActionにoperation・target・impact・details・reasonを返してください。承認が必要な操作は必ずこの構造化されたrequestedActionで返してください。summaryに「承認してください」とだけ書いてrequestedActionをnullにしてはいけません。ホストは返された確認事項をそのままユーザーへ表示します。ユーザーが確認事項の作成操作をする必要はありません。これはユーザーに確認を求めるだけで、実行はしません。メール等の宛先・本文・送信先や適用する内容を推測せず、不足があればrequestedAction=null、outcome=blockedとして相談してください。確認が不要ならrequestedAction=nullです。\n\
+        shell実行・外部送信・公開・他アプリ操作はできません。権限外の操作が必要で対象と内容が具体的に確定している場合はrequestedActionにoperation・target・impact・details・reason・networkAccessを返してください。外部通信が必要な操作のみnetworkAccess=trueとし、送信先と送信内容を具体的に明示してください。ローカル操作ではfalseです。承認が必要な操作は必ずこの構造化されたrequestedActionで返してください。summaryに「承認してください」とだけ書いてrequestedActionをnullにしてはいけません。ホストは返された確認事項をそのままユーザーへ表示します。ユーザーが確認事項の作成操作をする必要はありません。これはユーザーに確認を求めるだけで、実行はしません。メール等の宛先・本文・送信先や適用する内容を推測せず、不足があればrequestedAction=null、outcome=blockedとして相談してください。確認が不要ならrequestedAction=nullです。\n\
         完了済み作業を繰り返さず、有用な作業がなければoperationsを空にしてください。outcomeは、目的達成ならcompleted、能力や情報不足で進められない場合はblocked、まだ自力で進められる場合だけcontinueです。completedとblockedは自動実行が停止します。\n\
         ファイル一覧のomittedが0でなければ全体を確認したと主張しないでください。最大8操作。writeのcontentは省略のない全文です。\n\
         reasonは選んだ理由、summaryは変更内容または停止理由を簡潔な日本語で書いてください。実行・検証していない結果は主張しないでください。\n\
@@ -1913,6 +1930,7 @@ mod tests {
             outcome: Outcome::Blocked,
             operations: vec![],
             requested_action: Some(actions::RequestedAction {
+                network_access: false,
                 operation: "Send a message".into(),
                 target: "user@example.test".into(),
                 impact: "Recipient will receive the message".into(),

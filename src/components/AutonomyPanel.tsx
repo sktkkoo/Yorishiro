@@ -41,6 +41,7 @@ const PHASE_LABELS = {
   blocked: "続けるための指示を待っています",
   awaitingReview: "今日の仕事について相談しています",
   awaitingAction: "作業結果の確認を待っています",
+  executingAction: "承認した操作を実行しています",
   publishing: "以前の処理状況を確認してください",
 };
 
@@ -117,7 +118,11 @@ export function AutonomyPanel() {
   const titleId = useId();
   const saveHintId = useId();
   const working =
-    status?.phase === "thinking" || status?.phase === "applying" || status?.phase === "publishing";
+    status?.phase === "thinking" ||
+    status?.phase === "applying" ||
+    status?.phase === "publishing" ||
+    status?.phase === "executingAction" ||
+    status?.pendingActions?.some((action) => action.status === "executing");
   const stopping = status?.phase === "stopping";
   const reviewActions = status?.pendingActions ?? [];
   const pendingActions = reviewActions.filter((action) => action.status === "pending");
@@ -139,7 +144,9 @@ export function AutonomyPanel() {
   ]
     .filter(Boolean)
     .join("・");
-  const awaitingAction = reviewActions.some((action) => action.status !== "declined");
+  const awaitingAction = reviewActions.some((action) =>
+    ["pending", "approved", "executing"].includes(action.status),
+  );
   const reviewRef = useRef<HTMLElement>(null);
   const settingsVisible = settingsOpen ?? (!status?.contract || Boolean(proposedDraft.draft));
   const sortedRuns = [...(status?.runs ?? [])].sort((a, b) => b.startedAt - a.startedAt);
@@ -387,17 +394,19 @@ export function AutonomyPanel() {
                                   : "autonomy-dot"
                               }
                             />
-                            {status.phase === "publishing"
-                              ? PHASE_LABELS.publishing
-                              : working
-                                ? status.phase === "applying"
-                                  ? "作業の成果を保存しています"
-                                  : "目的に沿った作業と検証を進めています"
-                                : status.phase === "awaitingAction" &&
-                                    confirmationCount === 0 &&
-                                    awaitingAction
-                                  ? "承認済みの操作についてAIへの引き継ぎを待っています"
-                                  : PHASE_LABELS[status.phase]}
+                            {status.phase === "executingAction"
+                              ? PHASE_LABELS.executingAction
+                              : status.phase === "publishing"
+                                ? PHASE_LABELS.publishing
+                                : working
+                                  ? status.phase === "applying"
+                                    ? "作業の成果を保存しています"
+                                    : "目的に沿った作業と検証を進めています"
+                                  : status.phase === "awaitingAction" &&
+                                      confirmationCount === 0 &&
+                                      awaitingAction
+                                    ? "承認した操作の実行を準備しています"
+                                    : PHASE_LABELS[status.phase]}
                           </p>
                           {status.nextRunAt !== null &&
                             status.contract.enabled &&
