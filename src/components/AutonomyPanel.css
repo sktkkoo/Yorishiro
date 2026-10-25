@@ -233,6 +233,11 @@
   outline: 2px solid var(--yorishiro-accent, #93c9a5);
   outline-offset: 3px;
 }
+/* These containers receive focus on opening, but are not interactive controls. */
+.autonomy-panel:focus,
+.autonomy-panel .autonomy-confirmations:focus {
+  outline: none;
+}
 .autonomy-muted {
   color: var(--yorishiro-fg-dim, #a4a7ad);
   font-size: 12px;
