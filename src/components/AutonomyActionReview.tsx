@@ -86,7 +86,9 @@ export function AutonomyActionReview({
         <pre className="autonomy-review-content">{action.details}</pre>
       </details>
       {action.networkAccess && (
-        <p className="autonomy-muted">承認した対象への通信を含む操作です。</p>
+        <p className="autonomy-muted">
+          承認した対象への通信を含む操作です。必要に応じて、そのサービスの保存済みログインを使用します。
+        </p>
       )}
       {(action.artifactPath || action.changedPaths.length > 0 || action.checks.length > 0) && (
         <details className="autonomy-run-details">

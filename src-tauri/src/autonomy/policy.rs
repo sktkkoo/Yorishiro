@@ -169,6 +169,11 @@ fn check_claude(text: &str) -> Result<(), ()> {
 /// Return only restrictive literal rules. Allow rules can authorize unsandboxed
 /// execution in native Codex, so they must not enter this limited worker.
 pub fn codex_restrictions(root: &Path) -> Result<String, String> {
+    codex_restrictions_for_action(root, false)
+}
+
+/// Network approval does not override an existing native sandbox network deny.
+pub fn codex_restrictions_for_action(root: &Path, network: bool) -> Result<String, String> {
     super::development::check_managed_config()?;
     let mut dirs = BTreeSet::from([codex_home()?]);
     dirs.extend(
@@ -180,7 +185,7 @@ pub fn codex_restrictions(root: &Path) -> Result<String, String> {
     for dir in dirs {
         let config = dir.join("config.toml");
         if let Some(text) = read_optional(&config)? {
-            check_codex_config(&text).map_err(|_| error(&config))?;
+            check_codex_action_config(&text, network).map_err(|_| error(&config))?;
         }
         // Named v2 profile files can carry restrictions not represented by the
         // base config. Accept ordinary model-only profiles; stop on unsupported
@@ -194,7 +199,7 @@ pub fn codex_restrictions(root: &Path) -> Result<String, String> {
                         .is_some_and(|name| name.to_string_lossy().ends_with(".config.toml"))
                     {
                         let text = read_optional(&path)?.ok_or_else(|| error(&path))?;
-                        check_codex_config(&text).map_err(|_| error(&path))?;
+                        check_codex_action_config(&text, network).map_err(|_| error(&path))?;
                     }
                 }
             }
@@ -227,6 +232,30 @@ pub fn codex_restrictions(root: &Path) -> Result<String, String> {
         }
     }
     Ok(retained)
+}
+
+fn check_codex_action_config(text: &str, network: bool) -> Result<(), ()> {
+    check_codex_config(text)?;
+    if !network {
+        return Ok(());
+    }
+    let value: toml::Value = toml::from_str(text).map_err(|_| ())?;
+    let native_network = value
+        .get("sandbox_workspace_write")
+        .and_then(|workspace| workspace.get("network_access"));
+    let explicit_network = native_network
+        .map(|value| value.as_bool().ok_or(()))
+        .transpose()?;
+    let workspace_default = value.get("sandbox_mode").and_then(toml::Value::as_str)
+        == Some("workspace-write")
+        || value
+            .get("default_permissions")
+            .and_then(toml::Value::as_str)
+            == Some(":workspace");
+    if explicit_network == Some(false) || (workspace_default && explicit_network != Some(true)) {
+        return Err(());
+    }
+    Ok(())
 }
 
 fn check_codex_config(text: &str) -> Result<(), ()> {
@@ -536,6 +565,29 @@ mod tests {
         assert!(check_claude_execution(r#"{"permissions":{"ask":["Bash(git push:*)"]}}"#).is_err());
         assert!(check_claude_execution(r#"{"permissions":{"deny":["Bash(rm:*)"]}}"#).is_err());
         assert!(check_claude_execution(r#"{"permissions":{"allow":["Bash(npm test)"]}}"#).is_ok());
+    }
+    #[test]
+    fn approved_network_action_preserves_native_network_restrictions() {
+        for config in [
+            "sandbox_mode='danger-full-access'\n[sandbox_workspace_write]\nnetwork_access=false",
+            "sandbox_mode='workspace-write'",
+            "default_permissions=':workspace'",
+            "[sandbox_workspace_write]\nnetwork_access='false'",
+            "[permissions.custom.network]\nenabled=false",
+        ] {
+            assert!(check_codex_action_config(config, true).is_err(), "{config}");
+        }
+        assert!(check_codex_action_config(
+            "sandbox_mode='workspace-write'\n[sandbox_workspace_write]\nnetwork_access=false",
+            false
+        )
+        .is_ok());
+        assert!(check_codex_action_config(
+            "sandbox_mode='workspace-write'\n[sandbox_workspace_write]\nnetwork_access=true",
+            true
+        )
+        .is_ok());
+        assert!(check_codex_action_config("sandbox_mode='danger-full-access'", true).is_ok());
     }
     #[test]
     fn restrictive_or_unsupported_codex_profiles_fail_closed() {

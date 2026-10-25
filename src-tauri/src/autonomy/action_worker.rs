@@ -149,6 +149,75 @@ fn quoted(text: &str) -> String {
     serde_json::to_string(text).expect("serializing a string cannot fail")
 }
 
+/// Only an explicit repository locator in the reviewed target can use GitHub login.
+/// Mentions in instructions/details or lookalike hosts grant no credential access.
+fn github_target(target: &str) -> bool {
+    target
+        .split(|c: char| c.is_whitespace() || "／（）()[]<>、，,;\"".contains(c))
+        .any(|part| {
+            let path = if let Some(path) = part.strip_prefix("git@github.com:") {
+                path.to_owned()
+            } else if let Ok(url) = tauri::Url::parse(part) {
+                if url.scheme() != "https"
+                    || url.host_str() != Some("github.com")
+                    || !url.username().is_empty()
+                    || url.password().is_some()
+                {
+                    return false;
+                }
+                url.path().trim_start_matches('/').to_owned()
+            } else {
+                return false;
+            };
+            let parts: Vec<_> = path.trim_end_matches('/').split('/').collect();
+            parts.len() >= 2
+                && parts[..2].iter().all(|part| {
+                    !part.is_empty()
+                        && *part != "."
+                        && *part != ".."
+                        && part
+                            .chars()
+                            .all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c))
+                })
+        })
+}
+
+/// Read a single service credential through its installed CLI, outside model tools.
+/// The caller checks retained command policy first. Never log the token or include
+/// it in prompts/reports; the worker receives only this host's credential in its
+/// environment and an empty service configuration inside its private workspace.
+async fn github_token(
+    binary: &Path,
+    directory: &Path,
+    cancel: CancellationToken,
+) -> Result<String, String> {
+    let mut command = development::codex_command(binary, directory, directory);
+    command.args(["auth", "token", "--hostname", "github.com"]);
+    if let Some(value) = std::env::var_os("GH_CONFIG_DIR") {
+        command.env("GH_CONFIG_DIR", value);
+    }
+    for name in ["GH_TOKEN", "GITHUB_TOKEN"] {
+        if let Some(value) = std::env::var_os(name) {
+            command.env(name, value);
+        }
+    }
+    let mut output = development::capture(command, None, Duration::from_secs(10), cancel).await?;
+    let token = std::str::from_utf8(&output.stdout)
+        .ok()
+        .map(str::trim)
+        .filter(|value| {
+            !value.is_empty() && value.len() <= 4000 && !value.chars().any(char::is_control)
+        })
+        .map(str::to_owned);
+    output.stdout.fill(0);
+    if output.exit_code != 0 {
+        return Err(
+            "承認したGitHub操作のログインを確認できません。GitHub CLIでログインしてください".into(),
+        );
+    }
+    token.ok_or_else(|| "サービスのログイン情報を確認できません".into())
+}
+
 fn profile(workspace: &Workspace, network: bool, user_home: Option<&Path>) -> String {
     let mut config = format!(
         r#"default_permissions = "{PROFILE}"
@@ -157,7 +226,7 @@ web_search = "disabled"
 cli_auth_credentials_store = "file"
 [shell_environment_policy]
 inherit = "all"
-include_only = ["PATH", "HOME", "LANG", "LC_ALL", "TMPDIR", "NPM_CONFIG_OFFLINE", "NPM_CONFIG_CACHE", "CARGO_NET_OFFLINE", "GIT_CONFIG_NOSYSTEM", "GIT_CONFIG_GLOBAL", "GIT_TERMINAL_PROMPT", "GH_PROMPT_DISABLED", "SSH_AUTH_SOCK", "YORISHIRO_AUTONOMY_RUN_ID"]
+include_only = ["PATH", "HOME", "LANG", "LC_ALL", "TMPDIR", "NPM_CONFIG_OFFLINE", "NPM_CONFIG_CACHE", "CARGO_NET_OFFLINE", "GIT_CONFIG_NOSYSTEM", "GIT_CONFIG_GLOBAL", "GIT_TERMINAL_PROMPT", "GH_PROMPT_DISABLED", "GH_CONFIG_DIR", "GH_TOKEN", "SSH_AUTH_SOCK", "YORISHIRO_AUTONOMY_RUN_ID"]
 [features]
 apps = false
 plugins = false
@@ -361,7 +430,7 @@ pub(super) async fn execute(
     let network = action["networkAccess"].as_bool().unwrap_or(false);
     let workspace = prepare(storage, &action, run, contract)?;
     super::policy::claude_action_preflight(Some(&workspace.root))?;
-    let restrictions = super::policy::codex_restrictions(&workspace.root)?;
+    let restrictions = super::policy::codex_restrictions_for_action(&workspace.root, network)?;
     let config = profile(&workspace, network, dirs::home_dir().as_deref());
     let home = development::prepare_scoped_codex_home(&config)?;
     let rules = super::policy::write_rules(home.path(), &restrictions)?;
@@ -377,6 +446,32 @@ pub(super) async fn execute(
         cancel.clone(),
     )
     .await?;
+    let service_login = if network && github_target(action["target"].as_str().unwrap_or("")) {
+        let gh = crate::resolve_command_path_impl("gh")
+            .map(PathBuf::from)
+            .ok_or("GitHub CLIが見つかりません")?;
+        let exact_binary = gh.to_str().ok_or("GitHub CLIのパスを読み取れません")?;
+        // Preserve restrictions written against either the normal command name
+        // or its absolute executable path before the host reads one credential.
+        for executable in ["gh", exact_binary] {
+            let args = [executable, "auth", "token", "--hostname", "github.com"].map(str::to_owned);
+            if !development::policy_allows(
+                &binary,
+                home.path(),
+                &workspace.work,
+                &rules,
+                &args,
+                cancel.clone(),
+            )
+            .await?
+            {
+                return Err("既存の実行制限によりサービスのログインを引き継げません".into());
+            }
+        }
+        Some(github_token(&gh, &workspace.work, cancel.clone()).await?)
+    } else {
+        None
+    };
     let schema = workspace.job.join("report-schema.json");
     let report_path = workspace.job.join("report.json");
     fs::write(
@@ -400,11 +495,16 @@ pub(super) async fn execute(
         .env("GIT_CONFIG_GLOBAL", "/dev/null")
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("GH_PROMPT_DISABLED", "1");
+    if let Some(token) = service_login {
+        let directory = workspace.work.join(".gh");
+        create_directory(&directory)?;
+        command
+            .env("GH_CONFIG_DIR", directory)
+            .env("GH_TOKEN", token);
+    }
     if network {
-        for name in ["SSH_AUTH_SOCK"] {
-            if let Some(value) = std::env::var_os(name) {
-                command.env(name, value);
-            }
+        if let Some(value) = std::env::var_os("SSH_AUTH_SOCK") {
+            command.env("SSH_AUTH_SOCK", value);
         }
     }
     command
@@ -457,6 +557,72 @@ mod tests {
             references: vec![path.join("review-artifact")],
             review: None,
         }
+    }
+
+    #[test]
+    fn saved_login_requires_an_explicit_approved_service_target() {
+        for value in [
+            "https://github.com/example/project",
+            "git@github.com:example/project.git",
+            "repository: git@github.com:example/project.git／branch: main",
+        ] {
+            assert!(github_target(value));
+        }
+        for value in [
+            "github",
+            "https://github.com.evil.test/example/project",
+            "https://evil.test/?next=https://github.com/example/project",
+            "https://user@github.com/example/project",
+            "https://github.com",
+            "report.txt",
+        ] {
+            assert!(!github_target(value));
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[tokio::test]
+    #[ignore = "read-only verification using installed gh and an existing local GitHub login; no model or publication"]
+    async fn live_sandbox_uses_only_the_approved_service_login() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().canonicalize().unwrap();
+        let workspace = workspace(&root);
+        fs::create_dir_all(workspace.work.join(".yorishiro-tmp")).unwrap();
+        fs::create_dir(&workspace.root).unwrap();
+
+        let home = root.join("transport");
+        fs::create_dir(&home).unwrap();
+        fs::write(
+            home.join("config.toml"),
+            profile(&workspace, true, dirs::home_dir().as_deref()),
+        )
+        .unwrap();
+        let codex = crate::resolve_command_path_impl("codex").unwrap();
+        let gh = crate::resolve_command_path_impl("gh").unwrap();
+        let token = github_token(Path::new(&gh), &workspace.work, CancellationToken::new())
+            .await
+            .unwrap();
+        let config_dir = workspace.work.join(".gh");
+        create_directory(&config_dir).unwrap();
+        let mut command = development::codex_command(Path::new(&codex), &home, &workspace.work);
+        command
+            .env("GH_CONFIG_DIR", &config_dir)
+            .env("GH_TOKEN", token)
+            .args(["sandbox", "-P", PROFILE, "-C"])
+            .arg(&workspace.work)
+            .arg("--")
+            .arg(gh)
+            .args(["auth", "status", "--hostname", "github.com"])
+            .kill_on_drop(true);
+        let output = tokio::time::timeout(Duration::from_secs(30), command.output())
+            .await
+            .unwrap()
+            .unwrap();
+        // Never print authentication diagnostics or credentials from the live account.
+        assert!(
+            output.status.success(),
+            "approved service authentication was unavailable inside the sandbox"
+        );
     }
 
     #[test]

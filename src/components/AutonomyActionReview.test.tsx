@@ -163,7 +163,11 @@ describe("post-work operation confirmation", () => {
 
   it("includes communication in the reviewed operation when requested", () => {
     render(<AutonomyActionReview action={{ ...action, networkAccess: true }} disabled={false} />);
-    expect(screen.getByText("承認した対象への通信を含む操作です。")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "承認した対象への通信を含む操作です。必要に応じて、そのサービスの保存済みログインを使用します。",
+      ),
+    ).toBeTruthy();
     expect(approveAutonomyAction).not.toHaveBeenCalled();
   });
 
