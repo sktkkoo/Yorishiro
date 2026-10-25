@@ -916,6 +916,25 @@ describe("AutonomyPanel", () => {
     expect(screen.getAllByText("ログインしてから再開してください")).toHaveLength(1);
   });
 
+  it.each([false, true])("skips controls hidden by any collapsed ancestor (%s)", (withDecision) => {
+    vi.mocked(useAutonomyStatus).mockReturnValue(
+      status({
+        contract,
+        pendingActions: withDecision ? [{ ...confirmation, status: "declined" }] : [],
+      }),
+    );
+    render(<AutonomyPanel />);
+    fireEvent.click(screen.getByRole("button", { name: "おまかせ作業" }));
+    const outer = screen.getByText(withDecision ? "承認履歴" : "設定", { selector: "summary" });
+    expect(outer.closest("details")?.open).toBe(false);
+    const close = screen.getByRole("button", { name: "おまかせ作業を閉じる" });
+    close.focus();
+    fireEvent.keyDown(close, { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(outer);
+    fireEvent.keyDown(outer, { key: "Tab" });
+    expect(document.activeElement).toBe(close);
+  });
+
   it("wraps keyboard focus around visible controls and skips collapsed run actions", () => {
     vi.mocked(useAutonomyStatus).mockReturnValue(
       status({

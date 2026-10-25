@@ -325,8 +325,13 @@ export function AutonomyPanel() {
                     "button:not([disabled]), input:not([disabled]), textarea:not([disabled]), summary",
                   ) ?? [],
                 ).filter((control) => {
-                  const collapsed = control.closest("details:not([open])");
-                  return !collapsed || collapsed.querySelector(":scope > summary") === control;
+                  let collapsed = control.closest("details:not([open])");
+                  while (collapsed) {
+                    if (!collapsed.querySelector(":scope > summary")?.contains(control))
+                      return false;
+                    collapsed = collapsed.parentElement?.closest("details:not([open])") ?? null;
+                  }
+                  return true;
                 });
                 if (!controls?.length) return;
                 const first = controls[0];
