@@ -113,7 +113,10 @@ export function AutonomyPanel({
   const setMaxRunsPerDay = (value: number) =>
     editor.edit(
       "maxRunsPerDay",
-      Math.min(48, Math.max(1, Math.trunc(Number.isFinite(value) ? value : 1))),
+      Math.min(
+        Number.MAX_SAFE_INTEGER,
+        Math.max(1, Math.trunc(Number.isFinite(value) ? value : 1)),
+      ),
     );
   const setReviewMode = (value: "automatic" | "daily") => editor.edit("reviewMode", value);
   const setOperations = (next: (current: AutonomyOperation[]) => AutonomyOperation[]) =>
@@ -790,14 +793,16 @@ export function AutonomyPanel({
                                 <input
                                   type="number"
                                   min={1}
-                                  max={48}
+                                  max={Number.MAX_SAFE_INTEGER}
                                   required
                                   value={maxRunsPerDay}
                                   onChange={(event) => setMaxRunsPerDay(Number(event.target.value))}
                                 />
                               </label>
                             </div>
-                            <p className="autonomy-muted">{t("24時間の実行上限は1〜48回です。")}</p>
+                            <p className="autonomy-muted">
+                              {t("24時間の実行上限は1以上の整数で設定できます。")}
+                            </p>
                             {conflictFor("intervalMinutes")}
                             {conflictFor("maxRunsPerDay")}
                             <details className="autonomy-help">

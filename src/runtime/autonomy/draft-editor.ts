@@ -120,9 +120,8 @@ export class AutonomyDraftEditor {
       Number.isInteger(this.values.intervalMinutes) &&
       this.values.intervalMinutes >= 5 &&
       this.values.intervalMinutes <= 1440 &&
-      Number.isInteger(this.values.maxRunsPerDay) &&
-      this.values.maxRunsPerDay >= 1 &&
-      this.values.maxRunsPerDay <= 48;
+      Number.isSafeInteger(this.values.maxRunsPerDay) &&
+      this.values.maxRunsPerDay >= 1;
     return {
       draftId: this.baseId,
       values: this.values,

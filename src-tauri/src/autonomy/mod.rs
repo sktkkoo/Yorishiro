@@ -28,6 +28,15 @@ use tauri::Emitter;
 use tokio_util::sync::CancellationToken;
 
 const DAY_MS: u64 = 86_400_000;
+// Contracts round-trip through JavaScript, so preserve exact integer values.
+const MAX_RUNS_PER_DAY: usize = 9_007_199_254_740_991;
+
+fn validate_run_budget(maximum: usize) -> Result<(), String> {
+    if !(1..=MAX_RUNS_PER_DAY).contains(&maximum) {
+        return Err("24時間の実行上限は1以上の正確に扱える整数で入力してください".into());
+    }
+    Ok(())
+}
 const MAX_STATE_BYTES: u64 = 4 * 1024 * 1024;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -626,11 +635,10 @@ fn validate_contract(contract: &Contract) -> Result<PathBuf, String> {
     if contract.goal.trim().is_empty() || contract.goal.len() > 8_000 {
         return Err("目的は1〜8000バイトで入力してください".into());
     }
-    if !(5..=1440).contains(&contract.interval_minutes)
-        || !(1..=48).contains(&contract.max_runs_per_day)
-    {
-        return Err("実行間隔は5〜1440分、24時間の上限は1〜48回です".into());
+    if !(5..=1440).contains(&contract.interval_minutes) {
+        return Err("実行間隔は5〜1440分です".into());
     }
+    validate_run_budget(contract.max_runs_per_day)?;
     let allowed = &contract.allowed_operations;
     if allowed.len() > 3
         || allowed
@@ -1822,7 +1830,7 @@ fn validate_setup_reply(value: Value) -> Result<Value, String> {
         || reply.suggested_goal.len() > 8_000
         || reply.suggested_operations.len() > 3
         || !(5..=1440).contains(&reply.suggested_interval_minutes)
-        || !(1..=48).contains(&reply.suggested_max_runs_per_day)
+        || validate_run_budget(reply.suggested_max_runs_per_day).is_err()
         || reply.suggested_root.len() > 4096
         || reply.suggested_root.chars().any(char::is_control)
         || reply
@@ -1968,7 +1976,7 @@ pub async fn autonomy_consult(
         "reply":{"type":"string"},"suggestedGoal":{"type":"string"},
         "suggestedOperations":{"type":"array","items":{"enum":["write","move","trash"]}},
         "suggestedRoot":{"type":"string"},"suggestedIntervalMinutes":{"type":"integer","minimum":5,"maximum":1440},
-        "suggestedMaxRunsPerDay":{"type":"integer","minimum":1,"maximum":48},"suggestedReviewMode":{"enum":["automatic","daily"]},
+        "suggestedMaxRunsPerDay":{"type":"integer","minimum":1,"maximum":MAX_RUNS_PER_DAY},"suggestedReviewMode":{"enum":["automatic","daily"]},
         "suggestedAutomaticActionApproval":{"anyOf":[{"type":"boolean"},{"type":"null"}]}
     },"required":["reply","suggestedGoal","suggestedOperations","suggestedRoot","suggestedIntervalMinutes","suggestedMaxRunsPerDay","suggestedReviewMode","suggestedAutomaticActionApproval"]});
     let observer = cleanup_observer(&state, CleanupOwner::Consultation(guard.id.clone()));
@@ -2465,7 +2473,8 @@ mod tests {
         assert!(validated.get("enabled").is_none());
         for (key, value) in [
             ("suggestedIntervalMinutes", json!(0)),
-            ("suggestedMaxRunsPerDay", json!(49)),
+            ("suggestedMaxRunsPerDay", json!(0)),
+            ("suggestedMaxRunsPerDay", json!(MAX_RUNS_PER_DAY + 1)),
             ("suggestedReviewMode", json!("unrestricted")),
             ("suggestedRoot", json!("x".repeat(4097))),
         ] {
@@ -2479,6 +2488,27 @@ mod tests {
             validate_setup_reply(relative).unwrap()["suggestedRoot"],
             "relative/folder"
         );
+    }
+
+    #[test]
+    fn contracts_and_consultations_accept_large_exact_run_budgets() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut contract = configured(temp.path(), 100).status.contract.unwrap();
+        for maximum in [49, 100, 1_000, MAX_RUNS_PER_DAY] {
+            contract.max_runs_per_day = maximum;
+            validate_contract(&contract).unwrap();
+            let reply = validate_setup_reply(json!({
+                "reply":"Keep the chosen limit", "suggestedGoal":"Improve notes",
+                "suggestedOperations":["write"], "suggestedMaxRunsPerDay":maximum
+            }))
+            .unwrap();
+            let proposal = setup_proposal(&reply).unwrap();
+            assert_eq!(proposal.max_runs_per_day, maximum);
+        }
+        for maximum in [0, MAX_RUNS_PER_DAY + 1, usize::MAX] {
+            contract.max_runs_per_day = maximum;
+            assert!(validate_contract(&contract).is_err());
+        }
     }
 
     #[test]
@@ -3563,6 +3593,39 @@ mod tests {
             branch: None,
             validation_summary: None,
             source_root: None,
+        }
+    }
+
+    #[test]
+    fn scheduler_enforces_a_hundred_run_limit_for_manual_and_automatic_work() {
+        let temp = tempfile::tempdir().unwrap();
+        let now = DAY_MS * 2;
+        for manual in [false, true] {
+            let mut runtime = configured(temp.path(), now);
+            runtime.status.contract.as_mut().unwrap().max_runs_per_day = 100;
+            runtime.status.runs = (1..100).rev().map(|offset| run(now - offset)).collect();
+            assert!(claim_due(&mut runtime, manual, now, |_| Ok(()))
+                .unwrap()
+                .is_some());
+            assert_eq!(runtime.status.runs.len(), 100);
+
+            let mut runtime = configured(temp.path(), now);
+            runtime.status.contract.as_mut().unwrap().max_runs_per_day = 100;
+            runtime.status.runs = (1..=100).rev().map(|offset| run(now - offset)).collect();
+            let result = claim_due(&mut runtime, manual, now, |_| Ok(()));
+            if manual {
+                assert!(result.unwrap_err().contains("24時間の実行上限"));
+            } else {
+                assert!(result.unwrap().is_none());
+            }
+            assert_eq!(runtime.status.runs.len(), 100);
+            assert_eq!(runtime.status.next_run_at, Some(now - 100 + DAY_MS));
+            assert!(runtime.cancel.is_none());
+            // Expiring the oldest run frees exactly one opportunity.
+            let later = now - 100 + DAY_MS;
+            assert!(claim_due(&mut runtime, manual, later, |_| Ok(()))
+                .unwrap()
+                .is_some());
         }
     }
 

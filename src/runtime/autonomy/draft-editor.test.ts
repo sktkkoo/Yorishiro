@@ -318,6 +318,22 @@ describe("shared autonomy draft editor", () => {
     expect(editor.getSnapshot().synced).toBe(true);
   });
 
+  it.each([
+    0,
+    -1,
+    1.5,
+    Number.MAX_SAFE_INTEGER + 1,
+    Number.POSITIVE_INFINITY,
+  ])("does not synchronize an invalid daily run limit %s", async (limit) => {
+    const submit = vi.fn();
+    const editor = new AutonomyDraftEditor(submit);
+    editor.receive(snapshot(1));
+    editor.edit("maxRunsPerDay", limit);
+    expect(editor.getSnapshot().canSubmit).toBe(false);
+    await expect(editor.flush()).rejects.toThrow("設定案の更新を確認");
+    expect(submit).not.toHaveBeenCalled();
+  });
+
   it("does not flush unresolved conflicts or invalid inputs into the next conversation", async () => {
     const submit = vi.fn();
     const editor = new AutonomyDraftEditor(submit);
