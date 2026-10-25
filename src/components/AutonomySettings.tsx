@@ -54,17 +54,20 @@ export function AutonomySettings({ language }: { readonly language: "ja" | "en" 
     <section className="autonomy-settings" aria-label={copy.label}>
       <div className="autonomy-settings-row">
         <span>{copy.label}</span>
-        <button
-          type="button"
-          role="switch"
-          aria-label={copy.label}
-          aria-checked={enabled}
-          disabled={status === null || pending}
-          onClick={() => void toggle()}
-          className="autonomy-settings-toggle"
-        >
-          {enabled ? "On" : "Off"}
-        </button>
+        <div className="autonomy-toggle">
+          <button
+            type="button"
+            role="switch"
+            aria-label={copy.label}
+            aria-checked={enabled}
+            disabled={status === null || pending}
+            onClick={() => void toggle()}
+            className="autonomy-settings-toggle"
+          >
+            <span className="autonomy-switch-thumb" aria-hidden="true" />
+          </button>
+          <span aria-hidden="true">{enabled ? "On" : "Off"}</span>
+        </div>
       </div>
       <p className="autonomy-muted">{status === null ? copy.loading : copy.description}</p>
       {status?.phase === "stopping" && <p role="status">{copy.stopping}</p>}

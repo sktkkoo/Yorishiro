@@ -556,18 +556,44 @@
   justify-content: space-between;
   gap: 16px;
 }
-.autonomy-settings-toggle {
-  min-width: 54px;
-  padding: 5px 10px;
+.autonomy-settings-toggle,
+.autonomy-panel .autonomy-settings-toggle {
+  position: relative;
+  flex-shrink: 0;
+  width: 36px;
+  height: 20px;
+  min-height: 20px;
+  padding: 0;
   border: 1px solid var(--yorishiro-border, #555);
-  border-radius: 14px;
+  border-radius: 10px;
   color: inherit;
-  background: transparent;
+  background: var(--yorishiro-input-bg, #25272a);
   font: inherit;
   cursor: pointer;
+  transition:
+    background 200ms ease,
+    border-color 200ms ease;
 }
-.autonomy-settings-toggle[aria-checked="true"] {
-  background: rgba(100, 170, 130, 0.22);
+.autonomy-settings-toggle[aria-checked="true"],
+.autonomy-panel .autonomy-settings-toggle[aria-checked="true"] {
+  border-color: var(--yorishiro-accent-border, #93c9a580);
+  background: var(--yorishiro-accent-soft, #93c9a538);
+}
+.autonomy-switch-thumb {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  top: 2px;
+  left: 2px;
+  border-radius: 50%;
+  background: var(--yorishiro-muted, #989ca4);
+  transition:
+    left 200ms ease,
+    background 200ms ease;
+}
+.autonomy-settings-toggle[aria-checked="true"] .autonomy-switch-thumb {
+  left: 18px;
+  background: var(--yorishiro-accent, #93c9a5);
 }
 .autonomy-settings-toggle:disabled {
   opacity: 0.5;
@@ -656,9 +682,6 @@
   align-items: center;
   font-size: 12px;
   white-space: nowrap;
-}
-.autonomy-toggle input {
-  accent-color: var(--yorishiro-accent, #93c9a5);
 }
 .autonomy-run-summary {
   margin: 10px 0;

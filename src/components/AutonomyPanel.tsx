@@ -407,21 +407,25 @@ export function AutonomyPanel() {
                             )}
                         </div>
                         <div className="autonomy-actions">
-                          <label className="autonomy-toggle">
-                            <input
-                              type="checkbox"
+                          <div className="autonomy-toggle">
+                            <span>自動作業</span>
+                            <button
+                              type="button"
                               role="switch"
+                              className="autonomy-settings-toggle"
                               aria-checked={status.contract.enabled}
                               aria-label="自動作業"
-                              checked={status.contract.enabled}
                               disabled={stopping || busy !== null}
-                              onChange={(event) => {
-                                const enabled = event.currentTarget.checked;
+                              onClick={() => {
+                                if (!status.contract) return;
+                                const enabled = !status.contract.enabled;
                                 void act("toggle", () => setAutonomyEnabled(enabled));
                               }}
-                            />
-                            自動作業 {status.contract.enabled ? "On" : "Off"}
-                          </label>
+                            >
+                              <span className="autonomy-switch-thumb" aria-hidden="true" />
+                            </button>
+                            <span aria-hidden="true">{status.contract.enabled ? "On" : "Off"}</span>
+                          </div>
                           {(working || stopping) && (
                             <button
                               type="button"

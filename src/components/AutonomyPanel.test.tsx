@@ -178,7 +178,7 @@ describe("AutonomyPanel", () => {
     expect(screen.getByRole("button", { name: "承認する" })).toBeTruthy();
     expect(screen.getByLabelText("任せる目的").closest("details")?.open).toBe(false);
     const toggle = screen.getByRole("switch", { name: "自動作業" });
-    expect((toggle as HTMLInputElement).checked).toBe(true);
+    expect(toggle.getAttribute("aria-checked")).toBe("true");
     fireEvent.click(toggle);
     await waitFor(() => expect(setAutonomyEnabled).toHaveBeenCalledExactlyOnceWith(false));
     expect(saveAutonomyContract).not.toHaveBeenCalled();
