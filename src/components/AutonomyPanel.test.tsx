@@ -620,7 +620,10 @@ describe("AutonomyPanel", () => {
   });
 
   it.each([
-    { input: "100", expected: 48 },
+    { input: "49", expected: 49 },
+    { input: "100", expected: 100 },
+    { input: "1000", expected: 1000 },
+    { input: "9007199254740992", expected: Number.MAX_SAFE_INTEGER },
     { input: "1", expected: 1 },
     { input: "48", expected: 48 },
     { input: "0", expected: 1 },
@@ -632,7 +635,7 @@ describe("AutonomyPanel", () => {
     vi.mocked(useAutonomyStatus).mockReturnValue(status({ contract }));
     openPanel();
     const limit = screen.getByLabelText("24時間の実行上限（回）") as HTMLInputElement;
-    expect(screen.getByText("24時間の実行上限は1〜48回です。")).toBeTruthy();
+    expect(screen.getByText("24時間の実行上限は1以上の整数で設定できます。")).toBeTruthy();
     fireEvent.change(limit, { target: { value: input } });
     expect(limit.value).toBe(String(expected));
     await waitFor(() =>

@@ -111,7 +111,8 @@ const english: Readonly<Record<string, string>> = {
     "Code work requires all three file permissions. Only the operations you allow are performed.",
   "確認する間隔（分）": "Work interval (minutes)",
   "24時間の実行上限（回）": "Run limit per 24 hours",
-  "24時間の実行上限は1〜48回です。": "Choose 1–48 runs per 24 hours.",
+  "24時間の実行上限は1以上の整数で設定できます。":
+    "Choose a positive whole number of runs per 24 hours.",
   作業の範囲と実行条件: "How the work runs",
   "目的に沿って必要な仕事を選び、実行と検証まで進めます。 Gitリポジトリではコミット済みの内容を別の作業場所に複製し、文書やコードの改善・テストを行います。未コミットの変更は含みません。 通常のフォルダではテキスト文書を整理・編集します。":
     "AI chooses tasks for your goal and makes and checks changes. Git repositories use a separate copy of committed files; uncommitted changes are excluded. Ordinary folders support text document work.",

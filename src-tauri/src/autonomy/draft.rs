@@ -44,7 +44,8 @@ pub struct AutonomyProposal {
     pub allowed_operations: Vec<String>,
     /// Interval between work opportunities, 5–1440 minutes.
     pub interval_minutes: u64,
-    /// Maximum work runs in a rolling 24 hours, 1–48.
+    /// Maximum work runs in a rolling 24 hours. Positive JavaScript-safe integer.
+    #[schemars(range(min = 1, max = "super::MAX_RUNS_PER_DAY"))]
     pub max_runs_per_day: usize,
     /// daily: discuss today's concrete work and wait for the user's confirmation
     /// before executing. automatic: work within the enduring scope without a
@@ -331,11 +332,10 @@ fn validate_bounds(draft: &Draft) -> Result<(), String> {
     {
         return Err("設定案で指定できる操作は write・move・trash です。外部送信やコマンド実行は指定できません".into());
     }
-    if !(5..=1440).contains(&draft.interval_minutes) || !(1..=48).contains(&draft.max_runs_per_day)
-    {
-        return Err("実行間隔は5〜1440分、24時間の上限は1〜48回です".into());
+    if !(5..=1440).contains(&draft.interval_minutes) {
+        return Err("実行間隔は5〜1440分です".into());
     }
-    Ok(())
+    super::validate_run_budget(draft.max_runs_per_day)
 }
 
 pub fn propose(proposal: AutonomyProposal) -> Result<ProposalReceipt, String> {
@@ -420,6 +420,35 @@ mod tests {
             automatic_action_approval: None,
             explanation: "既存の文書を対象に、毎日の相談で決めた仕事を進めます。".into(),
         }
+    }
+
+    #[test]
+    fn large_run_budgets_round_trip_through_proposals_and_manual_edits() {
+        for maximum in [49, 100, 1_000, super::super::MAX_RUNS_PER_DAY] {
+            let store = DraftStore::default();
+            let mut proposed = proposal();
+            proposed.max_runs_per_day = maximum;
+            store.propose(proposed).unwrap();
+            assert_eq!(store.get().unwrap().unwrap().max_runs_per_day, maximum);
+
+            let store = DraftStore::default();
+            let result = store
+                .edit(
+                    None,
+                    DraftPatch {
+                        max_runs_per_day: Some(maximum),
+                        ..DraftPatch::default()
+                    },
+                )
+                .unwrap();
+            assert_eq!(result.snapshot.draft.unwrap().max_runs_per_day, maximum);
+        }
+        let schema = serde_json::to_value(schemars::schema_for!(AutonomyProposal)).unwrap();
+        assert_eq!(schema["properties"]["maxRunsPerDay"]["minimum"], 1);
+        assert_eq!(
+            schema["properties"]["maxRunsPerDay"]["maximum"],
+            super::super::MAX_RUNS_PER_DAY
+        );
     }
 
     #[test]
@@ -563,7 +592,7 @@ mod tests {
             invalid.interval_minutes = interval;
             assert!(store.propose(invalid).is_err());
         }
-        for budget in [0, 49, usize::MAX] {
+        for budget in [0, super::super::MAX_RUNS_PER_DAY + 1, usize::MAX] {
             let mut invalid = proposal();
             invalid.max_runs_per_day = budget;
             assert!(store.propose(invalid).is_err());
@@ -708,7 +737,8 @@ mod tests {
             json!({"allowedOperations":["send_email"]}),
             json!({"allowedOperations":["write","write"]}),
             json!({"intervalMinutes":4}),
-            json!({"maxRunsPerDay":49}),
+            json!({"maxRunsPerDay":0}),
+            json!({"maxRunsPerDay":super::super::MAX_RUNS_PER_DAY + 1}),
         ] {
             assert!(store
                 .edit(Some(&draft.id), serde_json::from_value(patch).unwrap())
