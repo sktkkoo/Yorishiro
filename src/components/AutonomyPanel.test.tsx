@@ -34,7 +34,6 @@ vi.mock("../runtime/autonomy/client", () => ({
   useAutonomyDraftSnapshot: vi.fn(),
   editAutonomyDraft: vi.fn(),
   approvePendingWork: vi.fn(),
-  acknowledgeAutonomyAction: vi.fn(),
   approveAutonomyAction: vi.fn(),
   declinePendingWork: vi.fn(),
   declineAutonomyAction: vi.fn(),
@@ -58,23 +57,22 @@ const contract: AutonomyContract = {
   reviewMode: "daily",
 };
 
-const publication: AutonomyAction = {
+const confirmation: AutonomyAction = {
   id: "action-1",
   runId: "run-1",
-  kind: "publishPullRequest",
+  kind: "operation",
   status: "pending",
   createdAt: 1,
   payloadDigest: "reviewed-payload",
-  summary: "変更が完了しました",
-  artifactPath: "/review-artifact",
-  repository: "owner/repo",
-  baseBranch: "main",
-  headBranch: "yorishiro/run-1",
-  title: "Fix behavior",
-  body: "Fix input behavior.",
-  diff: "+fixed",
-  changedPaths: ["src/input.ts"],
-  checks: [{ command: "npm test", exitCode: 0 }],
+  summary: "共有先に影響するため確認が必要です",
+  sourceRoot: "/Users/test/notes",
+  operation: "報告書を共有フォルダへ配置",
+  target: "/Volumes/team/report.md",
+  impact: "チームメンバーが閲覧できます",
+  details: "report.md を共有フォルダへコピーします。既存ファイルは上書きしません。",
+  artifactPath: "/Users/test/notes/report.md",
+  changedPaths: ["report.md"],
+  checks: [],
 };
 
 const draftDefaults = {
@@ -142,7 +140,7 @@ afterEach(() => {
 describe("AutonomyPanel", () => {
   it("makes post-work confirmation visible and prevents another run while awaiting approval", () => {
     vi.mocked(useAutonomyStatus).mockReturnValue(
-      status({ contract, phase: "awaitingAction", pendingActions: [publication] }),
+      status({ contract, phase: "awaitingAction", pendingActions: [confirmation] }),
     );
     render(<AutonomyPanel />);
     fireEvent.click(screen.getByRole("button", { name: "おまかせ作業 確認待ち 1件" }));
@@ -150,12 +148,15 @@ describe("AutonomyPanel", () => {
     expect(
       (screen.getByRole("button", { name: "今すぐ進める" }) as HTMLButtonElement).disabled,
     ).toBe(true);
-    expect(screen.getByRole("button", { name: "承認してPRを作成" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "承認する" })).toBeTruthy();
     expect(approveAutonomyAction).not.toHaveBeenCalled();
     expect(approvePendingWork).not.toHaveBeenCalled();
   });
 
-  it("prepares a concrete review from an older completed artifact without publishing it", async () => {
+  it.each([
+    true,
+    false,
+  ])("prepares a review from a completed run with or without Git artifacts (%s)", async (hasArtifact) => {
     vi.mocked(useAutonomyStatus).mockReturnValue(
       status({
         contract,
@@ -169,15 +170,34 @@ describe("AutonomyPanel", () => {
             reason: "目的に必要な変更",
             changedPaths: ["src/input.ts"],
             canUndo: false,
-            developmentPath: "/old/review-artifact",
+            developmentPath: hasArtifact ? "/old/review-artifact" : undefined,
           },
         ],
       }),
     );
     openPanel();
-    fireEvent.click(screen.getByRole("button", { name: "変更を確認" }));
+    fireEvent.click(screen.getByRole("button", { name: "確認事項を作成" }));
     await waitFor(() => expect(prepareAutonomyAction).toHaveBeenCalledExactlyOnceWith("old-run"));
     expect(approveAutonomyAction).not.toHaveBeenCalled();
+  });
+
+  it("retains approved decisions without counting them as pending or resuming work", () => {
+    vi.mocked(useAutonomyStatus).mockReturnValue(
+      status({
+        contract,
+        phase: "awaitingAction",
+        pendingActions: [{ ...confirmation, status: "approved" }],
+      }),
+    );
+    openPanel();
+    expect(screen.getByText("承認済み（実行は未確認）")).toBeTruthy();
+    expect(screen.getByText("承認済みの操作についてAIへの引き継ぎを待っています")).toBeTruthy();
+    expect(screen.queryByText("確認待ち 1件")).toBeNull();
+    expect(
+      (screen.getByRole("button", { name: "今すぐ進める" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect(screen.getByRole("button", { name: "承認を取り消す" })).toBeTruthy();
+    expect(runAutonomyNow).not.toHaveBeenCalled();
   });
 
   it("keeps stop visibly pending and prevents another run until teardown finishes", () => {
@@ -275,7 +295,7 @@ describe("AutonomyPanel", () => {
     );
   });
 
-  it("shows local development evidence and opens only a validated GitHub PR URL", async () => {
+  it("retains local evidence without exposing a PR-specific operation", () => {
     const baseRun = {
       id: "development-1",
       startedAt: 1,
@@ -305,11 +325,8 @@ describe("AutonomyPanel", () => {
     openPanel();
     expect(screen.getAllByText("確認用の成果物: /work/run-1/repository")).toHaveLength(3);
     expect(screen.getAllByText("検証: 12 tests passed")).toHaveLength(3);
-    expect(screen.getAllByRole("button", { name: "ドラフトPRを開く" })).toHaveLength(1);
-    fireEvent.click(screen.getByRole("button", { name: "ドラフトPRを開く" }));
-    await waitFor(() =>
-      expect(openUrl).toHaveBeenCalledExactlyOnceWith("https://github.com/example/project/pull/12"),
-    );
+    expect(screen.queryByRole("button", { name: "ドラフトPRを開く" })).toBeNull();
+    expect(openUrl).not.toHaveBeenCalled();
   });
 
   it("turns AI suggestions into an editable draft and grants scope only after explicit save", async () => {
@@ -756,9 +773,8 @@ describe("AutonomyPanel", () => {
             status: "completed",
             summary: "前の仕事",
             reason: "",
-            changedPaths: [],
+            changedPaths: ["older.md"],
             canUndo: false,
-            pullRequestUrl: "https://github.com/example/project/pull/1",
           },
         ],
       }),
@@ -773,9 +789,6 @@ describe("AutonomyPanel", () => {
     expect(document.activeElement).toBe(summaries[1]);
     fireEvent.keyDown(summaries[1], { key: "Tab" });
     expect(document.activeElement).toBe(close);
-    expect(screen.getByRole("button", { name: "ドラフトPRを開く" }).closest("details")?.open).toBe(
-      false,
-    );
   });
 
   it("closes with Escape and restores focus without pausing scheduled work", async () => {

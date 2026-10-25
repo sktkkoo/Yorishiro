@@ -41,19 +41,19 @@
   border-radius: 10px;
   background: var(--autonomy-surface);
 }
-.autonomy-publication-fields {
+.autonomy-action-fields {
   margin: 16px 0;
 }
-.autonomy-publication-fields > div {
+.autonomy-action-fields > div {
   display: grid;
   grid-template-columns: minmax(110px, 0.28fr) minmax(0, 1fr);
   gap: 12px;
   padding-block: 6px;
 }
-.autonomy-publication-fields dt {
+.autonomy-action-fields dt {
   color: var(--yorishiro-fg-dim, #a4a7ad);
 }
-.autonomy-publication-fields dd {
+.autonomy-action-fields dd {
   margin: 0;
   overflow-wrap: anywhere;
 }
@@ -76,8 +76,7 @@
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   line-height: 1.5;
 }
-.autonomy-action-pending,
-.autonomy-action-unknown {
+.autonomy-action-pending {
   color: var(--yorishiro-fg, #f0f1f2);
   background: color-mix(in srgb, var(--yorishiro-fg, #f0f1f2) 9%, transparent);
 }

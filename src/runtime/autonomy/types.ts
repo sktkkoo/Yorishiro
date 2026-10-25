@@ -60,25 +60,22 @@ export interface PendingWork {
 }
 
 export interface AutonomyAction {
-  readonly acknowledged?: boolean;
   readonly id: string;
   readonly runId: string;
-  readonly kind: "publishPullRequest";
+  readonly kind: "operation";
   readonly payloadDigest: string;
   readonly createdAt: number;
-  readonly status: "pending" | "submitting" | "published" | "declined" | "failed" | "unknown";
+  readonly status: "pending" | "approved" | "declined";
   readonly summary: string;
-  readonly artifactPath: string;
-  readonly repository: string;
-  readonly baseBranch: string;
-  readonly headBranch: string;
-  readonly title: string;
-  readonly body: string;
-  readonly diff: string;
+  readonly sourceRoot: string;
+  readonly operation: string;
+  readonly target: string;
+  readonly impact: string;
+  readonly details: string;
+  readonly artifactPath?: string | null;
   readonly changedPaths: readonly string[];
   readonly checks: readonly { readonly command: string; readonly exitCode: number }[];
   readonly error?: string | null;
-  readonly pullRequestUrl?: string | null;
 }
 
 export type AutonomyConfirmationNotice = Pick<

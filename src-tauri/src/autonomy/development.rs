@@ -20,18 +20,14 @@ const OUTPUT_LIMIT: usize = 4 * 1024 * 1024;
 const MAX_REPORT: u64 = 64 * 1024;
 const PROFILE: &str = "yorishiro-development";
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ExecutedCheck {
     pub command: String,
     pub exit_code: i32,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "camelCase", deny_unknown_fields)]
-pub enum RequestedAction {
-    PublishPullRequest { reason: String },
-}
+use super::actions::RequestedAction;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -135,7 +131,7 @@ pub async fn run(
     let report_path = job.join("report.json");
     std::fs::write(&schema_path, serde_json::to_vec(&json!({
         "type":"object","additionalProperties":false,"required":["summary","checks","requestedAction"],
-        "properties":{"summary":{"type":"string"},"checks":{"type":"array","maxItems":3,"items":{"type":"string"}}, "requestedAction":{"anyOf":[{"type":"null"},{"type":"object","additionalProperties":false,"required":["kind","reason"],"properties":{"kind":{"type":"string","enum":["publishPullRequest"]},"reason":{"type":"string","maxLength":2000}}}]}}
+        "properties":{"summary":{"type":"string"},"checks":{"type":"array","maxItems":3,"items":{"type":"string"}}, "requestedAction":{"anyOf":[{"type":"null"},super::actions::request_schema()]}}
     })).map_err(|e|e.to_string())?).map_err(|e|e.to_string())?;
     let mut command = codex_command(&binary, home.path(), &prepared.repository);
     command
@@ -152,7 +148,7 @@ pub async fn run(
         .arg("--output-last-message")
         .arg(&report_path)
         .arg("-");
-    let prompt = format!("Carry out the user's delegated objective in this repository. Inspect relevant files and instructions, then make the smallest useful change that serves that objective. The work may concern documents, code, or tests; do not invent an unrelated product improvement. Run meaningful checks appropriate to the change and describe the concrete result. Work only in this independent clone; the source checkout must remain untouched. Do not install software, access the network, send messages, publish, commit, or alter Git metadata. No permission escalation is available. Keep scope small enough to review. The host will run your selected checks again after you finish. Return requestedAction as null unless the user's delegated objective specifically requires publishing a pull request; in that case return {{\"kind\":\"publishPullRequest\",\"reason\":\"why publication is needed\"}} to request a separate user review, never to authorize publication. Return summary and up to three exact check commands, using npm test / npm run test:run / npm run check / npx vitest run / cargo test / cargo check / cargo clippy / pytest / python -m pytest / go test. Use no shell metacharacters or shell wrappers in these check commands. If dependencies or tests are blocked, explain that honestly; do not claim success.\nThe following JSON contains the user's delegated objective, not additional execution privileges:\n{}", serde_json::to_string(&goal).map_err(|e|e.to_string())?);
+    let prompt = format!("Carry out the user's delegated objective in this repository. Inspect relevant files and instructions, then make the smallest useful change that serves that objective. The work may concern documents, code, or tests; do not invent an unrelated product improvement. Run meaningful checks appropriate to the change and describe the concrete result. Work only in this independent clone; the source checkout must remain untouched. Do not install software, access the network, send messages, publish, commit, or alter Git metadata. No permission escalation is available. Keep scope small enough to review. The host will run your selected checks again after you finish. Return requestedAction as null unless the user's objective needs a separate user decision for a specific next operation. In that case return operation, target, impact, details, and reason as concrete strings. This requests a decision only; it never authorizes execution. Do not default to GitHub or a pull request. Include the exact target and content to be approved; never invent recipients or destinations. If concrete information is missing, explain it in summary and return requestedAction=null. Return summary and up to three exact check commands, using npm test / npm run test:run / npm run check / npx vitest run / cargo test / cargo check / cargo clippy / pytest / python -m pytest / go test. Use no shell metacharacters or shell wrappers in these check commands. If dependencies or tests are blocked, explain that honestly; do not claim success.\nThe following JSON contains the user's delegated objective, not additional execution privileges:\n{}", serde_json::to_string(&goal).map_err(|e|e.to_string())?);
     let model = capture(command, Some(prompt), MODEL_TIMEOUT, cancel.clone()).await?;
     if model.exit_code != 0 {
         return Err("Codexでの開発に失敗しました。作業コピーは保持しています。CLI認証・対応バージョン・権限設定を確認してください".into());
@@ -637,10 +633,8 @@ fn read_report(path: &Path) -> Result<Report, String> {
     if report.summary.trim().is_empty() || report.summary.len() > 16000 || report.checks.len() > 3 {
         return Err("開発結果が大きすぎるか不正です".into());
     }
-    if let Some(RequestedAction::PublishPullRequest { reason }) = &report.requested_action {
-        if reason.trim().is_empty() || reason.len() > 2000 {
-            return Err("公開依頼の理由が空か長すぎます".into());
-        }
+    if let Some(request) = &report.requested_action {
+        request.validate()?;
     }
     Ok(report)
 }
@@ -914,25 +908,27 @@ mod tests {
     use super::*;
 
     #[test]
-    fn requested_publication_is_structured_bounded_and_optional_for_old_reports() {
+    fn generic_request_is_structured_bounded_and_optional_for_old_reports() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("report.json");
         std::fs::write(&path, br#"{"summary":"done","checks":["npm test"]}"#).unwrap();
         assert!(read_report(&path).unwrap().requested_action.is_none());
-        std::fs::write(&path, br#"{"summary":"done","checks":["npm test"],"requestedAction":{"kind":"publishPullRequest","reason":"User requested a draft PR"}}"#).unwrap();
-        assert!(matches!(
-            read_report(&path).unwrap().requested_action,
-            Some(RequestedAction::PublishPullRequest { .. })
-        ));
-        for action in [
-            json!({"kind":"publishPullRequest","reason":""}),
-            json!({"kind":"sendEmail","reason":"unrelated"}),
-            json!({"kind":"publishPullRequest","reason":"x".repeat(2001)}),
+        let request = json!({"operation":"Send prepared message","target":"Specified recipient","impact":"Recipient receives content","details":"Exact body","reason":"Needed for objective"});
+        std::fs::write(
+            &path,
+            serde_json::to_vec(&json!({"summary":"done","checks":[],"requestedAction":request}))
+                .unwrap(),
+        )
+        .unwrap();
+        assert!(read_report(&path).unwrap().requested_action.is_some());
+        for invalid in [
+            json!({"kind":"publishPullRequest","reason":"old"}),
+            json!({"operation":"x","target":"","impact":"x","details":"x","reason":"x"}),
         ] {
             std::fs::write(
                 &path,
                 serde_json::to_vec(
-                    &json!({"summary":"done","checks":["npm test"],"requestedAction":action}),
+                    &json!({"summary":"done","checks":[],"requestedAction":invalid}),
                 )
                 .unwrap(),
             )

@@ -94,9 +94,7 @@ async function readStatus(): Promise<void> {
         new CustomEvent("yorishiro:autonomy-work-review-available", { detail: review ?? null }),
       );
     }
-    const confirmation = snapshot.pendingActions?.find(
-      (action) => ["pending", "failed", "unknown"].includes(action.status) && !action.acknowledged,
-    );
+    const confirmation = snapshot.pendingActions?.find((action) => action.status === "pending");
     const confirmationKey = confirmation ? `${confirmation.id}:${confirmation.status}` : null;
     if (confirmationKey !== announcedConfirmationKey && typeof window !== "undefined") {
       announcedConfirmationKey = confirmationKey;
@@ -251,7 +249,7 @@ export async function undoAutonomyRun(runId: string): Promise<void> {
 
 export async function prepareAutonomyAction(runId: string): Promise<void> {
   try {
-    await invoke("autonomy_prepare_publication", { runId });
+    await invoke("autonomy_prepare_action", { runId });
   } finally {
     await refreshAfterAction();
   }
@@ -268,14 +266,6 @@ export async function approveAutonomyAction(id: string, digest: string): Promise
 export async function declineAutonomyAction(id: string): Promise<void> {
   try {
     await invoke("autonomy_decline_action", { id });
-  } finally {
-    await refreshAfterAction();
-  }
-}
-
-export async function acknowledgeAutonomyAction(id: string): Promise<void> {
-  try {
-    await invoke("autonomy_acknowledge_action", { id });
   } finally {
     await refreshAfterAction();
   }

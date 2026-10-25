@@ -561,14 +561,14 @@ describe("CodexRealtimeClient", () => {
     client.stop();
   });
 
-  it("notifies about result confirmation without treating speech as publication approval", async () => {
+  it("notifies about result confirmation without treating speech as operation approval", async () => {
     const client = new CodexRealtimeClient("main-session");
     const notice = {
       kind: "confirmation" as const,
       id: "result-1",
-      goal: "Publish changes",
+      goal: "Send the prepared document",
       reason: "",
-      summary: "Review the PR",
+      summary: "Review the recipient and document",
     };
     await client.notifyAutonomyWorkReview(notice);
     expect(bridge.sent).toEqual([]);

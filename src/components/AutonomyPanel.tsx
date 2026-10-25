@@ -1,5 +1,4 @@
 import { open as choosePath } from "@tauri-apps/plugin-dialog";
-import { openUrl } from "@tauri-apps/plugin-opener";
 import { FolderOpen, Mic, X } from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -42,7 +41,7 @@ const PHASE_LABELS = {
   blocked: "続けるための指示を待っています",
   awaitingReview: "今日の仕事について相談しています",
   awaitingAction: "作業結果の確認を待っています",
-  publishing: "GitHubへPRを作成しています",
+  publishing: "以前の処理状況を確認してください",
 };
 
 const RUN_LABELS = {
@@ -70,25 +69,6 @@ const DRAFT_LABELS: Record<DraftField, string> = {
 /** Opens the host dialog only; never creates or enables an agreement. */
 export function requestAutonomySetup(): void {
   window.dispatchEvent(new Event(OPEN_EVENT));
-}
-
-function isGitHubPullRequest(value: string | undefined): value is string {
-  if (!value) return false;
-  try {
-    const url = new URL(value);
-    return (
-      url.protocol === "https:" &&
-      url.hostname === "github.com" &&
-      !url.port &&
-      !url.username &&
-      !url.password &&
-      !url.search &&
-      !url.hash &&
-      /^\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/pull\/[1-9][0-9]*$/.test(url.pathname)
-    );
-  } catch {
-    return false;
-  }
 }
 
 function describeError(error: unknown): string {
@@ -137,19 +117,9 @@ export function AutonomyPanel() {
   const working =
     status?.phase === "thinking" || status?.phase === "applying" || status?.phase === "publishing";
   const stopping = status?.phase === "stopping";
-  const publicationActions = status?.pendingActions ?? [];
-  const reviewActions = publicationActions.filter(
-    (action) => action.status !== "published" && action.status !== "declined",
-  );
-  const confirmationCount = reviewActions.filter(
-    (action) => action.status !== "submitting" && !action.acknowledged,
-  ).length;
-  const publishing = reviewActions.some((action) => action.status === "submitting");
-  const awaitingAction = reviewActions.some(
-    (action) =>
-      ["pending", "submitting", "unknown", "failed"].includes(action.status) &&
-      !action.acknowledged,
-  );
+  const reviewActions = status?.pendingActions ?? [];
+  const confirmationCount = reviewActions.filter((action) => action.status === "pending").length;
+  const awaitingAction = reviewActions.some((action) => action.status !== "declined");
   const reviewRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
@@ -300,11 +270,9 @@ export function AutonomyPanel() {
         />
         {confirmationCount > 0
           ? `確認待ち ${confirmationCount}件`
-          : publishing
-            ? "PR作成中"
-            : status?.pendingWork
-              ? "今日の仕事を相談"
-              : "おまかせ作業"}
+          : status?.pendingWork
+            ? "今日の仕事を相談"
+            : "おまかせ作業"}
       </button>
       {visible &&
         createPortal(
@@ -387,7 +355,11 @@ export function AutonomyPanel() {
                                 ? status.phase === "applying"
                                   ? "作業の成果を保存しています"
                                   : "目的に沿った作業と検証を進めています"
-                                : PHASE_LABELS[status.phase]}
+                                : status.phase === "awaitingAction" &&
+                                    confirmationCount === 0 &&
+                                    awaitingAction
+                                  ? "承認済みの操作についてAIへの引き継ぎを待っています"
+                                  : PHASE_LABELS[status.phase]}
                           </p>
                           {status.nextRunAt !== null &&
                             status.contract.enabled &&
@@ -435,12 +407,14 @@ export function AutonomyPanel() {
                           <h3>作業後の確認</h3>
                           <span className="autonomy-count">{reviewActions.length}件</span>
                         </div>
-                        <p className="autonomy-muted">公開する内容と確認結果を表示しています。</p>
+                        <p className="autonomy-muted">
+                          操作ごとの確認内容と承認結果を表示しています。
+                        </p>
                         {reviewActions.map((action) => (
                           <AutonomyActionReview
                             key={`${action.id}:${action.payloadDigest}`}
                             action={action}
-                            disabled={busy !== null || working || stopping || publishing}
+                            disabled={busy !== null || working || stopping}
                           />
                         ))}
                       </section>
@@ -784,34 +758,30 @@ export function AutonomyPanel() {
                               </div>
                               <p>{run.summary || "作業を進めています…"}</p>
                               {run.reason && <p className="autonomy-muted">{run.reason}</p>}
-                              {run.developmentPath &&
-                                run.status !== "running" &&
-                                !run.pullRequestUrl &&
-                                !publicationActions.some(
+                              {run.status !== "running" &&
+                                !reviewActions.some(
                                   (action) =>
                                     action.runId === run.id &&
-                                    ["pending", "submitting", "unknown", "published"].includes(
-                                      action.status,
-                                    ),
+                                    ["pending", "approved"].includes(action.status),
                                 ) && (
                                   <button
                                     type="button"
-                                    disabled={busy !== null || working || stopping || publishing}
+                                    disabled={busy !== null || working || stopping}
                                     onClick={() => void prepareReview(run.id)}
                                   >
-                                    変更を確認
+                                    確認事項を作成
                                   </button>
                                 )}
-                              {publicationActions.filter(
+                              {reviewActions.filter(
                                 (action) => action.runId === run.id && action.status === "declined",
                               ).length > 0 && (
-                                <p className="autonomy-muted">この成果物の公開は見送りました。</p>
+                                <p className="autonomy-muted">この作業の確認事項は見送りました。</p>
                               )}
                               {(run.status === "failed" ||
                                 (status.phase === "blocked" && index === 0)) && (
                                 <button
                                   type="button"
-                                  disabled={busy !== null || working || stopping || publishing}
+                                  disabled={busy !== null || working || stopping}
                                   onClick={() => {
                                     setTextOpen(true);
                                     void consult(
@@ -825,7 +795,6 @@ export function AutonomyPanel() {
                               {(run.developmentPath ||
                                 run.branch ||
                                 run.validationSummary ||
-                                isGitHubPullRequest(run.pullRequestUrl) ||
                                 run.changedPaths.length > 0) && (
                                 <details className="autonomy-run-details" open={index === 0}>
                                   <summary>変更と検証の詳細</summary>
@@ -839,18 +808,6 @@ export function AutonomyPanel() {
                                   )}
                                   {run.validationSummary && (
                                     <p className="autonomy-muted">検証: {run.validationSummary}</p>
-                                  )}
-                                  {isGitHubPullRequest(run.pullRequestUrl) && (
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        const url = run.pullRequestUrl;
-                                        if (isGitHubPullRequest(url))
-                                          void act(`open-pr:${run.id}`, () => openUrl(url));
-                                      }}
-                                    >
-                                      ドラフトPRを開く
-                                    </button>
                                   )}
                                   {run.changedPaths.length > 0 && (
                                     <ul>

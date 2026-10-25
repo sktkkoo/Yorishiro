@@ -52,7 +52,7 @@ describe("autonomous host polling", () => {
     const first = {
       id: "one",
       runId: "run-1",
-      kind: "publishPullRequest",
+      kind: "operation",
       summary: "First result",
       status: "pending",
     };
@@ -76,7 +76,7 @@ describe("autonomous host polling", () => {
     expect((receive.mock.calls[0][0] as CustomEvent).detail).toEqual(first);
     await act(async () => vi.advanceTimersByTimeAsync(15_000));
     expect(receive).toHaveBeenCalledTimes(1);
-    pendingActions = [{ ...first, status: "published" }, second];
+    pendingActions = [{ ...first, status: "approved" }, second];
     await act(async () => vi.advanceTimersByTimeAsync(15_000));
     expect((receive.mock.calls[1][0] as CustomEvent).detail).toEqual(second);
     draftFails = true;
@@ -90,9 +90,9 @@ describe("autonomous host polling", () => {
     window.removeEventListener("yorishiro:autonomy-work-review-available", daily);
   });
 
-  it("sends only the reviewed action identity and digest and refreshes an uncertain outcome", async () => {
+  it("sends only the reviewed identity and digest and refreshes after a lost approval response", async () => {
     let outcome = "pending";
-    const failure = new Error("Publication result unknown");
+    const failure = new Error("Approval response interrupted");
     invoke.mockImplementation(async (command: string) => {
       if (command === "autonomy_status")
         return {
@@ -101,7 +101,7 @@ describe("autonomous host polling", () => {
             {
               id: "action",
               runId: "run",
-              kind: "publishPullRequest",
+              kind: "operation",
               summary: "Result",
               status: outcome,
             },
@@ -109,7 +109,7 @@ describe("autonomous host polling", () => {
         };
       if (command === "autonomy_draft_snapshot") return { revision: 0, draft: null };
       if (command === "autonomy_approve_action") {
-        outcome = "unknown";
+        outcome = "approved";
         throw failure;
       }
     });
@@ -123,40 +123,39 @@ describe("autonomous host polling", () => {
       id: "action",
       digest: "reviewed-digest",
     });
-    expect(view.result.current?.pendingActions?.[0].status).toBe("unknown");
+    expect(view.result.current?.pendingActions?.[0].status).toBe("approved");
     expect(invoke.mock.calls.filter(([name]) => name === "autonomy_approve_action")).toHaveLength(
       1,
     );
     view.unmount();
   });
 
-  it("clears an acknowledged unknown notice without requesting another publication", async () => {
-    let acknowledged = false;
+  it("clears a declined notice without executing or approving anything", async () => {
+    let status = "pending";
     invoke.mockImplementation(async (command: string) => {
       if (command === "autonomy_status")
         return {
           ...idle,
           pendingActions: [
             {
-              id: "unknown-1",
+              id: "request-1",
               runId: "run",
-              kind: "publishPullRequest",
-              status: "unknown",
-              summary: "Check GitHub",
-              acknowledged,
+              kind: "operation",
+              status,
+              summary: "Share the report",
             },
           ],
         };
       if (command === "autonomy_draft_snapshot") return { revision: 0, draft: null };
-      if (command === "autonomy_acknowledge_action") acknowledged = true;
+      if (command === "autonomy_decline_action") status = "declined";
     });
     const receive = vi.fn();
     window.addEventListener("yorishiro:autonomy-confirmation-available", receive);
     const client = await import("./client");
     const view = renderHook(client.useAutonomyStatus);
     await waitFor(() => expect(receive).toHaveBeenCalledOnce());
-    await act(async () => client.acknowledgeAutonomyAction("unknown-1"));
-    expect(invoke).toHaveBeenCalledWith("autonomy_acknowledge_action", { id: "unknown-1" });
+    await act(async () => client.declineAutonomyAction("request-1"));
+    expect(invoke).toHaveBeenCalledWith("autonomy_decline_action", { id: "request-1" });
     expect(
       (receive.mock.calls[receive.mock.calls.length - 1]?.[0] as CustomEvent).detail,
     ).toBeNull();
@@ -165,6 +164,19 @@ describe("autonomous host polling", () => {
     );
     view.unmount();
     window.removeEventListener("yorishiro:autonomy-confirmation-available", receive);
+  });
+
+  it("prepares a generic request without invoking any publication command", async () => {
+    invoke.mockImplementation(async (command: string) => {
+      if (command === "autonomy_status") return idle;
+      if (command === "autonomy_draft_snapshot") return { revision: 0, draft: null };
+    });
+    const client = await import("./client");
+    await client.prepareAutonomyAction("document-run");
+    expect(invoke).toHaveBeenCalledWith("autonomy_prepare_action", { runId: "document-run" });
+    expect(invoke.mock.calls.some(([name]) => /publication|publish|approve/.test(name))).toBe(
+      false,
+    );
   });
 
   it("observes teardown completion without waiting for the normal polling interval", async () => {

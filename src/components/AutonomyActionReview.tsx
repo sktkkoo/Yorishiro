@@ -1,28 +1,14 @@
-import { openUrl } from "@tauri-apps/plugin-opener";
 import { useId, useRef, useState } from "react";
-import {
-  acknowledgeAutonomyAction,
-  approveAutonomyAction,
-  declineAutonomyAction,
-} from "../runtime/autonomy/client";
+import { approveAutonomyAction, declineAutonomyAction } from "../runtime/autonomy/client";
 import type { AutonomyAction } from "../runtime/autonomy/types";
 
 const STATUS_LABELS = {
   pending: "確認待ち",
-  submitting: "PRを作成中",
-  published: "PR作成済み",
+  approved: "承認済み（実行は未確認）",
   declined: "見送り",
-  failed: "作成できませんでした",
-  unknown: "公開結果を確認してください",
 };
 
-function repositoryUrl(repository: string): string | null {
-  return /^[A-Za-z0-9_][A-Za-z0-9_.-]*\/[A-Za-z0-9_][A-Za-z0-9_.-]*$/.test(repository)
-    ? `https://github.com/${repository}`
-    : null;
-}
-
-/** Approves only the concrete immutable payload shown in this card. */
+/** Records a decision about this exact request; it does not execute the operation. */
 export function AutonomyActionReview({
   action,
   disabled,
@@ -35,13 +21,6 @@ export function AutonomyActionReview({
   const [busy, setBusy] = useState(false);
   const inFlight = useRef(false);
   const [error, setError] = useState<string | null>(null);
-  const repository = repositoryUrl(action.repository);
-  const prUrl =
-    repository &&
-    action.pullRequestUrl?.startsWith(`${repository}/pull/`) &&
-    /^[1-9][0-9]*$/.test(action.pullRequestUrl.slice(`${repository}/pull/`.length))
-      ? action.pullRequestUrl
-      : null;
 
   async function perform(operation: () => Promise<void>) {
     if (inFlight.current) return;
@@ -62,56 +41,52 @@ export function AutonomyActionReview({
     <article className="autonomy-action-review" aria-labelledby={titleId}>
       <div className="autonomy-run-meta">
         <span className={`autonomy-run-badge autonomy-action-${action.status}`}>
-          {action.status === "unknown" && action.acknowledged
-            ? "結果不明・確認終了"
-            : STATUS_LABELS[action.status]}
+          {STATUS_LABELS[action.status]}
         </span>
-        <h3 id={titleId}>PRの公開</h3>
+        <h3 id={titleId}>{action.operation}</h3>
       </div>
-      <p>{action.summary}</p>
-      <dl className="autonomy-publication-fields">
+      <dl className="autonomy-action-fields">
         <div>
-          <dt>公開先</dt>
-          <dd>{action.repository}</dd>
+          <dt>対象フォルダ</dt>
+          <dd>{action.sourceRoot}</dd>
         </div>
         <div>
-          <dt>ベースブランチ</dt>
-          <dd>{action.baseBranch}</dd>
+          <dt>対象</dt>
+          <dd>{action.target}</dd>
         </div>
         <div>
-          <dt>作成するブランチ</dt>
-          <dd>{action.headBranch}</dd>
+          <dt>影響</dt>
+          <dd>{action.impact}</dd>
         </div>
         <div>
-          <dt>PRタイトル</dt>
-          <dd>{action.title}</dd>
+          <dt>確認が必要な理由</dt>
+          <dd>{action.summary}</dd>
         </div>
       </dl>
       <details className="autonomy-run-details" open>
-        <summary>PR本文</summary>
-        <pre className="autonomy-review-content">{action.body}</pre>
+        <summary>操作の内容</summary>
+        <pre className="autonomy-review-content">{action.details}</pre>
       </details>
-      <details className="autonomy-run-details" open>
-        <summary>変更差分（{action.changedPaths.length}ファイル）</summary>
-        <ul>
-          {action.changedPaths.map((path) => (
-            <li key={path} className="autonomy-path">
-              {path}
-            </li>
-          ))}
-        </ul>
-        <pre className="autonomy-review-content autonomy-review-diff">
-          {action.diff || "表示できる差分はありません。"}
-        </pre>
-      </details>
-      <details className="autonomy-run-details">
-        <summary>成果物と検証結果</summary>
-        <p className="autonomy-path">{action.artifactPath}</p>
-        <pre className="autonomy-review-content">
-          {action.checks.map((check) => `${check.command}: exit ${check.exitCode}`).join("\n") ||
-            "検証結果はありません。"}
-        </pre>
-      </details>
+      {(action.artifactPath || action.changedPaths.length > 0 || action.checks.length > 0) && (
+        <details className="autonomy-run-details">
+          <summary>成果物と検証結果</summary>
+          {action.artifactPath && <p className="autonomy-path">{action.artifactPath}</p>}
+          {action.changedPaths.length > 0 && (
+            <ul>
+              {action.changedPaths.map((path) => (
+                <li key={path} className="autonomy-path">
+                  {path}
+                </li>
+              ))}
+            </ul>
+          )}
+          {action.checks.length > 0 && (
+            <pre className="autonomy-review-content">
+              {action.checks.map((check) => `${check.command}: exit ${check.exitCode}`).join("\n")}
+            </pre>
+          )}
+        </details>
+      )}
       {(error || action.error) && (
         <p role="alert" className="autonomy-error">
           {error || action.error}
@@ -120,19 +95,19 @@ export function AutonomyActionReview({
       {action.status === "pending" && (
         <>
           <p id={hintId} className="autonomy-muted">
-            承認すると、表示した変更・タイトル・本文をGitHubへ送信し、ドラフトPRを作成します。マージはしません。
+            表示した操作への承認を記録します。このボタンでは操作を実行しません。担当AIが承認結果を確認できます。
           </p>
           <div className="autonomy-actions">
             <button
               type="button"
               className="autonomy-primary"
               aria-describedby={hintId}
-              disabled={disabled || busy || !repository || !action.payloadDigest}
+              disabled={disabled || busy || !action.payloadDigest}
               onClick={() =>
                 void perform(() => approveAutonomyAction(action.id, action.payloadDigest))
               }
             >
-              {busy ? "処理しています…" : "承認してPRを作成"}
+              {busy ? "記録しています…" : "承認する"}
             </button>
             <button
               type="button"
@@ -144,60 +119,25 @@ export function AutonomyActionReview({
           </div>
         </>
       )}
-      {action.status === "submitting" && (
-        <p role="status">
-          GitHubへの送信結果を確認しています。送信済みの操作は、停止しても取り消せません。
-        </p>
-      )}
-      {action.status === "unknown" && (
-        <p className="autonomy-muted">
-          PRまたはブランチが作成された可能性があります。GitHubで確認してください。自動で再送しません。
-        </p>
-      )}
-      {action.status === "failed" && (
+      {action.status === "approved" && (
         <>
           <p className="autonomy-muted">
-            PRやブランチの作成は開始されていません。表示された理由を解消後、作業履歴の「変更を確認」から新しい確認を作成できます。
+            承認を記録しました。実行はまだ確認されていません。承認結果はAIから参照できます。別の操作や変更された内容には適用されません。
           </p>
           <button
             type="button"
             disabled={disabled || busy}
             onClick={() => void perform(() => declineAutonomyAction(action.id))}
           >
-            公開を見送る
+            承認を取り消す
           </button>
+          <p className="autonomy-muted">
+            取り消しは承認の記録にだけ適用されます。実行済みの操作を元に戻すことはできません。
+          </p>
         </>
       )}
       {action.status === "declined" && (
-        <p className="autonomy-muted">公開を見送りました。成果物は保存されています。</p>
-      )}
-      {prUrl && (
-        <button type="button" onClick={() => void perform(() => openUrl(prUrl))} disabled={busy}>
-          ドラフトPRを開く
-        </button>
-      )}
-      {action.status === "unknown" && repository && (
-        <button
-          type="button"
-          onClick={() => void perform(() => openUrl(`${repository}/pulls`))}
-          disabled={busy}
-        >
-          GitHubで確認
-        </button>
-      )}
-      {action.status === "unknown" && !action.acknowledged && (
-        <>
-          <p className="autonomy-muted">
-            確認を終了しても再送しません。GitHub上の作成物は取り消しません。自動作業がOnの場合、範囲内のローカル作業を再開できます。
-          </p>
-          <button
-            type="button"
-            disabled={disabled || busy}
-            onClick={() => void perform(() => acknowledgeAutonomyAction(action.id))}
-          >
-            確認を終了
-          </button>
-        </>
+        <p className="autonomy-muted">この操作を見送りました。成果物は保存されています。</p>
       )}
     </article>
   );
