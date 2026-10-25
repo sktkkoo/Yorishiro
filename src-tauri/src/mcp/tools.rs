@@ -562,9 +562,7 @@ impl Yorishiro {
         let action =
             crate::autonomy::actions::propose_action(&state, &proposal.run_id, proposal.request)
                 .map_err(|e| McpError::invalid_params(e, None))?;
-        let _ = self
-            .app_handle
-            .emit("autonomy:action-review-available", &action);
+        let _ = self.app_handle.emit("autonomy:status-changed", ());
         Ok(CallToolResult::success(vec![Content::json(action)?]))
     }
 

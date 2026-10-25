@@ -901,7 +901,11 @@ fn claim_due(
     Ok(Some((contract, id, runtime.revision, cancel, recent)))
 }
 
-fn start(state: &AutonomyState, manual: bool) -> Result<(), String> {
+fn start(
+    state: &AutonomyState,
+    manual: bool,
+    window: Option<tauri::WebviewWindow>,
+) -> Result<(), String> {
     let claim = {
         let mut runtime = lock(state)?;
         let dir = storage_dir(&runtime)?;
@@ -921,6 +925,9 @@ fn start(state: &AutonomyState, manual: bool) -> Result<(), String> {
         )
         .await;
         finish(&owned, &id, revision, &cancel, result);
+        if let Some(window) = window {
+            let _ = window.emit("autonomy:status-changed", ());
+        }
     });
     Ok(())
 }
@@ -931,7 +938,7 @@ pub fn autonomy_tick(
     state: tauri::State<'_, AutonomyState>,
 ) -> Result<(), String> {
     main_window(&window)?;
-    start(&state, false)
+    start(&state, false, Some(window))
 }
 
 #[tauri::command]
@@ -940,7 +947,7 @@ pub fn autonomy_run_now(
     state: tauri::State<'_, AutonomyState>,
 ) -> Result<(), String> {
     main_window(&window)?;
-    start(&state, true)
+    start(&state, true, Some(window))
 }
 
 #[derive(Deserialize)]
@@ -1026,7 +1033,7 @@ async fn execute(
         reviewMode=dailyではgoalは継続的に任された領域です。approvedTodayGoalがなければ状況から今日進めたい具体的な仕事を自分で提案しworkGoalに入れてください。この段階では変更は適用されずユーザーに先に相談します。approvedTodayGoalがあればその仕事の範囲内だけで進め、新しい別の仕事に勝手に広げないでください。状況から見つけた改善案も理由と共に説明してください。\n\
         この実行ではテキスト文書(.txt/.md/.markdown/.rst/.csv/.tsv/.log)の作成・編集・移動・退避のみ可能です。\n\
         相対パスを使い、既存のディレクトリ内で作業してください。隠しファイル、設定、コード、AGENTS.md、CLAUDE.mdは操作不可です。\n\
-        shell実行・外部送信・公開・他アプリ操作はできません。権限外の操作が必要で対象と内容が具体的に確定している場合はrequestedActionにoperation・target・impact・details・reasonを返してください。これはユーザーに確認を求めるだけで、実行はしません。メール等の宛先・本文・送信先や適用する内容を推測せず、不足があればrequestedAction=null、outcome=blockedとして相談してください。確認が不要ならrequestedAction=nullです。\n\
+        shell実行・外部送信・公開・他アプリ操作はできません。権限外の操作が必要で対象と内容が具体的に確定している場合はrequestedActionにoperation・target・impact・details・reasonを返してください。承認が必要な操作は必ずこの構造化されたrequestedActionで返してください。summaryに「承認してください」とだけ書いてrequestedActionをnullにしてはいけません。ホストは返された確認事項をそのままユーザーへ表示します。ユーザーが確認事項の作成操作をする必要はありません。これはユーザーに確認を求めるだけで、実行はしません。メール等の宛先・本文・送信先や適用する内容を推測せず、不足があればrequestedAction=null、outcome=blockedとして相談してください。確認が不要ならrequestedAction=nullです。\n\
         完了済み作業を繰り返さず、有用な作業がなければoperationsを空にしてください。outcomeは、目的達成ならcompleted、能力や情報不足で進められない場合はblocked、まだ自力で進められる場合だけcontinueです。completedとblockedは自動実行が停止します。\n\
         ファイル一覧のomittedが0でなければ全体を確認したと主張しないでください。最大8操作。writeのcontentは省略のない全文です。\n\
         reasonは選んだ理由、summaryは変更内容または停止理由を簡潔な日本語で書いてください。実行・検証していない結果は主張しないでください。\n\
@@ -1085,6 +1092,18 @@ async fn execute_development(
         cancel.clone(),
     )
     .await?;
+    complete_development_result(state, contract, id, revision, cancel, work_goal, result)
+}
+
+fn complete_development_result(
+    state: &AutonomyState,
+    contract: &Contract,
+    id: &str,
+    revision: u64,
+    cancel: &CancellationToken,
+    work_goal: String,
+    result: development::DevelopmentResult,
+) -> Result<Plan, String> {
     {
         let mut runtime = lock(state)?;
         if let Some(run) = runtime.status.runs.iter_mut().find(|run| run.id == id) {
@@ -1111,6 +1130,16 @@ async fn execute_development(
                 work_goal, outcome: Outcome::Blocked, operations: vec![], requested_action: None,
             });
         }
+    }
+    if let Some(question) = &result.question {
+        return Ok(Plan {
+            reason: "次の操作に必要な情報を確認するため停止しました".into(),
+            summary: format!("{}\n{}", result.summary, question),
+            work_goal,
+            outcome: Outcome::Blocked,
+            operations: vec![],
+            requested_action: None,
+        });
     }
     if !result.ready_for_review || result.changed_paths.is_empty() {
         return Ok(Plan {
@@ -1921,6 +1950,106 @@ mod tests {
             SEED
         );
     }
+    fn development_handoff_result(store: &Path, id: &str) -> development::DevelopmentResult {
+        development::DevelopmentResult {
+            worktree_path: store
+                .join("development")
+                .join(id)
+                .join("review-artifact")
+                .to_string_lossy()
+                .into_owned(),
+            branch: "review-copy".into(),
+            base_commit: "base-identity".into(),
+            verified_tree: "verified-identity".into(),
+            base_branch: "main".into(),
+            origin_url: String::new(),
+            summary: "Prepared a report".into(),
+            tests: vec![],
+            checks: vec![development::ExecutedCheck {
+                command: "recorded check".into(),
+                exit_code: 0,
+            }],
+            changed_paths: vec![],
+            ready_for_review: false,
+            requested_action: confirmation_only_plan().requested_action,
+            question: None,
+        }
+    }
+    #[test]
+    fn development_completion_automatically_queues_request_even_without_file_changes() {
+        let (_directory, state, workspace, store) = integration_fixture();
+        let (contract, id, revision, cancel, _) = fixture_claim(&state, &store);
+        let result = complete_development_result(
+            &state,
+            &contract,
+            &id,
+            revision,
+            &cancel,
+            contract.goal.clone(),
+            development_handoff_result(&store, &id),
+        );
+        assert!(result.is_ok(), "{:?}", result.as_ref().err());
+        // The request already exists at completion without calling a prepare API.
+        assert_eq!(lock(&state).unwrap().status.pending_actions.len(), 1);
+        finish(&state, &id, revision, &cancel, result);
+        let runtime = lock(&state).unwrap();
+        assert_eq!(runtime.status.phase, "awaitingAction");
+        assert!(runtime.status.next_run_at.is_none());
+        assert_eq!(
+            runtime.status.pending_actions[0].status,
+            actions::ActionStatus::Pending
+        );
+        assert_eq!(
+            std::fs::read_to_string(workspace.join("note.md")).unwrap(),
+            SEED
+        );
+        assert!(!store.join("development").exists());
+    }
+    #[test]
+    fn development_missing_information_stops_for_consultation_not_approval_or_retry() {
+        let (_directory, state, _workspace, store) = integration_fixture();
+        let (contract, id, revision, cancel, _) = fixture_claim(&state, &store);
+        let mut report = development_handoff_result(&store, &id);
+        report.requested_action = None;
+        report.question = Some("Who should receive the report?".into());
+        report.ready_for_review = true;
+        report.changed_paths = vec!["report.txt".into()];
+        let result = complete_development_result(
+            &state,
+            &contract,
+            &id,
+            revision,
+            &cancel,
+            contract.goal.clone(),
+            report,
+        );
+        finish(&state, &id, revision, &cancel, result);
+        let runtime = lock(&state).unwrap();
+        assert!(runtime.status.pending_actions.is_empty());
+        assert_eq!(runtime.status.phase, "blocked");
+        assert!(runtime.status.next_run_at.is_none());
+        assert!(runtime.status.runs[0]
+            .summary
+            .contains("Who should receive"));
+    }
+    #[test]
+    fn cancelled_development_completion_does_not_create_confirmation() {
+        let (_directory, state, _workspace, store) = integration_fixture();
+        let (contract, id, revision, cancel, _) = fixture_claim(&state, &store);
+        cancel.cancel();
+        assert!(complete_development_result(
+            &state,
+            &contract,
+            &id,
+            revision,
+            &cancel,
+            contract.goal.clone(),
+            development_handoff_result(&store, &id)
+        )
+        .is_err());
+        assert!(lock(&state).unwrap().status.pending_actions.is_empty());
+    }
+
     #[tokio::test]
     async fn cancellation_discards_late_generic_confirmation() {
         let (_directory, state, workspace, store) = integration_fixture();
@@ -2423,7 +2552,7 @@ mod tests {
         let (_directory, state, workspace, store) = integration_fixture();
         // Same automatic path as the timer: no manual run, extra instruction,
         // injected proposal, alternate permissions, or user workspace involved.
-        start(&state, false).unwrap();
+        start(&state, false, None).unwrap();
         let wait = async {
             loop {
                 let finished = {

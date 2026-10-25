@@ -2,7 +2,7 @@
 
 import { open as choosePath } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   approveAutonomyAction,
@@ -15,6 +15,7 @@ import {
   prepareAutonomyAction,
   runAutonomyNow,
   saveAutonomyContract,
+  setAutonomyEnabled,
   undoAutonomyRun,
   useAutonomyDraftSnapshot,
   useAutonomyStatus,
@@ -39,6 +40,7 @@ vi.mock("../runtime/autonomy/client", () => ({
   declineAutonomyAction: vi.fn(),
   consultAutonomy: vi.fn(),
   saveAutonomyContract: vi.fn(),
+  setAutonomyEnabled: vi.fn(),
   pauseAutonomy: vi.fn(),
   prepareAutonomyAction: vi.fn(),
   runAutonomyNow: vi.fn(),
@@ -100,6 +102,8 @@ function status(overrides: Partial<AutonomyStatus> = {}): AutonomyStatus {
 function openPanel() {
   render(<AutonomyPanel />);
   fireEvent.click(screen.getByRole("button", { name: "おまかせ作業" }));
+  const settings = screen.getByText("設定", { selector: "summary" });
+  if (!settings.closest("details")?.open) fireEvent.click(settings);
 }
 
 beforeEach(() => {
@@ -122,6 +126,7 @@ beforeEach(() => {
   vi.mocked(openUrl).mockResolvedValue(undefined);
   vi.mocked(choosePath).mockResolvedValue("/Users/test/notes");
   vi.mocked(saveAutonomyContract).mockResolvedValue(undefined);
+  vi.mocked(setAutonomyEnabled).mockResolvedValue(undefined);
   vi.mocked(pauseAutonomy).mockResolvedValue(undefined);
   vi.mocked(runAutonomyNow).mockResolvedValue(undefined);
   vi.mocked(undoAutonomyRun).mockResolvedValue(undefined);
@@ -138,13 +143,111 @@ afterEach(() => {
 });
 
 describe("AutonomyPanel", () => {
+  it.each([
+    { enabled: false, phase: "paused" as const, state: "off", description: "自動作業 Off" },
+    { enabled: true, phase: "idle" as const, state: "on", description: "自動作業 On" },
+    { enabled: true, phase: "thinking" as const, state: "working", description: "実行中" },
+  ])("shows $state in the toolbar launcher without starting or toggling work", ({
+    enabled,
+    phase,
+    state,
+    description,
+  }) => {
+    vi.mocked(useAutonomyStatus).mockReturnValue(
+      status({ contract: { ...contract, enabled }, phase }),
+    );
+    render(<AutonomyPanel />);
+    const launcher = screen.getByRole("button", { name: "おまかせ作業" });
+    expect(launcher.classList.contains("title-bar-button")).toBe(true);
+    expect(launcher.dataset.autonomyState).toBe(state);
+    expect(launcher.getAttribute("aria-description")).toContain(description);
+    expect(launcher.querySelector("svg")).toBeTruthy();
+    fireEvent.click(launcher);
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    expect(runAutonomyNow).not.toHaveBeenCalled();
+    expect(setAutonomyEnabled).not.toHaveBeenCalled();
+  });
+
+  it("keeps saved settings collapsed while On/Off and pending approvals stay available", async () => {
+    vi.mocked(useAutonomyStatus).mockReturnValue(
+      status({ contract, phase: "awaitingAction", pendingActions: [confirmation] }),
+    );
+    render(<AutonomyPanel />);
+    fireEvent.click(screen.getByRole("button", { name: "おまかせ作業 確認待ち 1件" }));
+    expect(screen.getByText("設定", { selector: "summary" }).closest("details")?.open).toBe(false);
+    expect(screen.getByRole("button", { name: "承認する" })).toBeTruthy();
+    expect(screen.getByLabelText("任せる目的").closest("details")?.open).toBe(false);
+    const toggle = screen.getByRole("switch", { name: "自動作業" });
+    expect((toggle as HTMLInputElement).checked).toBe(true);
+    fireEvent.click(toggle);
+    await waitFor(() => expect(setAutonomyEnabled).toHaveBeenCalledExactlyOnceWith(false));
+    expect(saveAutonomyContract).not.toHaveBeenCalled();
+    expect(approveAutonomyAction).not.toHaveBeenCalled();
+  });
+
+  it("opens settings for first setup and incoming conversational changes without collapsing edits", async () => {
+    const view = render(<AutonomyPanel />);
+    fireEvent.click(screen.getByRole("button", { name: "おまかせ作業" }));
+    expect(screen.getByText("設定", { selector: "summary" }).closest("details")?.open).toBe(true);
+    vi.mocked(useAutonomyStatus).mockReturnValue(status({ contract }));
+    view.rerender(<AutonomyPanel />);
+    const settings = screen.getByText("設定", { selector: "summary" });
+    if (settings.closest("details")?.open) fireEvent.click(settings);
+    setDraft({
+      revision: 1,
+      draft: {
+        ...draftDefaults,
+        ...contract,
+        id: "voice-change",
+        reviewMode: "daily",
+        explanation: "",
+      },
+    });
+    view.rerender(<AutonomyPanel />);
+    await waitFor(() => expect(settings.closest("details")?.open).toBe(true));
+    fireEvent.change(screen.getByRole("textbox", { name: "任せる目的" }), {
+      target: { value: "編集中" },
+    });
+    view.rerender(<AutonomyPanel />);
+    expect(settings.closest("details")?.open).toBe(true);
+  });
+
+  it("shows three concise run summaries and preserves older records behind Show all", () => {
+    const longSummary = "長い作業報告です。".repeat(30);
+    vi.mocked(useAutonomyStatus).mockReturnValue(
+      status({
+        contract,
+        runs: Array.from({ length: 5 }, (_, index) => ({
+          id: `run-${index}`,
+          startedAt: index + 1,
+          finishedAt: index + 2,
+          status: "completed" as const,
+          summary: index === 4 ? longSummary : `作業 ${index}`,
+          reason: "理由",
+          changedPaths: [],
+          canUndo: false,
+        })),
+      }),
+    );
+    render(<AutonomyPanel />);
+    fireEvent.click(screen.getByRole("button", { name: "おまかせ作業" }));
+    expect(screen.getAllByRole("article")).toHaveLength(3);
+    const first = screen.getAllByRole("article")[0];
+    expect(first.querySelector("p")?.textContent?.length).toBeLessThan(170);
+    expect(first.querySelector("details")?.open).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "すべて表示（5件）" }));
+    expect(screen.getAllByRole("article")).toHaveLength(5);
+    fireEvent.click(screen.getByRole("button", { name: "最新3件を表示" }));
+    expect(screen.getAllByRole("article")).toHaveLength(3);
+  });
+
   it("makes post-work confirmation visible and prevents another run while awaiting approval", () => {
     vi.mocked(useAutonomyStatus).mockReturnValue(
       status({ contract, phase: "awaitingAction", pendingActions: [confirmation] }),
     );
     render(<AutonomyPanel />);
     fireEvent.click(screen.getByRole("button", { name: "おまかせ作業 確認待ち 1件" }));
-    expect(screen.getByRole("region", { name: "作業後の確認" })).toBeTruthy();
+    expect(screen.getByRole("region", { name: "承認待ち" })).toBeTruthy();
     expect(
       (screen.getByRole("button", { name: "今すぐ進める" }) as HTMLButtonElement).disabled,
     ).toBe(true);
@@ -156,39 +259,41 @@ describe("AutonomyPanel", () => {
   it.each([
     true,
     false,
-  ])("prepares a review from a completed run with or without Git artifacts (%s)", async (hasArtifact) => {
+  ])("shows a ready confirmation without a preparation step (%s)", (hasArtifact) => {
     vi.mocked(useAutonomyStatus).mockReturnValue(
       status({
         contract,
+        phase: "awaitingAction",
         runs: [
           {
-            id: "old-run",
+            id: "run-1",
             startedAt: 1,
             finishedAt: 2,
             status: "completed",
-            summary: "変更しました",
-            reason: "目的に必要な変更",
-            changedPaths: ["src/input.ts"],
+            summary: "報告書を保存しました",
+            reason: "依頼に沿った文書作成",
+            changedPaths: ["report.md"],
             canUndo: false,
             developmentPath: hasArtifact ? "/old/review-artifact" : undefined,
           },
         ],
+        pendingActions: [confirmation],
       }),
     );
-    openPanel();
-    fireEvent.click(screen.getByRole("button", { name: "次の操作を確認" }));
-    await waitFor(() => expect(prepareAutonomyAction).toHaveBeenCalledExactlyOnceWith("old-run"));
+    render(<AutonomyPanel />);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "おまかせ作業 確認待ち 1件" }));
+    expect(screen.getByRole("button", { name: "承認する" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "見送る" })).toBeTruthy();
+    expect(document.activeElement).toBe(screen.getByRole("region", { name: "承認待ち" }));
+    expect(screen.queryByRole("button", { name: "次の操作を確認" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "確認事項を作成" })).toBeNull();
+    expect(prepareAutonomyAction).not.toHaveBeenCalled();
     expect(approveAutonomyAction).not.toHaveBeenCalled();
+    expect(runAutonomyNow).not.toHaveBeenCalled();
   });
 
-  it("shows which completed result is loading without approving or starting work", async () => {
-    let finish: () => void = () => {};
-    vi.mocked(prepareAutonomyAction).mockImplementation(
-      () =>
-        new Promise<void>((resolve) => {
-          finish = resolve;
-        }),
-    );
+  it("keeps plain result history free of an intermediate confirmation creation control", () => {
     const completedRun = {
       id: "completed",
       startedAt: 1,
@@ -210,23 +315,28 @@ describe("AutonomyPanel", () => {
       }),
     );
     openPanel();
-    expect(screen.getAllByRole("button", { name: "次の操作を確認" })).toHaveLength(1);
-    expect(
-      screen.getAllByText(/「次の操作を確認」で操作内容を表示します。ここでは実行しません。/),
-    ).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: "次の操作を確認" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "確認事項を作成" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "承認待ち" })).toBeNull();
     expect(screen.getByRole("button", { name: "結果についてAIに相談" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "次の操作を確認" }));
-    expect(
-      (screen.getByRole("button", { name: "確認内容を読み込んでいます…" }) as HTMLButtonElement)
-        .disabled,
-    ).toBe(true);
-    expect(prepareAutonomyAction).toHaveBeenCalledExactlyOnceWith("completed");
+    expect(prepareAutonomyAction).not.toHaveBeenCalled();
     expect(approveAutonomyAction).not.toHaveBeenCalled();
-    expect(runAutonomyNow).not.toHaveBeenCalled();
-    await act(async () => finish());
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: "次の操作を確認" })).toBeTruthy(),
+  });
+
+  it("does not steal focus when a confirmation arrives while the user is editing", () => {
+    vi.mocked(useAutonomyStatus).mockReturnValue(status({ contract }));
+    const view = render(<AutonomyPanel />);
+    fireEvent.click(screen.getByRole("button", { name: "おまかせ作業" }));
+    fireEvent.click(screen.getByText("設定", { selector: "summary" }));
+    const goal = screen.getByRole("textbox", { name: "任せる目的" });
+    goal.focus();
+    vi.mocked(useAutonomyStatus).mockReturnValue(
+      status({ contract, phase: "awaitingAction", pendingActions: [confirmation] }),
     );
+    view.rerender(<AutonomyPanel />);
+    expect(screen.getByRole("button", { name: "承認する" })).toBeTruthy();
+    expect(document.activeElement).toBe(goal);
+    expect(prepareAutonomyAction).not.toHaveBeenCalled();
   });
 
   it("retains approved decisions without counting them as pending or resuming work", () => {
@@ -238,6 +348,11 @@ describe("AutonomyPanel", () => {
       }),
     );
     openPanel();
+    expect(screen.getByRole("region", { name: "承認履歴" })).toBeTruthy();
+    const history = screen.getByText("承認履歴", { selector: "summary" });
+    expect(history.closest("details")?.open).toBe(false);
+    fireEvent.click(history);
+    expect(screen.queryByRole("region", { name: "承認待ち" })).toBeNull();
     expect(screen.getByText("承認済み（実行は未確認）")).toBeTruthy();
     expect(screen.getByText("承認済みの操作についてAIへの引き継ぎを待っています")).toBeTruthy();
     expect(screen.queryByText("確認待ち 1件")).toBeNull();
@@ -650,7 +765,9 @@ describe("AutonomyPanel", () => {
       }),
     );
     openPanel();
-    expect(screen.getByText("今日の仕事を相談")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "おまかせ作業" }).getAttribute("title")).toContain(
+      "今日の仕事を相談",
+    );
     expect(screen.getByText("会議メモを整理する")).toBeTruthy();
     expect(
       (screen.getByRole("button", { name: "今すぐ進める" }) as HTMLButtonElement).disabled,
@@ -730,7 +847,7 @@ describe("AutonomyPanel", () => {
       "確認する間隔（分）",
       "24時間の実行上限（回）",
     ]) {
-      expect(screen.getByLabelText(label).closest("details")).toBeNull();
+      expect(screen.getByLabelText(label).closest("details")?.open).toBe(true);
     }
     const help = screen.getByText("作業の範囲と実行条件").closest("details");
     expect(help?.open).toBe(false);
@@ -786,8 +903,8 @@ describe("AutonomyPanel", () => {
       "起動できませんでした",
       "以前の成果",
     ]);
-    expect(articles[0].querySelector("details")?.open).toBe(true);
-    expect(articles[1].querySelector("details")).toBeNull();
+    expect(articles[0].querySelector("details")?.open).toBe(false);
+    expect(articles[1].querySelector("details")?.open).toBe(false);
     expect(articles[2].querySelector("details")?.open).toBe(false);
     expect(runs.map((run) => run.id)).toEqual(["old", "failed", "new"]);
     const alert = screen.getByRole("alert");
@@ -829,8 +946,8 @@ describe("AutonomyPanel", () => {
     );
     openPanel();
     const close = screen.getByRole("button", { name: "おまかせ作業を閉じる" });
-    const summaries = screen.getAllByText("変更と検証の詳細");
-    expect(summaries[0].closest("details")?.open).toBe(true);
+    const summaries = screen.getAllByText("詳細", { selector: "summary" });
+    expect(summaries[0].closest("details")?.open).toBe(false);
     expect(summaries[1].closest("details")?.open).toBe(false);
     close.focus();
     fireEvent.keyDown(close, { key: "Tab", shiftKey: true });

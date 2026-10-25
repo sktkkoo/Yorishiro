@@ -436,7 +436,7 @@ pub async fn autonomy_prepare_action(
     }
     let action = queue(&mut runtime, &run_id, &request, checks)?;
     drop(runtime);
-    let _ = window.emit("autonomy:action-review-available", &action);
+    let _ = window.emit("autonomy:status-changed", ());
     Ok(action)
 }
 
@@ -497,7 +497,7 @@ pub fn autonomy_approve_action(
     decide(&mut runtime, &id, Some(&digest), true, |status| {
         super::persist_at(&store, status)
     })?;
-    let _ = window.emit("autonomy:actions-changed", ());
+    let _ = window.emit("autonomy:status-changed", ());
     Ok(())
 }
 #[tauri::command]
@@ -512,7 +512,7 @@ pub fn autonomy_decline_action(
     decide(&mut runtime, &id, None, false, |status| {
         super::persist_at(&store, status)
     })?;
-    let _ = window.emit("autonomy:actions-changed", ());
+    let _ = window.emit("autonomy:status-changed", ());
     Ok(())
 }
 

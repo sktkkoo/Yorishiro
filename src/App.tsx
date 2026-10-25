@@ -6108,6 +6108,7 @@ function App() {
             />
           ) : null
         }
+        autonomyControl={<AutonomyPanel />}
         tabs={
           <TabIndicator
             state={tabState}
@@ -6254,7 +6255,6 @@ function App() {
           onStop={stopCodexRealtime}
         />
       ) : null}
-      <AutonomyPanel />
       {agentSetup.visible && (
         <AgentSetupDialog
           language={appLanguage.resolved}
