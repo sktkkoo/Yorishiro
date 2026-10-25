@@ -161,7 +161,7 @@ describe("AutonomyPanel", () => {
     expect(launcher.classList.contains("title-bar-button")).toBe(true);
     expect(launcher.dataset.autonomyState).toBe(state);
     expect(launcher.getAttribute("aria-description")).toContain(description);
-    expect(launcher.querySelector("svg")).toBeTruthy();
+    expect(launcher.textContent).toContain("AUTO");
     fireEvent.click(launcher);
     expect(screen.getByRole("dialog")).toBeTruthy();
     expect(runAutonomyNow).not.toHaveBeenCalled();
