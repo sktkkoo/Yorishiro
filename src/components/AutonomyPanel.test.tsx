@@ -2,7 +2,7 @@
 
 import { open as choosePath } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   approveAutonomyAction,
@@ -176,9 +176,57 @@ describe("AutonomyPanel", () => {
       }),
     );
     openPanel();
-    fireEvent.click(screen.getByRole("button", { name: "確認事項を作成" }));
+    fireEvent.click(screen.getByRole("button", { name: "次の操作を確認" }));
     await waitFor(() => expect(prepareAutonomyAction).toHaveBeenCalledExactlyOnceWith("old-run"));
     expect(approveAutonomyAction).not.toHaveBeenCalled();
+  });
+
+  it("shows which completed result is loading without approving or starting work", async () => {
+    let finish: () => void = () => {};
+    vi.mocked(prepareAutonomyAction).mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const completedRun = {
+      id: "completed",
+      startedAt: 1,
+      finishedAt: 2,
+      status: "completed" as const,
+      summary: "報告書を保存しました",
+      reason: "依頼に沿った文書作成",
+      changedPaths: ["report.md"],
+      canUndo: false,
+    };
+    vi.mocked(useAutonomyStatus).mockReturnValue(
+      status({
+        contract,
+        runs: [
+          completedRun,
+          { ...completedRun, id: "failed", status: "failed" },
+          { ...completedRun, id: "cancelled", status: "cancelled" },
+        ],
+      }),
+    );
+    openPanel();
+    expect(screen.getAllByRole("button", { name: "次の操作を確認" })).toHaveLength(1);
+    expect(
+      screen.getAllByText(/「次の操作を確認」で操作内容を表示します。ここでは実行しません。/),
+    ).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "結果についてAIに相談" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "次の操作を確認" }));
+    expect(
+      (screen.getByRole("button", { name: "確認内容を読み込んでいます…" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    expect(prepareAutonomyAction).toHaveBeenCalledExactlyOnceWith("completed");
+    expect(approveAutonomyAction).not.toHaveBeenCalled();
+    expect(runAutonomyNow).not.toHaveBeenCalled();
+    await act(async () => finish());
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "次の操作を確認" })).toBeTruthy(),
+    );
   });
 
   it("retains approved decisions without counting them as pending or resuming work", () => {

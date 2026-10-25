@@ -744,6 +744,9 @@ export function AutonomyPanel() {
                           <h3>作業履歴</h3>
                           <span className="autonomy-count">{status.runs.length}件</span>
                         </div>
+                        <p className="autonomy-muted">
+                          「次の操作を確認」で操作内容を表示します。ここでは実行しません。
+                        </p>
                         {[...status.runs]
                           .sort((a, b) => b.startedAt - a.startedAt)
                           .map((run, index) => (
@@ -758,7 +761,7 @@ export function AutonomyPanel() {
                               </div>
                               <p>{run.summary || "作業を進めています…"}</p>
                               {run.reason && <p className="autonomy-muted">{run.reason}</p>}
-                              {run.status !== "running" &&
+                              {run.status === "completed" &&
                                 !reviewActions.some(
                                   (action) =>
                                     action.runId === run.id &&
@@ -769,7 +772,9 @@ export function AutonomyPanel() {
                                     disabled={busy !== null || working || stopping}
                                     onClick={() => void prepareReview(run.id)}
                                   >
-                                    確認事項を作成
+                                    {busy === `prepare:${run.id}`
+                                      ? "確認内容を読み込んでいます…"
+                                      : "次の操作を確認"}
                                   </button>
                                 )}
                               {reviewActions.filter(
