@@ -79,6 +79,78 @@ pub(super) fn saved_source_root(storage: &Path, run_id: &str) -> Result<String, 
     Ok(source.root)
 }
 
+/// Continue only the exact frozen handoff from versions that marked successful
+/// preparation failed while awaiting approval. This never repairs persisted
+/// history or permits retrying an already failed/cancelled execution.
+pub(super) fn load_for_action(
+    storage: &Path,
+    run: &super::Run,
+    action: &serde_json::Value,
+) -> Result<ReviewContext, String> {
+    if run.status == "completed" {
+        return load(storage, run);
+    }
+    if run.status != "failed"
+        || run.finished_at.is_none()
+        || uuid::Uuid::parse_str(&run.id).is_err()
+        || !matches!(action["status"].as_str(), Some("approved" | "executing"))
+        || action["runId"].as_str() != Some(run.id.as_str())
+        || action["id"]
+            .as_str()
+            .is_none_or(|id| uuid::Uuid::parse_str(id).is_err())
+    {
+        return Err("この作業は承認待ちだった成果物の継続対象ではありません".into());
+    }
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct ReadyHandoff {
+        worktree_path: String,
+        changed_paths: Vec<String>,
+        checks: Vec<super::development::ExecutedCheck>,
+        ready_for_review: bool,
+        requested_action: super::actions::RequestedAction,
+        question: Option<String>,
+    }
+    let job = storage.join("development").join(&run.id);
+    checked_directory(&job)?;
+    let handoff: ReadyHandoff =
+        serde_json::from_slice(&read_file(&job.join("result.json"), MAX_METADATA)?)
+            .map_err(|_| "承認待ちだった成果物の記録を確認できません")?;
+    handoff.requested_action.validate()?;
+    let request = &handoff.requested_action;
+    if !handoff.ready_for_review
+        || handoff.question.is_some()
+        || handoff.checks.is_empty()
+        || handoff.checks.len() > 10
+        || handoff
+            .checks
+            .iter()
+            .any(|check| check.exit_code != 0 || check.command.len() > 8_000)
+        || handoff.changed_paths.is_empty()
+        || handoff.changed_paths.len() > 200
+        || handoff.changed_paths != run.changed_paths
+        || run.development_path.as_deref() != Some(handoff.worktree_path.as_str())
+        || action["artifactPath"].as_str() != Some(handoff.worktree_path.as_str())
+        || action["changedPaths"] != serde_json::json!(handoff.changed_paths)
+        || action["checks"] != serde_json::json!(handoff.checks)
+        || action["operation"].as_str() != Some(request.operation.as_str())
+        || action["target"].as_str() != Some(request.target.as_str())
+        || action["impact"].as_str() != Some(request.impact.as_str())
+        || action["details"].as_str() != Some(request.details.as_str())
+        || action["summary"].as_str() != Some(request.reason.as_str())
+        || action["networkAccess"].as_bool() != Some(request.network_access)
+    {
+        return Err("承認した操作と検証済みの引き継ぎ記録が一致しません".into());
+    }
+    let mut verified_run = run.clone();
+    verified_run.status = "completed".into();
+    let review = load(storage, &verified_run)?;
+    if action["sourceRoot"].as_str() != Some(review.source_root.as_str()) {
+        return Err("承認した操作と元の作業フォルダが一致しません".into());
+    }
+    Ok(review)
+}
+
 pub(super) fn load(storage: &Path, run: &super::Run) -> Result<ReviewContext, String> {
     if uuid::Uuid::parse_str(&run.id).is_err() || run.status != "completed" {
         return Err(
@@ -587,6 +659,159 @@ mod tests {
         run.changed_paths = vec!["unrelated.txt".into()];
         assert!(load(&storage, &run).is_err());
     }
+
+    fn historical_handoff() -> (
+        tempfile::TempDir,
+        PathBuf,
+        super::super::Run,
+        serde_json::Value,
+    ) {
+        let (directory, storage, mut run) = fixture(b"After the change\n");
+        run.status = "failed".into();
+        run.summary = "Prepared changes; waiting for approval".into();
+        let path = storage
+            .join("development")
+            .join(&run.id)
+            .join("result.json");
+        let mut result: serde_json::Value =
+            serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        let request = json!({
+            "operation": "Deliver the verified report",
+            "target": "https://example.test/team/reports",
+            "impact": "The team receives the requested report",
+            "details": "Send the exact verified report and confirm its receipt",
+            "reason": "The delegated purpose requires delivery",
+            "networkAccess": true
+        });
+        result["readyForReview"] = json!(true);
+        result["requestedAction"] = request.clone();
+        result["question"] = serde_json::Value::Null;
+        fs::write(&path, serde_json::to_vec(&result).unwrap()).unwrap();
+        let action = json!({
+            "id": uuid::Uuid::new_v4().to_string(),
+            "runId": run.id,
+            "status": "approved",
+            "sourceRoot": storage.join("original-project"),
+            "artifactPath": result["worktreePath"],
+            "changedPaths": result["changedPaths"],
+            "checks": result["checks"],
+            "operation": request["operation"],
+            "target": request["target"],
+            "impact": request["impact"],
+            "details": request["details"],
+            "summary": request["reason"],
+            "networkAccess": request["networkAccess"]
+        });
+        (directory, storage, run, action)
+    }
+
+    #[test]
+    fn historical_failed_preparation_continues_only_its_verified_frozen_handoff_read_only() {
+        let (_directory, storage, run, mut action) = historical_handoff();
+        let job = storage.join("development").join(&run.id);
+        let result_before = fs::read(job.join("result.json")).unwrap();
+        let source_before = fs::read(job.join("source.json")).unwrap();
+        assert!(load(&storage, &run).is_err());
+        let context = load_for_action(&storage, &run, &action).unwrap();
+        assert_eq!(
+            context.changes[0].after.as_deref(),
+            Some("After the change\n")
+        );
+        assert_eq!(run.status, "failed");
+        assert_eq!(fs::read(job.join("result.json")).unwrap(), result_before);
+        assert_eq!(fs::read(job.join("source.json")).unwrap(), source_before);
+        action["status"] = json!("executing");
+        assert!(load_for_action(&storage, &run, &action).is_ok());
+        assert!(!storage.join("action-executions").exists());
+    }
+
+    #[test]
+    fn historical_continuation_rejects_other_actions_and_unfinished_or_cancelled_sources() {
+        let (_directory, storage, run, action) = historical_handoff();
+        for (field, value) in [
+            ("id", json!("invalid")),
+            ("runId", json!(uuid::Uuid::new_v4().to_string())),
+            ("sourceRoot", json!("/different-project")),
+            ("artifactPath", json!("/different-artifact")),
+            ("changedPaths", json!(["different.txt"])),
+            ("checks", json!([])),
+            ("operation", json!("Deliver another report")),
+            ("target", json!("https://example.test/other-team")),
+            ("impact", json!("Other recipients receive the report")),
+            ("details", json!("Send different content")),
+            ("summary", json!("Another purpose")),
+            ("networkAccess", json!(false)),
+            ("status", json!("failed")),
+            ("status", json!("pending")),
+        ] {
+            let mut changed = action.clone();
+            changed[field] = value;
+            assert!(
+                load_for_action(&storage, &run, &changed).is_err(),
+                "{field}"
+            );
+        }
+        for status in ["running", "cancelled", "undone", "proposed"] {
+            let mut changed = run.clone();
+            changed.status = status.into();
+            assert!(load_for_action(&storage, &changed, &action).is_err());
+        }
+        let mut unfinished = run.clone();
+        unfinished.finished_at = None;
+        assert!(load_for_action(&storage, &unfinished, &action).is_err());
+    }
+
+    #[test]
+    fn historical_continuation_requires_ready_passing_checks_and_complete_handoff() {
+        let (_directory, storage, run, action) = historical_handoff();
+        let path = storage
+            .join("development")
+            .join(&run.id)
+            .join("result.json");
+        let original: serde_json::Value =
+            serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        for (field, value) in [
+            ("readyForReview", json!(false)),
+            ("question", json!("Who should receive the report?")),
+            ("requestedAction", serde_json::Value::Null),
+            ("checks", json!([])),
+            (
+                "checks",
+                json!([{"command":"fixture verification","exitCode":1}]),
+            ),
+        ] {
+            let mut changed = original.clone();
+            changed[field] = value;
+            fs::write(&path, serde_json::to_vec(&changed).unwrap()).unwrap();
+            let mut matching_action = action.clone();
+            matching_action["checks"] = changed["checks"].clone();
+            assert!(
+                load_for_action(&storage, &run, &matching_action).is_err(),
+                "{field}"
+            );
+        }
+    }
+
+    #[test]
+    fn historical_continuation_keeps_artifact_and_source_integrity_checks() {
+        let (_directory, storage, run, action) = historical_handoff();
+        let artifact = Path::new(run.development_path.as_ref().unwrap());
+        fs::write(artifact.join("report.txt"), "Changed after verification\n").unwrap();
+        assert!(load_for_action(&storage, &run, &action)
+            .unwrap_err()
+            .contains("変わっています"));
+        let (_directory, storage, run, action) = historical_handoff();
+        let path = storage
+            .join("development")
+            .join(&run.id)
+            .join("source.json");
+        let mut source: serde_json::Value =
+            serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        source["baseCommit"] = json!("0000000000000000000000000000000000000000");
+        fs::write(path, serde_json::to_vec(&source).unwrap()).unwrap();
+        assert!(load_for_action(&storage, &run, &action).is_err());
+    }
+
     #[test]
     #[ignore = "read-only verification of a user-selected saved run; requires YORISHIRO_REVIEW_RUN_ID"]
     fn live_saved_artifact_context() {

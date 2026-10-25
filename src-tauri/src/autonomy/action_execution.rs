@@ -396,13 +396,12 @@ pub(super) fn finish(state: &AutonomyState, deferred: DeferredFinish) {
                 && action.auto_approved
                 && action.status == ActionStatus::Failed
         });
-    let automatic_success = current
+    let operation_success = current
         && !interrupted
-        && next.pending_actions.iter().any(|action| {
-            action.id == deferred.id
-                && action.auto_approved
-                && action.status == ActionStatus::Completed
-        });
+        && next
+            .pending_actions
+            .iter()
+            .any(|action| action.id == deferred.id && action.status == ActionStatus::Completed);
     // Failed automatic external operations may already have side effects. Stop
     // this delegation so a new run cannot recreate and repeat the operation.
     // A newer saved scope or Off→On choice owns its enabled state and schedule.
@@ -413,8 +412,8 @@ pub(super) fn finish(state: &AutonomyState, deferred: DeferredFinish) {
     }
     let now = super::clock_ms();
     settle(&mut next, now, current);
-    if automatic_success && goal_complete {
-        complete_daily_automatic_work(&mut next, now);
+    if operation_success && goal_complete {
+        complete_daily_work(&mut next, now);
     }
     if automatic_failure {
         next.phase = "failed".into();
@@ -434,7 +433,7 @@ pub(super) fn finish(state: &AutonomyState, deferred: DeferredFinish) {
     }
 }
 
-fn complete_daily_automatic_work(status: &mut Status, now: u64) {
+fn complete_daily_work(status: &mut Status, now: u64) {
     let Some(scope) = status
         .contract
         .as_ref()
@@ -870,6 +869,81 @@ mod tests {
             ActionStatus::Completed
         );
     }
+    fn complete_manual_daily_operation(
+        goal_complete: bool,
+    ) -> (AutonomyState, tempfile::TempDir, u64) {
+        let (state, directory, id) = fixture();
+        let now = super::super::clock_ms();
+        {
+            let mut runtime = super::super::lock(&state).unwrap();
+            let contract = runtime.status.contract.as_mut().unwrap();
+            contract.review_mode = super::super::ReviewMode::Daily;
+            assert!(!contract.automatic_action_approval);
+            runtime.status.daily_work = Some(super::super::DailyWork {
+                day: super::super::local_day(now),
+                goal: "Complete today's approved maintenance and delivery".into(),
+                complete: false,
+            });
+            assert!(!runtime.status.pending_actions[0].auto_approved);
+        }
+        let claimed = claim(&mut super::super::lock(&state).unwrap(), true, |_| Ok(()))
+            .unwrap()
+            .unwrap();
+        finish(
+            &state,
+            DeferredFinish {
+                id,
+                revision: claimed.revision,
+                cancel: claimed.cancel,
+                result: Ok(action_worker::ExecutionResult {
+                    summary: if goal_complete {
+                        "Today's maintenance and delivery are complete"
+                    } else {
+                        "Preparation completed; today's delivery remains"
+                    }
+                    .into(),
+                    result_url: None,
+                    goal_complete,
+                }),
+            },
+        );
+        (state, directory, now)
+    }
+    #[test]
+    fn manually_approved_final_operation_completes_the_daily_goal() {
+        let (state, _directory, now) = complete_manual_daily_operation(true);
+        let runtime = super::super::lock(&state).unwrap();
+        assert!(runtime.status.contract.as_ref().unwrap().enabled);
+        assert_eq!(runtime.status.phase, "idle");
+        let work = runtime.status.daily_work.as_ref().unwrap();
+        assert!(work.complete);
+        assert_eq!(
+            work.goal,
+            "Complete today's approved maintenance and delivery"
+        );
+        let next = runtime.status.next_run_at.unwrap();
+        assert_ne!(super::super::local_day(next), super::super::local_day(now));
+        assert!(next <= super::super::next_day(now) + 60_000);
+        assert_eq!(
+            runtime.status.pending_actions[0].status,
+            ActionStatus::Completed
+        );
+    }
+    #[test]
+    fn manually_approved_intermediate_operation_keeps_the_daily_goal_open() {
+        let (state, _directory, now) = complete_manual_daily_operation(false);
+        let runtime = super::super::lock(&state).unwrap();
+        assert!(runtime.status.contract.as_ref().unwrap().enabled);
+        assert_eq!(runtime.status.phase, "idle");
+        assert!(!runtime.status.daily_work.as_ref().unwrap().complete);
+        let next = runtime.status.next_run_at.unwrap();
+        assert!(next >= now + 30 * 60_000);
+        assert!(next <= super::super::clock_ms() + 30 * 60_000);
+        assert_eq!(
+            runtime.status.pending_actions[0].status,
+            ActionStatus::Completed
+        );
+    }
     #[test]
     fn execution_prompt_uses_only_the_current_approved_daily_goal() {
         let (state, _directory, _) = fixture();
@@ -914,7 +988,7 @@ mod tests {
             goal: "Yesterday's approved task".into(),
             complete: false,
         });
-        complete_daily_automatic_work(&mut runtime.status, now);
+        complete_daily_work(&mut runtime.status, now);
         assert!(runtime.status.daily_work.is_none());
         assert_eq!(runtime.status.next_run_at, Some(now));
         assert!(runtime.status.contract.as_ref().unwrap().enabled);

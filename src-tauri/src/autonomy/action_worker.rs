@@ -117,7 +117,7 @@ fn prepare(
                 "承認した成果物と現在の作業結果が一致しません。操作は実行していません".into(),
             );
         }
-        let review = super::review_context::load(&storage, run)?;
+        let review = super::review_context::load_for_action(&storage, run, action)?;
         let value = serde_json::to_value(review).map_err(|e| e.to_string())?;
         let job = storage.join("development").join(&run.id);
         references.push(checked_directory(&job.join("review-artifact"))?);

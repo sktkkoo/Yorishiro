@@ -99,7 +99,11 @@ export function AutonomyPanel() {
   const setGoal = (value: string) => editor.edit("goal", value);
   const setRoot = (value: string) => editor.edit("root", value);
   const setIntervalMinutes = (value: number) => editor.edit("intervalMinutes", value);
-  const setMaxRunsPerDay = (value: number) => editor.edit("maxRunsPerDay", value);
+  const setMaxRunsPerDay = (value: number) =>
+    editor.edit(
+      "maxRunsPerDay",
+      Math.min(48, Math.max(1, Math.trunc(Number.isFinite(value) ? value : 1))),
+    );
   const setReviewMode = (value: "automatic" | "daily") => editor.edit("reviewMode", value);
   const setOperations = (next: (current: AutonomyOperation[]) => AutonomyOperation[]) =>
     editor.edit("allowedOperations", next([...editor.getSnapshot().values.allowedOperations]));
@@ -771,6 +775,7 @@ export function AutonomyPanel() {
                               />
                             </label>
                           </div>
+                          <p className="autonomy-muted">24時間の実行上限は1〜48回です。</p>
                           {conflictFor("intervalMinutes")}
                           {conflictFor("maxRunsPerDay")}
                           {!draftState.synced && (
