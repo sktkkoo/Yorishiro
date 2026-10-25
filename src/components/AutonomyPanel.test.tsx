@@ -5,11 +5,14 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  approveAutonomyAction,
   approvePendingWork,
   consultAutonomy,
+  declineAutonomyAction,
   declinePendingWork,
   editAutonomyDraft,
   pauseAutonomy,
+  prepareAutonomyAction,
   runAutonomyNow,
   saveAutonomyContract,
   undoAutonomyRun,
@@ -17,6 +20,7 @@ import {
   useAutonomyStatus,
 } from "../runtime/autonomy/client";
 import type {
+  AutonomyAction,
   AutonomyContract,
   AutonomyDraftSnapshot,
   AutonomyStatus,
@@ -30,10 +34,14 @@ vi.mock("../runtime/autonomy/client", () => ({
   useAutonomyDraftSnapshot: vi.fn(),
   editAutonomyDraft: vi.fn(),
   approvePendingWork: vi.fn(),
+  acknowledgeAutonomyAction: vi.fn(),
+  approveAutonomyAction: vi.fn(),
   declinePendingWork: vi.fn(),
+  declineAutonomyAction: vi.fn(),
   consultAutonomy: vi.fn(),
   saveAutonomyContract: vi.fn(),
   pauseAutonomy: vi.fn(),
+  prepareAutonomyAction: vi.fn(),
   runAutonomyNow: vi.fn(),
   undoAutonomyRun: vi.fn(),
 }));
@@ -48,6 +56,25 @@ const contract: AutonomyContract = {
   maxRunsPerDay: 4,
   enabled: true,
   reviewMode: "daily",
+};
+
+const publication: AutonomyAction = {
+  id: "action-1",
+  runId: "run-1",
+  kind: "publishPullRequest",
+  status: "pending",
+  createdAt: 1,
+  payloadDigest: "reviewed-payload",
+  summary: "変更が完了しました",
+  artifactPath: "/review-artifact",
+  repository: "owner/repo",
+  baseBranch: "main",
+  headBranch: "yorishiro/run-1",
+  title: "Fix behavior",
+  body: "Fix input behavior.",
+  diff: "+fixed",
+  changedPaths: ["src/input.ts"],
+  checks: [{ command: "npm test", exitCode: 0 }],
 };
 
 const draftDefaults = {
@@ -102,6 +129,9 @@ beforeEach(() => {
   vi.mocked(undoAutonomyRun).mockResolvedValue(undefined);
   vi.mocked(approvePendingWork).mockResolvedValue(undefined);
   vi.mocked(declinePendingWork).mockResolvedValue(undefined);
+  vi.mocked(prepareAutonomyAction).mockResolvedValue(undefined);
+  vi.mocked(approveAutonomyAction).mockResolvedValue(undefined);
+  vi.mocked(declineAutonomyAction).mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -110,6 +140,46 @@ afterEach(() => {
 });
 
 describe("AutonomyPanel", () => {
+  it("makes post-work confirmation visible and prevents another run while awaiting approval", () => {
+    vi.mocked(useAutonomyStatus).mockReturnValue(
+      status({ contract, phase: "awaitingAction", pendingActions: [publication] }),
+    );
+    render(<AutonomyPanel />);
+    fireEvent.click(screen.getByRole("button", { name: "おまかせ作業 確認待ち 1件" }));
+    expect(screen.getByRole("region", { name: "作業後の確認" })).toBeTruthy();
+    expect(
+      (screen.getByRole("button", { name: "今すぐ進める" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect(screen.getByRole("button", { name: "承認してPRを作成" })).toBeTruthy();
+    expect(approveAutonomyAction).not.toHaveBeenCalled();
+    expect(approvePendingWork).not.toHaveBeenCalled();
+  });
+
+  it("prepares a concrete review from an older completed artifact without publishing it", async () => {
+    vi.mocked(useAutonomyStatus).mockReturnValue(
+      status({
+        contract,
+        runs: [
+          {
+            id: "old-run",
+            startedAt: 1,
+            finishedAt: 2,
+            status: "completed",
+            summary: "変更しました",
+            reason: "目的に必要な変更",
+            changedPaths: ["src/input.ts"],
+            canUndo: false,
+            developmentPath: "/old/review-artifact",
+          },
+        ],
+      }),
+    );
+    openPanel();
+    fireEvent.click(screen.getByRole("button", { name: "変更を確認" }));
+    await waitFor(() => expect(prepareAutonomyAction).toHaveBeenCalledExactlyOnceWith("old-run"));
+    expect(approveAutonomyAction).not.toHaveBeenCalled();
+  });
+
   it("keeps stop visibly pending and prevents another run until teardown finishes", () => {
     vi.mocked(useAutonomyStatus).mockReturnValue(
       status({ contract: { ...contract, enabled: false }, phase: "stopping" }),

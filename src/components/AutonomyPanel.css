@@ -28,6 +28,59 @@
   background: var(--yorishiro-accent, #93c9a5);
   box-shadow: 0 0 0 3px #93c9a51a;
 }
+.autonomy-confirmations {
+  margin-block: 22px;
+  scroll-margin-top: 12px;
+  outline-offset: 4px;
+}
+.autonomy-action-review {
+  min-width: 0;
+  margin-top: 14px;
+  padding: 18px;
+  border: 1px solid var(--autonomy-line);
+  border-radius: 10px;
+  background: var(--autonomy-surface);
+}
+.autonomy-publication-fields {
+  margin: 16px 0;
+}
+.autonomy-publication-fields > div {
+  display: grid;
+  grid-template-columns: minmax(110px, 0.28fr) minmax(0, 1fr);
+  gap: 12px;
+  padding-block: 6px;
+}
+.autonomy-publication-fields dt {
+  color: var(--yorishiro-fg-dim, #a4a7ad);
+}
+.autonomy-publication-fields dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.autonomy-review-content {
+  max-height: 240px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin: 10px 0;
+  padding: 12px;
+  border: 1px solid var(--autonomy-line);
+  border-radius: 7px;
+  background: #0002;
+  font: inherit;
+  font-size: 12px;
+}
+.autonomy-review-diff {
+  max-height: 360px;
+  white-space: pre;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  line-height: 1.5;
+}
+.autonomy-action-pending,
+.autonomy-action-unknown {
+  color: var(--yorishiro-fg, #f0f1f2);
+  background: color-mix(in srgb, var(--yorishiro-fg, #f0f1f2) 9%, transparent);
+}
 .autonomy-overlay {
   position: fixed;
   inset: 0;

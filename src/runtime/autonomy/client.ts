@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useEffect, useSyncExternalStore } from "react";
 import type {
+  AutonomyConfirmationNotice,
   AutonomyContract,
   AutonomyDraft,
   AutonomyDraftPatch,
@@ -15,6 +16,7 @@ import type {
 let snapshot: AutonomyStatus | null = null;
 let draftSnapshot: AutonomyDraftSnapshot = { revision: -1, draft: null };
 let announcedReviewId: string | null = null;
+let announcedConfirmationKey: string | null = null;
 const listeners = new Set<() => void>();
 let timer: ReturnType<typeof setTimeout> | null = null;
 let polling: Promise<void> | null = null;
@@ -90,6 +92,25 @@ async function readStatus(): Promise<void> {
       announcedReviewId = review?.id ?? null;
       window.dispatchEvent(
         new CustomEvent("yorishiro:autonomy-work-review-available", { detail: review ?? null }),
+      );
+    }
+    const confirmation = snapshot.pendingActions?.find(
+      (action) => ["pending", "failed", "unknown"].includes(action.status) && !action.acknowledged,
+    );
+    const confirmationKey = confirmation ? `${confirmation.id}:${confirmation.status}` : null;
+    if (confirmationKey !== announcedConfirmationKey && typeof window !== "undefined") {
+      announcedConfirmationKey = confirmationKey;
+      const detail: AutonomyConfirmationNotice | null = confirmation
+        ? {
+            id: confirmation.id,
+            runId: confirmation.runId,
+            kind: confirmation.kind,
+            summary: confirmation.summary,
+            status: confirmation.status,
+          }
+        : null;
+      window.dispatchEvent(
+        new CustomEvent("yorishiro:autonomy-confirmation-available", { detail }),
       );
     }
     // Clearing a reviewed card must not wait for the independent setup-draft
@@ -226,4 +247,36 @@ export async function runAutonomyNow(): Promise<void> {
 export async function undoAutonomyRun(runId: string): Promise<void> {
   await invoke("autonomy_undo", { runId });
   await refreshAfterAction();
+}
+
+export async function prepareAutonomyAction(runId: string): Promise<void> {
+  try {
+    await invoke("autonomy_prepare_publication", { runId });
+  } finally {
+    await refreshAfterAction();
+  }
+}
+
+export async function approveAutonomyAction(id: string, digest: string): Promise<void> {
+  try {
+    await invoke("autonomy_approve_action", { id, digest });
+  } finally {
+    await refreshAfterAction();
+  }
+}
+
+export async function declineAutonomyAction(id: string): Promise<void> {
+  try {
+    await invoke("autonomy_decline_action", { id });
+  } finally {
+    await refreshAfterAction();
+  }
+}
+
+export async function acknowledgeAutonomyAction(id: string): Promise<void> {
+  try {
+    await invoke("autonomy_acknowledge_action", { id });
+  } finally {
+    await refreshAfterAction();
+  }
 }

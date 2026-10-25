@@ -2,15 +2,13 @@
 //! exact repository roots to isolated local work when full operations are allowed;
 //! narrower scopes use reversible document transactions. Models never grant
 //! authority, expand scope, or authorize external publication.
+pub(crate) mod actions;
 mod artifact;
 mod development;
 pub(crate) mod draft;
 mod files;
 mod policy;
 mod process_supervisor;
-// Retained for a future concrete-action confirmation flow. Unified work never
-// calls publishing automatically or treats local scope as permission to send.
-#[allow(dead_code)]
 mod publishing;
 mod worker;
 
@@ -116,6 +114,8 @@ pub struct Status {
     pending_work: Option<PendingWork>,
     #[serde(default)]
     daily_work: Option<DailyWork>,
+    #[serde(default)]
+    pending_actions: Vec<actions::Action>,
 }
 
 impl Default for Status {
@@ -128,6 +128,7 @@ impl Default for Status {
             error: None,
             pending_work: None,
             daily_work: None,
+            pending_actions: vec![],
         }
     }
 }
@@ -140,6 +141,8 @@ struct Runtime {
     cancel: Option<CancellationToken>,
     consulting: Option<Consultation>,
     active_run_id: Option<String>,
+    active_action_id: Option<String>,
+    deferred_action: Option<actions::Completion>,
     // Transient process-supervision diagnostic, tracked separately so its
     // acknowledgment never clears an unrelated operation/persistence error.
     cleanup_error: Option<String>,
@@ -297,8 +300,9 @@ fn load_status_at(dir: &Path, now: u64) -> Result<(Status, bool), String> {
         }
     }
     validate_daily_state(&status)?;
+    let recovered_actions = actions::recover(&mut status)?;
     let interrupted = status.runs.iter().any(|run| run.status == "running")
-        || ["thinking", "applying", "stopping"].contains(&status.phase.as_str());
+        || ["thinking", "applying", "stopping", "publishing"].contains(&status.phase.as_str());
     let invalid_contract = status
         .contract
         .as_ref()
@@ -313,6 +317,8 @@ fn load_status_at(dir: &Path, now: u64) -> Result<(Status, bool), String> {
         "completed",
         "blocked",
         "awaitingReview",
+        "awaitingAction",
+        "publishing",
     ]
     .contains(&status.phase.as_str())
         || (status.phase == "awaitingReview" && status.pending_work.is_none());
@@ -351,7 +357,8 @@ fn load_status_at(dir: &Path, now: u64) -> Result<(Status, bool), String> {
         status.phase = "awaitingReview".into();
         status.next_run_at = None;
     }
-    Ok((status, rolled || repaired_pending))
+    actions::park(&mut status);
+    Ok((status, rolled || repaired_pending || recovered_actions))
 }
 
 /// A daily approval expires at local midnight; expired proposals cannot leave
@@ -446,6 +453,8 @@ fn cancel_active(runtime: &mut Runtime) {
 fn desired_phase(runtime: &Runtime, enabled: bool) -> &'static str {
     if runtime.cancel.is_some() || runtime.consulting.is_some() {
         "stopping"
+    } else if enabled && actions::has_pending(&runtime.status) {
+        "awaitingAction"
     } else if enabled {
         "idle"
     } else {
@@ -473,6 +482,7 @@ fn settle_stopping(runtime: &mut Runtime) -> bool {
 }
 
 enum CleanupOwner {
+    Action(String),
     Run(String),
     Consultation(String),
 }
@@ -488,6 +498,7 @@ fn cleanup_observer(
             return;
         };
         let owns_slot = match &owner {
+            CleanupOwner::Action(id) => runtime.active_action_id.as_ref() == Some(id),
             CleanupOwner::Run(id) => runtime.active_run_id.as_ref() == Some(id),
             CleanupOwner::Consultation(id) => runtime
                 .consulting
@@ -498,6 +509,7 @@ fn cleanup_observer(
             return;
         }
         let mut deferred_finish = None;
+        let mut deferred_action = None;
         if !matches!(notice, CleanupProgress::Complete) {
             if !runtime.cleanup_pending && runtime.status.phase != "stopping" {
                 runtime.cleanup_phase = Some(runtime.status.phase.clone());
@@ -554,12 +566,18 @@ fn cleanup_observer(
                         persist_consultation_stop(&mut runtime);
                     }
                 }
+                if matches!(&owner, CleanupOwner::Action(_)) {
+                    deferred_action = runtime.deferred_action.take();
+                }
                 if matches!(&owner, CleanupOwner::Run(_)) {
                     deferred_finish = runtime.deferred_finish.take();
                 }
             }
         }
         drop(runtime);
+        if let Some(deferred) = deferred_action {
+            actions::complete(&state, deferred);
+        }
         if let Some(deferred) = deferred_finish {
             finish(
                 &state,
@@ -700,7 +718,7 @@ fn save_contract(state: &AutonomyState, mut contract: Contract) -> Result<(), St
     contract.goal = contract.goal.trim().to_owned();
     let mut runtime = lock(state)?;
     let mut next = runtime.status.clone();
-    next.next_run_at = contract.enabled.then_some(clock_ms());
+    next.next_run_at = (contract.enabled && !actions::has_pending(&next)).then_some(clock_ms());
     next.phase = desired_phase(&runtime, contract.enabled).into();
     next.contract = Some(contract);
     next.pending_work = None;
@@ -734,7 +752,7 @@ fn set_enabled(
     if let Some(contract) = next.contract.as_mut() {
         contract.enabled = enabled;
     }
-    next.next_run_at = enabled.then_some(now);
+    next.next_run_at = (enabled && !actions::has_pending(&next)).then_some(now);
     next.phase = desired_phase(runtime, enabled).into();
     next.error = if next.phase == "stopping" {
         runtime.status.error.clone()
@@ -795,6 +813,13 @@ fn claim_due(
     if runtime.cancel.is_some() || runtime.consulting.is_some() {
         return if manual {
             Err("前の処理が終了するまでお待ちください".into())
+        } else {
+            Ok(None)
+        };
+    }
+    if actions::has_pending(&runtime.status) {
+        return if manual {
+            Err("成果物の確認事項を先に確認してください".into())
         } else {
             Ok(None)
         };
@@ -1093,7 +1118,21 @@ async fn execute_development(
         let runtime = lock(state)?;
         ensure_development_authority(&runtime, contract, id, revision, cancel, clock_ms())?;
     }
-    let summary = format!("{}\n成果物は作業用コピーに保存しました。外部への公開は内容を確認してから個別に承認してください。", result.summary);
+    let summary = if let Some(development::RequestedAction::PublishPullRequest {
+        reason: request_reason,
+    }) = &result.requested_action
+    {
+        match actions::prepare_for_run(state, id, Some(revision), request_reason).await {
+            Ok(_) => format!("{}\n公開する内容の確認事項を用意しました。確認カードで承認または見送りを選んでください。", result.summary),
+            Err(error) => return Ok(Plan {
+                reason: "公開前の確認事項を準備できなかったため停止しました".into(),
+                summary: format!("{}\n{error}\n成果物は保存されています。作業履歴から再度確認するか、AIに相談してください。", result.summary),
+                work_goal, outcome: Outcome::Blocked, operations: vec![],
+            }),
+        }
+    } else {
+        format!("{}\n成果物は確認用コピーに保存しました。", result.summary)
+    };
     Ok(Plan {
         reason,
         summary,
@@ -1453,6 +1492,7 @@ fn finish(
         runtime.status.error = if stopped { None } else { error };
     }
     settle_stopping(&mut runtime);
+    actions::park(&mut runtime.status);
     if let Err(error) = persist(&runtime) {
         if let Some(contract) = runtime.status.contract.as_mut() {
             contract.enabled = false;

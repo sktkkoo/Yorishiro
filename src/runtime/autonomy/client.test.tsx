@@ -47,6 +47,126 @@ describe("autonomous host polling", () => {
     view.unmount();
   });
 
+  it("announces post-work confirmations separately and advances the persisted queue", async () => {
+    vi.useFakeTimers();
+    const first = {
+      id: "one",
+      runId: "run-1",
+      kind: "publishPullRequest",
+      summary: "First result",
+      status: "pending",
+    };
+    const second = { ...first, id: "two", runId: "run-2", summary: "Second result" };
+    let pendingActions = [first, second];
+    let draftFails = false;
+    invoke.mockImplementation(async (command: string) => {
+      if (command === "autonomy_status") return { ...idle, pendingActions };
+      if (command === "autonomy_draft_snapshot") {
+        if (draftFails) throw new Error("draft unavailable");
+        return { revision: 0, draft: null };
+      }
+    });
+    const receive = vi.fn();
+    const daily = vi.fn();
+    window.addEventListener("yorishiro:autonomy-confirmation-available", receive);
+    window.addEventListener("yorishiro:autonomy-work-review-available", daily);
+    const client = await import("./client");
+    const view = renderHook(client.useAutonomyStatus);
+    await act(async () => {});
+    expect((receive.mock.calls[0][0] as CustomEvent).detail).toEqual(first);
+    await act(async () => vi.advanceTimersByTimeAsync(15_000));
+    expect(receive).toHaveBeenCalledTimes(1);
+    pendingActions = [{ ...first, status: "published" }, second];
+    await act(async () => vi.advanceTimersByTimeAsync(15_000));
+    expect((receive.mock.calls[1][0] as CustomEvent).detail).toEqual(second);
+    draftFails = true;
+    pendingActions = [];
+    await act(async () => vi.advanceTimersByTimeAsync(15_000));
+    expect((receive.mock.calls[2][0] as CustomEvent).detail).toBeNull();
+    expect(daily).not.toHaveBeenCalled();
+    expect(invoke.mock.calls.some(([name]) => name === "autonomy_approve_action")).toBe(false);
+    view.unmount();
+    window.removeEventListener("yorishiro:autonomy-confirmation-available", receive);
+    window.removeEventListener("yorishiro:autonomy-work-review-available", daily);
+  });
+
+  it("sends only the reviewed action identity and digest and refreshes an uncertain outcome", async () => {
+    let outcome = "pending";
+    const failure = new Error("Publication result unknown");
+    invoke.mockImplementation(async (command: string) => {
+      if (command === "autonomy_status")
+        return {
+          ...idle,
+          pendingActions: [
+            {
+              id: "action",
+              runId: "run",
+              kind: "publishPullRequest",
+              summary: "Result",
+              status: outcome,
+            },
+          ],
+        };
+      if (command === "autonomy_draft_snapshot") return { revision: 0, draft: null };
+      if (command === "autonomy_approve_action") {
+        outcome = "unknown";
+        throw failure;
+      }
+    });
+    const client = await import("./client");
+    const view = renderHook(client.useAutonomyStatus);
+    await waitFor(() => expect(view.result.current?.pendingActions?.[0].status).toBe("pending"));
+    await act(async () => {
+      await expect(client.approveAutonomyAction("action", "reviewed-digest")).rejects.toBe(failure);
+    });
+    expect(invoke).toHaveBeenCalledWith("autonomy_approve_action", {
+      id: "action",
+      digest: "reviewed-digest",
+    });
+    expect(view.result.current?.pendingActions?.[0].status).toBe("unknown");
+    expect(invoke.mock.calls.filter(([name]) => name === "autonomy_approve_action")).toHaveLength(
+      1,
+    );
+    view.unmount();
+  });
+
+  it("clears an acknowledged unknown notice without requesting another publication", async () => {
+    let acknowledged = false;
+    invoke.mockImplementation(async (command: string) => {
+      if (command === "autonomy_status")
+        return {
+          ...idle,
+          pendingActions: [
+            {
+              id: "unknown-1",
+              runId: "run",
+              kind: "publishPullRequest",
+              status: "unknown",
+              summary: "Check GitHub",
+              acknowledged,
+            },
+          ],
+        };
+      if (command === "autonomy_draft_snapshot") return { revision: 0, draft: null };
+      if (command === "autonomy_acknowledge_action") acknowledged = true;
+    });
+    const receive = vi.fn();
+    window.addEventListener("yorishiro:autonomy-confirmation-available", receive);
+    const client = await import("./client");
+    const view = renderHook(client.useAutonomyStatus);
+    await waitFor(() => expect(receive).toHaveBeenCalledOnce());
+    await act(async () => client.acknowledgeAutonomyAction("unknown-1"));
+    expect(invoke).toHaveBeenCalledWith("autonomy_acknowledge_action", { id: "unknown-1" });
+    expect(
+      (receive.mock.calls[receive.mock.calls.length - 1]?.[0] as CustomEvent).detail,
+    ).toBeNull();
+    expect(invoke.mock.calls.some(([command]) => command === "autonomy_approve_action")).toBe(
+      false,
+    );
+    view.unmount();
+    window.removeEventListener("yorishiro:autonomy-confirmation-available", receive);
+  });
+
   it("observes teardown completion without waiting for the normal polling interval", async () => {
     vi.useFakeTimers();
     let phase = "stopping";

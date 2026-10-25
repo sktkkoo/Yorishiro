@@ -8,6 +8,7 @@ import {
   consultAutonomy,
   declinePendingWork,
   pauseAutonomy,
+  prepareAutonomyAction,
   runAutonomyNow,
   saveAutonomyContract,
   undoAutonomyRun,
@@ -22,6 +23,7 @@ import {
   type AutonomyVoiceSetupStatus,
 } from "../runtime/autonomy/voice-setup";
 import "./AutonomyPanel.css";
+import { AutonomyActionReview } from "./AutonomyActionReview";
 
 const OPERATIONS: ReadonlyArray<{ id: AutonomyOperation; label: string }> = [
   { id: "write", label: "作成・編集" },
@@ -39,6 +41,8 @@ const PHASE_LABELS = {
   completed: "今回の作業が終わりました",
   blocked: "続けるための指示を待っています",
   awaitingReview: "今日の仕事について相談しています",
+  awaitingAction: "作業結果の確認を待っています",
+  publishing: "GitHubへPRを作成しています",
 };
 
 const RUN_LABELS = {
@@ -130,8 +134,23 @@ export function AutonomyPanel() {
   const openerRef = useRef<HTMLButtonElement>(null);
   const titleId = useId();
   const saveHintId = useId();
-  const working = status?.phase === "thinking" || status?.phase === "applying";
+  const working =
+    status?.phase === "thinking" || status?.phase === "applying" || status?.phase === "publishing";
   const stopping = status?.phase === "stopping";
+  const publicationActions = status?.pendingActions ?? [];
+  const reviewActions = publicationActions.filter(
+    (action) => action.status !== "published" && action.status !== "declined",
+  );
+  const confirmationCount = reviewActions.filter(
+    (action) => action.status !== "submitting" && !action.acknowledged,
+  ).length;
+  const publishing = reviewActions.some((action) => action.status === "submitting");
+  const awaitingAction = reviewActions.some(
+    (action) =>
+      ["pending", "submitting", "unknown", "failed"].includes(action.status) &&
+      !action.acknowledged,
+  );
+  const reviewRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     if (!visible) return;
@@ -188,8 +207,8 @@ export function AutonomyPanel() {
     }
   }
 
-  async function consult() {
-    const text = message.trim() || START_CONVERSATION;
+  async function consult(context?: string) {
+    const text = context || message.trim() || START_CONVERSATION;
     if (busy) return;
     const history: ConversationMessage[] = [
       ...messages,
@@ -211,6 +230,12 @@ export function AutonomyPanel() {
       // The consultation publishes into the same shared draft. Native draft
       // events reconcile fields without overwriting pending human edits.
     });
+  }
+
+  async function prepareReview(runId: string) {
+    await act(`prepare:${runId}`, () => prepareAutonomyAction(runId));
+    reviewRef.current?.scrollIntoView?.({ block: "start", behavior: "smooth" });
+    reviewRef.current?.focus();
   }
 
   async function selectRoot() {
@@ -263,7 +288,9 @@ export function AutonomyPanel() {
         ref={openerRef}
         className="autonomy-launcher"
         aria-haspopup="dialog"
-        aria-label="おまかせ作業"
+        aria-label={
+          confirmationCount > 0 ? `おまかせ作業 確認待ち ${confirmationCount}件` : "おまかせ作業"
+        }
         aria-expanded={visible}
         onClick={openPanel}
       >
@@ -271,7 +298,13 @@ export function AutonomyPanel() {
           aria-hidden="true"
           className={working || stopping ? "autonomy-dot autonomy-dot-active" : "autonomy-dot"}
         />
-        {status?.pendingWork ? "今日の仕事を相談" : "おまかせ作業"}
+        {confirmationCount > 0
+          ? `確認待ち ${confirmationCount}件`
+          : publishing
+            ? "PR作成中"
+            : status?.pendingWork
+              ? "今日の仕事を相談"
+              : "おまかせ作業"}
       </button>
       {visible &&
         createPortal(
@@ -348,15 +381,18 @@ export function AutonomyPanel() {
                                   : "autonomy-dot"
                               }
                             />
-                            {working
-                              ? status.phase === "applying"
-                                ? "作業の成果を保存しています"
-                                : "目的に沿った作業と検証を進めています"
-                              : PHASE_LABELS[status.phase]}
+                            {status.phase === "publishing"
+                              ? PHASE_LABELS.publishing
+                              : working
+                                ? status.phase === "applying"
+                                  ? "作業の成果を保存しています"
+                                  : "目的に沿った作業と検証を進めています"
+                                : PHASE_LABELS[status.phase]}
                           </p>
                           {status.nextRunAt !== null &&
                             status.contract.enabled &&
-                            !status.pendingWork && (
+                            !status.pendingWork &&
+                            !awaitingAction && (
                               <p className="autonomy-muted">
                                 次回: {new Date(status.nextRunAt).toLocaleString("ja-JP")}
                               </p>
@@ -375,13 +411,38 @@ export function AutonomyPanel() {
                           <button
                             type="button"
                             disabled={
-                              working || stopping || busy !== null || status.pendingWork != null
+                              working ||
+                              stopping ||
+                              busy !== null ||
+                              status.pendingWork != null ||
+                              awaitingAction
                             }
                             onClick={() => void act("run", runAutonomyNow)}
                           >
                             今すぐ進める
                           </button>
                         </div>
+                      </section>
+                    )}
+                    {reviewActions.length > 0 && (
+                      <section
+                        className="autonomy-confirmations"
+                        aria-label="作業後の確認"
+                        ref={reviewRef}
+                        tabIndex={-1}
+                      >
+                        <div className="autonomy-history-heading">
+                          <h3>作業後の確認</h3>
+                          <span className="autonomy-count">{reviewActions.length}件</span>
+                        </div>
+                        <p className="autonomy-muted">公開する内容と確認結果を表示しています。</p>
+                        {reviewActions.map((action) => (
+                          <AutonomyActionReview
+                            key={`${action.id}:${action.payloadDigest}`}
+                            action={action}
+                            disabled={busy !== null || working || stopping || publishing}
+                          />
+                        ))}
                       </section>
                     )}
                     {status.pendingWork && (
@@ -723,6 +784,44 @@ export function AutonomyPanel() {
                               </div>
                               <p>{run.summary || "作業を進めています…"}</p>
                               {run.reason && <p className="autonomy-muted">{run.reason}</p>}
+                              {run.developmentPath &&
+                                run.status !== "running" &&
+                                !run.pullRequestUrl &&
+                                !publicationActions.some(
+                                  (action) =>
+                                    action.runId === run.id &&
+                                    ["pending", "submitting", "unknown", "published"].includes(
+                                      action.status,
+                                    ),
+                                ) && (
+                                  <button
+                                    type="button"
+                                    disabled={busy !== null || working || stopping || publishing}
+                                    onClick={() => void prepareReview(run.id)}
+                                  >
+                                    変更を確認
+                                  </button>
+                                )}
+                              {publicationActions.filter(
+                                (action) => action.runId === run.id && action.status === "declined",
+                              ).length > 0 && (
+                                <p className="autonomy-muted">この成果物の公開は見送りました。</p>
+                              )}
+                              {(run.status === "failed" ||
+                                (status.phase === "blocked" && index === 0)) && (
+                                <button
+                                  type="button"
+                                  disabled={busy !== null || working || stopping || publishing}
+                                  onClick={() => {
+                                    setTextOpen(true);
+                                    void consult(
+                                      `おまかせ作業の結果について相談したいです。必要な確認事項と次にできる操作を教えてください。公開や実行の承認ではありません。\n作業ID: ${run.id}\n結果: ${run.summary}\n理由: ${run.reason}`,
+                                    );
+                                  }}
+                                >
+                                  結果についてAIに相談
+                                </button>
+                              )}
                               {(run.developmentPath ||
                                 run.branch ||
                                 run.validationSummary ||

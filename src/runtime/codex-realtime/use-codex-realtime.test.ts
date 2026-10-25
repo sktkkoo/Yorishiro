@@ -21,6 +21,54 @@ import {
 const ZERO_MOUTH: MouthValues = { aa: 0, ih: 0, ou: 0, ee: 0, oh: 0 };
 
 describe("autonomy voice setup", () => {
+  it("keeps result confirmations queued when a daily proposal is withdrawn", async () => {
+    const { result, clients } = setup([]);
+    const confirmation = {
+      kind: "confirmation" as const,
+      id: "result-1",
+      goal: "Review changes",
+      reason: "",
+      summary: "",
+    };
+    await result.current.notifyAutonomyWorkReview({
+      id: "daily-1",
+      goal: "notes",
+      reason: "",
+      summary: "",
+    });
+    await result.current.notifyAutonomyWorkReview(confirmation, "confirmation");
+    await result.current.notifyAutonomyWorkReview(null);
+    expect(clients).toHaveLength(0);
+    await act(() => result.current.toggle());
+    await act(async () => clients[0].emit({ status: "active" }));
+    expect(clients[0].notifyAutonomyWorkReview).toHaveBeenCalledExactlyOnceWith(confirmation);
+  });
+
+  it("delivers a result confirmation even when the daily proposal submission failed", async () => {
+    const { result, clients } = setup([]);
+    await act(() => result.current.toggle());
+    act(() => clients[0].emit({ status: "active" }));
+    clients[0].notifyAutonomyWorkReview.mockRejectedValueOnce(new Error("offline"));
+    await expect(
+      result.current.notifyAutonomyWorkReview({
+        id: "daily-1",
+        goal: "notes",
+        reason: "",
+        summary: "",
+      }),
+    ).rejects.toThrow("offline");
+    const confirmation = {
+      kind: "confirmation" as const,
+      id: "result-1",
+      goal: "Review changes",
+      reason: "",
+      summary: "",
+    };
+    await result.current.notifyAutonomyWorkReview(confirmation, "confirmation");
+    expect(clients[0].notifyAutonomyWorkReview).toHaveBeenCalledTimes(2);
+    expect(clients[0].notifyAutonomyWorkReview).toHaveBeenLastCalledWith(confirmation);
+  });
+
   it("queues a review without opening a microphone and submits it once voice becomes active", async () => {
     const review = {
       id: "review-1",

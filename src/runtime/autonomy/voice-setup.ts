@@ -1,12 +1,38 @@
 export const AUTONOMY_VOICE_SETUP_REQUEST = "yorishiro:autonomy-voice-setup-requested";
 export const AUTONOMY_VOICE_SETUP_STATUS = "yorishiro:autonomy-voice-setup-status";
 export const AUTONOMY_WORK_REVIEW_AVAILABLE = "yorishiro:autonomy-work-review-available";
+export const AUTONOMY_CONFIRMATION_AVAILABLE = "yorishiro:autonomy-confirmation-available";
 
 export interface AutonomyWorkReviewNotice {
+  readonly kind?: "confirmation";
   readonly id: string;
   readonly goal: string;
   readonly reason: string;
   readonly summary: string;
+}
+
+/** Notification data only: this event cannot approve an external operation. */
+export function readAutonomyConfirmationNotice(event: Event): AutonomyWorkReviewNotice | null {
+  const value: unknown = (event as CustomEvent<unknown>).detail;
+  if (!value || typeof value !== "object") return null;
+  const data = value as Record<string, unknown>;
+  if (
+    typeof data.id !== "string" ||
+    !data.id ||
+    data.id.length > 128 ||
+    typeof data.status !== "string" ||
+    data.status.length > 40 ||
+    typeof data.summary !== "string" ||
+    data.summary.length > 8_000
+  )
+    return null;
+  return {
+    kind: "confirmation",
+    id: `confirmation:${data.id}:${data.status}`,
+    goal: data.summary,
+    reason: "作業結果についてユーザーの確認が必要です。",
+    summary: data.summary,
+  };
 }
 
 export function readAutonomyWorkReviewNotice(event: Event): AutonomyWorkReviewNotice | null {
