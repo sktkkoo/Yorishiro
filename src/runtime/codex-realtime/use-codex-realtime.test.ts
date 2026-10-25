@@ -21,6 +21,41 @@ import {
 const ZERO_MOUTH: MouthValues = { aa: 0, ih: 0, ou: 0, ee: 0, oh: 0 };
 
 describe("autonomy voice setup", () => {
+  it("forwards English setup and preserves queued review language without reconnecting", async () => {
+    const { result, clients } = setup([]);
+    const review = {
+      language: "en" as const,
+      id: "english-card",
+      goal: "Original goal",
+      reason: "",
+      summary: "Original summary",
+    };
+    await result.current.notifyAutonomyWorkReview(review);
+    expect(clients).toHaveLength(0);
+    await act(() => result.current.toggle());
+    await act(async () => clients[0].emit({ status: "active" }));
+    expect(clients[0].notifyAutonomyWorkReview).toHaveBeenCalledExactlyOnceWith(review);
+    await act(() => result.current.requestAutonomySetup("en"));
+    expect(clients[0].requestAutonomySetup).toHaveBeenCalledExactlyOnceWith("en");
+    await result.current.notifyAutonomyWorkReview({ ...review, language: "ja" });
+    expect(clients[0].notifyAutonomyWorkReview).toHaveBeenCalledTimes(1);
+    expect(clients[0].start).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports English setup availability errors without starting another conversation", async () => {
+    const { result, clients, rerender } = setup([]);
+    await act(() => result.current.toggle());
+    await expect(result.current.requestAutonomySetup("en")).rejects.toThrow(
+      "Voice is not connected yet",
+    );
+    expect(clients[0].stop).not.toHaveBeenCalled();
+    rerender({ sessionId: "main", available: false });
+    await expect(result.current.requestAutonomySetup("en")).rejects.toThrow(
+      "Voice setup requires Codex voice",
+    );
+    expect(clients[0].requestAutonomySetup).not.toHaveBeenCalled();
+  });
+
   it("keeps result confirmations queued when a daily proposal is withdrawn", async () => {
     const { result, clients } = setup([]);
     const confirmation = {

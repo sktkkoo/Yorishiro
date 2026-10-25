@@ -240,8 +240,14 @@ export async function editAutonomyDraft(
   return result;
 }
 
-export async function consultAutonomy(history: readonly SetupMessage[]): Promise<SetupReply> {
-  const result = await invoke<SetupReply>("autonomy_consult", { history });
+export async function consultAutonomy(
+  history: readonly SetupMessage[],
+  language?: "ja" | "en",
+): Promise<SetupReply> {
+  const result = await invoke<SetupReply>("autonomy_consult", {
+    history,
+    ...(language ? { language } : {}),
+  });
   if (result.draftSnapshot) acceptDraft(result.draftSnapshot);
   return result;
 }

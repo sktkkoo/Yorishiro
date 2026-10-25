@@ -71,10 +71,14 @@ describe("post-work operation confirmation", () => {
     fireEvent.click(button);
     fireEvent.click(button);
     expect(approveAutonomyAction).toHaveBeenCalledExactlyOnceWith(action.id, action.payloadDigest);
+    expect(screen.queryByText("承認済み・実行待ち")).toBeNull();
+    expect(screen.queryByText("実行完了")).toBeNull();
     expect((screen.getByRole("button", { name: "見送る" }) as HTMLButtonElement).disabled).toBe(
       true,
     );
     await act(async () => finish());
+    expect(screen.getByText("確認待ち")).toBeTruthy();
+    expect(screen.queryByText("実行完了")).toBeNull();
   });
 
   it("declines without approving or running the operation", async () => {
@@ -184,12 +188,115 @@ describe("post-work operation confirmation", () => {
 
   it("includes communication in the reviewed operation when requested", () => {
     render(<AutonomyActionReview action={{ ...action, networkAccess: true }} disabled={false} />);
-    expect(
-      screen.getByText(
-        "承認した対象への通信を含む操作です。必要に応じて、そのサービスの保存済みログインを使用します。",
-      ),
-    ).toBeTruthy();
+    const notice = screen.getByRole("note");
+    expect(notice.textContent).toContain("外部と通信する操作です");
+    expect(notice.textContent).toContain("保存済みログインを使用します");
+    expect(notice.querySelector('[aria-hidden="true"]')?.textContent).toContain("↗");
+    expect(notice.closest("details")).toBeNull();
     expect(approveAutonomyAction).not.toHaveBeenCalled();
+  });
+
+  it("keeps target, impact and exact details visible while technical evidence is disclosed separately", () => {
+    render(
+      <AutonomyActionReview
+        action={{ ...action, checks: [{ command: "check report", exitCode: 0 }] }}
+        disabled={false}
+      />,
+    );
+    expect(screen.getByText(action.target).closest("details")).toBeNull();
+    expect(screen.getByText(action.impact).closest("details")).toBeNull();
+    const content = screen.getByText("操作の内容").closest("details");
+    expect(content?.open).toBe(true);
+    expect(content?.querySelector("pre")?.textContent).toBe(action.details);
+    const evidence = screen.getByText("作業の記録").closest("details");
+    expect(evidence?.open).toBe(false);
+    expect(evidence?.textContent).toContain(action.sourceRoot);
+    expect(evidence?.textContent).toContain(action.artifactPath);
+    expect(evidence?.textContent).toContain("draft.md");
+    expect(evidence?.textContent).toContain("check report: exit 0");
+    fireEvent.click(screen.getByText("作業の記録"));
+    expect(evidence?.open).toBe(true);
+    expect(approveAutonomyAction).not.toHaveBeenCalled();
+  });
+
+  it("localizes the English decision controls without translating or changing the frozen contents", async () => {
+    render(
+      <AutonomyActionReview
+        action={{ ...action, networkAccess: true }}
+        language="en"
+        disabled={false}
+      />,
+    );
+    expect(screen.getByText("Needs your approval")).toBeTruthy();
+    expect(screen.getByText("Target")).toBeTruthy();
+    expect(screen.getByText("Impact")).toBeTruthy();
+    expect(screen.getByText("Why approval is needed")).toBeTruthy();
+    expect(screen.getByText("Exact operation details").closest("details")?.open).toBe(true);
+    expect(screen.getByText("Work record").closest("details")?.textContent).toContain(
+      action.sourceRoot,
+    );
+    expect(screen.getByRole("note").textContent).toContain("saved login");
+    expect(screen.getByRole("heading", { name: action.operation })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "承認する" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+    await waitFor(() =>
+      expect(approveAutonomyAction).toHaveBeenCalledExactlyOnceWith(
+        action.id,
+        action.payloadDigest,
+      ),
+    );
+    expect(screen.queryByText("Approved · queued")).toBeNull();
+    expect(screen.queryByText("Completed")).toBeNull();
+  });
+
+  it("localizes saved automatic permission and cancellation in English", async () => {
+    render(
+      <AutonomyActionReview
+        action={{ ...action, status: "approved", autoApproved: true }}
+        language="en"
+        disabled={false}
+      />,
+    );
+    expect(screen.getByText("Automatically authorized · queued")).toBeTruthy();
+    expect(screen.getByText("Automatic permission for your goal")).toBeTruthy();
+    expect(screen.getByText(/automatic permission you saved/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel approval" }));
+    await waitFor(() => expect(declineAutonomyAction).toHaveBeenCalledExactlyOnceWith(action.id));
+  });
+
+  it.each([
+    ["executing", "In progress"],
+    ["completed", "Completed"],
+    ["failed", "Failed"],
+    ["interrupted", "Check the outcome"],
+    ["declined", "Skipped"],
+  ] as const)("localizes the English %s result without offering another approval", (status, label) => {
+    render(<AutonomyActionReview action={{ ...action, status }} language="en" disabled={false} />);
+    expect(screen.getByText(label)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
+  });
+
+  it("opens a safe English result only on request and keeps unsafe links unavailable", async () => {
+    const resultUrl = "https://team.example.test/reports/42";
+    const view = render(
+      <AutonomyActionReview
+        action={{ ...action, status: "completed", resultUrl }}
+        language="en"
+        disabled={false}
+      />,
+    );
+    expect(openUrl).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Open result" }));
+    await waitFor(() => expect(openUrl).toHaveBeenCalledExactlyOnceWith(resultUrl));
+    view.rerender(
+      <AutonomyActionReview
+        action={{ ...action, status: "completed", resultUrl: "javascript:alert(1)" }}
+        language="en"
+        disabled={false}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "Open result" })).toBeNull();
   });
 
   it("accepts a file sharing request without repository fields or artifacts", () => {

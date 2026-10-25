@@ -8,8 +8,8 @@ const COPY = {
     label: "自動作業",
     configure: "任せる範囲を設定",
     description:
-      "Onにすると、合意した範囲で自動的に作業します。Offにすると、進行中の作業と次回以降の自動実行を停止します。",
-    setup: "初めて使うときは、AIと相談して任せる範囲を決めます。",
+      "Onで保存した目的に沿って作業します。確認が必要な操作は承認を待ちます。Offで進行中・次回以降の作業を止めます。",
+    setup: "AIと目的・対象フォルダ・許可を決めて始めます。",
     loading: "読み込んでいます…",
     stopping: "作業プロセスの終了を待っています。",
   },
@@ -17,8 +17,8 @@ const COPY = {
     label: "Automatic work",
     configure: "Set work scope",
     description:
-      "On starts work within your agreed scope. Off stops current work and future automatic runs.",
-    setup: "First, discuss and agree on the scope with your AI.",
+      "On runs work toward your saved goal and waits when approval is needed. Off stops current work and future runs.",
+    setup: "Start by agreeing on the goal, folder, and permissions with your AI.",
     loading: "Loading…",
     stopping: "Waiting for work processes to exit.",
   },

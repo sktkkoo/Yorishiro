@@ -41,6 +41,26 @@ afterEach(() => {
 });
 
 describe("AutonomySettings", () => {
+  it.each([
+    ["ja", "自動作業", "任せる範囲を設定", "確認が必要な操作は承認を待ちます。"],
+    ["en", "Automatic work", "Set work scope", "waits when approval is needed"],
+  ] as const)("localizes the %s settings entry and explains approval waiting", (language, label, configure, description) => {
+    render(<AutonomySettings language={language} />);
+    expect(screen.getByRole("region", { name: label })).toBeTruthy();
+    expect(screen.getByRole("switch", { name: label })).toBeTruthy();
+    expect(screen.getByRole("button", { name: configure })).toBeTruthy();
+    expect(screen.getByText((text) => text.includes(description))).toBeTruthy();
+  });
+
+  it("localizes loading and stopping feedback in English", () => {
+    vi.mocked(useAutonomyStatus).mockReturnValue(null);
+    const view = render(<AutonomySettings language="en" />);
+    expect(screen.getByText("Loading…")).toBeTruthy();
+    expect((screen.getByRole("switch") as HTMLButtonElement).disabled).toBe(true);
+    vi.mocked(useAutonomyStatus).mockReturnValue({ ...status, phase: "stopping" });
+    view.rerender(<AutonomySettings language="en" />);
+    expect(screen.getByRole("status").textContent).toBe("Waiting for work processes to exit.");
+  });
   it("distinguishes an Off preference from processes still exiting", () => {
     if (!status.contract) throw new Error("Test contract missing");
     vi.mocked(useAutonomyStatus).mockReturnValue({
