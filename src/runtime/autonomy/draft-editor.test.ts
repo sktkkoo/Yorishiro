@@ -36,9 +36,9 @@ function deferred<T>() {
 }
 
 describe("shared autonomy draft editor", () => {
-  it("clears an obsolete publication grant when hydrating a saved scope", async () => {
+  it("preserves saved automatic action permission when editing another field", async () => {
     const submit = vi.fn().mockResolvedValue({
-      snapshot: snapshot(1, { goal: "edited", publishPullRequest: false }),
+      snapshot: snapshot(1, { goal: "edited", automaticActionApproval: true }),
       conflict: false,
     });
     const editor = new AutonomyDraftEditor(submit);
@@ -48,30 +48,42 @@ describe("shared autonomy draft editor", () => {
       ...previous,
       enabled: false,
       workMode: "documents",
-      publishPullRequest: true,
+      automaticActionApproval: true,
     });
     expect(editor.getSnapshot().values).toMatchObject({
       workMode: "documents",
-      publishPullRequest: false,
+      automaticActionApproval: true,
     });
     editor.edit("goal", "edited");
     await editor.submit();
     expect(submit).toHaveBeenCalledWith(
       null,
-      expect.objectContaining({ workMode: "documents", publishPullRequest: false }),
+      expect.objectContaining({ workMode: "documents", automaticActionApproval: true }),
     );
   });
 
-  it("explicitly removes a hidden legacy publication flag from a shared draft", async () => {
-    const submit = vi
-      .fn()
-      .mockResolvedValue({ snapshot: snapshot(2, { publishPullRequest: false }), conflict: false });
+  it("keeps an inactive draft's automatic action permission without changing the draft", () => {
+    const submit = vi.fn();
+    const editor = new AutonomyDraftEditor(submit);
+    editor.receive(snapshot(1, { automaticActionApproval: true }));
+    expect(editor.getSnapshot().values.automaticActionApproval).toBe(true);
+    expect(editor.getSnapshot().synced).toBe(true);
+    expect(submit).not.toHaveBeenCalled();
+  });
+
+  it("clears an obsolete publication grant without granting automatic action permission", async () => {
+    const submit = vi.fn().mockResolvedValue({
+      snapshot: snapshot(2, { publishPullRequest: false }),
+      conflict: false,
+    });
     const editor = new AutonomyDraftEditor(submit);
     editor.receive(snapshot(1, { publishPullRequest: true }));
-    expect(editor.getSnapshot().values.publishPullRequest).toBe(false);
-    expect(editor.getSnapshot().synced).toBe(false);
+    expect(editor.getSnapshot().values).toMatchObject({
+      publishPullRequest: false,
+      automaticActionApproval: false,
+    });
     await editor.submit();
-    expect(submit).toHaveBeenCalledWith("draft-1", { publishPullRequest: false });
+    expect(submit).toHaveBeenCalledExactlyOnceWith("draft-1", { publishPullRequest: false });
     expect(editor.getSnapshot().synced).toBe(true);
   });
 
@@ -80,6 +92,7 @@ describe("shared autonomy draft editor", () => {
     expect(editor.getSnapshot().values).toMatchObject({
       workMode: "auto",
       publishPullRequest: false,
+      automaticActionApproval: false,
     });
   });
 
@@ -89,28 +102,38 @@ describe("shared autonomy draft editor", () => {
     expect(editor.getSnapshot().values).toMatchObject({
       workMode: "documents",
       publishPullRequest: false,
+      automaticActionApproval: false,
     });
   });
 
-  it("preserves a manual PR permission revocation across unrelated AI updates", async () => {
+  it.each([
+    true,
+    false,
+  ])("preserves a manual automatic action permission setting of %s across unrelated AI updates", async (permission) => {
     const submit = vi.fn().mockResolvedValue({
       snapshot: snapshot(3, {
         workMode: "development",
-        publishPullRequest: false,
+        automaticActionApproval: permission,
         goal: "改善を実装する",
       }),
       conflict: false,
     });
     const editor = new AutonomyDraftEditor(submit);
-    editor.receive(snapshot(1, { workMode: "development", publishPullRequest: true }));
-    editor.edit("publishPullRequest", false);
+    editor.receive(snapshot(1, { workMode: "development", automaticActionApproval: !permission }));
+    editor.edit("automaticActionApproval", permission);
     editor.receive(
-      snapshot(2, { workMode: "development", publishPullRequest: true, goal: "改善を実装する" }),
+      snapshot(2, {
+        workMode: "development",
+        automaticActionApproval: !permission,
+        goal: "改善を実装する",
+      }),
     );
-    expect(editor.getSnapshot().values.publishPullRequest).toBe(false);
+    expect(editor.getSnapshot().values.automaticActionApproval).toBe(permission);
     expect(editor.getSnapshot().values.goal).toBe("改善を実装する");
     await editor.flush();
-    expect(submit).toHaveBeenCalledExactlyOnceWith("draft-2", { publishPullRequest: false });
+    expect(submit).toHaveBeenCalledExactlyOnceWith("draft-2", {
+      automaticActionApproval: permission,
+    });
     expect(editor.getSnapshot().synced).toBe(true);
   });
 
@@ -235,6 +258,7 @@ describe("shared autonomy draft editor", () => {
       reviewMode: "automatic",
       workMode: "documents",
       publishPullRequest: false,
+      automaticActionApproval: false,
     });
   });
 

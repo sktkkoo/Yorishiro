@@ -50,6 +50,7 @@ vi.mock("../runtime/autonomy/client", () => ({
 const contract: AutonomyContract = {
   workMode: "auto",
   publishPullRequest: false,
+  automaticActionApproval: false,
   goal: "読みやすく整理する",
   root: "/Users/test/notes",
   allowedOperations: ["write"],
@@ -80,6 +81,7 @@ const confirmation: AutonomyAction = {
 const draftDefaults = {
   workMode: "auto" as const,
   publishPullRequest: false,
+  automaticActionApproval: false,
   id: "empty",
   goal: "",
   root: "",
@@ -434,6 +436,9 @@ describe("AutonomyPanel", () => {
     expect(screen.queryByLabelText("文書の整理・編集")).toBeNull();
     expect(screen.queryByLabelText("開発・改善")).toBeNull();
     expect(screen.queryByLabelText("このリポジトリにドラフトPRを作成する")).toBeNull();
+    expect(
+      (screen.getByLabelText("目的達成に必要な操作を自動で許可する") as HTMLInputElement).checked,
+    ).toBe(false);
     expect((screen.getByLabelText("作成・編集") as HTMLInputElement).checked).toBe(true);
     expect((screen.getByLabelText("移動") as HTMLInputElement).checked).toBe(false);
     const save = screen.getByRole("button", { name: "この範囲で任せる" });
@@ -445,7 +450,7 @@ describe("AutonomyPanel", () => {
     expect(editAutonomyDraft).not.toHaveBeenCalled();
   });
 
-  it("grants purpose-driven repository work with explicit operations and never auto-publishing", async () => {
+  it("keeps automatic publication disabled unless the user explicitly allows it", async () => {
     setDraft({
       revision: 1,
       draft: { ...draftDefaults, goal: "ユーザー体験を改善する", root: "/repo" },
@@ -473,17 +478,26 @@ describe("AutonomyPanel", () => {
           enabled: true,
           workMode: "auto",
           publishPullRequest: false,
+          automaticActionApproval: false,
         },
         sharedDraft.draft?.id,
       ),
     );
   });
 
-  it("requires explicit save to replace a legacy development scope and removes publication permission", async () => {
-    const legacy = { ...contract, workMode: "development" as const, publishPullRequest: true };
+  it("keeps saved automatic action permission visible and preserves it on explicit save", async () => {
+    const legacy = { ...contract, workMode: "development" as const, automaticActionApproval: true };
     vi.mocked(useAutonomyStatus).mockReturnValue(status({ contract: legacy }));
     openPanel();
     expect(screen.queryByLabelText("このリポジトリにドラフトPRを作成する")).toBeNull();
+    expect(
+      (screen.getByLabelText("目的達成に必要な操作を自動で許可する") as HTMLInputElement).checked,
+    ).toBe(true);
+    expect(
+      screen.getByText(
+        "外部送信などツールを使う操作には、作成・編集／移動／退避の許可が必要です。",
+      ),
+    ).toBeTruthy();
     expect(saveAutonomyContract).not.toHaveBeenCalled();
     expect(editAutonomyDraft).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "この範囲で任せる" }));
@@ -492,9 +506,59 @@ describe("AutonomyPanel", () => {
         {
           ...legacy,
           workMode: "auto",
-          publishPullRequest: false,
+          automaticActionApproval: true,
         },
         null,
+      ),
+    );
+  });
+
+  it("keeps legacy publication grants separate from generic automatic action permission", () => {
+    vi.mocked(useAutonomyStatus).mockReturnValue(
+      status({ contract: { ...contract, publishPullRequest: true } }),
+    );
+    openPanel();
+    expect(
+      (screen.getByLabelText("目的達成に必要な操作を自動で許可する") as HTMLInputElement).checked,
+    ).toBe(false);
+    expect(saveAutonomyContract).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    true,
+    false,
+  ])("saves explicit automatic action permission of %s after synchronizing the shared draft", async (allowed) => {
+    setDraft({
+      revision: 1,
+      draft: {
+        ...draftDefaults,
+        goal: "報告を整理して共有する",
+        root: "/notes",
+        allowedOperations: ["write", "move", "trash"],
+        automaticActionApproval: !allowed,
+      },
+    });
+    openPanel();
+    const permission = screen.getByLabelText(
+      "目的達成に必要な操作を自動で許可する",
+    ) as HTMLInputElement;
+    expect(permission.checked).toBe(!allowed);
+    fireEvent.click(permission);
+    await waitFor(() =>
+      expect(editAutonomyDraft).toHaveBeenCalledExactlyOnceWith("empty", {
+        automaticActionApproval: allowed,
+      }),
+    );
+    expect(permission.checked).toBe(allowed);
+    expect(screen.queryByText(/外部送信などツールを使う操作には/)).toBeNull();
+    expect(saveAutonomyContract).not.toHaveBeenCalled();
+    const save = screen.getByRole("button", { name: "この範囲で任せる" }) as HTMLButtonElement;
+    await waitFor(() => expect(save.disabled).toBe(false));
+    fireEvent.click(save);
+    await waitFor(() =>
+      expect(saveAutonomyContract).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ root: "/notes", automaticActionApproval: allowed }),
+        sharedDraft.draft?.id,
       ),
     );
   });

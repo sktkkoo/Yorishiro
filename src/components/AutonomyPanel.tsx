@@ -65,6 +65,7 @@ const DRAFT_LABELS: Record<DraftField, string> = {
   reviewMode: "進め方",
   workMode: "任せる仕事の種類",
   publishPullRequest: "PRの公開",
+  automaticActionApproval: "目的達成に必要な操作の自動許可",
 };
 
 /** Opens the host dialog only; never creates or enables an agreement. */
@@ -92,6 +93,7 @@ export function AutonomyPanel() {
     intervalMinutes,
     maxRunsPerDay,
     reviewMode,
+    automaticActionApproval,
   } = draftState.values;
   const explanation = draftState.explanation;
   const setGoal = (value: string) => editor.edit("goal", value);
@@ -634,6 +636,7 @@ export function AutonomyPanel() {
                                     reviewMode,
                                     workMode: "auto",
                                     publishPullRequest: false,
+                                    automaticActionApproval,
                                     enabled: true,
                                   },
                                   draftState.draftId,
@@ -699,6 +702,29 @@ export function AutonomyPanel() {
                             コード変更を任せる場合は3項目すべてを許可してください。許可していない操作は行いません。
                           </p>
                           {conflictFor("allowedOperations")}
+                          <fieldset className="autonomy-permissions" disabled={busy === "save"}>
+                            <legend>目的達成に必要な操作</legend>
+                            <label className="autonomy-check">
+                              <input
+                                type="checkbox"
+                                checked={automaticActionApproval}
+                                onChange={(event) =>
+                                  editor.edit("automaticActionApproval", event.target.checked)
+                                }
+                              />
+                              目的達成に必要な操作を自動で許可する
+                            </label>
+                          </fieldset>
+                          <p className="autonomy-muted">
+                            保存した目的の達成に必要な操作を、外部への送信・公開も含めて自動で進めます。対象と内容、実行結果を履歴に残します。
+                          </p>
+                          {automaticActionApproval &&
+                            OPERATIONS.some((operation) => !operations.includes(operation.id)) && (
+                              <p className="autonomy-muted">
+                                外部送信などツールを使う操作には、作成・編集／移動／退避の許可が必要です。
+                              </p>
+                            )}
+                          {conflictFor("automaticActionApproval")}
                           <fieldset className="autonomy-review-options" disabled={busy === "save"}>
                             <legend>進め方</legend>
                             <label className="autonomy-check">
@@ -780,7 +806,9 @@ export function AutonomyPanel() {
                               Gitリポジトリでの作業にはCodex、通常のフォルダでの文書作業にはClaude
                               Codeへのログインが必要です。
                               Yorishiroを開いている間に動作し、AIの利用枠を消費します。
-                              送信・公開・インストールは自動で行いません。
+                              目的達成に必要な操作の自動許可には、Claude
+                              CodeとCodexへのログインが必要です。必要な外部送信・公開も自動で進めます。
+                              許可しない場合は、具体的な対象と内容を個別に確認します。
                             </p>
                           </details>
                           <div className="autonomy-save-row">

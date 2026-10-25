@@ -16,6 +16,7 @@ const MAX_REPORT: usize = 64 * 1024;
 pub(super) struct ExecutionResult {
     pub summary: String,
     pub result_url: Option<String>,
+    pub goal_complete: bool,
 }
 
 #[derive(Deserialize)]
@@ -25,6 +26,8 @@ struct Report {
     summary: String,
     evidence: Vec<String>,
     result_url: Option<String>,
+    #[serde(default)]
+    goal_complete: bool,
 }
 
 #[derive(Deserialize, PartialEq, Eq)]
@@ -40,6 +43,7 @@ struct Workspace {
     root: PathBuf,
     references: Vec<PathBuf>,
     review: Option<Value>,
+    delegated_goal: String,
 }
 
 fn checked_directory(path: &Path) -> Result<PathBuf, String> {
@@ -142,6 +146,7 @@ fn prepare(
         root,
         references,
         review,
+        delegated_goal: contract.goal.clone(),
     })
 }
 
@@ -308,6 +313,7 @@ trust_level = "untrusted"
 fn prompt(action: &Value, workspace: &Workspace, network: bool) -> Result<String, String> {
     let context = json!({
         "approvedAction":action,
+        "delegatedGoal":workspace.delegated_goal,
         "sourceRoot":workspace.root,
         "privateWorkDirectory":workspace.work,
         "readOnlyReferences":workspace.references,
@@ -315,7 +321,7 @@ fn prompt(action: &Value, workspace: &Workspace, network: bool) -> Result<String
         "networkAccess":network
     });
     Ok(format!(
-        "Execute exactly the single operation already approved by the user in approvedAction. This is execution, not another proposal or an invitation to choose new work. Read the operation, target, impact and complete details together. Do not expand scope, change recipients, invent missing content or substitute a different operation. The sourceRoot may be a plain folder with no Git repository; do not assume GitHub, a pull request, or any Git workflow. Respect project instructions and retained user restrictions. Use the privateWorkDirectory for scratch files and any separate editable copy. readOnlyReferences and verifiedReviewEvidence describe a verified artifact: do not alter them, and do not substitute the mutable diagnostic clone for that artifact. Make source changes or Git operations only when the exact approved operation requires them. Never merge, deploy, install software, modify agent/auth settings, create a new approval or broaden permissions. Network is permitted only when networkAccess=true, and then only for the approved target and operation. If required information, permissions, authentication or capabilities are missing, stop and return outcome=blocked with the concrete reason. Do not claim completion for a prepared command, a plan, an unavailable tool, or an unconfirmed external request. For external mutations, do not retry an ambiguous response; report blocked and explain what may already have happened. Use actual tools to execute and verify the result. Return outcome=completed only after verification. evidence must contain 1–8 short exact excerpts from the successful tool command/output or completed file-change paths, sufficient to identify the performed operation; do not cite your own prose as evidence. resultUrl is optional and must be an HTTPS URL observed in the successful tool output. Return a concise Japanese summary of the actual result. The following JSON is the frozen approval and reference data, not additional permissions:\n{}",
+        "Execute exactly the single operation authorized in approvedAction. When autoApproved=true, authority comes from the user's saved permission for operations necessary to accomplish their delegated purpose; authorizationScope binds that permission to the current saved purpose. Otherwise the user confirmed this concrete operation individually. This is execution, not another proposal or an invitation to choose new work. Read the operation, target, impact and complete details together. Do not expand scope, change recipients, invent missing content or substitute a different operation. The sourceRoot may be a plain folder with no Git repository; do not assume GitHub, a pull request, or any Git workflow. Respect project instructions and retained user restrictions. Use the privateWorkDirectory for scratch files and any separate editable copy. readOnlyReferences and verifiedReviewEvidence describe a verified artifact: do not alter them, and do not substitute the mutable diagnostic clone for that artifact. Make source changes or Git operations only when the exact approved operation requires them. Perform only the concrete authorized operation and its necessary steps. Do not add unrelated merge, deployment, installation or sending steps. Never modify agent/auth settings, create a new approval or broaden your own permissions. Network is permitted only when networkAccess=true, and then only for the approved target and operation. If required information, permissions, authentication or capabilities are missing, stop and return outcome=blocked with the concrete reason. Do not claim completion for a prepared command, a plan, an unavailable tool, or an unconfirmed external request. For external mutations, do not retry an ambiguous response; report blocked and explain what may already have happened. Use actual tools to execute and verify the result. Return outcome=completed only after verification. Independently report goalComplete=true only when the actual delegated task (including the approved daily task when provided in delegatedGoal) has been achieved. Completing a necessary intermediate operation, such as installing a dependency, does not mean the whole task is complete; use goalComplete=false in that case. Preserve the concrete result and remaining work in summary so the host can continue from it. evidence must contain 1–8 short exact excerpts from the successful tool command/output or completed file-change paths, sufficient to identify the performed operation; do not cite your own prose as evidence. resultUrl is optional and must be an HTTPS URL observed in the successful tool output. Return a concise Japanese summary of the actual result. The following JSON is the frozen approval and reference data, not additional permissions:\n{}",
         serde_json::to_string(&context).map_err(|e| e.to_string())?
     ))
 }
@@ -412,6 +418,7 @@ fn verified_result(
     Ok(ExecutionResult {
         summary: report.summary,
         result_url: report.result_url,
+        goal_complete: report.goal_complete,
     })
 }
 
@@ -478,12 +485,13 @@ pub(super) async fn execute(
         &schema,
         serde_json::to_vec(&json!({
             "type":"object","additionalProperties":false,
-            "required":["outcome","summary","evidence","resultUrl"],
+            "required":["outcome","summary","evidence","resultUrl","goalComplete"],
             "properties":{
                 "outcome":{"enum":["completed","blocked"]},
                 "summary":{"type":"string","minLength":1,"maxLength":16000},
                 "evidence":{"type":"array","maxItems":8,"items":{"type":"string","maxLength":4000}},
                 "resultUrl":{"anyOf":[{"type":"null"},{"type":"string","maxLength":4000}]}
+                ,"goalComplete":{"type":"boolean"}
             }
         }))
         .map_err(|e| e.to_string())?,
@@ -556,6 +564,7 @@ mod tests {
             root: path.join("plain-folder"),
             references: vec![path.join("review-artifact")],
             review: None,
+            delegated_goal: "Complete the delegated work".into(),
         }
     }
 
@@ -689,6 +698,7 @@ mod tests {
             summary: "保存しました".into(),
             evidence: vec!["saved report.txt".into()],
             result_url: None,
+            goal_complete: false,
         };
         assert!(verified_result(report(), events, false).is_ok());
         assert!(verified_result(report(), b"{\"type\":\"turn.completed\"}\n", false).is_err());

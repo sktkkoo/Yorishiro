@@ -5,6 +5,7 @@ export type AutonomyReviewMode = "automatic" | "daily";
 export interface AutonomyContract {
   readonly workMode?: AutonomyWorkMode;
   readonly publishPullRequest?: boolean;
+  readonly automaticActionApproval?: boolean;
   readonly goal: string;
   readonly root: string;
   readonly allowedOperations: readonly AutonomyOperation[];
@@ -18,6 +19,7 @@ export interface AutonomyDraft {
   readonly id: string;
   readonly workMode?: AutonomyWorkMode;
   readonly publishPullRequest?: boolean;
+  readonly automaticActionApproval?: boolean;
   readonly goal: string;
   readonly root: string;
   readonly allowedOperations: readonly AutonomyOperation[];
@@ -38,6 +40,7 @@ export type AutonomyDraftPatch = Partial<
     | "reviewMode"
     | "workMode"
     | "publishPullRequest"
+    | "automaticActionApproval"
   >
 >;
 
@@ -80,6 +83,7 @@ export interface AutonomyAction {
   readonly impact: string;
   readonly details: string;
   readonly networkAccess?: boolean;
+  readonly autoApproved?: boolean;
   readonly artifactPath?: string | null;
   readonly changedPaths: readonly string[];
   readonly checks: readonly { readonly command: string; readonly exitCode: number }[];

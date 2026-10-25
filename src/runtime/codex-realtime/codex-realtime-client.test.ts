@@ -439,9 +439,12 @@ describe("CodexRealtimeClient", () => {
     expect(text).toContain("reviewMode daily");
     expect(text).toContain("including reviewMode");
     expect(text).toContain("Do not include workMode or publishPullRequest");
-    expect(text).toContain("never offer automatic publication as a setting");
+    expect(text).toContain("purpose-based permission rather than a Git-specific grant");
     expect(text).toContain(
-      "External actions require separate confirmation of their concrete contents",
+      "Include automaticActionApproval only when the user explicitly chooses or revokes",
+    );
+    expect(text).toContain(
+      "Without this permission, external actions require separate confirmation of their concrete contents",
     );
     expect(text).toContain("Do not ask the user to choose document or development modes");
     expect(text).toContain("shared editable form, not a Markdown document");

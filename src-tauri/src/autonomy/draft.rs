@@ -51,6 +51,10 @@ pub struct AutonomyProposal {
     /// daily gate. Omitting this field proposes daily review.
     #[serde(default)]
     pub review_mode: ReviewMode,
+    /// Optional change to the user's purpose-based automatic operation choice.
+    /// This only edits the inactive draft; the user must save it in the app.
+    #[serde(default)]
+    pub automatic_action_approval: Option<bool>,
     /// Short user-facing explanation of the scope and remaining choices,
     /// 1–4000 UTF-8 bytes. Do not claim the draft is active or approved.
     pub explanation: String,
@@ -64,9 +68,11 @@ pub struct Draft {
     /// Host-owned routing; old restricted drafts retain their scope until save.
     #[serde(default = "auto_work_mode")]
     pub work_mode: WorkMode,
-    /// Compatibility field only. Automatic publishing is never permitted.
+    /// Legacy Git-specific field; purpose-based permission is separate.
     #[serde(default)]
     pub publish_pull_request: bool,
+    #[serde(default)]
+    pub automatic_action_approval: bool,
     pub root: String,
     pub allowed_operations: Vec<String>,
     pub interval_minutes: u64,
@@ -89,6 +95,7 @@ pub struct DraftPatch {
     pub goal: Option<String>,
     pub work_mode: Option<WorkMode>,
     pub publish_pull_request: Option<bool>,
+    pub automatic_action_approval: Option<bool>,
     pub root: Option<String>,
     pub allowed_operations: Option<Vec<String>>,
     pub interval_minutes: Option<u64>,
@@ -127,7 +134,7 @@ pub struct SetupContext {
     pub guidance: &'static str,
 }
 
-const GUIDANCE: &str = "Discuss the enduring purpose, selected folder, permitted local operations, schedule and daily review preference. Do not ask the user to choose a document/development mode. The host routes work based on the agreed scope: an exact Git repository root with all write/move/trash permissions uses an isolated copy for documents or code, while narrower grants and other folders use reversible document operations. Never expand a selected subfolder to its parent repository. Keep enduring permission separate from today's concrete work. daily review means the AI asks what to work on today and waits for the user's explicit app confirmation before execution. Use autonomy_propose to update the shared inactive setup draft as choices become clear. The user can edit this same draft directly; preserve their edits, pass its latest id as baseDraftId, and refresh autonomy_setup_context before each update. If an update conflicts, reread the latest draft and reconcile the user's changes before retrying, never blindly overwrite them. If the folder is unknown, leave root empty and let the user select it in the app. No MCP tool can activate a contract, approve today's work or execute file changes. External publication, including draft PRs and email, requires review of the concrete result and a separate explicit confirmation; this setup never grants sending permission. Preserve legacy document-only permission until the user explicitly saves a new scope. Merging and deployment remain unsupported.";
+const GUIDANCE: &str = "Discuss the enduring purpose, selected folder, permitted local operations, schedule and daily review preference. Do not ask the user to choose a document/development mode. The host routes work based on the agreed scope: an exact Git repository root with all write/move/trash permissions uses an isolated copy for documents or code, while narrower grants and other folders use reversible document operations. Never expand a selected subfolder to its parent repository. Keep enduring permission separate from today's concrete work. daily review means the AI asks what to work on today and waits for the user's explicit app confirmation before execution. Use autonomy_propose to update the shared inactive setup draft as choices become clear. The user can edit this same draft directly; preserve their edits, pass its latest id as baseDraftId, and refresh autonomy_setup_context before each update. If an update conflicts, reread the latest draft and reconcile the user's changes before retrying, never blindly overwrite them. If the folder is unknown, leave root empty and let the user select it in the app. No MCP tool can activate a contract, approve today's work or execute file changes. The user may explicitly choose automaticActionApproval for concrete operations necessary to accomplish the saved purpose, including external sending and publication. This is purpose-based permission, not a Git-specific grant. Preserve the current choice unless the user explicitly changes it; omit the optional field to retain it. With this choice off, each concrete external operation requires separate confirmation. The inactive draft grants no permission until explicitly saved in the app. Preserve legacy document-only permission until the user explicitly saves a new scope. Never infer missing recipients, content or destinations or expand the agreed purpose.";
 
 #[derive(Default)]
 struct DraftStore(Mutex<DraftSnapshot>);
@@ -154,6 +161,7 @@ impl DraftStore {
         expected_revision: Option<u64>,
     ) -> Result<DraftEditResult, String> {
         let base_id = proposal.base_draft_id.clone();
+        let automatic_action_approval = proposal.automatic_action_approval;
         let mut draft = validate(proposal)?;
         let mut state = self.0.lock().map_err(|_| "設定案を保存できません")?;
         if state.draft.as_ref().map(|draft| &draft.id) != base_id.as_ref()
@@ -166,6 +174,9 @@ impl DraftStore {
         }
         if let Some(existing) = &state.draft {
             draft.work_mode = existing.work_mode;
+            if automatic_action_approval.is_none() {
+                draft.automatic_action_approval = existing.automatic_action_approval;
+            }
         }
         let revision = next_revision(&state)?;
         *state = DraftSnapshot {
@@ -212,6 +223,7 @@ impl DraftStore {
             goal: String::new(),
             work_mode: WorkMode::Auto,
             publish_pull_request: false,
+            automatic_action_approval: false,
             root: String::new(),
             allowed_operations: Vec::new(),
             interval_minutes: 30,
@@ -224,6 +236,9 @@ impl DraftStore {
         }
         if let Some(publish) = patch.publish_pull_request {
             draft.publish_pull_request = publish;
+        }
+        if let Some(automatic) = patch.automatic_action_approval {
+            draft.automatic_action_approval = automatic;
         }
         if let Some(goal) = patch.goal {
             draft.goal = goal;
@@ -277,6 +292,7 @@ fn validate(mut proposal: AutonomyProposal) -> Result<Draft, String> {
         goal: proposal.goal,
         work_mode: WorkMode::Auto,
         publish_pull_request: false,
+        automatic_action_approval: proposal.automatic_action_approval.unwrap_or(false),
         root: proposal.root,
         allowed_operations: proposal.allowed_operations,
         interval_minutes: proposal.interval_minutes,
@@ -401,6 +417,7 @@ mod tests {
             interval_minutes: 30,
             max_runs_per_day: 4,
             review_mode: ReviewMode::Daily,
+            automatic_action_approval: None,
             explanation: "既存の文書を対象に、毎日の相談で決めた仕事を進めます。".into(),
         }
     }
@@ -412,6 +429,7 @@ mod tests {
         let draft = store.get().unwrap().unwrap();
         assert_eq!(draft.work_mode, WorkMode::Auto);
         assert!(!draft.publish_pull_request);
+        assert!(!draft.automatic_action_approval);
         assert_eq!(draft.goal, "下書きを整理し、読みやすくする");
         assert!(draft.root.is_empty());
         assert!(!receipt.applied);
@@ -424,6 +442,48 @@ mod tests {
         let mut encoded = serde_json::to_value(proposal()).unwrap();
         encoded["dailyApproved"] = json!(true);
         assert!(serde_json::from_value::<AutonomyProposal>(encoded).is_err());
+    }
+
+    #[test]
+    fn purpose_permission_is_inactive_until_save_and_preserves_manual_choice() {
+        let store = DraftStore::default();
+        let first = store.propose(proposal()).unwrap();
+        let manual = store
+            .edit(
+                Some(&first.draft_id),
+                DraftPatch {
+                    automatic_action_approval: Some(true),
+                    ..DraftPatch::default()
+                },
+            )
+            .unwrap();
+        assert!(
+            manual
+                .snapshot
+                .draft
+                .as_ref()
+                .unwrap()
+                .automatic_action_approval
+        );
+        let mut unrelated = proposal();
+        unrelated.base_draft_id = Some(manual.snapshot.draft.unwrap().id);
+        unrelated.interval_minutes = 60;
+        let receipt = store.propose(unrelated).unwrap();
+        assert!(!receipt.applied);
+        assert!(receipt.requires_review);
+        assert!(receipt.snapshot.draft.unwrap().automatic_action_approval);
+        let mut revoke = proposal();
+        revoke.base_draft_id = Some(receipt.draft_id);
+        revoke.automatic_action_approval = Some(false);
+        assert!(
+            !store
+                .propose(revoke)
+                .unwrap()
+                .snapshot
+                .draft
+                .unwrap()
+                .automatic_action_approval
+        );
     }
 
     #[test]

@@ -56,6 +56,13 @@ pub async fn available() -> Result<(), String> {
     probe(&binary, CancellationToken::new()).await
 }
 
+/// Check the reasoning transport before a tool-capable work run starts.
+pub(super) async fn preflight(cancel: CancellationToken) -> Result<(), String> {
+    let binary = checked_binary()?;
+    probe(&binary, cancel).await?;
+    super::policy::claude_preflight(None)
+}
+
 /// Return one schema-constrained proposal. No operation in it is executed here.
 pub async fn run(
     prompt: String,
