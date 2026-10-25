@@ -485,6 +485,39 @@ describe("AutonomyPanel", () => {
     );
   });
 
+  it.each([
+    { input: "100", expected: 48 },
+    { input: "1", expected: 1 },
+    { input: "48", expected: 48 },
+    { input: "0", expected: 1 },
+    { input: "3.5", expected: 3 },
+  ])("bounds daily run input $input to $expected before syncing and saving", async ({
+    input,
+    expected,
+  }) => {
+    vi.mocked(useAutonomyStatus).mockReturnValue(status({ contract }));
+    openPanel();
+    const limit = screen.getByLabelText("24時間の実行上限（回）") as HTMLInputElement;
+    expect(screen.getByText("24時間の実行上限は1〜48回です。")).toBeTruthy();
+    fireEvent.change(limit, { target: { value: input } });
+    expect(limit.value).toBe(String(expected));
+    await waitFor(() =>
+      expect(editAutonomyDraft).toHaveBeenCalledExactlyOnceWith(
+        null,
+        expect.objectContaining({ maxRunsPerDay: expected }),
+      ),
+    );
+    const save = screen.getByRole("button", { name: "この範囲で任せる" }) as HTMLButtonElement;
+    await waitFor(() => expect(save.disabled).toBe(false));
+    fireEvent.click(save);
+    await waitFor(() =>
+      expect(saveAutonomyContract).toHaveBeenCalledExactlyOnceWith(
+        { ...contract, maxRunsPerDay: expected },
+        sharedDraft.draft?.id,
+      ),
+    );
+  });
+
   it("keeps saved automatic action permission visible and preserves it on explicit save", async () => {
     const legacy = { ...contract, workMode: "development" as const, automaticActionApproval: true };
     vi.mocked(useAutonomyStatus).mockReturnValue(status({ contract: legacy }));
