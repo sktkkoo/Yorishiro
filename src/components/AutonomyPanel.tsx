@@ -1,5 +1,5 @@
 import { open as choosePath } from "@tauri-apps/plugin-dialog";
-import { FolderOpen, ListTodo, Mic, X } from "lucide-react";
+import { Bot, FolderOpen, Mic, X } from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -297,7 +297,7 @@ export function AutonomyPanel() {
         aria-expanded={visible}
         onClick={openPanel}
       >
-        <ListTodo size={15} strokeWidth={1.8} aria-hidden="true" />
+        <Bot size={18} strokeWidth={1.8} aria-hidden="true" />
         {confirmationCount > 0 ? (
           <span className="autonomy-launcher-count" aria-hidden="true">
             {confirmationCount > 99 ? "99+" : confirmationCount}
