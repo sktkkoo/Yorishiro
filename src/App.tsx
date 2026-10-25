@@ -98,6 +98,7 @@ import {
 import { CameraPreview } from "./camera-preview";
 import CharacterSurface from "./character-surface";
 import { AgentSetupDialog } from "./components/AgentSetupDialog";
+import { AutonomyPanel } from "./components/AutonomyPanel";
 import { QuickChatInput, QuickVoiceIndicator } from "./components/QuickChatInput";
 import { RestoreConfirmDialog } from "./components/RestoreConfirmDialog";
 import {
@@ -167,6 +168,11 @@ import {
   startToolAttentionProducer,
 } from "./runtime/attention-producers";
 import { getAttentionRuntime } from "./runtime/attention-runtime";
+import {
+  AUTONOMY_WORK_REVIEW_AVAILABLE,
+  installAutonomyVoiceSetupBridge,
+  readAutonomyWorkReviewNotice,
+} from "./runtime/autonomy/voice-setup";
 import { registerBundledAttentionAura } from "./runtime/bundled-attention-aura";
 import { registerBundledMusicShelf } from "./runtime/bundled-music-shelf";
 import { registerBundledPomodoro } from "./runtime/bundled-pomodoro";
@@ -4153,6 +4159,8 @@ function App() {
     state: codexRealtimeState,
     stop: stopCodexRealtime,
     toggle: toggleCodexRealtime,
+    requestAutonomySetup: requestAutonomyVoiceSetup,
+    notifyAutonomyWorkReview,
     setMicrophoneMuted: setCodexMicrophoneMuted,
     trackQuickChatPrompt,
     screenThreadId,
@@ -4304,6 +4312,40 @@ function App() {
     toggleCodexRealtime,
     voiceReconnectPending,
   ]);
+
+  useEffect(
+    () =>
+      installAutonomyVoiceSetupBridge(async () => {
+        if (isConversationTransitionActive(mainConversationTransitionGateRef.current)) {
+          throw new Error("会話を切り替えています。切り替え後にもう一度お試しください。");
+        }
+        if (!codexVoiceAvailable) {
+          throw new Error(
+            "音声での相談にはCodexの音声会話が必要です。Codexへ切り替えるか、この画面で文字で相談してください。",
+          );
+        }
+        await requestAutonomyVoiceSetup();
+      }),
+    [codexVoiceAvailable, requestAutonomyVoiceSetup],
+  );
+
+  useEffect(() => {
+    const onReview = (event: Event) => {
+      if ((event as CustomEvent<unknown>).detail === null) {
+        void notifyAutonomyWorkReview(null);
+        return;
+      }
+      const review = readAutonomyWorkReviewNotice(event);
+      if (!review) return;
+      // The voice hook queues the latest pending card while disconnected and
+      // deduplicates only accepted native submissions, never mere host events.
+      void notifyAutonomyWorkReview(review).catch((error: unknown) => {
+        console.warn("[autonomy] voice review notice unavailable", error);
+      });
+    };
+    window.addEventListener(AUTONOMY_WORK_REVIEW_AVAILABLE, onReview);
+    return () => window.removeEventListener(AUTONOMY_WORK_REVIEW_AVAILABLE, onReview);
+  }, [notifyAutonomyWorkReview]);
 
   const screenPointerSettings = useScreenPointerSettings({
     persist: (screenPointersEnabled) => updateConfig({ screenPointersEnabled }),
@@ -6198,6 +6240,7 @@ function App() {
           onStop={stopCodexRealtime}
         />
       ) : null}
+      <AutonomyPanel />
       {agentSetup.visible && (
         <AgentSetupDialog
           language={appLanguage.resolved}

@@ -1,5 +1,6 @@
 mod agent_setup;
 pub mod attach;
+mod autonomy;
 mod auxiliary_windows;
 mod bundled_examples_gen;
 mod camera_preview;
@@ -3878,6 +3879,7 @@ pub fn run() {
         .manage(Arc::clone(&registry))
         .manage(hook_server_endpoint)
         .manage(RealtimeBridgeState::default())
+        .manage(autonomy::AutonomyState::default())
         .manage(WatcherState::new())
         .manage(tts::TtsState::new())
         .manage(mcp::McpServerStatus::default())
@@ -3915,6 +3917,19 @@ pub fn run() {
             claude_screen_sharing::claude_screen_sharing_publish,
             claude_screen_sharing::claude_screen_sharing_end,
             agent_setup::install_terminal_agent,
+            autonomy::autonomy_status,
+            autonomy::autonomy_save,
+            autonomy::autonomy_set_enabled,
+            autonomy::autonomy_pause,
+            autonomy::autonomy_tick,
+            autonomy::autonomy_run_now,
+            autonomy::autonomy_undo,
+            autonomy::autonomy_consult,
+            autonomy::autonomy_review,
+            autonomy::draft::autonomy_draft_get,
+            autonomy::draft::autonomy_draft_snapshot,
+            autonomy::draft::autonomy_draft_edit,
+            autonomy::draft::autonomy_draft_dismiss,
             media_permissions::open_media_permission_settings,
             screen_preview::screen_preview_begin,
             screen_preview::screen_preview_open,

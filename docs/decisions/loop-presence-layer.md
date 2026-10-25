@@ -5,6 +5,10 @@
 **Status**: active（scope 確定 / phase 1 実装中）
 **Last updated**: 2026-06-09
 
+2026-10-24 追記: 明示的に委任された専用 worker の自動実行については
+[autonomous-document-work.md](autonomous-document-work.md) が本書の実行所有に関する既定方針を更新する。
+既存 loop の観測経路と PTY observation-only の境界は維持する。
+
 ## TL;DR
 
 Yorishiro は自律 coding loop（Claude Code / Codex 等の long-horizon 自動実行）を **観察・可視化する presence layer** として取り込む。ループを **駆動する orchestrator にはしない**。進行・停滞・危険操作・検証結果を住人の身体／空間／ログとして「読める」状態にするのが価値。

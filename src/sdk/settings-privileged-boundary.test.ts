@@ -30,6 +30,7 @@ describe("system settings privileged boundary", () => {
     );
 
     expect(privilegedImports).toEqual([
+      "../../../src/components/AutonomySettings",
       "../../../src/i18n/strings",
       "../../../src/runtime/history/describe-snapshot",
       "../../../src/runtime/language/language",
@@ -63,7 +64,18 @@ describe("system settings privileged boundary", () => {
     expect(source).toMatch(/ctx\.history\s*\.\s*list\(\)/);
     expect(source).toMatch(/ctx\.history\s*\.\s*restore\(seq\)/);
     expect(source).not.toContain("src/bindings/");
-    expect(source).not.toContain("src/components/");
     expect(source).not.toContain("src/sdk/");
+  });
+
+  it("composes only the reviewed host-owned autonomy settings widget, without importing its mutable client", async () => {
+    const source = await readSettingsSource();
+    expect(
+      importedModuleIds(source).filter((moduleId) => moduleId.includes("/src/components/")),
+    ).toEqual(["../../../src/components/AutonomySettings"]);
+    expect(source).not.toContain("src/runtime/autonomy/");
+
+    // This is an app-release exception, not a new capability for UI pack code.
+    const sdk = await readFile(join(import.meta.dirname, "ui-pack.d.ts"), "utf8");
+    expect(sdk).not.toMatch(/\b(?:setAutonomyEnabled|saveAutonomyContract|AutonomySettings)\b/);
   });
 });

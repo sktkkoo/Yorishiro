@@ -14,6 +14,7 @@ src-tauri/src/
 ├── main.rs        — minimal entry, calls yorishiro_lib::run()
 ├── lib.rs         — Tauri app builder + #[tauri::command] 登録 + setup hook
 ├── agent_setup.rs — 明示操作による公式 CLI installer の取得・実行・進捗 IO
+├── autonomy/     — 委任契約と作業台帳、tool-free CLI worker、復元付き文書操作
 ├── claude_screen_sharing.rs — 会話・起動に紐づく最新共有画像のメモリ保持とMCP取得
 ├── pty.rs         — Legacy PTY facade / per-instance dynamic-port hook server
 ├── sessions/

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { LipSyncSource } from "../../core/body";
 import type { StateExpressionSchedulerCallbacks } from "../agent-state-expression";
+import type { AutonomyWorkReviewNotice } from "../autonomy/voice-setup";
 import {
   CodexRealtimeClient,
   type CodexRealtimePersonaApplication,
@@ -25,6 +26,8 @@ export interface CodexRealtimeClientLike extends LipSyncSource {
   setMicrophoneMuted(muted: boolean): void;
   notifyScreenContext?(capturedAt: string, availability?: ScreenPointerAvailability): Promise<void>;
   notifyScreenPointersEnabled?(enabled: boolean): Promise<void>;
+  requestAutonomySetup?(): Promise<void>;
+  notifyAutonomyWorkReview?(review: AutonomyWorkReviewNotice): Promise<void>;
 }
 
 export type CodexRealtimeClientFactory = (
@@ -124,6 +127,8 @@ interface UseCodexRealtimeResult {
   readonly state: CodexRealtimeState;
   readonly stop: () => void;
   readonly toggle: () => Promise<void>;
+  readonly requestAutonomySetup: () => Promise<void>;
+  readonly notifyAutonomyWorkReview: (review: AutonomyWorkReviewNotice | null) => Promise<void>;
   readonly setMicrophoneMuted: (muted: boolean) => void;
   readonly trackQuickChatPrompt: (prompt: string) => Promise<string | null>;
   readonly getLipSyncSource: () => LipSyncSource;
@@ -190,6 +195,13 @@ export function useCodexRealtime({
   createThreadTracker = defaultCreateThreadTracker,
 }: UseCodexRealtimeOptions): UseCodexRealtimeResult {
   const clientRef = useRef<CodexRealtimeClientLike | null>(null);
+  const pendingAutonomyReview = useRef<AutonomyWorkReviewNotice | null>(null);
+  const acceptedAutonomyReviews = useRef(new Set<string>());
+  const autonomyReviewAttempt = useRef<{
+    client: CodexRealtimeClientLike;
+    id: string;
+  } | null>(null);
+  const autonomyReviewFlight = useRef<Promise<void> | null>(null);
   const threadTrackerRef = useRef<CodexThreadTrackerLike | null>(null);
   const screenNotificationsRef = useRef(new ScreenContextNotifications());
   const pointerNotificationsRef = useRef(new ScreenContextNotifications());
@@ -590,9 +602,90 @@ export function useCodexRealtime({
     await start();
   }, [start, stop]);
 
+  const requestAutonomySetup = useCallback(async () => {
+    if (!available) {
+      throw new Error(
+        "音声での相談にはCodexの音声会話が必要です。Codexへ切り替えるか、文字で相談してください。",
+      );
+    }
+    // Never toggle an existing session: that would stop an ongoing conversation.
+    if (!clientRef.current) await start();
+    if (sessionIdRef.current !== sessionId) {
+      throw new Error("相談の準備中に会話が切り替わりました。もう一度お試しください。");
+    }
+    const client = clientRef.current;
+    if (!client || client.getStatus() !== "active") {
+      throw new Error(
+        "音声会話の接続が完了していません。音声接続とマイクの許可を確認して、もう一度お試しください。",
+      );
+    }
+    if (!client.requestAutonomySetup) {
+      throw new Error("この音声接続は設定の相談に対応していません。文字で相談してください。");
+    }
+    await client.requestAutonomySetup();
+    if (clientRef.current !== client || client.getStatus() !== "active") {
+      throw new Error("相談中に音声会話が切り替わりました。もう一度お試しください。");
+    }
+  }, [available, sessionId, start]);
+
   const setMicrophoneMuted = useCallback((muted: boolean) => {
     clientRef.current?.setMicrophoneMuted(muted);
   }, []);
+
+  const flushAutonomyReview = useCallback(async (): Promise<void> => {
+    if (autonomyReviewFlight.current) {
+      await autonomyReviewFlight.current.catch(() => {});
+      return flushAutonomyReview();
+    }
+    const client = clientRef.current;
+    // Background proposals never start microphone capture or reconnect voice.
+    const review = pendingAutonomyReview.current;
+    if (
+      !review ||
+      client?.getStatus() !== "active" ||
+      !client.notifyAutonomyWorkReview ||
+      acceptedAutonomyReviews.current.has(review.id)
+    )
+      return;
+    // Retry a failed submission on the next user-started voice connection,
+    // rather than repeating it on every poll or active-state notification.
+    if (
+      autonomyReviewAttempt.current?.client === client &&
+      autonomyReviewAttempt.current.id === review.id
+    )
+      return;
+    autonomyReviewAttempt.current = { client, id: review.id };
+    const delivery = client.notifyAutonomyWorkReview(review);
+    autonomyReviewFlight.current = delivery;
+    try {
+      await delivery;
+      if (clientRef.current === client && client.getStatus() === "active") {
+        acceptedAutonomyReviews.current.add(review.id);
+        if (acceptedAutonomyReviews.current.size > 128) {
+          const oldest = acceptedAutonomyReviews.current.values().next().value;
+          if (oldest !== undefined) acceptedAutonomyReviews.current.delete(oldest);
+        }
+        if (pendingAutonomyReview.current?.id === review.id) pendingAutonomyReview.current = null;
+      }
+    } finally {
+      autonomyReviewFlight.current = null;
+    }
+  }, []);
+
+  const notifyAutonomyWorkReview = useCallback(
+    async (review: AutonomyWorkReviewNotice | null) => {
+      pendingAutonomyReview.current = review;
+      await flushAutonomyReview();
+    },
+    [flushAutonomyReview],
+  );
+
+  useEffect(() => {
+    if (state.status !== "active") return;
+    void flushAutonomyReview().catch((error: unknown) => {
+      console.warn("[autonomy] pending voice review notice unavailable", error);
+    });
+  }, [state.status, flushAutonomyReview]);
 
   useEffect(() => {
     clearSharedScreenContext();
@@ -763,6 +856,8 @@ export function useCodexRealtime({
     state,
     stop,
     toggle,
+    requestAutonomySetup,
+    notifyAutonomyWorkReview,
     setMicrophoneMuted,
     trackQuickChatPrompt,
     getLipSyncSource,
