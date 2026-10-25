@@ -717,7 +717,13 @@ pub fn autonomy_save(
     contract: Contract,
 ) -> Result<(), String> {
     main_window(&window)?;
-    save_contract(&state, contract)
+    let enabled = contract.enabled;
+    save_contract(&state, contract)?;
+    if enabled {
+        start(&state, false, Some(window.clone()))?;
+    }
+    let _ = window.emit("autonomy:status-changed", ());
+    Ok(())
 }
 
 fn save_contract(state: &AutonomyState, mut contract: Contract) -> Result<(), String> {
@@ -801,7 +807,13 @@ pub fn autonomy_set_enabled(
     let dir = storage_dir(&runtime)?;
     set_enabled(&mut runtime, enabled, clock_ms(), |status| {
         persist_at(&dir, status)
-    })
+    })?;
+    drop(runtime);
+    if enabled {
+        start(&state, false, Some(window.clone()))?;
+    }
+    let _ = window.emit("autonomy:status-changed", ());
+    Ok(())
 }
 
 #[tauri::command]
@@ -946,7 +958,7 @@ fn start(
         )
         .await;
         finish(&owned, &id, revision, &cancel, result);
-        if let Err(error) = action_execution::start(&owned, false, window.clone()) {
+        if let Err(error) = start(&owned, false, window.clone()) {
             if let Ok(mut runtime) = lock(&owned) {
                 runtime.status.error = Some(error);
                 let _ = persist(&runtime);
@@ -1517,12 +1529,26 @@ fn finish(
         }
         return;
     }
-    let done = result
-        .as_ref()
-        .is_ok_and(|plan| plan.outcome == Outcome::Completed);
-    let blocked = result
-        .as_ref()
-        .is_ok_and(|plan| plan.outcome == Outcome::Blocked);
+    // A concrete next operation awaiting its own decision is a successful
+    // preparation handoff, not a failed run or completion of the whole goal.
+    let awaiting_action = current
+        && !stopped
+        && result.is_ok()
+        && runtime.status.pending_actions.iter().any(|action| {
+            action.run_id == id
+                && matches!(
+                    action.status,
+                    actions::ActionStatus::Pending | actions::ActionStatus::Approved
+                )
+        });
+    let done = !awaiting_action
+        && result
+            .as_ref()
+            .is_ok_and(|plan| plan.outcome == Outcome::Completed);
+    let blocked = !awaiting_action
+        && result
+            .as_ref()
+            .is_ok_and(|plan| plan.outcome == Outcome::Blocked);
     let work_goal = result
         .as_ref()
         .ok()
@@ -1536,7 +1562,7 @@ fn finish(
             Ok(plan) => {
                 run.status = if (stopped || !current) && !can_undo {
                     "cancelled"
-                } else if plan.outcome == Outcome::Blocked {
+                } else if plan.outcome == Outcome::Blocked && !awaiting_action {
                     "failed"
                 } else {
                     "completed"
@@ -1647,7 +1673,12 @@ pub fn autonomy_review(
     approved: bool,
 ) -> Result<(), String> {
     main_window(&window)?;
-    review_work(&state, &id, approved)
+    review_work(&state, &id, approved)?;
+    if approved {
+        start(&state, false, Some(window.clone()))?;
+    }
+    let _ = window.emit("autonomy:status-changed", ());
+    Ok(())
 }
 
 fn review_work(state: &AutonomyState, id: &str, approved: bool) -> Result<(), String> {
@@ -2056,6 +2087,8 @@ mod tests {
         );
         assert_eq!(runtime.status.phase, "awaitingAction");
         assert!(runtime.status.next_run_at.is_none());
+        assert!(runtime.status.contract.as_ref().unwrap().enabled);
+        assert_eq!(runtime.status.runs.last().unwrap().status, "completed");
         assert_eq!(
             std::fs::read_to_string(workspace.join("note.md")).unwrap(),
             SEED
@@ -2106,6 +2139,8 @@ mod tests {
         let runtime = lock(&state).unwrap();
         assert_eq!(runtime.status.phase, "awaitingAction");
         assert!(runtime.status.next_run_at.is_none());
+        assert!(runtime.status.contract.as_ref().unwrap().enabled);
+        assert_eq!(runtime.status.runs.last().unwrap().status, "completed");
         assert_eq!(
             runtime.status.pending_actions[0].status,
             actions::ActionStatus::Pending
@@ -2115,6 +2150,104 @@ mod tests {
             SEED
         );
         assert!(!store.join("development").exists());
+    }
+
+    #[test]
+    fn confirmation_handoff_keeps_daily_work_enabled_and_unfinished_for_both_outcomes() {
+        for outcome in [Outcome::Blocked, Outcome::Completed] {
+            let (_directory, state, _workspace, store) = integration_fixture();
+            let (_contract, id, revision, cancel, _) = fixture_claim(&state, &store);
+            {
+                let mut runtime = lock(&state).unwrap();
+                runtime.status.contract.as_mut().unwrap().review_mode = ReviewMode::Daily;
+                runtime.status.daily_work = Some(DailyWork {
+                    day: local_day(clock_ms()),
+                    goal: "Deliver today's prepared report".into(),
+                    complete: false,
+                });
+                actions::queue(
+                    &mut runtime,
+                    &id,
+                    confirmation_only_plan().requested_action.as_ref().unwrap(),
+                    vec![],
+                )
+                .unwrap();
+            }
+            let mut plan = confirmation_only_plan();
+            plan.outcome = outcome;
+            plan.requested_action = None;
+            finish(&state, &id, revision, &cancel, Ok(plan));
+            {
+                let runtime = lock(&state).unwrap();
+                assert!(runtime.status.contract.as_ref().unwrap().enabled);
+                assert!(!runtime.status.daily_work.as_ref().unwrap().complete);
+                assert_eq!(runtime.status.runs.last().unwrap().status, "completed");
+                assert_eq!(runtime.status.phase, "awaitingAction");
+                assert!(runtime.status.next_run_at.is_none());
+                assert!(runtime.cancel.is_none());
+            }
+            // Automatic wakes must wait for this decision rather than start a
+            // new development task or require Run Now to keep the delegation on.
+            start(&state, false, None).unwrap();
+            let runtime = lock(&state).unwrap();
+            assert_eq!(runtime.status.runs.len(), 1);
+            let (loaded, recovered) = load_status_at(&store, clock_ms()).unwrap();
+            assert!(!recovered);
+            assert!(loaded.contract.unwrap().enabled);
+            assert_eq!(loaded.runs[0].status, "completed");
+        }
+    }
+
+    #[test]
+    fn queued_decision_does_not_mask_a_worker_error_cancellation_or_another_runs_block() {
+        for failure in ["error", "cancelled", "unrelated"] {
+            let (_directory, state, _workspace, store) = integration_fixture();
+            let (_contract, id, revision, cancel, _) = fixture_claim(&state, &store);
+            {
+                let mut runtime = lock(&state).unwrap();
+                let action = actions::queue(
+                    &mut runtime,
+                    &id,
+                    confirmation_only_plan().requested_action.as_ref().unwrap(),
+                    vec![],
+                )
+                .unwrap();
+                if failure == "unrelated" {
+                    let mut prior = runtime.status.runs[0].clone();
+                    prior.id = uuid::Uuid::new_v4().to_string();
+                    prior.status = "completed".into();
+                    prior.finished_at = Some(clock_ms());
+                    runtime
+                        .status
+                        .pending_actions
+                        .iter_mut()
+                        .find(|item| item.id == action.id)
+                        .unwrap()
+                        .run_id = prior.id.clone();
+                    runtime.status.runs.push(prior);
+                }
+            }
+            if failure == "cancelled" {
+                cancel.cancel();
+            }
+            let result = if failure == "error" {
+                Err("A real worker failure".into())
+            } else {
+                Ok(confirmation_only_plan())
+            };
+            finish(&state, &id, revision, &cancel, result);
+            let runtime = lock(&state).unwrap();
+            assert!(!runtime.status.contract.as_ref().unwrap().enabled);
+            let run = runtime.status.runs.iter().find(|run| run.id == id).unwrap();
+            assert_eq!(
+                run.status,
+                if failure == "cancelled" {
+                    "cancelled"
+                } else {
+                    "failed"
+                }
+            );
+        }
     }
     #[test]
     fn purpose_permission_hands_off_development_without_disabling_scheduled_execution() {
