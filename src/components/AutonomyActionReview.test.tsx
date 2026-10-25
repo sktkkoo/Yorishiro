@@ -94,6 +94,27 @@ describe("post-work operation confirmation", () => {
     expect(approveAutonomyAction).not.toHaveBeenCalled();
   });
 
+  it.each([
+    "approved",
+    "executing",
+    "completed",
+  ] as const)("distinguishes purpose-based automatic permission from manual approval when %s", (status) => {
+    const view = render(
+      <AutonomyActionReview action={{ ...action, status, autoApproved: true }} disabled={false} />,
+    );
+    expect(screen.getByText("目的に基づく自動許可")).toBeTruthy();
+    expect(screen.getByText("操作が必要な理由")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "承認する" })).toBeNull();
+    if (status === "approved") {
+      expect(screen.getByText("自動許可済み・実行待ち")).toBeTruthy();
+      expect(screen.getByRole("button", { name: "承認を取り消す" })).toBeTruthy();
+    }
+    view.rerender(<AutonomyActionReview action={{ ...action, status }} disabled={false} />);
+    expect(screen.queryByText("目的に基づく自動許可")).toBeNull();
+    expect(screen.getByText("確認が必要な理由")).toBeTruthy();
+    expect(approveAutonomyAction).not.toHaveBeenCalled();
+  });
+
   it("retains the declined request without offering another approval", () => {
     render(<AutonomyActionReview action={{ ...action, status: "declined" }} disabled={false} />);
     expect(screen.getByText("見送り")).toBeTruthy();

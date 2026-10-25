@@ -19,6 +19,7 @@ export type DraftValues = Required<
     | "reviewMode"
     | "workMode"
     | "publishPullRequest"
+    | "automaticActionApproval"
   >
 >;
 export type DraftField = keyof DraftValues;
@@ -32,6 +33,7 @@ const FIELDS: readonly DraftField[] = [
   "reviewMode",
   "workMode",
   "publishPullRequest",
+  "automaticActionApproval",
 ];
 const EMPTY: DraftValues = {
   goal: "",
@@ -42,6 +44,7 @@ const EMPTY: DraftValues = {
   reviewMode: "daily",
   workMode: "auto",
   publishPullRequest: false,
+  automaticActionApproval: false,
 };
 const same = (a: FieldValue, b: FieldValue) => JSON.stringify(a) === JSON.stringify(b);
 const valuesOf = (draft: AutonomyDraft): DraftValues => ({
@@ -53,6 +56,7 @@ const valuesOf = (draft: AutonomyDraft): DraftValues => ({
   reviewMode: draft.reviewMode,
   workMode: draft.workMode ?? "documents",
   publishPullRequest: draft.publishPullRequest ?? false,
+  automaticActionApproval: draft.automaticActionApproval ?? false,
 });
 
 interface Edit {
@@ -157,8 +161,8 @@ export class AutonomyDraftEditor {
       maxRunsPerDay: contract.maxRunsPerDay,
       reviewMode: contract.reviewMode ?? "automatic",
       workMode: contract.workMode ?? "documents",
-      // Old blanket publication grants are no longer offered by setup.
       publishPullRequest: false,
+      automaticActionApproval: contract.automaticActionApproval ?? false,
     };
     this.remote = { ...this.values };
     this.publish();
@@ -217,8 +221,7 @@ export class AutonomyDraftEditor {
       }
     }
     this.remote = next;
-    // Revoke the obsolete inactive-draft flag explicitly so its next CAS edit
-    // is accepted by the host. Never carry a hidden external-action grant.
+    // The old publication flag does not grant the new, explicit automatic scope.
     if (this.values.publishPullRequest) this.edit("publishPullRequest", false);
     else this.publish();
   }

@@ -40,6 +40,26 @@ fn claim(
     {
         return Ok(None);
     }
+    // A queued automatic step cannot outlive revocation or a different goal,
+    // even when a manual Run action starts this executor later.
+    let mut next = runtime.status.clone();
+    let mut revoked = false;
+    for action in &mut next.pending_actions {
+        if action.status == ActionStatus::Approved
+            && !super::actions::automatic_authority_matches(action, next.contract.as_ref())?
+        {
+            action.status = ActionStatus::Declined;
+            action.error = Some(
+                "自動許可の設定または任せる目的が変わったため、この操作は実行しませんでした".into(),
+            );
+            revoked = true;
+        }
+    }
+    if revoked {
+        settle(&mut next, super::clock_ms(), true);
+        save(&next)?;
+        runtime.status = next;
+    }
     let Some(action) = runtime
         .status
         .pending_actions
@@ -153,6 +173,9 @@ fn validate_scope(claim: &Claim) -> Result<&Contract, String> {
     if contract.root != claim.action.source_root {
         return Err("承認後に対象フォルダが変更されています。操作は実行していません".into());
     }
+    if !super::actions::automatic_authority_matches(&claim.action, Some(contract))? {
+        return Err("この操作の自動許可は取り消されています。操作は実行していません".into());
+    }
     super::validate_contract(contract)?;
     Ok(contract)
 }
@@ -162,24 +185,42 @@ async fn execute(
     claim: &Claim,
 ) -> Result<action_worker::ExecutionResult, String> {
     let contract = validate_scope(claim)?;
-    {
+    let execution_contract = {
         let runtime = super::lock(state)?;
         if !super::authorized_result(&runtime, &claim.action.id, claim.revision, &claim.cancel) {
             return Err("承認した操作を停止しました".into());
         }
-    }
+        contract_with_daily_goal(contract, &runtime.status, super::clock_ms())
+    };
     if uses_tool_worker(contract) {
         // A separate tool transport supports code and non-Git projects alike.
         return action_worker::execute(
             &claim.storage,
             &claim.action,
             &claim.run,
-            contract,
+            &execution_contract,
             claim.cancel.clone(),
         )
         .await;
     }
     execute_documents(state, claim, contract).await
+}
+
+fn contract_with_daily_goal(contract: &Contract, status: &Status, now: u64) -> Contract {
+    let mut execution_contract = contract.clone();
+    if contract.review_mode == super::ReviewMode::Daily {
+        if let Some(work) = status
+            .daily_work
+            .as_ref()
+            .filter(|work| work.day == super::local_day(now))
+        {
+            execution_contract.goal = format!(
+                "継続して任された目的: {}\n今回承認された日次の仕事: {}",
+                contract.goal, work.goal
+            );
+        }
+    }
+    execution_contract
 }
 
 fn uses_tool_worker(contract: &Contract) -> bool {
@@ -254,6 +295,7 @@ async fn execute_documents(
     Ok(action_worker::ExecutionResult {
         summary: plan.summary,
         result_url: None,
+        goal_complete: false,
     })
 }
 
@@ -292,6 +334,10 @@ pub(super) fn finish(state: &AutonomyState, deferred: DeferredFinish) {
     }
     let current = runtime.revision == deferred.revision;
     let interrupted = deferred.cancel.is_cancelled() || !current;
+    let goal_complete = deferred
+        .result
+        .as_ref()
+        .is_ok_and(|result| result.goal_complete);
     let can_undo =
         super::recovery_dir(&runtime).is_ok_and(|path| super::files::can_undo(&path, &deferred.id));
     let mut next = runtime.status.clone();
@@ -343,13 +389,36 @@ pub(super) fn finish(state: &AutonomyState, deferred: DeferredFinish) {
                 .unwrap_or_else(|| "操作結果を確認してください".into());
         }
     }
+    let automatic_failure = current
+        && !interrupted
+        && next.pending_actions.iter().any(|action| {
+            action.id == deferred.id
+                && action.auto_approved
+                && action.status == ActionStatus::Failed
+        });
+    let automatic_success = current
+        && !interrupted
+        && next.pending_actions.iter().any(|action| {
+            action.id == deferred.id
+                && action.auto_approved
+                && action.status == ActionStatus::Completed
+        });
+    // Failed automatic external operations may already have side effects. Stop
+    // this delegation so a new run cannot recreate and repeat the operation.
     // A newer saved scope or Off→On choice owns its enabled state and schedule.
-    if interrupted && current {
+    if (interrupted && current) || automatic_failure {
         if let Some(scope) = next.contract.as_mut() {
             scope.enabled = false;
         }
     }
-    settle(&mut next, super::clock_ms(), current);
+    let now = super::clock_ms();
+    settle(&mut next, now, current);
+    if automatic_success && goal_complete {
+        complete_daily_automatic_work(&mut next, now);
+    }
+    if automatic_failure {
+        next.phase = "failed".into();
+    }
     runtime.active_run_id = None;
     runtime.cancel = None;
     runtime.status = next;
@@ -363,6 +432,39 @@ pub(super) fn finish(state: &AutonomyState, deferred: DeferredFinish) {
             "操作結果を保存できませんでした。同じ操作は繰り返していません: {error}"
         ));
     }
+}
+
+fn complete_daily_automatic_work(status: &mut Status, now: u64) {
+    let Some(scope) = status
+        .contract
+        .as_ref()
+        .filter(|scope| scope.review_mode == super::ReviewMode::Daily)
+    else {
+        return;
+    };
+    let enabled = scope.enabled;
+    let day = super::local_day(now);
+    if status
+        .daily_work
+        .as_ref()
+        .is_some_and(|work| work.day != day)
+    {
+        // Finishing yesterday's operation does not consume today's approval.
+        status.daily_work = None;
+        status.next_run_at = enabled.then_some(now);
+    } else {
+        if let Some(work) = status.daily_work.as_mut() {
+            work.complete = true;
+        } else {
+            status.daily_work = Some(super::DailyWork {
+                day,
+                goal: scope.goal.clone(),
+                complete: true,
+            });
+        }
+        status.next_run_at = enabled.then_some(super::next_day(now));
+    }
+    super::actions::park(status);
 }
 
 fn safe_result_url(value: &str) -> bool {
@@ -400,6 +502,7 @@ mod tests {
             review_mode: super::super::ReviewMode::Automatic,
             work_mode: super::super::WorkMode::Auto,
             publish_pull_request: false,
+            automatic_action_approval: false,
             development_repository: None,
         });
         let id = uuid::Uuid::new_v4().to_string();
@@ -466,6 +569,7 @@ mod tests {
                 result: Ok(action_worker::ExecutionResult {
                     summary: "Updated main.py".into(),
                     result_url: None,
+                    goal_complete: false,
                 }),
             },
         );
@@ -504,6 +608,316 @@ mod tests {
             runtime.status.pending_actions[0].status,
             ActionStatus::Approved
         );
+    }
+    #[test]
+    fn automatic_steps_recheck_revocation_before_claiming_even_for_manual_start() {
+        for manual in [false, true] {
+            let (state, _directory, _) = fixture();
+            let mut runtime = super::super::lock(&state).unwrap();
+            let first = runtime.status.pending_actions[0].clone();
+            runtime.status.pending_actions.clear();
+            runtime
+                .status
+                .contract
+                .as_mut()
+                .unwrap()
+                .automatic_action_approval = true;
+            let action = super::super::actions::queue_delegated(
+                &mut runtime,
+                &first.run_id,
+                &super::super::actions::RequestedAction {
+                    operation: first.operation,
+                    target: first.target,
+                    impact: first.impact,
+                    details: first.details,
+                    reason: first.summary,
+                    network_access: true,
+                },
+                vec![],
+            )
+            .unwrap();
+            assert!(action.auto_approved);
+            runtime
+                .status
+                .contract
+                .as_mut()
+                .unwrap()
+                .automatic_action_approval = false;
+            assert!(claim(&mut runtime, manual, |_| Err("disk full".into())).is_err());
+            assert_eq!(
+                runtime.status.pending_actions[0].status,
+                ActionStatus::Approved
+            );
+            assert!(claim(&mut runtime, manual, |_| Ok(())).unwrap().is_none());
+            assert_eq!(
+                runtime.status.pending_actions[0].status,
+                ActionStatus::Declined
+            );
+            assert!(runtime.cancel.is_none());
+            assert_eq!(runtime.status.runs.len(), 1);
+            assert_eq!(runtime.status.phase, "idle");
+            assert!(runtime.status.next_run_at.is_some());
+        }
+    }
+    #[test]
+    fn automatic_claim_cannot_execute_under_a_different_purpose() {
+        let (state, _directory, _) = fixture();
+        let mut runtime = super::super::lock(&state).unwrap();
+        let first = runtime.status.pending_actions.remove(0);
+        runtime
+            .status
+            .contract
+            .as_mut()
+            .unwrap()
+            .automatic_action_approval = true;
+        super::super::actions::queue_delegated(
+            &mut runtime,
+            &first.run_id,
+            &super::super::actions::RequestedAction {
+                operation: first.operation,
+                target: first.target,
+                impact: first.impact,
+                details: first.details,
+                reason: first.summary,
+                network_access: true,
+            },
+            vec![],
+        )
+        .unwrap();
+        let mut claimed = claim(&mut runtime, false, |_| Ok(())).unwrap().unwrap();
+        assert!(validate_scope(&claimed).is_ok());
+        claimed.contract.as_mut().unwrap().goal = "Different purpose".into();
+        assert!(validate_scope(&claimed).is_err());
+    }
+    #[test]
+    fn failed_automatic_step_stops_the_goal_instead_of_scheduling_a_retry() {
+        let (state, _directory, _) = fixture();
+        let automatic_id = {
+            let mut runtime = super::super::lock(&state).unwrap();
+            let first = runtime.status.pending_actions.remove(0);
+            runtime
+                .status
+                .contract
+                .as_mut()
+                .unwrap()
+                .automatic_action_approval = true;
+            super::super::actions::queue_delegated(
+                &mut runtime,
+                &first.run_id,
+                &super::super::actions::RequestedAction {
+                    operation: "Deliver the prepared report".into(),
+                    target: "https://example.com/team/report".into(),
+                    impact: "The team receives the report".into(),
+                    details: "Send the exact prepared report once".into(),
+                    reason: "The purpose requires delivery".into(),
+                    network_access: true,
+                },
+                vec![],
+            )
+            .unwrap()
+            .id
+        };
+        let claimed = claim(&mut super::super::lock(&state).unwrap(), false, |_| Ok(()))
+            .unwrap()
+            .unwrap();
+        finish(
+            &state,
+            DeferredFinish {
+                id: automatic_id,
+                revision: claimed.revision,
+                cancel: claimed.cancel,
+                result: Err("The service response was lost; delivery may have completed".into()),
+            },
+        );
+        let mut runtime = super::super::lock(&state).unwrap();
+        assert_eq!(runtime.status.phase, "failed");
+        assert!(runtime.status.next_run_at.is_none());
+        assert!(!runtime.status.contract.as_ref().unwrap().enabled);
+        assert_eq!(
+            runtime.status.pending_actions[0].status,
+            ActionStatus::Failed
+        );
+        assert!(runtime.status.pending_actions[0]
+            .error
+            .as_deref()
+            .unwrap()
+            .contains("may have completed"));
+        assert!(claim(&mut runtime, false, |_| Ok(())).unwrap().is_none());
+        assert_eq!(runtime.status.runs.len(), 2);
+    }
+    #[test]
+    fn successful_daily_automatic_step_completes_today_instead_of_repeating_the_task() {
+        let (state, _directory, _) = fixture();
+        let now = super::super::clock_ms();
+        let automatic_id = {
+            let mut runtime = super::super::lock(&state).unwrap();
+            let first = runtime.status.pending_actions.remove(0);
+            let scope = runtime.status.contract.as_mut().unwrap();
+            scope.automatic_action_approval = true;
+            scope.review_mode = super::super::ReviewMode::Daily;
+            runtime.status.daily_work = Some(super::super::DailyWork {
+                day: super::super::local_day(now),
+                goal: "Deliver today's verified report".into(),
+                complete: false,
+            });
+            super::super::actions::queue_delegated(
+                &mut runtime,
+                &first.run_id,
+                &super::super::actions::RequestedAction {
+                    operation: "Deliver today's verified report".into(),
+                    target: "https://example.com/team/report".into(),
+                    impact: "The team receives today's report".into(),
+                    details: "Send the exact verified report once".into(),
+                    reason: "Today's approved work requires delivery".into(),
+                    network_access: true,
+                },
+                vec![],
+            )
+            .unwrap()
+            .id
+        };
+        let claimed = claim(&mut super::super::lock(&state).unwrap(), false, |_| Ok(()))
+            .unwrap()
+            .unwrap();
+        finish(
+            &state,
+            DeferredFinish {
+                id: automatic_id,
+                revision: claimed.revision,
+                cancel: claimed.cancel,
+                result: Ok(action_worker::ExecutionResult {
+                    summary: "Today's report was delivered".into(),
+                    result_url: Some("https://example.com/team/report".into()),
+                    goal_complete: true,
+                }),
+            },
+        );
+        let runtime = super::super::lock(&state).unwrap();
+        assert!(runtime.status.contract.as_ref().unwrap().enabled);
+        assert_eq!(runtime.status.phase, "idle");
+        let daily = runtime.status.daily_work.as_ref().unwrap();
+        assert!(daily.complete);
+        assert_eq!(daily.goal, "Deliver today's verified report");
+        let next = runtime.status.next_run_at.unwrap();
+        assert_ne!(super::super::local_day(next), super::super::local_day(now));
+        assert!(next <= super::super::next_day(now) + 60_000);
+        assert_eq!(
+            runtime.status.pending_actions[0].status,
+            ActionStatus::Completed
+        );
+    }
+    #[test]
+    fn successful_daily_intermediate_operation_keeps_the_approved_task_open() {
+        let (state, _directory, _) = fixture();
+        let now = super::super::clock_ms();
+        let automatic_id = {
+            let mut runtime = super::super::lock(&state).unwrap();
+            let first = runtime.status.pending_actions.remove(0);
+            let scope = runtime.status.contract.as_mut().unwrap();
+            scope.automatic_action_approval = true;
+            scope.review_mode = super::super::ReviewMode::Daily;
+            runtime.status.daily_work = Some(super::super::DailyWork {
+                day: super::super::local_day(now),
+                goal: "Build and deliver today's report".into(),
+                complete: false,
+            });
+            super::super::actions::queue_delegated(
+                &mut runtime,
+                &first.run_id,
+                &super::super::actions::RequestedAction {
+                    operation: "Install dependencies needed to build today's report".into(),
+                    target: "https://registry.npmjs.org".into(),
+                    impact: "The private work copy has the required packages".into(),
+                    details: "Install the project's locked dependencies in the private work copy"
+                        .into(),
+                    reason: "The report cannot be built without its declared dependencies".into(),
+                    network_access: true,
+                },
+                vec![],
+            )
+            .unwrap()
+            .id
+        };
+        let claimed = claim(&mut super::super::lock(&state).unwrap(), false, |_| Ok(()))
+            .unwrap()
+            .unwrap();
+        finish(
+            &state,
+            DeferredFinish {
+                id: automatic_id,
+                revision: claimed.revision,
+                cancel: claimed.cancel,
+                result: Ok(action_worker::ExecutionResult {
+                    summary:
+                        "Dependencies are installed; building and delivering the report remain"
+                            .into(),
+                    result_url: None,
+                    goal_complete: false,
+                }),
+            },
+        );
+        let runtime = super::super::lock(&state).unwrap();
+        assert!(runtime.status.contract.as_ref().unwrap().enabled);
+        assert_eq!(runtime.status.phase, "idle");
+        let work = runtime.status.daily_work.as_ref().unwrap();
+        assert!(!work.complete);
+        assert_eq!(work.goal, "Build and deliver today's report");
+        let next = runtime.status.next_run_at.unwrap();
+        assert!(next >= now + 30 * 60_000);
+        assert!(next <= super::super::clock_ms() + 30 * 60_000);
+        assert_eq!(
+            runtime.status.pending_actions[0].status,
+            ActionStatus::Completed
+        );
+    }
+    #[test]
+    fn execution_prompt_uses_only_the_current_approved_daily_goal() {
+        let (state, _directory, _) = fixture();
+        let now = 1_792_944_000_000;
+        let mut runtime = super::super::lock(&state).unwrap();
+        runtime.status.contract.as_mut().unwrap().review_mode = super::super::ReviewMode::Daily;
+        let contract = runtime.status.contract.as_ref().unwrap().clone();
+        runtime.status.daily_work = Some(super::super::DailyWork {
+            day: super::super::local_day(now),
+            goal: "Build and deliver the approved report".into(),
+            complete: false,
+        });
+        let execution = contract_with_daily_goal(&contract, &runtime.status, now);
+        assert!(execution.goal.contains(&contract.goal));
+        assert!(execution
+            .goal
+            .contains("Build and deliver the approved report"));
+        assert_eq!(
+            runtime.status.contract.as_ref().unwrap().goal,
+            contract.goal
+        );
+        assert_eq!(
+            contract_with_daily_goal(&contract, &runtime.status, now + super::super::DAY_MS).goal,
+            contract.goal
+        );
+        let mut automatic_contract = contract.clone();
+        automatic_contract.review_mode = super::super::ReviewMode::Automatic;
+        assert_eq!(
+            contract_with_daily_goal(&automatic_contract, &runtime.status, now).goal,
+            contract.goal
+        );
+    }
+    #[test]
+    fn finishing_previous_day_automatic_work_leaves_new_day_for_consultation() {
+        let (state, _directory, _) = fixture();
+        let now = 1_792_944_000_000;
+        let mut runtime = super::super::lock(&state).unwrap();
+        runtime.status.pending_actions.clear();
+        runtime.status.contract.as_mut().unwrap().review_mode = super::super::ReviewMode::Daily;
+        runtime.status.daily_work = Some(super::super::DailyWork {
+            day: super::super::local_day(now - super::super::DAY_MS),
+            goal: "Yesterday's approved task".into(),
+            complete: false,
+        });
+        complete_daily_automatic_work(&mut runtime.status, now);
+        assert!(runtime.status.daily_work.is_none());
+        assert_eq!(runtime.status.next_run_at, Some(now));
+        assert!(runtime.status.contract.as_ref().unwrap().enabled);
     }
     #[test]
     fn changed_digest_and_scope_cannot_execute() {
@@ -597,6 +1011,7 @@ mod tests {
                 result: Ok(action_worker::ExecutionResult {
                     summary: "Updated report".into(),
                     result_url: None,
+                    goal_complete: false,
                 }),
             },
         );

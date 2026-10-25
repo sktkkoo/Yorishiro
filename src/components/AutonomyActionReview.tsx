@@ -59,8 +59,11 @@ export function AutonomyActionReview({
     <article className="autonomy-action-review" aria-labelledby={titleId}>
       <div className="autonomy-run-meta">
         <span className={`autonomy-run-badge autonomy-action-${action.status}`}>
-          {STATUS_LABELS[action.status]}
+          {action.autoApproved && action.status === "approved"
+            ? "自動許可済み・実行待ち"
+            : STATUS_LABELS[action.status]}
         </span>
+        {action.autoApproved && <span className="autonomy-run-badge">目的に基づく自動許可</span>}
         <h3 id={titleId}>{action.operation}</h3>
       </div>
       <dl className="autonomy-action-fields">
@@ -77,7 +80,7 @@ export function AutonomyActionReview({
           <dd>{action.impact}</dd>
         </div>
         <div>
-          <dt>確認が必要な理由</dt>
+          <dt>{action.autoApproved ? "操作が必要な理由" : "確認が必要な理由"}</dt>
           <dd>{action.summary}</dd>
         </div>
       </dl>
@@ -157,7 +160,9 @@ export function AutonomyActionReview({
       {action.status === "approved" && (
         <>
           <p className="autonomy-muted">
-            承認した操作の実行を準備しています。実行が始まるまでは承認を取り消せます。
+            {action.autoApproved
+              ? "保存した目的と自動許可に基づいて実行を準備しています。実行が始まるまでは取り消せます。"
+              : "承認した操作の実行を準備しています。実行が始まるまでは承認を取り消せます。"}
           </p>
           <button
             type="button"
@@ -169,7 +174,11 @@ export function AutonomyActionReview({
         </>
       )}
       {action.status === "executing" && (
-        <p className="autonomy-muted">承認した内容で実行しています。</p>
+        <p className="autonomy-muted">
+          {action.autoApproved
+            ? "保存した目的と自動許可に基づいて実行しています。"
+            : "承認した内容で実行しています。"}
+        </p>
       )}
       {action.status === "failed" && (
         <p className="autonomy-muted">
