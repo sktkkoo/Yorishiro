@@ -14,19 +14,82 @@ afterEach(() => {
   for (const dispose of cleanups.splice(0)) dispose();
 });
 
-function setup(request: () => Promise<void>) {
+function setup(request: (language?: "ja" | "en") => Promise<void>) {
   const statuses: AutonomyVoiceSetupStatus[] = [];
   const receive = (event: Event) =>
     statuses.push((event as CustomEvent<AutonomyVoiceSetupStatus>).detail);
   window.addEventListener(AUTONOMY_VOICE_SETUP_STATUS, receive);
   const dispose = installAutonomyVoiceSetupBridge(request);
   cleanups.push(dispose, () => window.removeEventListener(AUTONOMY_VOICE_SETUP_STATUS, receive));
-  const click = (requestId: string) =>
-    window.dispatchEvent(new CustomEvent(AUTONOMY_VOICE_SETUP_REQUEST, { detail: { requestId } }));
+  const click = (requestId: string, language?: "ja" | "en") =>
+    window.dispatchEvent(
+      new CustomEvent(AUTONOMY_VOICE_SETUP_REQUEST, { detail: { requestId, language } }),
+    );
   return { statuses, dispose, click };
 }
 
 describe("autonomy voice setup feedback", () => {
+  it("localizes host review notices only when an app language is supplied", () => {
+    const data = {
+      id: "daily",
+      goal: "原文の目的",
+      reason: "Original reason",
+      summary: "Original evidence",
+    };
+    const event = new CustomEvent("review", { detail: { ...data, language: "ja" } });
+    expect(readAutonomyWorkReviewNotice(event)).toEqual(data);
+    expect(readAutonomyWorkReviewNotice(event, "en")).toEqual({ ...data, language: "en" });
+    const confirmation = readAutonomyConfirmationNotice(
+      new CustomEvent("confirmation", {
+        detail: { id: "action", status: "pending", summary: data.summary },
+      }),
+      "en",
+    );
+    expect(confirmation).toMatchObject({
+      language: "en",
+      reason: "The work result needs your review.",
+      summary: data.summary,
+    });
+  });
+
+  it("keeps English startup, ready, busy and disposal feedback with the right request", async () => {
+    const ready = setup(vi.fn(async () => {}));
+    ready.click("ready-en", "en");
+    await vi.waitFor(() =>
+      expect(ready.statuses[1]).toMatchObject({
+        phase: "active",
+        message: "Voice setup is ready. Your conversation will update the proposed settings.",
+      }),
+    );
+    expect(ready.statuses[0].message).toBe("Preparing voice setup…");
+    ready.dispose();
+    let finish!: () => void;
+    const request = vi.fn(
+      (_language?: "ja" | "en") =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const pending = setup(request);
+    pending.click("pending-en", "en");
+    pending.click("busy-en", "en");
+    await vi.waitFor(() => expect(request).toHaveBeenCalledExactlyOnceWith("en"));
+    expect(pending.statuses).toContainEqual({
+      requestId: "busy-en",
+      phase: "error",
+      message: "Preparing voice setup. Please wait a moment.",
+    });
+    pending.dispose();
+    expect(pending.statuses).toContainEqual({
+      requestId: "pending-en",
+      phase: "error",
+      message: "The voice conversation changed. Please try again.",
+    });
+    finish();
+    await Promise.resolve();
+    expect(pending.statuses.some(({ phase }) => phase === "active")).toBe(false);
+  });
+
   it("bounds confirmation data and gives different statuses distinct notice IDs", () => {
     const detail = {
       id: "action-1",

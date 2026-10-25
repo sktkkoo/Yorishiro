@@ -1,17 +1,8 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useId, useRef, useState } from "react";
+import { AUTONOMY_ACTION_COPY } from "../i18n/autonomy-action";
 import { approveAutonomyAction, declineAutonomyAction } from "../runtime/autonomy/client";
 import type { AutonomyAction } from "../runtime/autonomy/types";
-
-const STATUS_LABELS = {
-  pending: "確認待ち",
-  approved: "承認済み・実行待ち",
-  executing: "実行中",
-  completed: "実行完了",
-  failed: "実行失敗",
-  interrupted: "実行結果の確認が必要",
-  declined: "見送り",
-};
 
 function resultLink(value: string | null | undefined): string | null {
   if (!value) return null;
@@ -29,10 +20,13 @@ function resultLink(value: string | null | undefined): string | null {
 export function AutonomyActionReview({
   action,
   disabled,
+  language = "ja",
 }: {
   readonly action: AutonomyAction;
   readonly disabled: boolean;
+  readonly language?: "ja" | "en";
 }) {
+  const copy = AUTONOMY_ACTION_COPY[language];
   const titleId = useId();
   const hintId = useId();
   const [busy, setBusy] = useState(false);
@@ -57,62 +51,83 @@ export function AutonomyActionReview({
 
   return (
     <article className="autonomy-action-review" aria-labelledby={titleId}>
-      <div className="autonomy-run-meta">
-        <span className={`autonomy-run-badge autonomy-action-${action.status}`}>
-          {action.autoApproved && action.status === "approved"
-            ? "自動許可済み・実行待ち"
-            : STATUS_LABELS[action.status]}
-        </span>
-        {action.autoApproved && <span className="autonomy-run-badge">目的に基づく自動許可</span>}
-        <h3 id={titleId}>{action.operation}</h3>
-      </div>
-      <dl className="autonomy-action-fields">
-        <div>
-          <dt>対象フォルダ</dt>
-          <dd>{action.sourceRoot}</dd>
+      <header className="autonomy-action-header">
+        <div className="autonomy-run-meta">
+          <span className={`autonomy-run-badge autonomy-action-${action.status}`}>
+            {action.autoApproved && action.status === "approved"
+              ? copy.automaticQueued
+              : copy.statuses[action.status]}
+          </span>
+          {action.autoApproved && (
+            <span className="autonomy-run-badge">{copy.automaticPermission}</span>
+          )}
         </div>
+        <h3 className="autonomy-action-title" id={titleId}>
+          {action.operation}
+        </h3>
+      </header>
+      <dl className="autonomy-action-fields autonomy-action-overview">
         <div>
-          <dt>対象</dt>
+          <dt>{copy.target}</dt>
           <dd>{action.target}</dd>
         </div>
         <div>
-          <dt>影響</dt>
+          <dt>{copy.impact}</dt>
           <dd>{action.impact}</dd>
         </div>
-        <div>
-          <dt>{action.autoApproved ? "操作が必要な理由" : "確認が必要な理由"}</dt>
-          <dd>{action.summary}</dd>
-        </div>
       </dl>
-      <details className="autonomy-run-details" open>
-        <summary>操作の内容</summary>
+      <p className="autonomy-action-reason">
+        <span>{action.autoApproved ? copy.automaticReason : copy.reason}</span> {action.summary}
+      </p>
+      {action.networkAccess && (
+        <div className="autonomy-action-network" role="note">
+          <span className="autonomy-action-network-icon" aria-hidden="true">
+            ↗
+          </span>
+          <div className="autonomy-action-network-copy">
+            <strong>{copy.networkTitle}</strong>
+            <p>{copy.networkDescription}</p>
+          </div>
+        </div>
+      )}
+      <details
+        className="autonomy-run-details autonomy-action-content"
+        open={action.status === "pending"}
+      >
+        <summary>{copy.contents}</summary>
         <pre className="autonomy-review-content">{action.details}</pre>
       </details>
-      {action.networkAccess && (
-        <p className="autonomy-muted">
-          承認した対象への通信を含む操作です。必要に応じて、そのサービスの保存済みログインを使用します。
-        </p>
-      )}
-      {(action.artifactPath || action.changedPaths.length > 0 || action.checks.length > 0) && (
-        <details className="autonomy-run-details">
-          <summary>成果物と検証結果</summary>
-          {action.artifactPath && <p className="autonomy-path">{action.artifactPath}</p>}
-          {action.changedPaths.length > 0 && (
-            <ul>
-              {action.changedPaths.map((path) => (
-                <li key={path} className="autonomy-path">
-                  {path}
-                </li>
-              ))}
-            </ul>
-          )}
-          {action.checks.length > 0 && (
-            <pre className="autonomy-review-content">
-              {action.checks.map((check) => `${check.command}: exit ${check.exitCode}`).join("\n")}
-            </pre>
-          )}
-        </details>
-      )}
+      <details className="autonomy-run-details autonomy-action-evidence">
+        <summary>{copy.record}</summary>
+        <dl className="autonomy-action-fields">
+          <div>
+            <dt>{copy.source}</dt>
+            <dd className="autonomy-path">{action.sourceRoot}</dd>
+          </div>
+        </dl>
+        {(action.artifactPath || action.changedPaths.length > 0 || action.checks.length > 0) && (
+          <>
+            <h4>{copy.evidence}</h4>
+            {action.artifactPath && <p className="autonomy-path">{action.artifactPath}</p>}
+            {action.changedPaths.length > 0 && (
+              <ul>
+                {action.changedPaths.map((path) => (
+                  <li key={path} className="autonomy-path">
+                    {path}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {action.checks.length > 0 && (
+              <pre className="autonomy-review-content">
+                {action.checks
+                  .map((check) => `${check.command}: exit ${check.exitCode}`)
+                  .join("\n")}
+              </pre>
+            )}
+          </>
+        )}
+      </details>
       {(error || action.error) && (
         <p role="alert" className="autonomy-error">
           {error || action.error}
@@ -127,13 +142,13 @@ export function AutonomyActionReview({
           disabled={busy}
           onClick={() => void perform(() => openUrl(resultUrl))}
         >
-          実行結果を開く
+          {copy.result}
         </button>
       )}
       {action.status === "pending" && (
-        <>
+        <div className="autonomy-action-footer">
           <p id={hintId} className="autonomy-muted">
-            承認した内容で実行します。対象・影響・操作の内容を確認してください。
+            {copy.review}
           </p>
           <div className="autonomy-actions">
             <button
@@ -145,54 +160,40 @@ export function AutonomyActionReview({
                 void perform(() => approveAutonomyAction(action.id, action.payloadDigest))
               }
             >
-              {busy ? "開始しています…" : "承認する"}
+              {busy ? copy.starting : copy.approve}
             </button>
             <button
               type="button"
               disabled={disabled || busy}
               onClick={() => void perform(() => declineAutonomyAction(action.id))}
             >
-              見送る
+              {copy.decline}
             </button>
           </div>
-        </>
+        </div>
       )}
       {action.status === "approved" && (
-        <>
+        <div className="autonomy-action-footer">
           <p className="autonomy-muted">
-            {action.autoApproved
-              ? "保存した目的と自動許可に基づいて実行を準備しています。実行が始まるまでは取り消せます。"
-              : "承認した操作の実行を準備しています。実行が始まるまでは承認を取り消せます。"}
+            {action.autoApproved ? copy.automaticPreparation : copy.queued}
           </p>
           <button
             type="button"
             disabled={disabled || busy}
             onClick={() => void perform(() => declineAutonomyAction(action.id))}
           >
-            承認を取り消す
+            {copy.cancel}
           </button>
-        </>
+        </div>
       )}
       {action.status === "executing" && (
         <p className="autonomy-muted">
-          {action.autoApproved
-            ? "保存した目的と自動許可に基づいて実行しています。"
-            : "承認した内容で実行しています。"}
+          {action.autoApproved ? copy.automaticExecution : copy.executing}
         </p>
       )}
-      {action.status === "failed" && (
-        <p className="autonomy-muted">
-          操作は完了しませんでした。表示された結果を確認してください。自動では再実行しません。
-        </p>
-      )}
-      {action.status === "interrupted" && (
-        <p className="autonomy-muted">
-          実行が中断され、完了したか確認できません。対象の状態を確認してください。重複を避けるため自動では再実行しません。
-        </p>
-      )}
-      {action.status === "declined" && (
-        <p className="autonomy-muted">この操作を見送りました。成果物は保存されています。</p>
-      )}
+      {action.status === "failed" && <p className="autonomy-muted">{copy.failed}</p>}
+      {action.status === "interrupted" && <p className="autonomy-muted">{copy.interrupted}</p>}
+      {action.status === "declined" && <p className="autonomy-muted">{copy.declined}</p>}
     </article>
   );
 }

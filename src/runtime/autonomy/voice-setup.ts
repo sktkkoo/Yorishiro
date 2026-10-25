@@ -5,6 +5,7 @@ export const AUTONOMY_CONFIRMATION_AVAILABLE = "yorishiro:autonomy-confirmation-
 
 export interface AutonomyWorkReviewNotice {
   readonly kind?: "confirmation";
+  readonly language?: "ja" | "en";
   readonly id: string;
   readonly goal: string;
   readonly reason: string;
@@ -12,7 +13,10 @@ export interface AutonomyWorkReviewNotice {
 }
 
 /** Notification data only: this event cannot approve an external operation. */
-export function readAutonomyConfirmationNotice(event: Event): AutonomyWorkReviewNotice | null {
+export function readAutonomyConfirmationNotice(
+  event: Event,
+  language?: "ja" | "en",
+): AutonomyWorkReviewNotice | null {
   const value: unknown = (event as CustomEvent<unknown>).detail;
   if (!value || typeof value !== "object") return null;
   const data = value as Record<string, unknown>;
@@ -27,15 +31,22 @@ export function readAutonomyConfirmationNotice(event: Event): AutonomyWorkReview
   )
     return null;
   return {
+    ...(language ? { language } : {}),
     kind: "confirmation",
     id: `confirmation:${data.id}:${data.status}`,
     goal: data.summary,
-    reason: "作業結果についてユーザーの確認が必要です。",
+    reason:
+      language === "en"
+        ? "The work result needs your review."
+        : "作業結果についてユーザーの確認が必要です。",
     summary: data.summary,
   };
 }
 
-export function readAutonomyWorkReviewNotice(event: Event): AutonomyWorkReviewNotice | null {
+export function readAutonomyWorkReviewNotice(
+  event: Event,
+  language?: "ja" | "en",
+): AutonomyWorkReviewNotice | null {
   const value: unknown = (event as CustomEvent<unknown>).detail;
   if (!value || typeof value !== "object") return null;
   const data = value as Record<string, unknown>;
@@ -45,6 +56,7 @@ export function readAutonomyWorkReviewNotice(event: Event): AutonomyWorkReviewNo
   }
   if (!data.id) return null;
   return {
+    ...(language ? { language } : {}),
     id: data.id,
     goal: data.goal,
     reason: data.reason,
@@ -59,9 +71,12 @@ export interface AutonomyVoiceSetupStatus {
 }
 
 /** Host UI request/feedback only. Neither event can grant a background-work scope. */
-export function installAutonomyVoiceSetupBridge(request: () => Promise<void>): () => void {
+export function installAutonomyVoiceSetupBridge(
+  request: (language?: "ja" | "en") => Promise<void>,
+): () => void {
   let disposed = false;
   let pending: string | null = null;
+  let pendingLanguage: "ja" | "en" = "ja";
   const publish = (
     requestId: string,
     phase: AutonomyVoiceSetupStatus["phase"],
@@ -74,25 +89,42 @@ export function installAutonomyVoiceSetupBridge(request: () => Promise<void>): (
     );
   };
   const receive = (event: Event) => {
-    const requestId = (event as CustomEvent<{ requestId?: unknown }>).detail?.requestId;
+    const detail = (event as CustomEvent<{ requestId?: unknown; language?: unknown }>).detail;
+    const requestId = detail?.requestId;
+    const language =
+      detail?.language === "en" || detail?.language === "ja" ? detail.language : undefined;
+    const english = language === "en";
     if (typeof requestId !== "string" || !requestId || requestId.length > 128) return;
     if (pending !== null) {
-      publish(requestId, "error", "音声の相談を準備しています。少しお待ちください。");
+      publish(
+        requestId,
+        "error",
+        english
+          ? "Preparing voice setup. Please wait a moment."
+          : "音声の相談を準備しています。少しお待ちください。",
+      );
       return;
     }
     pending = requestId;
-    publish(requestId, "starting", "音声で相談する準備をしています…");
+    pendingLanguage = language ?? "ja";
+    publish(
+      requestId,
+      "starting",
+      english ? "Preparing voice setup…" : "音声で相談する準備をしています…",
+    );
     void Promise.resolve()
       .then(() => {
         if (disposed) return;
-        return request();
+        return request(language);
       })
       .then(() => {
         if (!disposed) {
           publish(
             requestId,
             "active",
-            "音声で相談できます。話し合った内容は設定案に反映されます。",
+            english
+              ? "Voice setup is ready. Your conversation will update the proposed settings."
+              : "音声で相談できます。話し合った内容は設定案に反映されます。",
           );
         }
       })
@@ -110,7 +142,13 @@ export function installAutonomyVoiceSetupBridge(request: () => Promise<void>): (
     disposed = true;
     window.removeEventListener(AUTONOMY_VOICE_SETUP_REQUEST, receive);
     if (pending !== null) {
-      publish(pending, "error", "音声会話が切り替わりました。もう一度お試しください。");
+      publish(
+        pending,
+        "error",
+        pendingLanguage === "en"
+          ? "The voice conversation changed. Please try again."
+          : "音声会話が切り替わりました。もう一度お試しください。",
+      );
     }
   };
 }

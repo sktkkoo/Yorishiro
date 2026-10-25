@@ -125,7 +125,8 @@
   --autonomy-line: color-mix(in srgb, var(--yorishiro-fg, #f0f1f2) 12%, transparent);
   --autonomy-surface: color-mix(in srgb, var(--yorishiro-fg, #f0f1f2) 4%, transparent);
   box-sizing: border-box;
-  width: min(940px, 100%);
+  width: min(760px, 100%);
+  max-height: calc(100dvh - 40px);
   min-width: 0;
   min-height: 0;
   display: flex;
@@ -252,16 +253,40 @@
   margin-bottom: 4px;
 }
 .autonomy-status {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 16px;
-  margin-bottom: 16px;
-  padding: 12px 16px;
-  border: 1px solid var(--autonomy-line);
-  border-radius: 10px;
-  background: var(--autonomy-surface);
+  gap: 16px 12px;
+  margin-bottom: 24px;
+}
+.autonomy-path,
+.autonomy-history li {
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+.autonomy-mission {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+.autonomy-mission h3 {
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.65;
+}
+.autonomy-mission .autonomy-path {
+  margin-top: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--yorishiro-fg-dim, #a4a7ad);
+}
+.autonomy-saved-permission {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #e0bd83;
+  font-size: 12px;
 }
 .autonomy-status-copy {
   min-width: 0;
@@ -273,7 +298,9 @@
   display: flex;
   align-items: center;
   gap: 9px;
-  font-weight: 500;
+  font-weight: 400;
+  font-size: 12px;
+  color: var(--yorishiro-fg-dim, #a4a7ad);
 }
 .autonomy-actions {
   display: flex;
@@ -292,15 +319,10 @@
   margin-top: 16px;
 }
 .autonomy-workspace {
-  display: grid;
-  grid-template-columns: minmax(210px, 0.82fr) minmax(0, 1.5fr);
-  align-items: start;
-  gap: 28px;
+  min-width: 0;
 }
 .autonomy-consultation {
   min-width: 0;
-  position: sticky;
-  top: 0;
 }
 .autonomy-consultation h3 {
   margin-bottom: 10px;
@@ -312,8 +334,7 @@
   margin: 18px 0 12px;
 }
 .autonomy-consultation > .autonomy-conversation-actions {
-  flex-direction: column;
-  align-items: stretch;
+  flex-direction: row;
 }
 .autonomy-consultation > .autonomy-conversation-actions button {
   min-height: 38px;
@@ -341,8 +362,6 @@
 }
 .autonomy-scope {
   min-width: 0;
-  border-left: 1px solid var(--autonomy-line);
-  padding-left: 28px;
 }
 .autonomy-field {
   display: grid;
@@ -407,6 +426,7 @@
   gap: 8px;
   cursor: pointer;
   font-size: 12px;
+  line-height: 1.6;
 }
 .autonomy-check input {
   margin: 0;
@@ -433,6 +453,62 @@
   border: 1px solid var(--autonomy-line);
   margin: 6px 0;
   border-radius: 7px;
+}
+.autonomy-auto-permission .autonomy-check {
+  align-items: flex-start;
+  padding: 13px 14px;
+  border: 1px solid var(--autonomy-line);
+  border-radius: 8px;
+}
+.autonomy-auto-permission input {
+  margin-top: 3px;
+}
+.autonomy-permission-risk,
+.autonomy-action-network {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  margin-block: 10px 16px;
+  padding: 14px 16px;
+  border: 1px solid #c99f5a55;
+  border-left: 3px solid #c99f5a;
+  border-radius: 8px;
+  background: #c99f5a0d;
+}
+.autonomy-panel .autonomy-permission-risk > svg,
+.autonomy-action-network-icon {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: #e0bd83;
+}
+.autonomy-permission-risk strong,
+.autonomy-action-network-copy strong {
+  color: #e9cda2;
+  font-size: 13px;
+  font-weight: 600;
+}
+.autonomy-permission-risk p,
+.autonomy-action-network p {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.65;
+}
+.autonomy-advanced,
+.autonomy-draft-proposal {
+  margin-top: 20px;
+  padding-top: 12px;
+  border-top: 1px solid var(--autonomy-line);
+}
+.autonomy-draft-explanation {
+  white-space: pre-wrap;
+  border-left: 2px solid var(--yorishiro-accent, #93c9a5);
+  padding-left: 12px;
+}
+.autonomy-draft-proposal .autonomy-draft-explanation {
+  max-height: 280px;
+  overflow: auto;
+  margin-top: 12px;
+  font-size: 12px;
 }
 .autonomy-check:has(input:checked) {
   background: var(--autonomy-surface);
@@ -474,11 +550,7 @@
 .autonomy-save-row .autonomy-primary {
   min-height: 40px;
 }
-.autonomy-draft-explanation {
-  white-space: pre-wrap;
-  border-left: 2px solid var(--yorishiro-accent, #93c9a5);
-  padding-left: 12px;
-}
+
 .autonomy-history {
   border-top: 1px solid var(--autonomy-line);
   padding-top: 24px;
@@ -497,10 +569,9 @@
   background: var(--autonomy-surface);
 }
 .autonomy-history article {
-  margin-top: 16px;
-  padding: 16px 18px;
-  border: 1px solid var(--autonomy-line);
-  border-radius: 9px;
+  margin-top: 0;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--autonomy-line);
 }
 .autonomy-run-meta {
   display: flex;
@@ -527,11 +598,7 @@
 .autonomy-run-details {
   margin: 12px 0;
 }
-.autonomy-path,
-.autonomy-history li {
-  overflow-wrap: anywhere;
-  font-size: 12px;
-}
+
 .autonomy-panel ul {
   padding-left: 18px;
 }
@@ -615,6 +682,33 @@
   opacity: 0.5;
   cursor: default;
 }
+.autonomy-action-header {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 9px;
+}
+.autonomy-action-header .autonomy-action-title {
+  flex-basis: 100%;
+  margin-top: 3px;
+  font-size: 15px;
+}
+.autonomy-action-overview {
+  margin-block: 14px;
+}
+.autonomy-action-reason {
+  font-size: 12px;
+}
+.autonomy-action-reason > span {
+  color: var(--yorishiro-fg-dim, #a4a7ad);
+}
+.autonomy-action-footer {
+  margin-top: 18px;
+}
+.autonomy-action-content,
+.autonomy-action-evidence {
+  margin-block: 14px;
+}
 .autonomy-settings-configure {
   border: 0;
   padding: 0;
@@ -644,10 +738,7 @@
     flex-direction: row;
   }
   .autonomy-scope {
-    border-left: 0;
-    padding-left: 0;
-    padding-top: 24px;
-    border-top: 1px solid var(--autonomy-line);
+    padding: 0;
   }
 }
 @media (max-width: 480px) {
@@ -656,6 +747,7 @@
   }
   .autonomy-panel {
     border-radius: 12px;
+    max-height: calc(100dvh - 16px);
   }
   .autonomy-header {
     padding: 18px;
@@ -673,18 +765,27 @@
     gap: 10px;
   }
   .autonomy-status {
-    padding: 14px;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .autonomy-status .autonomy-actions {
+    justify-content: space-between;
+  }
+  .autonomy-action-fields > div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
   }
 }
 
 .autonomy-settings,
-.autonomy-decisions {
+.autonomy-decisions,
+.autonomy-consultation-disclosure {
   margin-top: 20px;
   border-top: 1px solid var(--autonomy-line);
   padding-top: 16px;
 }
 .autonomy-settings > summary,
-.autonomy-decisions > summary {
+.autonomy-decisions > summary,
+.autonomy-consultation-disclosure > summary {
   font-size: 14px;
   font-weight: 600;
   padding-block: 4px;

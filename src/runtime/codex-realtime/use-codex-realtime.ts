@@ -26,7 +26,7 @@ export interface CodexRealtimeClientLike extends LipSyncSource {
   setMicrophoneMuted(muted: boolean): void;
   notifyScreenContext?(capturedAt: string, availability?: ScreenPointerAvailability): Promise<void>;
   notifyScreenPointersEnabled?(enabled: boolean): Promise<void>;
-  requestAutonomySetup?(): Promise<void>;
+  requestAutonomySetup?(language?: "ja" | "en"): Promise<void>;
   notifyAutonomyWorkReview?(review: AutonomyWorkReviewNotice): Promise<void>;
 }
 
@@ -127,7 +127,7 @@ interface UseCodexRealtimeResult {
   readonly state: CodexRealtimeState;
   readonly stop: () => void;
   readonly toggle: () => Promise<void>;
-  readonly requestAutonomySetup: () => Promise<void>;
+  readonly requestAutonomySetup: (language?: "ja" | "en") => Promise<void>;
   readonly notifyAutonomyWorkReview: (
     review: AutonomyWorkReviewNotice | null,
     channel?: "daily" | "confirmation",
@@ -604,31 +604,51 @@ export function useCodexRealtime({
     await start();
   }, [start, stop]);
 
-  const requestAutonomySetup = useCallback(async () => {
-    if (!available) {
-      throw new Error(
-        "音声での相談にはCodexの音声会話が必要です。Codexへ切り替えるか、文字で相談してください。",
-      );
-    }
-    // Never toggle an existing session: that would stop an ongoing conversation.
-    if (!clientRef.current) await start();
-    if (sessionIdRef.current !== sessionId) {
-      throw new Error("相談の準備中に会話が切り替わりました。もう一度お試しください。");
-    }
-    const client = clientRef.current;
-    if (!client || client.getStatus() !== "active") {
-      throw new Error(
-        "音声会話の接続が完了していません。音声接続とマイクの許可を確認して、もう一度お試しください。",
-      );
-    }
-    if (!client.requestAutonomySetup) {
-      throw new Error("この音声接続は設定の相談に対応していません。文字で相談してください。");
-    }
-    await client.requestAutonomySetup();
-    if (clientRef.current !== client || client.getStatus() !== "active") {
-      throw new Error("相談中に音声会話が切り替わりました。もう一度お試しください。");
-    }
-  }, [available, sessionId, start]);
+  const requestAutonomySetup = useCallback(
+    async (language: "ja" | "en" = "ja") => {
+      const english = language === "en";
+      if (!available) {
+        throw new Error(
+          english
+            ? "Voice setup requires Codex voice. Switch to Codex or use text setup."
+            : "音声での相談にはCodexの音声会話が必要です。Codexへ切り替えるか、文字で相談してください。",
+        );
+      }
+      // Never toggle an existing session: that would stop an ongoing conversation.
+      if (!clientRef.current) await start();
+      if (sessionIdRef.current !== sessionId) {
+        throw new Error(
+          english
+            ? "The conversation changed while preparing setup. Please try again."
+            : "相談の準備中に会話が切り替わりました。もう一度お試しください。",
+        );
+      }
+      const client = clientRef.current;
+      if (!client || client.getStatus() !== "active") {
+        throw new Error(
+          english
+            ? "Voice is not connected yet. Check the connection and microphone permission, then try again."
+            : "音声会話の接続が完了していません。音声接続とマイクの許可を確認して、もう一度お試しください。",
+        );
+      }
+      if (!client.requestAutonomySetup) {
+        throw new Error(
+          english
+            ? "This voice connection does not support setup. Use text setup instead."
+            : "この音声接続は設定の相談に対応していません。文字で相談してください。",
+        );
+      }
+      await client.requestAutonomySetup(language);
+      if (clientRef.current !== client || client.getStatus() !== "active") {
+        throw new Error(
+          english
+            ? "The voice conversation changed during setup. Please try again."
+            : "相談中に音声会話が切り替わりました。もう一度お試しください。",
+        );
+      }
+    },
+    [available, sessionId, start],
+  );
 
   const setMicrophoneMuted = useCallback((muted: boolean) => {
     clientRef.current?.setMicrophoneMuted(muted);

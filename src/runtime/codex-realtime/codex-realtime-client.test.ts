@@ -432,6 +432,8 @@ describe("CodexRealtimeClient", () => {
     });
     const text = String(bridge.sent[0].params?.text);
     expect(text).toContain("not a speech transcript");
+    expect(text).toContain("configuration conversation for future delegated work");
+    expect(text).toContain("they do not start that work during setup");
     expect(text).toContain("autonomy_propose");
     expect(text).toContain("Do not call save/enable/run");
     expect(text).toContain("never invent a folder");
@@ -469,6 +471,62 @@ describe("CodexRealtimeClient", () => {
     expect(bridge.sent.some((message) => message.method === "response.create")).toBe(false);
     // No transcript/audio event has arrived. Sending the greeting must not
     // manufacture a spoken transcript or change the connection status.
+    expect(client.getStatus()).toBe("active");
+    client.stop();
+  });
+
+  it("uses English setup guidance, opening speech and connection fallback without changing authority", async () => {
+    const client = new CodexRealtimeClient("main-session");
+    await expect(client.requestAutonomySetup("en")).rejects.toThrow("Voice is not connected yet");
+    await client.start();
+    bridge.sent = [];
+    await client.requestAutonomySetup("en");
+    const text = String(bridge.sent[0].params?.text);
+    expect(text).toContain("Continue the consultation in English");
+    expect(text).not.toContain("Continue the consultation in Japanese");
+    expect(text).toContain("Do not call save/enable/run");
+    expect(bridge.sent[1].params?.text).toBe(
+      "What kind of work would you like me to take care of regularly?",
+    );
+    bridge.requestErrors["thread/realtime/appendSpeech"] = "Method not found";
+    await expect(client.requestAutonomySetup("en")).rejects.toThrow("Voice is still connected");
+    expect(client.getStatus()).toBe("active");
+    client.stop();
+  });
+
+  it("localizes daily and result review speech while retaining exact proposal data", async () => {
+    const client = new CodexRealtimeClient("main-session");
+    await client.start();
+    for (const kind of [undefined, "confirmation" as const]) {
+      const review = {
+        ...(kind ? { kind } : {}),
+        language: "en" as const,
+        id: "review-en",
+        goal: "Original task",
+        reason: "Original reason",
+        summary: "Original evidence",
+      };
+      bridge.sent = [];
+      await client.notifyAutonomyWorkReview(review);
+      const text = String(bridge.sent[0].params?.text);
+      expect(text).toContain("in English");
+      expect(text).not.toContain("in Japanese");
+      expect(text).toContain(JSON.stringify(review));
+      expect(text).toContain(kind ? "A spoken response is not authorization" : "not user approval");
+      expect(String(bridge.sent[1].params?.text)).toContain(
+        kind ? "Open the approval card" : "approve the work card",
+      );
+    }
+    bridge.requestErrors["thread/realtime/appendSpeech"] = "Method not found";
+    await expect(
+      client.notifyAutonomyWorkReview({
+        language: "en",
+        id: "failed-en",
+        goal: "Original task",
+        reason: "",
+        summary: "",
+      }),
+    ).rejects.toThrow("Review the work card in the app");
     expect(client.getStatus()).toBe("active");
     client.stop();
   });

@@ -579,6 +579,15 @@ describe("live shared setup draft", () => {
     view.unmount();
   });
 
+  it("passes the selected consultation language without rewriting the user's message", async () => {
+    const client = await import("./client");
+    const history = [{ role: "user" as const, content: "Keep my Japanese project name: ヨリシロ" }];
+    invoke.mockResolvedValue({ reply: "Understood", suggestedGoal: "", suggestedOperations: [] });
+    await client.consultAutonomy(history, "en");
+    expect(invoke).toHaveBeenCalledWith("autonomy_consult", { history, language: "en" });
+    expect(invoke.mock.calls.some(([name]) => name === "autonomy_save")).toBe(false);
+  });
+
   it("dismisses only the reviewed ID even when a newer voice draft arrives during save", async () => {
     const client = await import("./client");
     const view = renderHook(client.useAutonomyDraftSnapshot);

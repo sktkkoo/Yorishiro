@@ -101,11 +101,17 @@ function status(overrides: Partial<AutonomyStatus> = {}): AutonomyStatus {
   return { contract: null, phase: "idle", nextRunAt: null, runs: [], error: null, ...overrides };
 }
 
+function openDisclosure(label: string) {
+  const summary = screen.getByText(label, { selector: "summary" });
+  if (!summary.closest("details")?.open) fireEvent.click(summary);
+}
+
 function openPanel() {
   render(<AutonomyPanel />);
   fireEvent.click(screen.getByRole("button", { name: "おまかせ作業" }));
-  const settings = screen.getByText("設定", { selector: "summary" });
-  if (!settings.closest("details")?.open) fireEvent.click(settings);
+  openDisclosure("設定");
+  openDisclosure("詳細設定");
+  openDisclosure("AIに相談");
 }
 
 beforeEach(() => {
@@ -145,6 +151,134 @@ afterEach(() => {
 });
 
 describe("AutonomyPanel", () => {
+  it("keeps the goal first while advanced settings, AI conversation and long proposals stay collapsed", () => {
+    const longExplanation = "会話からの詳しい提案。".repeat(80);
+    setDraft({
+      revision: 1,
+      draft: { ...draftDefaults, ...contract, id: "proposal", explanation: longExplanation },
+    });
+    render(<AutonomyPanel />);
+    fireEvent.click(screen.getByRole("button", { name: "おまかせ作業" }));
+    expect(screen.getByLabelText("任せる目的").closest("details")?.open).toBe(true);
+    for (const label of ["詳細設定", "AIに相談", "AIからの提案を見る"]) {
+      expect(screen.getByText(label, { selector: "summary" }).closest("details")?.open).toBe(false);
+    }
+    expect(screen.getByText(longExplanation).closest("details")?.open).toBe(false);
+    expect(screen.getByRole("button", { name: "音声で相談する" }).closest("details")?.open).toBe(
+      false,
+    );
+    expect(screen.getByLabelText("作成・編集").closest("details")?.open).toBe(false);
+    openDisclosure("詳細設定");
+    expect(screen.getByLabelText("24時間の実行上限（回）").closest("details")?.open).toBe(true);
+    expect(saveAutonomyContract).not.toHaveBeenCalled();
+    expect(editAutonomyDraft).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    "ja",
+    "en",
+  ] as const)("explains automatic permission consequences beside the control and removes the notice when off (%s)", (language) => {
+    vi.mocked(useAutonomyStatus).mockReturnValue(status({ contract }));
+    render(<AutonomyPanel language={language} />);
+    fireEvent.click(
+      screen.getByRole("button", { name: language === "en" ? "Autonomous work" : "おまかせ作業" }),
+    );
+    openDisclosure(language === "en" ? "Task settings" : "設定");
+    const checkbox = screen.getByRole("checkbox", {
+      name:
+        language === "en"
+          ? "Automatically allow operations needed for this goal"
+          : "目的達成に必要な操作を自動で許可する",
+    }) as HTMLInputElement;
+    expect(checkbox.checked).toBe(false);
+    expect(screen.queryByRole("note")).toBeNull();
+    fireEvent.click(checkbox);
+    const notice = screen.getByRole("note");
+    expect(checkbox.getAttribute("aria-describedby")).toBe(notice.id);
+    expect(notice.textContent).toContain(
+      language === "en" ? "without confirmation for each operation" : "操作ごとの確認なし",
+    );
+    expect(notice.textContent).toContain(
+      language === "en" ? "Saved service logins" : "保存済みログイン",
+    );
+    expect(notice.textContent).toContain(language === "en" ? "cannot be undone" : "取り消せない");
+    expect(notice.textContent).toContain(language === "en" ? "Turn this off" : "オフにすると");
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    fireEvent.click(checkbox);
+    expect(screen.queryByRole("note")).toBeNull();
+    expect(checkbox.checked).toBe(false);
+    expect(saveAutonomyContract).not.toHaveBeenCalled();
+    expect(runAutonomyNow).not.toHaveBeenCalled();
+  });
+
+  it("keeps the saved goal visible in English while settings are collapsed and localizes history", () => {
+    const runs: AutonomyStatus["runs"] = Array.from({ length: 4 }, (_, index) => ({
+      id: `run-${index}`,
+      startedAt: (index + 1) * 1000,
+      finishedAt: (index + 1) * 1000 + 1,
+      status: "completed",
+      summary: `Result ${index}`,
+      reason: "",
+      changedPaths: [],
+      canUndo: false,
+    }));
+    vi.mocked(useAutonomyStatus).mockReturnValue(
+      status({
+        contract: { ...contract, goal: "Improve onboarding", root: "/project" },
+        runs,
+      }),
+    );
+    render(<AutonomyPanel language="en" />);
+    fireEvent.click(screen.getByRole("button", { name: "Autonomous work" }));
+    expect(screen.getByRole("heading", { name: "Improve onboarding" })).toBeTruthy();
+    expect(screen.getByText("/project").getAttribute("title")).toBe("/project");
+    expect(
+      screen.getByText("Task settings", { selector: "summary" }).closest("details")?.open,
+    ).toBe(false);
+    expect(screen.getByRole("switch", { name: "Automatic work" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Run now" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Task history" })).toBeTruthy();
+    expect(screen.getAllByText("Completed")).toHaveLength(3);
+    expect(screen.getByText(new Date(4000).toLocaleString("en-US"))).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Show all (4)" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "この範囲で任せる" })).toBeNull();
+  });
+
+  it("localizes folder selection and the optional English conversation without saving settings", async () => {
+    vi.mocked(consultAutonomy).mockResolvedValue({
+      reply: "What would you like to work on?",
+      suggestedGoal: "",
+      suggestedOperations: [],
+    });
+    render(<AutonomyPanel language="en" />);
+    fireEvent.click(screen.getByRole("button", { name: "Autonomous work" }));
+    fireEvent.click(screen.getByRole("button", { name: "Choose folder" }));
+    await waitFor(() =>
+      expect(choosePath).toHaveBeenCalledExactlyOnceWith({
+        directory: true,
+        multiple: false,
+        title: "Choose a folder for autonomous work",
+      }),
+    );
+    openDisclosure("Discuss with AI");
+    fireEvent.click(screen.getByRole("button", { name: "Write a message" }));
+    fireEvent.click(screen.getByRole("button", { name: "Send to AI" }));
+    await waitFor(() =>
+      expect(consultAutonomy).toHaveBeenCalledExactlyOnceWith(
+        [
+          {
+            role: "user",
+            content:
+              "I'd like to discuss the goal and scope of autonomous work. Start with a question.",
+          },
+        ],
+        "en",
+      ),
+    );
+    expect(await screen.findByText("What would you like to work on?")).toBeTruthy();
+    expect(saveAutonomyContract).not.toHaveBeenCalled();
+  });
+
   it.each([
     { enabled: false, phase: "paused" as const, state: "off", description: "自動作業 Off" },
     { enabled: true, phase: "idle" as const, state: "on", description: "自動作業 On" },
@@ -663,9 +797,10 @@ describe("AutonomyPanel", () => {
         contract.goal,
       ),
     );
-    expect(consultAutonomy).toHaveBeenCalledExactlyOnceWith([
-      { role: "user", content: "メモを整理してほしい" },
-    ]);
+    expect(consultAutonomy).toHaveBeenCalledExactlyOnceWith(
+      [{ role: "user", content: "メモを整理してほしい" }],
+      "ja",
+    );
     expect(saveAutonomyContract).not.toHaveBeenCalled();
     expect(runAutonomyNow).not.toHaveBeenCalled();
 
@@ -710,12 +845,15 @@ describe("AutonomyPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "文字で相談する" }));
     fireEvent.click(screen.getByRole("button", { name: "AIと相談する" }));
     await waitFor(() =>
-      expect(consultAutonomy).toHaveBeenCalledExactlyOnceWith([
-        {
-          role: "user",
-          content: "おまかせ作業の目的と範囲を相談したいです。質問から始めてください。",
-        },
-      ]),
+      expect(consultAutonomy).toHaveBeenCalledExactlyOnceWith(
+        [
+          {
+            role: "user",
+            content: "おまかせ作業の目的と範囲を相談したいです。質問から始めてください。",
+          },
+        ],
+        "ja",
+      ),
     );
     expect(saveAutonomyContract).not.toHaveBeenCalled();
     expect(choosePath).not.toHaveBeenCalled();
@@ -972,7 +1110,7 @@ describe("AutonomyPanel", () => {
 
   it("keeps shared fields visible and gives the icon-only close button an accessible name", async () => {
     openPanel();
-    expect(screen.getByRole("heading", { name: "AIに相談" })).toBeTruthy();
+    expect(screen.getByText("AIに相談", { selector: "summary" })).toBeTruthy();
     expect(screen.getByText("作業の目的・範囲・実行状況を管理")).toBeTruthy();
     const close = screen.getByRole("button", { name: "おまかせ作業を閉じる" });
     expect(close.textContent).toBe("");
@@ -1063,7 +1201,7 @@ describe("AutonomyPanel", () => {
     );
     render(<AutonomyPanel />);
     fireEvent.click(screen.getByRole("button", { name: "おまかせ作業" }));
-    const outer = screen.getByText(withDecision ? "承認履歴" : "設定", { selector: "summary" });
+    const outer = screen.getByText(withDecision ? "承認履歴" : "AIに相談", { selector: "summary" });
     expect(outer.closest("details")?.open).toBe(false);
     const close = screen.getByRole("button", { name: "おまかせ作業を閉じる" });
     close.focus();

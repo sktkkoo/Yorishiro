@@ -122,7 +122,7 @@ pub(super) async fn assess(
         具体的な次の操作が必要なら outcome=action とし、request にoperation・target・impact・details・reason・networkAccessを必ず返してください。操作が目的に必要な理由、正確な対象、実行する内容、確認できる完了条件を具体化してください。権限の判断はホストが保存済み設定から行います。承認を求める文章だけを返してrequestをnullにしないでください。\n\
         Git・PR・メール・元フォルダへの適用など特定の手段を既定にせず、実際の目的に必要な操作だけを提案してください。目的がPR作成ならローカル保存だけで達成扱いにせず、保存されたorigin・baseBranch・branchと検証済み成果物から必要な操作を具体化してください。originは対象を特定するための情報であり、それだけで公開する理由にはなりません。送信先・受信者・宛先を捏造しないでください。既知の変更内容からタイトル・本文など実行に使う案を作成することはできます。GitHub Issueのタイトルと本文は英語で作成してください。\n\
         外部への通信を必要とする操作はnetworkAccess=trueとし、明示的な通信先と送信する内容をdetailsに記載してください。ローカル操作はfalseです。目的と関係のない設定変更、権限拡大、マージ、デプロイ、ソフトウェアのインストールを追加しないでください。\n\
-        次の操作に必要な対象・情報が不明なら outcome=question、request=null とし、不足している情報を確認する具体的な質問をquestionに入れてください。actionとquestionを同時に返してはいけません。explanationと質問・操作の説明は簡潔な日本語にしてください。\n\
+        次の操作に必要な対象・情報が不明なら outcome=question、request=null とし、不足している情報を確認する具体的な質問をquestionに入れてください。actionとquestionを同時に返してはいけません。explanationと質問・操作の説明は、ユーザーがdelegatedGoalに使っている言語で簡潔に書いてください。\n\
         以下が委任内容と参考データです:\n{context}"
     );
     let response = super::worker::run(prompt, schema(), cancel.clone()).await?;

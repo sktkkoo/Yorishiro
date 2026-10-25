@@ -4317,16 +4317,22 @@ function App() {
 
   useEffect(
     () =>
-      installAutonomyVoiceSetupBridge(async () => {
+      installAutonomyVoiceSetupBridge(async (language) => {
         if (isConversationTransitionActive(mainConversationTransitionGateRef.current)) {
-          throw new Error("会話を切り替えています。切り替え後にもう一度お試しください。");
+          throw new Error(
+            appLanguageRef.current.resolved === "en"
+              ? "The conversation is switching. Try again once it is ready."
+              : "会話を切り替えています。切り替え後にもう一度お試しください。",
+          );
         }
         if (!codexVoiceAvailable) {
           throw new Error(
-            "音声での相談にはCodexの音声会話が必要です。Codexへ切り替えるか、この画面で文字で相談してください。",
+            appLanguageRef.current.resolved === "en"
+              ? "Voice setup requires a Codex voice conversation. Switch to Codex or use text setup here."
+              : "音声での相談にはCodexの音声会話が必要です。Codexへ切り替えるか、この画面で文字で相談してください。",
           );
         }
-        await requestAutonomyVoiceSetup();
+        await requestAutonomyVoiceSetup(language ?? appLanguageRef.current.resolved);
       }),
     [codexVoiceAvailable, requestAutonomyVoiceSetup],
   );
@@ -4337,7 +4343,7 @@ function App() {
         void notifyAutonomyWorkReview(null);
         return;
       }
-      const review = readAutonomyWorkReviewNotice(event);
+      const review = readAutonomyWorkReviewNotice(event, appLanguageRef.current.resolved);
       if (!review) return;
       // The voice hook queues the latest pending card while disconnected and
       // deduplicates only accepted native submissions, never mere host events.
@@ -4347,7 +4353,7 @@ function App() {
     };
     const onConfirmation = (event: Event) => {
       const detail = (event as CustomEvent<unknown>).detail;
-      const notice = readAutonomyConfirmationNotice(event);
+      const notice = readAutonomyConfirmationNotice(event, appLanguageRef.current.resolved);
       if (detail !== null && !notice) return;
       void notifyAutonomyWorkReview(notice, "confirmation").catch((error: unknown) => {
         console.warn("[autonomy] confirmation voice notice unavailable", error);
@@ -6108,7 +6114,7 @@ function App() {
             />
           ) : null
         }
-        autonomyControl={<AutonomyPanel />}
+        autonomyControl={<AutonomyPanel language={appLanguage.resolved} />}
         tabs={
           <TabIndicator
             state={tabState}

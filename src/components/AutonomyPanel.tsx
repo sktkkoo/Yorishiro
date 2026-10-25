@@ -1,7 +1,12 @@
 import { open as choosePath } from "@tauri-apps/plugin-dialog";
-import { FolderOpen, Mic, X } from "lucide-react";
+import { AlertTriangle, FolderOpen, Mic, X } from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import {
+  type AutonomyPanelLanguage,
+  autonomyPanelLocale,
+  autonomyPanelText,
+} from "../i18n/autonomy-panel";
 import {
   approvePendingWork,
   consultAutonomy,
@@ -82,7 +87,13 @@ interface ConversationMessage extends SetupMessage {
 }
 
 /** Host-owned scope agreement and recovery UI. AI suggestions never grant permission. */
-export function AutonomyPanel() {
+export function AutonomyPanel({
+  language = "ja",
+}: {
+  readonly language?: AutonomyPanelLanguage;
+} = {}) {
+  const t = autonomyPanelText(language);
+  const locale = autonomyPanelLocale(language);
   const status = useAutonomyStatus();
   const proposedDraft = useAutonomyDraftSnapshot();
   const { editor, state: draftState } = useAutonomyDraftEditor(proposedDraft, status?.contract);
@@ -110,6 +121,7 @@ export function AutonomyPanel() {
   const [visible, setVisible] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState<boolean | null>(null);
   const [showAllRuns, setShowAllRuns] = useState(false);
+  const [consultationOpen, setConsultationOpen] = useState(false);
   const [textOpen, setTextOpen] = useState(false);
   const [voiceStatus, setVoiceStatus] = useState<AutonomyVoiceSetupStatus | null>(null);
   const voiceRequestId = useRef<string | null>(null);
@@ -123,6 +135,7 @@ export function AutonomyPanel() {
   const openerRef = useRef<HTMLButtonElement>(null);
   const titleId = useId();
   const saveHintId = useId();
+  const automaticRiskId = useId();
   const working =
     status?.phase === "thinking" ||
     status?.phase === "applying" ||
@@ -138,18 +151,18 @@ export function AutonomyPanel() {
   const launcherState = working || stopping ? "working" : status?.contract?.enabled ? "on" : "off";
   const launcherDescription = [
     stopping
-      ? "停止処理中"
+      ? t("停止処理中")
       : working
-        ? "実行中"
-        : `自動作業 ${status?.contract?.enabled ? "On" : "Off"}`,
+        ? t("実行中")
+        : t("自動作業 {state}", { state: status?.contract?.enabled ? "On" : "Off" }),
     confirmationCount > 0
-      ? `承認待ち ${confirmationCount}件`
+      ? t("承認待ち {count}件", { count: confirmationCount })
       : status?.pendingWork
-        ? "今日の仕事を相談"
+        ? t("今日の仕事を相談")
         : null,
   ]
     .filter(Boolean)
-    .join("・");
+    .join(t("・"));
   const awaitingAction = reviewActions.some((action) =>
     ["pending", "approved", "executing"].includes(action.status),
   );
@@ -204,10 +217,10 @@ export function AutonomyPanel() {
       await editor.flush();
       const requestId = crypto.randomUUID();
       voiceRequestId.current = requestId;
-      setVoiceStatus({ requestId, phase: "starting", message: "音声での相談を開始しています…" });
+      setVoiceStatus({ requestId, phase: "starting", message: t("音声での相談を開始しています…") });
       setError(null);
       window.dispatchEvent(
-        new CustomEvent(AUTONOMY_VOICE_SETUP_REQUEST, { detail: { requestId } }),
+        new CustomEvent(AUTONOMY_VOICE_SETUP_REQUEST, { detail: { requestId, language } }),
       );
     });
   }
@@ -227,7 +240,7 @@ export function AutonomyPanel() {
   }
 
   async function consult(context?: string) {
-    const text = context || message.trim() || START_CONVERSATION;
+    const text = context || message.trim() || t(START_CONVERSATION);
     if (busy) return;
     const history: ConversationMessage[] = [
       ...messages,
@@ -237,14 +250,19 @@ export function AutonomyPanel() {
     setMessage("");
     await act("consult", async () => {
       await editor.flush();
-      const answer = await consultAutonomy(history.map(({ role, content }) => ({ role, content })));
+      const answer = await consultAutonomy(
+        history.map(({ role, content }) => ({ role, content })),
+        language,
+      );
       setMessages([
         ...history,
         { id: nextMessageId.current++, role: "assistant", content: answer.reply },
       ]);
       if (answer.draftConflict)
         setNotice(
-          "相談中に設定案が更新されました。今の入力を残しています。変更したい内容をもう一度相談できます。",
+          t(
+            "相談中に設定案が更新されました。今の入力を残しています。変更したい内容をもう一度相談できます。",
+          ),
         );
       // The consultation publishes into the same shared draft. Native draft
       // events reconcile fields without overwriting pending human edits.
@@ -256,7 +274,7 @@ export function AutonomyPanel() {
       const selected = await choosePath({
         directory: true,
         multiple: false,
-        title: "任せるフォルダ",
+        title: t("任せるフォルダ"),
       });
       if (typeof selected === "string") setRoot(selected);
     });
@@ -268,26 +286,28 @@ export function AutonomyPanel() {
     const remoteText =
       field === "allowedOperations"
         ? OPERATIONS.filter(({ id }) => Array.isArray(value) && value.includes(id))
-            .map(({ label }) => label)
-            .join("、")
+            .map(({ label }) => t(label))
+            .join(t("、"))
         : field === "reviewMode"
           ? value === "daily"
-            ? "その日の仕事を先に相談"
-            : "範囲内で自動的に進める"
+            ? t("その日の仕事を先に相談")
+            : t("範囲内で自動的に進める")
           : String(value);
     return (
       <fieldset
         className="autonomy-field-conflict"
-        aria-label={`${DRAFT_LABELS[field]}の更新を確認`}
+        aria-label={t("{field}の更新を確認", { field: t(DRAFT_LABELS[field]) })}
       >
-        <p>AIもこの項目を更新しました。入力した内容は保持しています。</p>
-        <p className="autonomy-muted">AIの案: {remoteText || "未設定"}</p>
+        <p>{t("AIもこの項目を更新しました。入力した内容は保持しています。")}</p>
+        <p className="autonomy-muted">
+          {t("AIの案:")} {remoteText || t("未設定")}
+        </p>
         <div className="autonomy-conversation-actions">
           <button type="button" onClick={() => editor.resolve(field, "remote")}>
-            AIの案を使う
+            {t("AIの案を使う")}
           </button>
           <button type="button" onClick={() => editor.resolve(field, "local")}>
-            自分の入力を残す
+            {t("自分の入力を残す")}
           </button>
         </div>
       </fieldset>
@@ -301,11 +321,13 @@ export function AutonomyPanel() {
         ref={openerRef}
         className="title-bar-button autonomy-launcher"
         data-autonomy-state={launcherState}
-        title={`おまかせ作業・${launcherDescription}`}
+        title={`${t("おまかせ作業")}${t("・")}${launcherDescription}`}
         aria-description={launcherDescription}
         aria-haspopup="dialog"
         aria-label={
-          confirmationCount > 0 ? `おまかせ作業 確認待ち ${confirmationCount}件` : "おまかせ作業"
+          confirmationCount > 0
+            ? t("おまかせ作業 確認待ち {count}件", { count: confirmationCount })
+            : t("おまかせ作業")
         }
         aria-expanded={visible}
         onClick={openPanel}
@@ -365,15 +387,15 @@ export function AutonomyPanel() {
             >
               <header className="autonomy-header">
                 <div>
-                  <h2 id={titleId}>おまかせ作業</h2>
-                  <p className="autonomy-muted">作業の目的・範囲・実行状況を管理</p>
+                  <h2 id={titleId}>{t("おまかせ作業")}</h2>
+                  <p className="autonomy-muted">{t("作業の目的・範囲・実行状況を管理")}</p>
                 </div>
                 <button
                   className="autonomy-close"
                   type="button"
                   onClick={() => setVisible(false)}
-                  aria-label="おまかせ作業を閉じる"
-                  title="閉じる（Esc）"
+                  aria-label={t("おまかせ作業を閉じる")}
+                  title={t("閉じる（Esc）")}
                 >
                   <X size={18} aria-hidden="true" />
                 </button>
@@ -385,11 +407,26 @@ export function AutonomyPanel() {
                   </p>
                 )}
                 {status === null ? (
-                  <p role="status">設定を読み込んでいます…</p>
+                  <p role="status">{t("設定を読み込んでいます…")}</p>
                 ) : (
                   <>
                     {status.contract && (
-                      <section className="autonomy-status" aria-label="作業状況">
+                      <section className="autonomy-status" aria-label={t("作業状況")}>
+                        <div className="autonomy-mission">
+                          <span className="autonomy-section-caption">
+                            {t("今、任せていること")}
+                          </span>
+                          <h3>{status.contract.goal}</h3>
+                          <p className="autonomy-path" title={status.contract.root}>
+                            {status.contract.root}
+                          </p>
+                          {status.contract.automaticActionApproval && (
+                            <p className="autonomy-saved-permission">
+                              <AlertTriangle size={14} aria-hidden="true" />
+                              {t("必要な操作は個別確認なしで実行")}
+                            </p>
+                          )}
+                        </div>
                         <div className="autonomy-status-copy">
                           <p role="status">
                             <span
@@ -401,37 +438,37 @@ export function AutonomyPanel() {
                               }
                             />
                             {status.phase === "executingAction"
-                              ? PHASE_LABELS.executingAction
+                              ? t(PHASE_LABELS.executingAction)
                               : status.phase === "publishing"
-                                ? PHASE_LABELS.publishing
+                                ? t(PHASE_LABELS.publishing)
                                 : working
                                   ? status.phase === "applying"
-                                    ? "作業の成果を保存しています"
-                                    : "目的に沿った作業と検証を進めています"
+                                    ? t("作業の成果を保存しています")
+                                    : t("目的に沿った作業と検証を進めています")
                                   : status.phase === "awaitingAction" &&
                                       confirmationCount === 0 &&
                                       awaitingAction
-                                    ? "承認した操作の実行を準備しています"
-                                    : PHASE_LABELS[status.phase]}
+                                    ? t("承認した操作の実行を準備しています")
+                                    : t(PHASE_LABELS[status.phase])}
                           </p>
                           {status.nextRunAt !== null &&
                             status.contract.enabled &&
                             !status.pendingWork &&
                             !awaitingAction && (
                               <p className="autonomy-muted">
-                                次回: {new Date(status.nextRunAt).toLocaleString("ja-JP")}
+                                {t("次回:")} {new Date(status.nextRunAt).toLocaleString(locale)}
                               </p>
                             )}
                         </div>
                         <div className="autonomy-actions">
                           <div className="autonomy-toggle">
-                            <span>自動作業</span>
+                            <span>{t("自動作業")}</span>
                             <button
                               type="button"
                               role="switch"
                               className="autonomy-settings-toggle"
                               aria-checked={status.contract.enabled}
-                              aria-label="自動作業"
+                              aria-label={t("自動作業")}
                               disabled={stopping || busy !== null}
                               onClick={() => {
                                 if (!status.contract) return;
@@ -449,7 +486,7 @@ export function AutonomyPanel() {
                               disabled={stopping || busy === "pause"}
                               onClick={() => void act("pause", pauseAutonomy)}
                             >
-                              一時停止
+                              {t("一時停止")}
                             </button>
                           )}
                           <button
@@ -463,7 +500,7 @@ export function AutonomyPanel() {
                             }
                             onClick={() => void act("run", runAutonomyNow)}
                           >
-                            今すぐ進める
+                            {t("今すぐ進める")}
                           </button>
                         </div>
                       </section>
@@ -471,26 +508,29 @@ export function AutonomyPanel() {
                     {pendingActions.length > 0 && (
                       <section
                         className="autonomy-confirmations"
-                        aria-label="承認待ち"
+                        aria-label={t("承認待ち")}
                         ref={reviewRef}
                         tabIndex={-1}
                       >
                         <div className="autonomy-history-heading">
-                          <h3>承認待ち</h3>
-                          <span className="autonomy-count">{pendingActions.length}件</span>
+                          <h3>{t("承認待ち")}</h3>
+                          <span className="autonomy-count">
+                            {t("{count}件", { count: pendingActions.length })}
+                          </span>
                         </div>
                         {pendingActions.map((action) => (
                           <AutonomyActionReview
                             key={`${action.id}:${action.payloadDigest}`}
                             action={action}
+                            language={language}
                             disabled={busy !== null || working || stopping}
                           />
                         ))}
                       </section>
                     )}
                     {status.pendingWork && (
-                      <section className="autonomy-today" aria-label="今日の仕事の相談">
-                        <h3>今日、進めたい仕事</h3>
+                      <section className="autonomy-today" aria-label={t("今日の仕事の相談")}>
+                        <h3>{t("今日、進めたい仕事")}</h3>
                         <p>{status.pendingWork.goal}</p>
                         <p>{status.pendingWork.summary}</p>
                         <p className="autonomy-muted">{status.pendingWork.reason}</p>
@@ -504,7 +544,7 @@ export function AutonomyPanel() {
                           </ul>
                         )}
                         <p className="autonomy-muted">
-                          この仕事を任せると、継続して許可した範囲内で進めます。
+                          {t("この仕事を任せると、継続して許可した範囲内で進めます。")}
                         </p>
                         <div className="autonomy-actions">
                           <button
@@ -517,11 +557,11 @@ export function AutonomyPanel() {
                                 void act(
                                   "approve",
                                   () => approvePendingWork(id),
-                                  "今日の仕事を任せました。",
+                                  t("今日の仕事を任せました。"),
                                 );
                             }}
                           >
-                            この仕事を任せる
+                            {t("この仕事を任せる")}
                           </button>
                           <button
                             type="button"
@@ -532,11 +572,11 @@ export function AutonomyPanel() {
                                 void act(
                                   "decline",
                                   () => declinePendingWork(id),
-                                  "今回は見送りました。",
+                                  t("今回は見送りました。"),
                                 );
                             }}
                           >
-                            今回は見送る
+                            {t("今回は見送る")}
                           </button>
                         </div>
                       </section>
@@ -546,82 +586,8 @@ export function AutonomyPanel() {
                       open={settingsVisible}
                       onToggle={(event) => setSettingsOpen(event.currentTarget.open)}
                     >
-                      <summary>設定</summary>
+                      <summary>{t("設定")}</summary>
                       <div className="autonomy-workspace">
-                        <section className="autonomy-consultation" aria-label="任せる範囲の相談">
-                          <h3>AIに相談</h3>
-                          <p className="autonomy-muted">
-                            会話で設定を更新できます。直接編集した内容も次の相談に反映されます。
-                          </p>
-                          <div className="autonomy-conversation-actions">
-                            <button
-                              className="autonomy-primary"
-                              type="button"
-                              disabled={busy !== null || voiceStatus?.phase === "starting"}
-                              onClick={startVoiceConversation}
-                            >
-                              <Mic size={16} aria-hidden="true" />
-                              音声で相談する
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setTextOpen((current) => !current)}
-                              aria-expanded={textOpen}
-                            >
-                              文字で相談する
-                            </button>
-                          </div>
-                          {voiceStatus && (
-                            <p
-                              role={voiceStatus.phase === "error" ? "alert" : "status"}
-                              className={
-                                voiceStatus.phase === "error" ? "autonomy-error" : "autonomy-muted"
-                              }
-                            >
-                              {voiceStatus.message}
-                            </p>
-                          )}
-                          {textOpen && (
-                            <>
-                              <div
-                                className="autonomy-conversation"
-                                role="log"
-                                aria-label="相談の履歴"
-                              >
-                                {messages.map((item) => (
-                                  <p
-                                    key={item.id}
-                                    className={`autonomy-message autonomy-message-${item.role}`}
-                                  >
-                                    <strong>{item.role === "user" ? "あなた" : "AI"}</strong>
-                                    <br />
-                                    {item.content}
-                                  </p>
-                                ))}
-                              </div>
-                              <form
-                                onSubmit={(event) => {
-                                  event.preventDefault();
-                                  void consult();
-                                }}
-                              >
-                                <label className="autonomy-field">
-                                  相談したいこと
-                                  <textarea
-                                    value={message}
-                                    onChange={(event) => setMessage(event.target.value)}
-                                    maxLength={4000}
-                                    rows={2}
-                                    placeholder="例えば、メモを読みやすく整理して、次に取り組むことをまとめてほしい"
-                                  />
-                                </label>
-                                <button type="submit" disabled={busy !== null}>
-                                  {busy === "consult" ? "相談しています…" : "AIと相談する"}
-                                </button>
-                              </form>
-                            </>
-                          )}
-                        </section>
                         <form
                           className="autonomy-scope"
                           onSubmit={(event) => {
@@ -645,16 +611,13 @@ export function AutonomyPanel() {
                                   },
                                   draftState.draftId,
                                 ),
-                              "この範囲で作業を開始します。範囲はいつでも変更できます。",
+                              t("この範囲で作業を開始します。範囲はいつでも変更できます。"),
                             );
                           }}
                         >
-                          <h3>任せる範囲</h3>
-                          {explanation && (
-                            <p className="autonomy-draft-explanation">{explanation}</p>
-                          )}
+                          <h3>{t("任せる範囲")}</h3>
                           <label className="autonomy-field">
-                            任せる目的
+                            {t("任せる目的")}
                             <textarea
                               value={goal}
                               onChange={(event) => setGoal(event.target.value)}
@@ -666,11 +629,11 @@ export function AutonomyPanel() {
                           {conflictFor("goal")}
                           <div className="autonomy-folder-row">
                             <label className="autonomy-field">
-                              対象フォルダ
+                              {t("対象フォルダ")}
                               <input
                                 value={root}
                                 onChange={(event) => setRoot(event.target.value)}
-                                placeholder="会話で決めたフォルダ"
+                                placeholder={t("会話で決めたフォルダ")}
                               />
                             </label>
                             <button
@@ -679,58 +642,12 @@ export function AutonomyPanel() {
                               onClick={() => void selectRoot()}
                             >
                               <FolderOpen size={16} aria-hidden="true" />
-                              フォルダを選ぶ
+                              {t("フォルダを選ぶ")}
                             </button>
                           </div>
                           {conflictFor("root")}
-                          <fieldset className="autonomy-permissions" disabled={busy === "save"}>
-                            <legend>自動で進めてよい操作</legend>
-                            {OPERATIONS.map((operation) => (
-                              <label key={operation.id} className="autonomy-check">
-                                <input
-                                  type="checkbox"
-                                  checked={operations.includes(operation.id)}
-                                  onChange={(event) =>
-                                    setOperations((current) =>
-                                      event.target.checked
-                                        ? [...current, operation.id]
-                                        : current.filter((id) => id !== operation.id),
-                                    )
-                                  }
-                                />
-                                {operation.label}
-                              </label>
-                            ))}
-                          </fieldset>
-                          <p className="autonomy-muted">
-                            コード変更を任せる場合は3項目すべてを許可してください。許可していない操作は行いません。
-                          </p>
-                          {conflictFor("allowedOperations")}
-                          <fieldset className="autonomy-permissions" disabled={busy === "save"}>
-                            <legend>目的達成に必要な操作</legend>
-                            <label className="autonomy-check">
-                              <input
-                                type="checkbox"
-                                checked={automaticActionApproval}
-                                onChange={(event) =>
-                                  editor.edit("automaticActionApproval", event.target.checked)
-                                }
-                              />
-                              目的達成に必要な操作を自動で許可する
-                            </label>
-                          </fieldset>
-                          <p className="autonomy-muted">
-                            保存した目的の達成に必要な操作を、外部への送信・公開も含めて自動で進めます。対象と内容、実行結果を履歴に残します。
-                          </p>
-                          {automaticActionApproval &&
-                            OPERATIONS.some((operation) => !operations.includes(operation.id)) && (
-                              <p className="autonomy-muted">
-                                外部送信などツールを使う操作には、作成・編集／移動／退避の許可が必要です。
-                              </p>
-                            )}
-                          {conflictFor("automaticActionApproval")}
                           <fieldset className="autonomy-review-options" disabled={busy === "save"}>
-                            <legend>進め方</legend>
+                            <legend>{t("進め方")}</legend>
                             <label className="autonomy-check">
                               <input
                                 type="radio"
@@ -738,7 +655,7 @@ export function AutonomyPanel() {
                                 checked={reviewMode === "daily"}
                                 onChange={() => setReviewMode("daily")}
                               />
-                              その日の仕事を先に相談
+                              {t("その日の仕事を先に相談")}
                             </label>
                             <label className="autonomy-check">
                               <input
@@ -747,78 +664,168 @@ export function AutonomyPanel() {
                                 checked={reviewMode === "automatic"}
                                 onChange={() => setReviewMode("automatic")}
                               />
-                              範囲内で自動的に進める
+                              {t("範囲内で自動的に進める")}
                             </label>
                           </fieldset>
                           {conflictFor("reviewMode")}
-                          <div className="autonomy-numbers">
-                            <label className="autonomy-field">
-                              確認する間隔（分）
+                          <fieldset className="autonomy-auto-permission" disabled={busy === "save"}>
+                            <legend>{t("実行時の確認")}</legend>
+                            <label className="autonomy-check">
                               <input
-                                type="number"
-                                min={5}
-                                max={1440}
-                                required
-                                value={intervalMinutes}
-                                onChange={(event) => setIntervalMinutes(Number(event.target.value))}
+                                type="checkbox"
+                                checked={automaticActionApproval}
+                                aria-describedby={
+                                  automaticActionApproval ? automaticRiskId : undefined
+                                }
+                                onChange={(event) =>
+                                  editor.edit("automaticActionApproval", event.target.checked)
+                                }
                               />
+                              {t("目的達成に必要な操作を自動で許可する")}
                             </label>
-                            <label className="autonomy-field">
-                              24時間の実行上限（回）
-                              <input
-                                type="number"
-                                min={1}
-                                max={48}
-                                required
-                                value={maxRunsPerDay}
-                                onChange={(event) => setMaxRunsPerDay(Number(event.target.value))}
-                              />
-                            </label>
-                          </div>
-                          <p className="autonomy-muted">24時間の実行上限は1〜48回です。</p>
-                          {conflictFor("intervalMinutes")}
-                          {conflictFor("maxRunsPerDay")}
+                          </fieldset>
+                          {automaticActionApproval ? (
+                            <div
+                              className="autonomy-permission-risk"
+                              role="note"
+                              id={automaticRiskId}
+                            >
+                              <AlertTriangle size={19} aria-hidden="true" />
+                              <div>
+                                <strong>{t("実行前の確認を省略します")}</strong>
+                                <p>
+                                  {t(
+                                    "目的の達成に必要な外部送信・公開も、操作ごとの確認なしで実行します。必要に応じてサービスの保存済みログインを使います。",
+                                  )}
+                                </p>
+                                <p>
+                                  {t(
+                                    "送信や公開など、取り消せない変更があります。対象・内容・実行結果は履歴に残ります。",
+                                  )}
+                                </p>
+                                <p>{t("オフにすると、必要な操作をその都度確認します。")}</p>
+                              </div>
+                            </div>
+                          ) : (
+                            <p className="autonomy-muted">
+                              {t("外部送信・公開などの操作は、対象と内容をその都度確認します。")}
+                            </p>
+                          )}
+                          {automaticActionApproval &&
+                            OPERATIONS.some((operation) => !operations.includes(operation.id)) && (
+                              <p className="autonomy-muted">
+                                {t(
+                                  "外部送信などツールを使う操作には、作成・編集／移動／退避の許可が必要です。",
+                                )}
+                              </p>
+                            )}
+                          {conflictFor("automaticActionApproval")}
                           {!draftState.synced && (
                             <p className="autonomy-muted" role="status">
                               {draftState.error
-                                ? "編集内容をAIに反映できませんでした。"
+                                ? t("編集内容をAIに反映できませんでした。")
                                 : draftState.conflicts.length > 0
-                                  ? "同じ項目の更新を確認してください。"
-                                  : "編集内容をAIに反映しています…"}
+                                  ? t("同じ項目の更新を確認してください。")
+                                  : t("編集内容をAIに反映しています…")}
                             </p>
                           )}
                           {draftState.error && (
                             <div role="alert" className="autonomy-error">
                               <p>{draftState.error}</p>
                               <button type="button" onClick={() => editor.retry()}>
-                                反映を再試行
+                                {t("反映を再試行")}
                               </button>
                             </div>
                           )}
 
-                          <details className="autonomy-help">
-                            <summary>作業の範囲と実行条件</summary>
+                          {explanation && (
+                            <details className="autonomy-draft-proposal">
+                              <summary>{t("AIからの提案を見る")}</summary>
+                              <p className="autonomy-draft-explanation">{explanation}</p>
+                            </details>
+                          )}
+                          <details className="autonomy-advanced">
+                            <summary>{t("詳細設定")}</summary>
+                            <fieldset className="autonomy-permissions" disabled={busy === "save"}>
+                              <legend>{t("自動で進めてよい操作")}</legend>
+                              {OPERATIONS.map((operation) => (
+                                <label key={operation.id} className="autonomy-check">
+                                  <input
+                                    type="checkbox"
+                                    checked={operations.includes(operation.id)}
+                                    onChange={(event) =>
+                                      setOperations((current) =>
+                                        event.target.checked
+                                          ? [...current, operation.id]
+                                          : current.filter((id) => id !== operation.id),
+                                      )
+                                    }
+                                  />
+                                  {t(operation.label)}
+                                </label>
+                              ))}
+                            </fieldset>
                             <p className="autonomy-muted">
-                              目的に沿って必要な仕事を選び、実行と検証まで進めます。
-                              Gitリポジトリではコミット済みの内容を別の作業場所に複製し、文書やコードの改善・テストを行います。未コミットの変更は含みません。
-                              通常のフォルダではテキスト文書を整理・編集します。
+                              {t(
+                                "コード変更を任せる場合は3項目すべてを許可してください。許可していない操作は行いません。",
+                              )}
                             </p>
-                            <p className="autonomy-muted">
-                              変更は復元できる形で保存し、作業結果と検証内容を履歴に残します。
-                              必要な依存関係や認証がなければ停止して知らせます。
-                            </p>
-                            <p className="autonomy-muted">
-                              Gitリポジトリでの作業にはCodex、通常のフォルダでの文書作業にはClaude
-                              Codeへのログインが必要です。
-                              Yorishiroを開いている間に動作し、AIの利用枠を消費します。
-                              目的達成に必要な操作の自動許可には、Claude
-                              CodeとCodexへのログインが必要です。必要な外部送信・公開も自動で進めます。
-                              許可しない場合は、具体的な対象と内容を個別に確認します。
-                            </p>
+                            {conflictFor("allowedOperations")}
+                            <div className="autonomy-numbers">
+                              <label className="autonomy-field">
+                                {t("確認する間隔（分）")}
+                                <input
+                                  type="number"
+                                  min={5}
+                                  max={1440}
+                                  required
+                                  value={intervalMinutes}
+                                  onChange={(event) =>
+                                    setIntervalMinutes(Number(event.target.value))
+                                  }
+                                />
+                              </label>
+                              <label className="autonomy-field">
+                                {t("24時間の実行上限（回）")}
+                                <input
+                                  type="number"
+                                  min={1}
+                                  max={48}
+                                  required
+                                  value={maxRunsPerDay}
+                                  onChange={(event) => setMaxRunsPerDay(Number(event.target.value))}
+                                />
+                              </label>
+                            </div>
+                            <p className="autonomy-muted">{t("24時間の実行上限は1〜48回です。")}</p>
+                            {conflictFor("intervalMinutes")}
+                            {conflictFor("maxRunsPerDay")}
+                            <details className="autonomy-help">
+                              <summary>{t("作業の範囲と実行条件")}</summary>
+                              <p className="autonomy-muted">
+                                {t(
+                                  "目的に沿って必要な仕事を選び、実行と検証まで進めます。 Gitリポジトリではコミット済みの内容を別の作業場所に複製し、文書やコードの改善・テストを行います。未コミットの変更は含みません。 通常のフォルダではテキスト文書を整理・編集します。",
+                                )}
+                              </p>
+                              <p className="autonomy-muted">
+                                {t(
+                                  "変更は復元できる形で保存し、作業結果と検証内容を履歴に残します。 必要な依存関係や認証がなければ停止して知らせます。",
+                                )}
+                              </p>
+                              <p className="autonomy-muted">
+                                {t(
+                                  "Gitリポジトリでの作業にはCodex、通常のフォルダでの文書作業にはClaude Codeへのログインが必要です。 Yorishiroを開いている間に動作し、AIの利用枠を消費します。 目的達成に必要な操作の自動許可には、Claude CodeとCodexへのログインが必要です。必要な外部送信・公開も自動で進めます。 許可しない場合は、具体的な対象と内容を個別に確認します。",
+                                )}
+                              </p>
+                            </details>
                           </details>
                           <div className="autonomy-save-row">
                             <p id={saveHintId} className="autonomy-muted">
-                              「この範囲で任せる」を押すと、設定を保存して自動作業を有効にします。
+                              {operations.length === 0
+                                ? t("詳細設定で許可する操作を選んでください。")
+                                : t(
+                                    "「この範囲で任せる」を押すと、設定を保存して自動作業を有効にします。",
+                                  )}
                             </p>
                             <button
                               className="autonomy-primary"
@@ -832,23 +839,110 @@ export function AutonomyPanel() {
                                 operations.length === 0
                               }
                             >
-                              {busy === "save" ? "保存しています…" : "この範囲で任せる"}
+                              {busy === "save" ? t("保存しています…") : t("この範囲で任せる")}
                             </button>
                           </div>
                         </form>
                       </div>
                     </details>
+                    <details
+                      className="autonomy-consultation-disclosure"
+                      open={consultationOpen}
+                      onToggle={(event) => setConsultationOpen(event.currentTarget.open)}
+                    >
+                      <summary>{t("AIに相談")}</summary>
+                      <section className="autonomy-consultation" aria-label={t("任せる範囲の相談")}>
+                        <p className="autonomy-muted">
+                          {t(
+                            "会話で設定を更新できます。直接編集した内容も次の相談に反映されます。",
+                          )}
+                        </p>
+                        <div className="autonomy-conversation-actions">
+                          <button
+                            className="autonomy-primary"
+                            type="button"
+                            disabled={busy !== null || voiceStatus?.phase === "starting"}
+                            onClick={startVoiceConversation}
+                          >
+                            <Mic size={16} aria-hidden="true" />
+                            {t("音声で相談する")}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setTextOpen((current) => !current)}
+                            aria-expanded={textOpen}
+                          >
+                            {t("文字で相談する")}
+                          </button>
+                        </div>
+                        {voiceStatus && (
+                          <p
+                            role={voiceStatus.phase === "error" ? "alert" : "status"}
+                            className={
+                              voiceStatus.phase === "error" ? "autonomy-error" : "autonomy-muted"
+                            }
+                          >
+                            {voiceStatus.message}
+                          </p>
+                        )}
+                        {textOpen && (
+                          <>
+                            <div
+                              className="autonomy-conversation"
+                              role="log"
+                              aria-label={t("相談の履歴")}
+                            >
+                              {messages.map((item) => (
+                                <p
+                                  key={item.id}
+                                  className={`autonomy-message autonomy-message-${item.role}`}
+                                >
+                                  <strong>{item.role === "user" ? t("あなた") : "AI"}</strong>
+                                  <br />
+                                  {item.content}
+                                </p>
+                              ))}
+                            </div>
+                            <form
+                              onSubmit={(event) => {
+                                event.preventDefault();
+                                void consult();
+                              }}
+                            >
+                              <label className="autonomy-field">
+                                {t("相談したいこと")}
+                                <textarea
+                                  value={message}
+                                  onChange={(event) => setMessage(event.target.value)}
+                                  maxLength={4000}
+                                  rows={2}
+                                  placeholder={t(
+                                    "例えば、メモを読みやすく整理して、次に取り組むことをまとめてほしい",
+                                  )}
+                                />
+                              </label>
+                              <button type="submit" disabled={busy !== null}>
+                                {busy === "consult" ? t("相談しています…") : t("AIと相談する")}
+                              </button>
+                            </form>
+                          </>
+                        )}
+                      </section>
+                    </details>
                     {decidedActions.length > 0 && (
-                      <section aria-label="承認履歴">
+                      <section aria-label={t("承認履歴")}>
                         <details className="autonomy-decisions">
                           <summary>
-                            承認履歴{" "}
-                            <span className="autonomy-count">{decidedActions.length}件</span>
+                            {t("承認履歴")}{" "}
+                            <span className="autonomy-count">
+                              {t("{count}件", { count: decidedActions.length })}
+                            </span>
                           </summary>
                           {decidedActions.map((action) => (
                             <AutonomyActionReview
                               key={`${action.id}:${action.payloadDigest}`}
                               action={action}
+                              language={language}
                               disabled={busy !== null || working || stopping}
                             />
                           ))}
@@ -856,19 +950,21 @@ export function AutonomyPanel() {
                       </section>
                     )}
                     {status.runs.length > 0 && (
-                      <section className="autonomy-history" aria-label="作業履歴">
+                      <section className="autonomy-history" aria-label={t("作業履歴")}>
                         <div className="autonomy-history-heading">
-                          <h3>作業履歴</h3>
-                          <span className="autonomy-count">{status.runs.length}件</span>
+                          <h3>{t("作業履歴")}</h3>
+                          <span className="autonomy-count">
+                            {t("{count}件", { count: status.runs.length })}
+                          </span>
                         </div>
                         {displayedRuns.map((run, index) => (
                           <article key={run.id}>
                             <div className="autonomy-run-meta">
                               <span className={`autonomy-run-badge autonomy-run-${run.status}`}>
-                                {RUN_LABELS[run.status]}
+                                {t(RUN_LABELS[run.status])}
                               </span>
                               <time dateTime={new Date(run.startedAt).toISOString()}>
-                                {new Date(run.startedAt).toLocaleString("ja-JP")}
+                                {new Date(run.startedAt).toLocaleString(locale)}
                               </time>
                             </div>
                             <p className="autonomy-run-summary">
@@ -876,12 +972,14 @@ export function AutonomyPanel() {
                                 ? run.summary.length > 160
                                   ? `${run.summary.slice(0, 160)}…`
                                   : run.summary
-                                : "作業を進めています…"}
+                                : t("作業を進めています…")}
                             </p>
                             {reviewActions.filter(
                               (action) => action.runId === run.id && action.status === "declined",
                             ).length > 0 && (
-                              <p className="autonomy-muted">この作業の確認事項は見送りました。</p>
+                              <p className="autonomy-muted">
+                                {t("この作業の確認事項は見送りました。")}
+                              </p>
                             )}
                             {(run.status === "failed" ||
                               (status.phase === "blocked" && index === 0)) && (
@@ -889,14 +987,17 @@ export function AutonomyPanel() {
                                 type="button"
                                 disabled={busy !== null || working || stopping}
                                 onClick={() => {
-                                  setSettingsOpen(true);
+                                  setConsultationOpen(true);
                                   setTextOpen(true);
                                   void consult(
-                                    `おまかせ作業の結果について相談したいです。必要な確認事項と次にできる操作を教えてください。公開や実行の承認ではありません。\n作業ID: ${run.id}\n結果: ${run.summary}\n理由: ${run.reason}`,
+                                    t(
+                                      "おまかせ作業の結果について相談したいです。必要な確認事項と次にできる操作を教えてください。公開や実行の承認ではありません。\n作業ID: {id}\n結果: {summary}\n理由: {reason}",
+                                      { id: run.id, summary: run.summary, reason: run.reason },
+                                    ),
                                   );
                                 }}
                               >
-                                結果についてAIに相談
+                                {t("結果についてAIに相談")}
                               </button>
                             )}
                             {(run.summary.length > 160 ||
@@ -906,19 +1007,23 @@ export function AutonomyPanel() {
                               run.validationSummary ||
                               run.changedPaths.length > 0) && (
                               <details className="autonomy-run-details">
-                                <summary>詳細</summary>
+                                <summary>{t("詳細")}</summary>
                                 {run.summary.length > 160 && <p>{run.summary}</p>}
                                 {run.reason && <p className="autonomy-muted">{run.reason}</p>}
                                 {run.developmentPath && (
                                   <p className="autonomy-path">
-                                    確認用の成果物: {run.developmentPath}
+                                    {t("確認用の成果物:")} {run.developmentPath}
                                   </p>
                                 )}
                                 {run.branch && (
-                                  <p className="autonomy-path">ブランチ: {run.branch}</p>
+                                  <p className="autonomy-path">
+                                    {t("ブランチ:")} {run.branch}
+                                  </p>
                                 )}
                                 {run.validationSummary && (
-                                  <p className="autonomy-muted">検証: {run.validationSummary}</p>
+                                  <p className="autonomy-muted">
+                                    {t("検証:")} {run.validationSummary}
+                                  </p>
                                 )}
                                 {run.changedPaths.length > 0 && (
                                   <ul>
@@ -937,11 +1042,11 @@ export function AutonomyPanel() {
                                   void act(
                                     `undo:${run.id}`,
                                     () => undoAutonomyRun(run.id),
-                                    "変更を元に戻しました。",
+                                    t("変更を元に戻しました。"),
                                   )
                                 }
                               >
-                                この作業を元に戻す
+                                {t("この作業を元に戻す")}
                               </button>
                             )}
                           </article>
@@ -952,7 +1057,9 @@ export function AutonomyPanel() {
                             className="autonomy-show-history"
                             onClick={() => setShowAllRuns((current) => !current)}
                           >
-                            {showAllRuns ? "最新3件を表示" : `すべて表示（${sortedRuns.length}件）`}
+                            {showAllRuns
+                              ? t("最新3件を表示")
+                              : t("すべて表示（{count}件）", { count: sortedRuns.length })}
                           </button>
                         )}
                       </section>
