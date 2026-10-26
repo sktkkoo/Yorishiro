@@ -73,16 +73,6 @@ fn roots(root: Option<&Path>) -> Result<BTreeSet<PathBuf>, String> {
 /// File-tool restrictions cannot be silently evaded by the host's file broker.
 /// Bash and other absent tools remain unavailable in the reasoning transport.
 pub fn claude_preflight(root: Option<&Path>) -> Result<(), String> {
-    claude_preflight_mode(root, false)
-}
-
-/// Tool-capable continuations cannot silently discard Claude command restrictions.
-/// Unsupported cross-provider rules stop execution instead of bypassing an ask/deny.
-pub fn claude_action_preflight(root: Option<&Path>) -> Result<(), String> {
-    claude_preflight_mode(root, true)
-}
-
-fn claude_preflight_mode(root: Option<&Path>, tool_execution: bool) -> Result<(), String> {
     // Managed restrictions must also be checked before the host reads files,
     // not only later when launching the reasoning CLI.
     super::worker::check_managed_settings()?;
@@ -97,25 +87,7 @@ fn claude_preflight_mode(root: Option<&Path>, tool_execution: bool) -> Result<()
             let path = dir.join(name);
             if let Some(text) = read_optional(&path)? {
                 check_claude(&text).map_err(|_| error(&path))?;
-                if tool_execution {
-                    check_claude_execution(&text).map_err(|_| error(&path))?;
-                }
             }
-        }
-    }
-    Ok(())
-}
-
-fn check_claude_execution(text: &str) -> Result<(), ()> {
-    let value: Value = serde_json::from_str(text).map_err(|_| ())?;
-    for key in ["deny", "ask"] {
-        if value
-            .get("permissions")
-            .and_then(|rules| rules.get(key))
-            .and_then(Value::as_array)
-            .is_some_and(|rules| !rules.is_empty())
-        {
-            return Err(());
         }
     }
     Ok(())
@@ -240,18 +212,25 @@ fn check_codex_action_config(text: &str, network: bool) -> Result<(), ()> {
         return Ok(());
     }
     let value: toml::Value = toml::from_str(text).map_err(|_| ())?;
+    let sandbox_mode = value.get("sandbox_mode").and_then(toml::Value::as_str);
+    let default_permissions = value
+        .get("default_permissions")
+        .and_then(toml::Value::as_str);
+    // Workspace-only settings are dormant under an explicitly unrestricted
+    // mode. The approved action still runs with its own scoped permissions.
+    if sandbox_mode == Some("danger-full-access")
+        || (sandbox_mode.is_none() && default_permissions == Some(":danger-full-access"))
+    {
+        return Ok(());
+    }
     let native_network = value
         .get("sandbox_workspace_write")
         .and_then(|workspace| workspace.get("network_access"));
     let explicit_network = native_network
         .map(|value| value.as_bool().ok_or(()))
         .transpose()?;
-    let workspace_default = value.get("sandbox_mode").and_then(toml::Value::as_str)
-        == Some("workspace-write")
-        || value
-            .get("default_permissions")
-            .and_then(toml::Value::as_str)
-            == Some(":workspace");
+    let workspace_default =
+        sandbox_mode == Some("workspace-write") || default_permissions == Some(":workspace");
     if explicit_network == Some(false) || (workspace_default && explicit_network != Some(true)) {
         return Err(());
     }
@@ -561,15 +540,9 @@ mod tests {
         }
     }
     #[test]
-    fn tool_capable_action_does_not_bypass_claude_command_restrictions() {
-        assert!(check_claude_execution(r#"{"permissions":{"ask":["Bash(git push:*)"]}}"#).is_err());
-        assert!(check_claude_execution(r#"{"permissions":{"deny":["Bash(rm:*)"]}}"#).is_err());
-        assert!(check_claude_execution(r#"{"permissions":{"allow":["Bash(npm test)"]}}"#).is_ok());
-    }
-    #[test]
     fn approved_network_action_preserves_native_network_restrictions() {
         for config in [
-            "sandbox_mode='danger-full-access'\n[sandbox_workspace_write]\nnetwork_access=false",
+            "sandbox_mode='workspace-write'\n[sandbox_workspace_write]\nnetwork_access=false",
             "sandbox_mode='workspace-write'",
             "default_permissions=':workspace'",
             "[sandbox_workspace_write]\nnetwork_access='false'",
@@ -588,6 +561,18 @@ mod tests {
         )
         .is_ok());
         assert!(check_codex_action_config("sandbox_mode='danger-full-access'", true).is_ok());
+        for config in [
+            "sandbox_mode='danger-full-access'\n[sandbox_workspace_write]\nnetwork_access=false",
+            "default_permissions=':danger-full-access'\n[sandbox_workspace_write]\nnetwork_access=false",
+        ] {
+            assert!(check_codex_action_config(config, true).is_ok(), "{config}");
+        }
+        // The older sandbox mode wins when both formats are present.
+        assert!(check_codex_action_config(
+            "sandbox_mode='workspace-write'\ndefault_permissions=':danger-full-access'",
+            true
+        )
+        .is_err());
     }
     #[test]
     fn restrictive_or_unsupported_codex_profiles_fail_closed() {

@@ -1040,7 +1040,6 @@ async fn execute(
 ) -> Result<Plan, String> {
     let root = validate_contract(contract)?;
     let route = execution_route(contract, &root)?;
-    policy::claude_preflight(Some(&root))?;
     if route == WorkMode::Development {
         policy::codex_restrictions(&root)?;
     }
@@ -1062,6 +1061,9 @@ async fn execute(
         return execute_development(state, contract, id, revision, cancel, recent, approved_goal)
             .await;
     }
+    // Only the Claude-backed document/daily proposal reads through this broker.
+    // Codex execution above retains Codex policy, not another CLI's settings.
+    policy::claude_preflight(Some(&root))?;
     let snapshot_root = root.clone();
     let before = tauri::async_runtime::spawn_blocking(move || files::snapshot(&snapshot_root))
         .await
@@ -3044,6 +3046,46 @@ mod tests {
                 .unwrap_err()
                 .contains("個別に承認"));
         }
+    }
+
+    #[tokio::test]
+    async fn codex_route_checks_its_own_policy_before_unrelated_claude_settings() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path().canonicalize().unwrap();
+        committed_repository(&root);
+        for name in [".claude", ".codex"] {
+            std::fs::create_dir(root.join(name)).unwrap();
+        }
+        std::fs::write(
+            root.join(".claude/settings.json"),
+            r#"{"permissions":{"deny":["Read"]}}"#,
+        )
+        .unwrap();
+        let codex_policy = root.join(".codex/config.toml");
+        std::fs::write(&codex_policy, "sandbox_mode='read-only'").unwrap();
+        let mut runtime = configured(&root, 100);
+        let contract = runtime.status.contract.as_mut().unwrap();
+        contract.work_mode = WorkMode::Auto;
+        contract.allowed_operations = vec!["write".into(), "move".into(), "trash".into()];
+        let contract = contract.clone();
+        let state = AutonomyState(Arc::new(Mutex::new(runtime)));
+        let result = execute(
+            &state,
+            &contract,
+            "unused",
+            0,
+            &CancellationToken::new(),
+            &[],
+        )
+        .await;
+        assert!(result
+            .err()
+            .unwrap()
+            .contains(codex_policy.to_str().unwrap()));
+        // The Claude-backed broker still observes its own file restrictions.
+        assert!(policy::claude_preflight(Some(&root))
+            .unwrap_err()
+            .contains(".claude/settings.json"));
     }
 
     #[tokio::test]

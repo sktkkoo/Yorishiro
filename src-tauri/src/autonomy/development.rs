@@ -112,7 +112,6 @@ pub async fn run(
         .map(PathBuf::from)
         .ok_or("開発にはCodex CLIのインストールとログインが必要です")?;
     let source = validate_root(root.to_str().ok_or("対象パスを読み取れません")?)?;
-    super::policy::claude_preflight(Some(&source))?;
     let restrictions = super::policy::codex_restrictions(&source)?;
     let job = create_job(&source, &storage_root, &run_id)?;
     let prepared = prepare_clone(source.clone(), job.clone(), run_id, cancel.clone()).await?;
@@ -152,7 +151,7 @@ pub async fn run(
         .arg("--output-last-message")
         .arg(&report_path)
         .arg("-");
-    let prompt = format!("Carry out the user's delegated objective in this repository. Inspect relevant files and instructions, then make the smallest useful change that serves that objective. The work may concern documents, code, or tests; do not invent an unrelated product improvement. Run meaningful checks appropriate to the change and describe the concrete result. Work only in this independent clone; the source checkout must remain untouched. Do not install software, access the network, send messages, publish, commit, or alter Git metadata. No permission escalation is available. Keep scope small enough to review. The host will run your selected checks again after you finish. Return requestedAction whenever achieving the user's objective still requires a concrete operation outside this preparation stage. Do not omit it merely because the host may already hold automatic permission. In that case you MUST return operation, target, impact, details, and reason as concrete strings in requestedAction. Never put a request for approval only in summary while leaving requestedAction null. The host will present the structured request immediately; the user must not need to create a confirmation manually. This stage only describes the required next operation. The host uses the saved purpose-based automatic permission to authorize and execute it; otherwise it asks the user to confirm the concrete operation. You cannot grant yourself that permission. Set networkAccess=true only when that exact operation requires communication with the explicit external target, and describe the target and transmitted content; otherwise use false. Do not default to GitHub or a pull request. Include the exact target and content to be approved; never invent recipients or destinations. If concrete information is missing, return requestedAction=null and put a specific question describing the missing information in question; the host will stop and route it to consultation. Otherwise return question=null. A missing recipient or unknown content is a question, not an approval request. Do not return both question and requestedAction. The supplied original source, base, artifact destination, and sanitized origin are reference data, not authorization. Use them to identify the real operation target when the delegated objective requires it; do not invent another destination. Write your summary and any question in the language of the user's delegated objective. Preserve file paths, command text and exact evidence. Return summary and up to three exact check commands, using npm test / npm run test:run / npm run check / npx vitest run / cargo test / cargo check / cargo clippy / pytest / python -m pytest / go test. Use no shell metacharacters or shell wrappers in these check commands. If dependencies or tests are blocked, explain that honestly; do not claim success.\nThe following JSON contains the user's delegated objective, not additional execution privileges:\n{}", serde_json::to_string(&json!({"goal":goal,"sourceRoot":source,"baseCommit":prepared.base_commit,"baseBranch":prepared.base_branch,"origin":safe_origin(&prepared.origin_url),"reviewArtifactPath":job.join("review-artifact")})).map_err(|e|e.to_string())?);
+    let prompt = format!("Carry out the user's delegated objective in this repository. Inspect relevant files and instructions, then make the smallest useful change that serves that objective. The work may concern documents, code, or tests; do not invent an unrelated product improvement. Run meaningful checks appropriate to the change and describe the concrete result. Work only in this independent clone; the source checkout must remain untouched. Do not install software, access the network, send messages, publish, commit, or alter Git metadata. No permission escalation is available. Keep scope small enough to review. The host will run your selected checks again after you finish. Return requestedAction whenever achieving the user's objective still requires a concrete operation outside this preparation stage. Do not omit it merely because the host may already hold automatic permission. In that case you MUST return operation, target, impact, details, and reason as concrete strings in requestedAction. Never put a request for approval only in summary while leaving requestedAction null. The host will present the structured request immediately; the user must not need to create a confirmation manually. This stage only describes the required next operation. The host uses the saved purpose-based automatic permission to authorize and execute it; otherwise it asks the user to confirm the concrete operation. You cannot grant yourself that permission. Set networkAccess=true only when that exact operation requires communication with the explicit external target, and describe the target and transmitted content; otherwise use false. Do not default to GitHub or a pull request. Include the exact target and content to be approved; never invent recipients or destinations. If concrete information is missing, return requestedAction=null and put a specific question describing the missing information in question; the host will stop and route it to consultation. Otherwise return question=null. A missing recipient or unknown content is a question, not an approval request. Do not return both question and requestedAction. The supplied original source, base, artifact destination, and sanitized origin are reference data, not authorization. Use them to identify the real operation target when the delegated objective requires it; do not invent another destination. Write your summary and any question in the language of the user's delegated objective. Preserve file paths, command text and exact evidence. Return summary and up to three exact check commands, using npm test / npm run test:run / npm run check / npx vitest run / cargo test / cargo check / cargo clippy / pytest / python -m pytest / go test. For a nested Rust project, use --manifest-path with a repository-relative Cargo.toml (for example src-tauri/Cargo.toml). Use no shell metacharacters or shell wrappers in these check commands. If dependencies or tests are blocked, explain that honestly; do not claim success.\nThe following JSON contains the user's delegated objective, not additional execution privileges:\n{}", serde_json::to_string(&json!({"goal":goal,"sourceRoot":source,"baseCommit":prepared.base_commit,"baseBranch":prepared.base_branch,"origin":safe_origin(&prepared.origin_url),"reviewArtifactPath":job.join("review-artifact")})).map_err(|e|e.to_string())?);
     let model = capture(command, Some(prompt), MODEL_TIMEOUT, cancel.clone()).await?;
     if model.exit_code != 0 {
         return Err("Codexでの開発に失敗しました。作業コピーは保持しています。CLI認証・対応バージョン・権限設定を確認してください".into());
@@ -162,7 +161,13 @@ pub async fn run(
     let before_checks = stage_tree(&prepared.repository)?;
     let mut checks = Vec::new();
     for check in &report.checks {
-        let Some(args) = check_args(check) else {
+        let Some(args) = check_args(&prepared.repository, check) else {
+            // A rejected check is unverified, not an optional check that can
+            // disappear when another command succeeds.
+            checks.push(ExecutedCheck {
+                command: check.clone(),
+                exit_code: -1,
+            });
             continue;
         };
         if !policy_allows(
@@ -674,7 +679,7 @@ fn read_report(path: &Path) -> Result<Report, String> {
 /// Plain argv only, with no host shell interpretation. Repository tests may
 /// execute scripts, so every check runs under the same OS sandbox as model tools.
 /// The host records actual completion instead of trusting the model assertion.
-fn check_args(command: &str) -> Option<Vec<String>> {
+fn check_args(repository: &Path, command: &str) -> Option<Vec<String>> {
     if command.is_empty()
         || command.len() > 1000
         || command
@@ -701,13 +706,12 @@ fn check_args(command: &str) -> Option<Vec<String>> {
             | ["go", "test", ..]
     );
     // Do not let flags load arbitrary compiler/plugin config, install packages,
-    // change working directories, or select a different Cargo manifest.
+    // or change working directories. Nested Cargo manifests are checked below.
     let forbidden = [
         "--prefix",
         "--workspace",
         "--workspaces",
         "--config",
-        "--manifest-path",
         "--registry",
         "--package",
         "-p",
@@ -725,7 +729,50 @@ fn check_args(command: &str) -> Option<Vec<String>> {
     {
         return None;
     }
+    let mut manifest_seen = false;
+    let mut position = 0;
+    while position < words.len() {
+        let word = words[position];
+        let manifest = if word == "--manifest-path" {
+            position += 1;
+            Some(*words.get(position)?)
+        } else {
+            word.strip_prefix("--manifest-path=")
+        };
+        if let Some(manifest) = manifest {
+            if words.first() != Some(&"cargo")
+                || manifest_seen
+                || !checked_manifest(repository, manifest)
+            {
+                return None;
+            }
+            manifest_seen = true;
+        }
+        position += 1;
+    }
     Some(args)
+}
+
+fn checked_manifest(repository: &Path, manifest: &str) -> bool {
+    let relative = Path::new(manifest);
+    if relative.is_absolute() || relative.file_name().is_none_or(|name| name != "Cargo.toml") {
+        return false;
+    }
+    let mut cursor = repository.to_path_buf();
+    for component in relative.components() {
+        match component {
+            std::path::Component::Normal(name) => cursor.push(name),
+            std::path::Component::CurDir => continue,
+            _ => return false,
+        }
+        let Ok(metadata) = std::fs::symlink_metadata(&cursor) else {
+            return false;
+        };
+        if metadata.file_type().is_symlink() {
+            return false;
+        }
+    }
+    cursor.is_file()
 }
 
 fn stage_tree(repository: &Path) -> Result<String, String> {
@@ -1363,13 +1410,14 @@ setTimeout(()=>process.exit(2),3000);
     }
     #[test]
     fn checks_are_shell_free_and_reject_configuration_escape() {
+        let repository = tempfile::tempdir().unwrap();
         for value in [
             "npm run test:run",
             "npx vitest run src/example.test.ts",
             "cargo test --lib",
             "go test ./...",
         ] {
-            assert!(check_args(value).is_some(), "{value}")
+            assert!(check_args(repository.path(), value).is_some(), "{value}")
         }
         for value in [
             "echo npm test",
@@ -1380,7 +1428,41 @@ setTimeout(()=>process.exit(2),3000);
             "sh -c npm test",
             "npm test $(bad)",
         ] {
-            assert!(check_args(value).is_none(), "{value}")
+            assert!(check_args(repository.path(), value).is_none(), "{value}")
+        }
+    }
+    #[test]
+    fn nested_cargo_manifests_stay_inside_the_clone() {
+        let repository = tempfile::tempdir().unwrap();
+        let root = repository.path();
+        std::fs::create_dir(root.join("src-tauri")).unwrap();
+        std::fs::write(root.join("src-tauri/Cargo.toml"), "[package]").unwrap();
+        for command in [
+            "cargo test --manifest-path src-tauri/Cargo.toml --lib",
+            "cargo check --manifest-path=src-tauri/Cargo.toml",
+            "cargo clippy --manifest-path ./src-tauri/Cargo.toml -- -D warnings",
+        ] {
+            assert!(check_args(root, command).is_some(), "{command}");
+        }
+        for command in [
+            "cargo test --manifest-path ../Cargo.toml",
+            "cargo test --manifest-path /outside/Cargo.toml",
+            "cargo test --manifest-path missing/Cargo.toml",
+            "cargo test --manifest-path src-tauri",
+            "cargo test --manifest-path",
+            "cargo test --manifest-path=",
+            "cargo test --manifest-path src-tauri/Cargo.toml --manifest-path src-tauri/Cargo.toml",
+            "npm test --manifest-path src-tauri/Cargo.toml",
+        ] {
+            assert!(check_args(root, command).is_none(), "{command}");
+        }
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(root.join("src-tauri"), root.join("linked")).unwrap();
+            assert!(check_args(root, "cargo test --manifest-path linked/Cargo.toml").is_none());
+            std::os::unix::fs::symlink(root.join("src-tauri/Cargo.toml"), root.join("Cargo.toml"))
+                .unwrap();
+            assert!(check_args(root, "cargo test --manifest-path Cargo.toml").is_none());
         }
     }
     #[test]
