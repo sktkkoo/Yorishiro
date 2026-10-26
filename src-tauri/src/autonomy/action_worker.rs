@@ -436,7 +436,6 @@ pub(super) async fn execute(
     let action = serde_json::to_value(action).map_err(|e| e.to_string())?;
     let network = action["networkAccess"].as_bool().unwrap_or(false);
     let workspace = prepare(storage, &action, run, contract)?;
-    super::policy::claude_action_preflight(Some(&workspace.root))?;
     let restrictions = super::policy::codex_restrictions_for_action(&workspace.root, network)?;
     let config = profile(&workspace, network, dirs::home_dir().as_deref());
     let home = development::prepare_scoped_codex_home(&config)?;
@@ -688,6 +687,41 @@ mod tests {
         assert!(prepare(&storage, &action, &run, &contract).is_err());
         contract.allowed_operations = vec!["write".into()];
         assert!(prepare(&storage, &action, &run, &contract).is_err());
+    }
+
+    #[tokio::test]
+    async fn unrelated_claude_settings_do_not_replace_codex_action_policy() {
+        // This test stops at Codex preflight, before authentication or any tool
+        // can run. Both providers have a restrictive config in the same root.
+        let temp = tempfile::tempdir().unwrap();
+        let canonical = temp.path().canonicalize().unwrap();
+        let root = canonical.join("documents");
+        let storage = canonical.join("state");
+        fs::create_dir(&root).unwrap();
+        fs::create_dir(&storage).unwrap();
+        for name in [".claude", ".codex"] {
+            fs::create_dir(root.join(name)).unwrap();
+        }
+        fs::write(
+            root.join(".claude/settings.json"),
+            r#"{"permissions":{"deny":["Bash(rm:*)"]}}"#,
+        )
+        .unwrap();
+        let codex_policy = root.join(".codex/config.toml");
+        fs::write(&codex_policy, "sandbox_mode='read-only'").unwrap();
+        let run: Run = serde_json::from_value(json!({"id":uuid::Uuid::new_v4().to_string(),"startedAt":1,"finishedAt":2,"status":"completed","summary":"ready","reason":"","changedPaths":[],"canUndo":false})).unwrap();
+        let contract: Contract = serde_json::from_value(json!({"goal":"organize report","root":root,"allowedOperations":["write","move","trash"],"intervalMinutes":30,"maxRunsPerDay":48,"enabled":true})).unwrap();
+        let action: actions::Action = serde_json::from_value(json!({"id":uuid::Uuid::new_v4().to_string(),"runId":run.id,"sourceRoot":root,"status":"executing","kind":"operation","createdAt":1,"summary":"Save report"})).unwrap();
+        let error = execute(&storage, &action, &run, &contract, CancellationToken::new())
+            .await
+            .err()
+            .unwrap();
+        assert!(error.contains(codex_policy.to_str().unwrap()), "{error}");
+        assert!(!storage
+            .join("action-executions")
+            .join(&action.id)
+            .join("tool-events.jsonl")
+            .exists());
     }
 
     #[test]
