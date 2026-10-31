@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
 
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SpawnSpec } from "./bindings/tauri-commands";
+import TabIndicator from "./components/TabIndicator";
 import Terminal from "./terminal";
 
 const mockState = vi.hoisted(() => {
@@ -99,6 +101,87 @@ describe("Terminal", () => {
     mockState.cueStore.current = null;
     mockState.ptyListener = null;
     vi.clearAllMocks();
+    vi.restoreAllMocks();
+  });
+
+  it.each([
+    true,
+    false,
+  ])("respects keyboard focus visibility (%s) when session tabs activate", (keyboardFocusVisible) => {
+    // jsdom drops :focus-visible when React updates tabindex after programmatic focus.
+    // Model browser keyboard/pointer modality while exercising both components' effects.
+    const matches = Element.prototype.matches;
+    vi.spyOn(Element.prototype, "matches").mockImplementation(function (this: Element, selector) {
+      if (selector === '[role="tab"]:focus-visible') {
+        return (
+          this.getAttribute("role") === "tab" &&
+          document.activeElement === this &&
+          keyboardFocusVisible
+        );
+      }
+      return matches.call(this, selector);
+    });
+    function Sessions() {
+      const [activeSessionId, setActiveSessionId] = useState("main");
+      return (
+        <>
+          <TabIndicator
+            state={{ sessions: ["main", "shell"], mainSessionId: "main", activeSessionId }}
+            labels={new Map()}
+            onSelectSession={setActiveSessionId}
+          />
+          {["main", "shell"].map((sessionId) => (
+            <Terminal
+              key={sessionId}
+              sessionId={sessionId}
+              active={sessionId === activeSessionId}
+              visible={sessionId === activeSessionId}
+              spec={spec}
+              cwd={null}
+              perception={null}
+            />
+          ))}
+        </>
+      );
+    }
+    render(<Sessions />);
+    const [main, shell] = screen.getAllByRole("tab");
+    main.focus();
+    mockState.runtime.focus.mockClear();
+
+    if (keyboardFocusVisible) fireEvent.keyDown(main, { key: "ArrowRight" });
+    else {
+      shell.focus();
+      fireEvent.click(shell);
+    }
+    expect(shell.getAttribute("aria-selected")).toBe("true");
+    expect(document.activeElement).toBe(shell);
+    expect(mockState.runtime.focus).toHaveBeenCalledTimes(keyboardFocusVisible ? 0 : 1);
+
+    if (keyboardFocusVisible) fireEvent.keyDown(shell, { key: "ArrowRight" });
+    else {
+      main.focus();
+      fireEvent.click(main);
+    }
+    expect(main.getAttribute("aria-selected")).toBe("true");
+    expect(document.activeElement).toBe(main);
+    expect(mockState.runtime.focus).toHaveBeenCalledTimes(keyboardFocusVisible ? 0 : 2);
+  });
+
+  it("still focuses an activated terminal when focus is outside the tablist", () => {
+    const { rerender } = render(
+      <Terminal
+        sessionId="main"
+        visible={false}
+        active={false}
+        spec={spec}
+        cwd={null}
+        perception={null}
+      />,
+    );
+    expect(mockState.runtime.focus).not.toHaveBeenCalled();
+    rerender(<Terminal sessionId="main" visible active spec={spec} cwd={null} perception={null} />);
+    expect(mockState.runtime.focus).toHaveBeenCalledOnce();
   });
 
   it("debounces PTY output timers without recreating them for every chunk", () => {

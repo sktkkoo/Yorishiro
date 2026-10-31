@@ -38,6 +38,40 @@ afterEach(() => {
 });
 
 describe("RestoreConfirmDialog", () => {
+  it("restores focus to the connected opener when dismissed", () => {
+    const opener = document.createElement("button");
+    document.body.appendChild(opener);
+    opener.focus();
+    const { unmount } = renderDialog();
+    unmount();
+    expect(document.activeElement).toBe(opener);
+    opener.remove();
+  });
+
+  it("keeps focus inside while restoring with no enabled buttons", () => {
+    renderDialog({ onConfirm: () => new Promise<void>(() => {}) });
+    const confirm = screen.getByRole("button", { name: STRINGS.confirm });
+    confirm.focus();
+    fireEvent.click(confirm);
+    const dialog = screen.getByRole("dialog");
+    expect(document.activeElement).toBe(dialog);
+    for (const shiftKey of [false, true]) {
+      expect(fireEvent.keyDown(dialog, { key: "Tab", shiftKey })).toBe(false);
+      expect(document.activeElement).toBe(dialog);
+    }
+  });
+
+  it("moves focus from the panel into the buttons in either direction", () => {
+    renderDialog();
+    const dialog = screen.getByRole("dialog");
+    dialog.focus();
+    fireEvent.keyDown(dialog, { key: "Tab" });
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: STRINGS.cancel }));
+    dialog.focus();
+    fireEvent.keyDown(dialog, { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: STRINGS.confirm }));
+  });
+
   it("renders confirm state with initial focus on cancel", () => {
     renderDialog();
 
@@ -86,11 +120,20 @@ describe("RestoreConfirmDialog", () => {
   });
 
   it("shows done state after restore succeeds", async () => {
-    renderDialog();
+    const onClose = vi.fn();
+    renderDialog({ onClose });
 
     fireEvent.click(screen.getByRole("button", { name: STRINGS.confirm }));
 
     expect(await screen.findByText(STRINGS.done)).toBeTruthy();
+    const dialog = screen.getByRole("dialog");
+    await waitFor(() => expect(document.activeElement).toBe(dialog));
+    for (const shiftKey of [false, true]) {
+      expect(fireEvent.keyDown(dialog, { key: "Tab", shiftKey })).toBe(false);
+      expect(document.activeElement).toBe(dialog);
+    }
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    expect(onClose).not.toHaveBeenCalled();
   });
 
   it("shows error state and retry action when restore fails", async () => {
@@ -109,5 +152,11 @@ describe("RestoreConfirmDialog", () => {
     await waitFor(() =>
       expect(screen.getByRole("button", { name: STRINGS.close })).toBe(document.activeElement),
     );
+    const close = screen.getByRole("button", { name: STRINGS.close });
+    const retry = screen.getByRole("button", { name: STRINGS.retry });
+    fireEvent.keyDown(close, { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(retry);
+    fireEvent.keyDown(retry, { key: "Tab" });
+    expect(document.activeElement).toBe(close);
   });
 });

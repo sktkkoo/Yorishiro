@@ -83,6 +83,34 @@ export default function TabIndicator({
                 title={status?.attention ? attentionTitle(status.attention) : label}
                 role="tab"
                 aria-selected={isActive}
+                tabIndex={onSelectSession ? (isActive ? 0 : -1) : undefined}
+                onKeyDown={(event) => {
+                  if (!onSelectSession || event.altKey || event.ctrlKey || event.metaKey) return;
+                  const index = state.sessions.indexOf(id);
+                  let nextIndex: number;
+                  switch (event.key) {
+                    case "ArrowLeft":
+                      nextIndex = (index - 1 + state.sessions.length) % state.sessions.length;
+                      break;
+                    case "ArrowRight":
+                      nextIndex = (index + 1) % state.sessions.length;
+                      break;
+                    case "Home":
+                      nextIndex = 0;
+                      break;
+                    case "End":
+                      nextIndex = state.sessions.length - 1;
+                      break;
+                    default:
+                      return;
+                  }
+                  event.preventDefault();
+                  const tabs = event.currentTarget
+                    .closest("[role=tablist]")
+                    ?.querySelectorAll<HTMLButtonElement>("[role=tab]");
+                  tabs?.[nextIndex]?.focus();
+                  if (state.sessions[nextIndex] !== id) onSelectSession(state.sessions[nextIndex]);
+                }}
                 onClick={() => onSelectSession?.(id)}
               >
                 <span className="tab-indicator-label">{label}</span>
