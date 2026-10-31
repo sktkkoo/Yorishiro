@@ -52,7 +52,7 @@ than accepted with an unimplemented contract. Explicit manual motion commands
 keep their existing priority and playback interface; they can take lower-body
 ownership through the physical commit lifecycle below.
 
-The default admits five explicitly named speech entries, one bounded posture and
+The default admits four explicitly named speech entries, one bounded posture and
 two finite occasional performances. Adding another catalog entry does not expand
 this list. `Idle Chatting 2`, `Shrugging` and the upper-body `anim:Idle` performance
 are absent from all automatic roles. Chatting 2 was excluded after the user
@@ -63,6 +63,13 @@ its availability does not admit the upper performance. HandOnHip belongs only to
 `posture`, with an 8–12 second ownership lease, 180-second cooldown, and no forced
 first choice. Empty listening/ambient candidates leave the admitted standing
 support in place.
+
+`Thoughtful Head Shake` is also excluded from automatic speech in both the Yori
+and generic profiles. The user confirmed jerky head/torso movement during a live
+transition from `Idle Chatting` to this recording, while the isolated recording
+was acceptable. The precise blend defect has not been established. Exclusion
+prevents this unwanted combination during ordinary `consider`/`uncertain`
+speech; the asset remains available for explicit diagnostics.
 
 ## Composition and physical lifetime
 

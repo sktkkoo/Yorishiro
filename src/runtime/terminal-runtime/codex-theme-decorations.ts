@@ -77,16 +77,36 @@ export class CodexThemeDecorations {
     // Existing attached sessions can predate OSC-query observation.
     this.recordStartupBackground("#141619");
     this.subscriptions = [
-      term.onWriteParsed(() => this.schedule()),
+      // Parsing has already queued xterm's render. Update before that frame,
+      // otherwise new RGB fills are painted once with the stale startup palette.
+      term.onWriteParsed(() => {
+        if (!this.disposed && this.enabled) this.refresh();
+      }),
       term.onScroll(() => this.schedule()),
       term.onResize(() => this.schedule()),
       term.buffer.onBufferChange(() => this.schedule()),
     ];
   }
 
-  update(options: { enabled: boolean; background: string; foreground?: string }): void {
+  update(options: {
+    enabled: boolean;
+    background: string;
+    foreground?: string;
+    /** Known scene palettes recover startup fills after replay or a legacy HMR upgrade. */
+    sourceBackgrounds?: readonly string[];
+  }): void {
     if (this.disposed) return;
-    if (this.enabled === options.enabled && this.background === options.background) return;
+    let sourcesChanged = false;
+    for (const background of options.sourceBackgrounds ?? []) {
+      sourcesChanged = this.rememberBackground(background) || sourcesChanged;
+    }
+    sourcesChanged = this.rememberBackground(options.background) || sourcesChanged;
+    if (
+      !sourcesChanged &&
+      this.enabled === options.enabled &&
+      this.background === options.background
+    )
+      return;
     this.enabled = options.enabled;
     this.background = options.background;
     this.refresh();
@@ -95,11 +115,21 @@ export class CodexThemeDecorations {
   /** Call for a live Codex OSC 11 query, using the opaque palette being answered. */
   recordStartupBackground(background: string): void {
     if (this.disposed) return;
+    if (this.rememberBackground(background)) this.schedule();
+  }
+
+  private rememberBackground(background: string): boolean {
+    let changed = false;
     for (const surface of ["composer", "history"] as const) {
       const color = codexSurfaceColor(background, surface);
-      if (color) this.sources.set(Number.parseInt(color.slice(1), 16), surface);
+      if (!color) continue;
+      const value = Number.parseInt(color.slice(1), 16);
+      if (this.sources.get(value) !== surface) {
+        this.sources.set(value, surface);
+        changed = true;
+      }
     }
-    this.schedule();
+    return changed;
   }
 
   reset(): void {
@@ -167,26 +197,26 @@ export class CodexThemeDecorations {
         }
       }
     }
-    // onWriteParsed can fire without changing fills. Avoid render churn, and
-    // compare marker positions because scrollback trimming moves them.
-    if (
-      this.lastBuffer === buffer &&
-      runs.length === this.painted.length &&
-      runs.every((run, i) => {
-        const painted = this.painted[i];
-        return (
-          !painted.marker.isDisposed &&
-          painted.marker.line === run.line &&
-          painted.run.x === run.x &&
-          painted.run.width === run.width &&
-          painted.run.backgroundColor === run.backgroundColor
-        );
-      })
-    )
-      return;
-    this.clear();
+    // Keep unchanged surfaces alive while another row streams. Removing all
+    // decorations exposes their original RGB backgrounds until xterm repaints.
+    // Use live marker positions because scrollback trimming moves them.
+    const key = (run: Run, line = run.line) =>
+      `${line}:${run.x}:${run.width}:${run.backgroundColor}`;
+    const previous = new Map<string, PaintedRun>();
+    if (this.lastBuffer !== buffer) this.clear();
+    for (const painted of this.painted) {
+      if (painted.marker.isDisposed) painted.decoration.dispose();
+      else previous.set(key(painted.run, painted.marker.line), painted);
+    }
+    const next: PaintedRun[] = [];
     this.lastBuffer = buffer;
     for (const run of runs) {
+      const existing = previous.get(key(run));
+      if (existing) {
+        previous.delete(key(run));
+        next.push(existing);
+        continue;
+      }
       const marker = this.term.registerMarker(run.line - buffer.baseY - buffer.cursorY);
       const decoration = this.term.registerDecoration({
         marker,
@@ -195,8 +225,13 @@ export class CodexThemeDecorations {
         backgroundColor: run.backgroundColor,
         layer: "bottom",
       });
-      if (decoration) this.painted.push({ run, marker, decoration });
+      if (decoration) next.push({ run, marker, decoration });
       else marker.dispose();
     }
+    for (const { decoration, marker } of previous.values()) {
+      decoration.dispose();
+      marker.dispose();
+    }
+    this.painted = next;
   }
 }

@@ -8,10 +8,13 @@ import {
   type PreviewStatus,
 } from "./preview-host";
 
+import type { SharingDeliveryMode } from "./sharing-delivery";
+
 export const PREVIEW_WINDOW_LABEL = "auxiliary-camera-preview";
 export const PREVIEW_STATE_EVENT = "camera-preview-state";
 const PREVIEW_ACTION_EVENT = "camera-preview-action";
 export interface CameraPreviewFrame {
+  deliveryMode?: SharingDeliveryMode;
   leaseId: string;
   imageDataUrl: string;
   lastCapturedAt?: number;
@@ -40,6 +43,7 @@ export function requestCameraPreviewAction(
   return invoke("camera_preview_request_action", { leaseId, action });
 }
 export interface CameraPreviewModel {
+  deliveryMode?: SharingDeliveryMode;
   visible?: boolean;
   initiallyDetached?: boolean;
   stream: MediaStream | null;
@@ -146,6 +150,7 @@ export class CameraPreviewHost extends PreviewHost<
             source,
             () => ({
               leaseId,
+              deliveryMode: model().deliveryMode ?? "context",
               language: model().language.startsWith("ja") ? "ja" : "en",
               lastCapturedAt: finiteTimestamp(model().lastCapturedAt),
               lastSharedAt: finiteTimestamp(model().lastSharedAt),

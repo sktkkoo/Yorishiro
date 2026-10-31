@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#e8e9e5">
+  <title>Yorishiro — おまかせ作業</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="app-header">
+    <a class="brand" href="#home">Yorishiro</a><span class="app-section">おまかせ作業</span>
+    <div class="header-actions"><div class="interaction-mode" role="group" aria-label="過ごし方"><button type="button" data-action="mode" data-mode="conversation" aria-pressed="true">話しながら</button><button type="button" data-action="mode" data-mode="quiet" aria-pressed="false">静かに</button></div><button type="button" data-action="history"><span data-icon="clock"></span>作業履歴 <span id="task-count">0</span></button></div>
+  </header>
+  <main class="shared-room">
+    <section class="presence" aria-label="より">
+      <div id="character-stage" aria-label="よりのVRMキャラクター">
+        <img id="character-fallback" src="../../public/models/Yori-thumbnail.png" alt="よりのプレビュー" onerror="this.style.display='none'">
+      </div>
+      <p id="character-load" role="status">キャラクターを読み込んでいます</p>
+      <div class="character-caption"><div class="character-name"><strong>より</strong><span id="presence-state" role="status"></span></div><p id="presence-speech" aria-live="polite"></p><div id="presence-controls"></div></div>
+    </section>
+    <section class="workspace" aria-label="一緒に見る資料"><div id="view"></div><aside id="demo-conversation" aria-label="会話デモの操作" hidden></aside></section>
+  </main>
+  <footer class="app-footer"><button type="button" data-action="about">体験デモ · GPT Live未接続</button><div><button type="button" data-action="scenes">場面を試す</button><button type="button" data-action="strategy">設計の方針</button></div></footer>
+  <dialog id="dialog" aria-labelledby="dialog-title"><div id="dialog-content"></div></dialog>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <div class="sr-only" id="announcer" aria-live="polite"></div>
+  <script src="conversation.js"></script>
+  <script src="app.js"></script>
+  <script>
+    // Let the controls paint before parsing the local model bundle.
+                requestAnimationFrame(() => requestAnimationFrame(() => {
+                  const script = document.createElement('script');
+                  script.src = 'character.bundle.js';
+                  script.onerror = () => window.dispatchEvent(new CustomEvent('yorishiro:character-ready', {
+                    detail: {ok: false, message: 'キャラクター用ファイルを読み込めませんでした'}
+                  }));
+                  document.body.append(script);
+                }));
+  </script>
+</body>
+</html>

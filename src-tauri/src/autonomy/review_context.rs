@@ -1,0 +1,1071 @@
+//! Read-only, bounded review evidence from host-owned result metadata and the
+//! exported artifact. No checkout, index, command, transport, or publication.
+use git2::{ObjectType, Oid, Repository};
+use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, BTreeSet};
+use std::fs::{self, OpenOptions};
+use std::io::Read;
+use std::path::{Component, Path, PathBuf};
+
+const MAX_METADATA: usize = 64 * 1024;
+const MAX_FILE: usize = 32 * 1024 * 1024;
+const MAX_ARTIFACT: usize = 256 * 1024 * 1024;
+const MAX_TEXT: usize = 256 * 1024;
+const MAX_PREVIEW: usize = 8 * 1024;
+const MAX_ENTRIES: usize = 20_000;
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Source {
+    root: String,
+    base_commit: String,
+    base_branch: String,
+    branch: String,
+    #[serde(default)]
+    origin_url: String,
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ResultRecord {
+    worktree_path: String,
+    base_commit: String,
+    base_branch: String,
+    branch: String,
+    verified_tree: String,
+    changed_paths: Vec<String>,
+    checks: Vec<super::development::ExecutedCheck>,
+}
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct ReviewContext {
+    pub source_root: String,
+    artifact_path: String,
+    base_commit: String,
+    verified_tree: String,
+    base_branch: String,
+    branch: String,
+    // A locator only. Its presence is not a request to publish to it.
+    origin: Option<String>,
+    pub checks: Vec<super::development::ExecutedCheck>,
+    pub changes: Vec<Change>,
+}
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct Change {
+    path: String,
+    before: Option<String>,
+    after: Option<String>,
+    before_mode: Option<u32>,
+    after_mode: Option<u32>,
+    before_omitted: bool,
+    after_omitted: bool,
+    before_truncated: bool,
+    after_truncated: bool,
+}
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct Entry {
+    oid: Oid,
+    mode: u32,
+}
+
+pub(super) fn saved_source_root(storage: &Path, run_id: &str) -> Result<String, String> {
+    if uuid::Uuid::parse_str(run_id).is_err() {
+        return Err("作業の識別子が不正です".into());
+    }
+    let path = storage.join("development").join(run_id).join("source.json");
+    let source: Source = serde_json::from_slice(&read_file(&path, MAX_METADATA)?)
+        .map_err(|_| "元の作業の記録を読み取れません")?;
+    if !Path::new(&source.root).is_absolute()
+        || source.root.len() > 8_000
+        || source.root.contains('\0')
+    {
+        return Err("元の作業フォルダの記録が不正です".into());
+    }
+    Ok(source.root)
+}
+
+/// Continue only the exact frozen handoff from versions that marked successful
+/// preparation failed while awaiting approval. This never repairs persisted
+/// history or permits retrying an already failed/cancelled execution.
+pub(super) fn load_for_action(
+    storage: &Path,
+    run: &super::Run,
+    action: &serde_json::Value,
+) -> Result<ReviewContext, String> {
+    load_action_content(storage, run, action, ReviewContent::FullText)
+}
+
+/// Native delivery consumes verified identities and paths, never model context.
+/// Verify the same artifact and frozen handoff without loading before/after text.
+pub(super) fn load_for_native_delivery(
+    storage: &Path,
+    run: &super::Run,
+    action: &serde_json::Value,
+) -> Result<ReviewContext, String> {
+    load_action_content(storage, run, action, ReviewContent::VerifiedMetadata)
+}
+
+/// Tool-free judgments receive bounded text, while artifact identity is still
+/// verified in full. Missing previews must never be mistaken for empty files.
+pub(super) fn load_for_judgment(storage: &Path, run: &super::Run) -> Result<ReviewContext, String> {
+    load_content(storage, run, ReviewContent::BoundedText)
+}
+
+pub(super) fn load_action_for_judgment(
+    storage: &Path,
+    run: &super::Run,
+    action: &serde_json::Value,
+) -> Result<ReviewContext, String> {
+    load_action_content(storage, run, action, ReviewContent::BoundedText)
+}
+
+#[derive(Clone, Copy)]
+enum ReviewContent {
+    FullText,
+    BoundedText,
+    VerifiedMetadata,
+}
+
+#[derive(Default)]
+struct TextEvidence {
+    text: Option<String>,
+    omitted: bool,
+    truncated: bool,
+}
+
+impl TextEvidence {
+    fn omitted() -> Self {
+        Self {
+            omitted: true,
+            ..Self::default()
+        }
+    }
+
+    fn full(text: String) -> Self {
+        Self {
+            text: Some(text),
+            ..Self::default()
+        }
+    }
+}
+
+fn bounded_text(bytes: Vec<u8>, total: &mut usize) -> TextEvidence {
+    if bytes.contains(&0) {
+        return TextEvidence::omitted();
+    }
+    let Ok(mut text) = String::from_utf8(bytes) else {
+        return TextEvidence::omitted();
+    };
+    let mut length = text
+        .len()
+        .min(MAX_PREVIEW)
+        .min(MAX_TEXT.saturating_sub(*total));
+    while !text.is_char_boundary(length) {
+        length -= 1;
+    }
+    if length == 0 && !text.is_empty() {
+        return TextEvidence::omitted();
+    }
+    let truncated = length < text.len();
+    text.truncate(length);
+    *total += length;
+    TextEvidence {
+        text: Some(text),
+        omitted: false,
+        truncated,
+    }
+}
+
+fn load_action_content(
+    storage: &Path,
+    run: &super::Run,
+    action: &serde_json::Value,
+    content: ReviewContent,
+) -> Result<ReviewContext, String> {
+    if run.status == "completed" {
+        return load_content(storage, run, content);
+    }
+    if run.status != "failed"
+        || run.finished_at.is_none()
+        || uuid::Uuid::parse_str(&run.id).is_err()
+        || !matches!(action["status"].as_str(), Some("approved" | "executing"))
+        || action["runId"].as_str() != Some(run.id.as_str())
+        || action["id"]
+            .as_str()
+            .is_none_or(|id| uuid::Uuid::parse_str(id).is_err())
+    {
+        return Err("この作業は承認待ちだった成果物の継続対象ではありません".into());
+    }
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct ReadyHandoff {
+        worktree_path: String,
+        changed_paths: Vec<String>,
+        checks: Vec<super::development::ExecutedCheck>,
+        ready_for_review: bool,
+        requested_action: super::actions::RequestedAction,
+        question: Option<String>,
+    }
+    let job = storage.join("development").join(&run.id);
+    checked_directory(&job)?;
+    let handoff: ReadyHandoff =
+        serde_json::from_slice(&read_file(&job.join("result.json"), MAX_METADATA)?)
+            .map_err(|_| "承認待ちだった成果物の記録を確認できません")?;
+    handoff.requested_action.validate()?;
+    let request = &handoff.requested_action;
+    if !handoff.ready_for_review
+        || handoff.question.is_some()
+        || handoff.checks.is_empty()
+        || handoff.checks.len() > 10
+        || handoff
+            .checks
+            .iter()
+            .any(|check| check.exit_code != 0 || check.command.len() > 8_000)
+        || handoff.changed_paths.is_empty()
+        || handoff.changed_paths.len() > 200
+        || handoff.changed_paths != run.changed_paths
+        || run.development_path.as_deref() != Some(handoff.worktree_path.as_str())
+        || action["artifactPath"].as_str() != Some(handoff.worktree_path.as_str())
+        || action["changedPaths"] != serde_json::json!(handoff.changed_paths)
+        || action["checks"] != serde_json::json!(handoff.checks)
+        || action["operation"].as_str() != Some(request.operation.as_str())
+        || action["target"].as_str() != Some(request.target.as_str())
+        || action["impact"].as_str() != Some(request.impact.as_str())
+        || action["details"].as_str() != Some(request.details.as_str())
+        || action["summary"].as_str() != Some(request.reason.as_str())
+        || action["networkAccess"].as_bool() != Some(request.network_access)
+        || action["delivery"] != serde_json::json!(request.delivery)
+    {
+        return Err("承認した操作と検証済みの引き継ぎ記録が一致しません".into());
+    }
+    let mut verified_run = run.clone();
+    verified_run.status = "completed".into();
+    let review = load_content(storage, &verified_run, content)?;
+    if action["sourceRoot"].as_str() != Some(review.source_root.as_str()) {
+        return Err("承認した操作と元の作業フォルダが一致しません".into());
+    }
+    Ok(review)
+}
+
+pub(super) fn load(storage: &Path, run: &super::Run) -> Result<ReviewContext, String> {
+    load_content(storage, run, ReviewContent::FullText)
+}
+
+fn load_content(
+    storage: &Path,
+    run: &super::Run,
+    content: ReviewContent,
+) -> Result<ReviewContext, String> {
+    if uuid::Uuid::parse_str(&run.id).is_err() || run.status != "completed" {
+        return Err(
+            "完了した作業の成果物を指定してください。未完了の結果はAIに相談してください".into(),
+        );
+    }
+    let job = storage.join("development").join(&run.id);
+    checked_directory(&job)?;
+    let source: Source =
+        serde_json::from_slice(&read_file(&job.join("source.json"), MAX_METADATA)?)
+            .map_err(|_| "元の作業フォルダの記録を読み取れません")?;
+    let result: ResultRecord =
+        serde_json::from_slice(&read_file(&job.join("result.json"), MAX_METADATA)?)
+            .map_err(|_| "保存された作業結果を読み取れません")?;
+    let artifact = job.join("review-artifact");
+    if !Path::new(&source.root).is_absolute()
+        || source.root.len() > 8_000
+        || source.root.contains('\0')
+        || run
+            .source_root
+            .as_ref()
+            .is_some_and(|root| root != &source.root)
+        || source.base_commit != result.base_commit
+        || source.base_branch != result.base_branch
+        || source.branch != result.branch
+        || result.worktree_path != artifact.to_string_lossy()
+        || run.development_path.as_deref() != Some(result.worktree_path.as_str())
+        || result.changed_paths != run.changed_paths
+        || result.changed_paths.len() > 200
+        || result.checks.len() > 10
+        || result
+            .checks
+            .iter()
+            .any(|check| check.command.len() > 8_000)
+        || source.base_branch.len() > 2_000
+        || source.branch.len() > 2_000
+    {
+        return Err("成果物と元の作業の記録が一致しません。承認内容を作成していません".into());
+    }
+    checked_directory(&artifact)?;
+    let mut files = BTreeMap::new();
+    let mut byte_count = 0;
+    let mut entry_count = 0;
+    let actual_tree = artifact_tree(
+        &artifact,
+        Path::new(""),
+        0,
+        &mut files,
+        &mut byte_count,
+        &mut entry_count,
+    )?;
+    let verified_tree =
+        Oid::from_str(&result.verified_tree).map_err(|_| "検証済み成果物の識別子が不正です")?;
+    if actual_tree != verified_tree {
+        return Err("保存された成果物が検証時から変わっています。新しい確認が必要です".into());
+    }
+    let git = job.join("repository/.git");
+    checked_directory(&git)?;
+    // Opening the exact existing object database does not consult remotes,
+    // checkout files, create objects, or mutate the retained clone.
+    let repo = Repository::open_bare(&git).map_err(|_| "比較元のGitオブジェクトを開けません")?;
+    let base = Oid::from_str(&source.base_commit).map_err(|_| "比較元の識別子が不正です")?;
+    let commit = verified_object(&repo, base, ObjectType::Commit, MAX_METADATA)?;
+    let first = commit
+        .split(|byte| *byte == b'\n')
+        .next()
+        .ok_or("比較元のコミットが不正です")?;
+    let tree = std::str::from_utf8(first)
+        .ok()
+        .and_then(|line| line.strip_prefix("tree "))
+        .and_then(|oid| Oid::from_str(oid).ok())
+        .ok_or("比較元のツリーが不正です")?;
+    let mut before = BTreeMap::new();
+    let mut base_entries = 0;
+    base_tree(&repo, tree, "", 0, &mut before, &mut base_entries)?;
+    let changed: Vec<String> = files
+        .keys()
+        .chain(before.keys())
+        .cloned()
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .filter(|path| files.get(path) != before.get(path))
+        .filter(|path| path != ".yorishiro-tmp" && !path.starts_with(".yorishiro-tmp/"))
+        .collect();
+    if changed != result.changed_paths || changed.is_empty() {
+        return Err("保存された変更一覧と成果物の内容が一致しません".into());
+    }
+    let mut text_bytes = 0;
+    let mut changes = Vec::new();
+    for path in changed {
+        let old = before.get(&path);
+        let new = files.get(&path);
+        let old_text = if let Some(entry) = old {
+            match content {
+                ReviewContent::FullText => TextEvidence::full(checked_text(
+                    verified_object(&repo, entry.oid, ObjectType::Blob, MAX_TEXT)?,
+                    &mut text_bytes,
+                )?),
+                ReviewContent::BoundedText => {
+                    let (size, kind) = repo
+                        .odb()
+                        .map_err(|e| e.to_string())?
+                        .read_header(entry.oid)
+                        .map_err(|_| "比較元のGitオブジェクトが見つかりません")?;
+                    if kind != ObjectType::Blob {
+                        return Err("比較元データの種類が不正です".into());
+                    }
+                    if size > MAX_FILE || text_bytes >= MAX_TEXT {
+                        TextEvidence::omitted()
+                    } else {
+                        bounded_text(
+                            verified_object(&repo, entry.oid, ObjectType::Blob, MAX_FILE)?,
+                            &mut text_bytes,
+                        )
+                    }
+                }
+                ReviewContent::VerifiedMetadata => TextEvidence::omitted(),
+            }
+        } else {
+            TextEvidence::default()
+        };
+        let new_text = if let Some(entry) = new {
+            if matches!(content, ReviewContent::VerifiedMetadata)
+                || (matches!(content, ReviewContent::BoundedText) && text_bytes >= MAX_TEXT)
+            {
+                TextEvidence::omitted()
+            } else {
+                let limit = if matches!(content, ReviewContent::FullText) {
+                    MAX_TEXT
+                } else {
+                    MAX_FILE
+                };
+                let bytes = read_file(&artifact.join(&path), limit)?;
+                if Oid::hash_object(ObjectType::Blob, &bytes).map_err(|e| e.to_string())?
+                    != entry.oid
+                {
+                    return Err("確認中に成果物が変更されました".into());
+                }
+                if matches!(content, ReviewContent::FullText) {
+                    TextEvidence::full(checked_text(bytes, &mut text_bytes)?)
+                } else {
+                    bounded_text(bytes, &mut text_bytes)
+                }
+            }
+        } else {
+            TextEvidence::default()
+        };
+        changes.push(Change {
+            path,
+            before: old_text.text,
+            after: new_text.text,
+            before_mode: old.map(|entry| entry.mode),
+            after_mode: new.map(|entry| entry.mode),
+            before_omitted: old_text.omitted,
+            after_omitted: new_text.omitted,
+            before_truncated: old_text.truncated,
+            after_truncated: new_text.truncated,
+        });
+    }
+    Ok(ReviewContext {
+        source_root: source.root,
+        artifact_path: artifact.to_string_lossy().into_owned(),
+        base_commit: source.base_commit,
+        verified_tree: result.verified_tree,
+        base_branch: source.base_branch,
+        branch: source.branch,
+        origin: safe_origin(&source.origin_url),
+        checks: result.checks,
+        changes,
+    })
+}
+
+fn safe_origin(origin: &str) -> Option<String> {
+    if origin.is_empty() || origin.len() > 8_000 || origin.chars().any(char::is_control) {
+        return None;
+    }
+    if let Ok(mut url) = tauri::Url::parse(origin) {
+        if !["https", "http", "ssh"].contains(&url.scheme()) || url.host_str().is_none() {
+            return None;
+        }
+        let _ = url.set_username("");
+        let _ = url.set_password(None);
+        url.set_query(None);
+        url.set_fragment(None);
+        return Some(url.to_string());
+    }
+    // SCP-style Git locator; never expose any credential-like user component.
+    origin
+        .strip_prefix("git@")
+        .filter(|rest| rest.contains(':') && !rest.contains('@'))
+        .map(|rest| format!("git@{rest}"))
+}
+fn checked_text(bytes: Vec<u8>, total: &mut usize) -> Result<String, String> {
+    *total = total
+        .checked_add(bytes.len())
+        .ok_or("変更内容が大きすぎます")?;
+    if *total > MAX_TEXT || bytes.contains(&0) {
+        return Err(
+            "変更内容が大きすぎるか、テキスト以外のデータが含まれています。AIに相談してください"
+                .into(),
+        );
+    }
+    String::from_utf8(bytes)
+        .map_err(|_| "テキストとして確認できない変更です。AIに相談してください".into())
+}
+fn checked_directory(path: &Path) -> Result<(), String> {
+    if !path.is_absolute() {
+        return Err("確認用データの保存先が不正です".into());
+    }
+    let mut cursor = PathBuf::new();
+    for part in path.components() {
+        match part {
+            Component::RootDir | Component::Normal(_) => cursor.push(part),
+            _ => return Err("確認用パスに相対参照は使用できません".into()),
+        }
+        let meta =
+            fs::symlink_metadata(&cursor).map_err(|_| "確認に必要な保存データが見つかりません")?;
+        if !meta.is_dir() || meta.file_type().is_symlink() {
+            return Err("確認用データのフォルダにリンクは使用できません".into());
+        }
+    }
+    Ok(())
+}
+fn read_file(path: &Path, limit: usize) -> Result<Vec<u8>, String> {
+    checked_directory(path.parent().ok_or("確認用パスが不正です")?)?;
+    let metadata =
+        fs::symlink_metadata(path).map_err(|_| "確認に必要な保存データが見つかりません")?;
+    if !metadata.is_file() || metadata.file_type().is_symlink() || metadata.len() > limit as u64 {
+        return Err("確認用データが大きすぎるか、通常のファイルではありません".into());
+    }
+    let mut options = OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
+    }
+    let file = options
+        .open(path)
+        .map_err(|_| "確認用データを安全に開けません")?;
+    if !file.metadata().map_err(|e| e.to_string())?.is_file() {
+        return Err("確認用データが通常のファイルではありません".into());
+    }
+    let mut bytes = Vec::new();
+    file.take((limit + 1) as u64)
+        .read_to_end(&mut bytes)
+        .map_err(|e| e.to_string())?;
+    if bytes.len() > limit {
+        return Err("確認用データが大きすぎます".into());
+    }
+    Ok(bytes)
+}
+fn name_valid(name: &str) -> Result<(), String> {
+    if name.is_empty()
+        || name == "."
+        || name == ".."
+        || name.eq_ignore_ascii_case(".git")
+        || name.contains('/')
+        || name.contains('\\')
+        || name.chars().any(char::is_control)
+    {
+        return Err("成果物に確認できないファイル名があります".into());
+    }
+    Ok(())
+}
+fn artifact_tree(
+    root: &Path,
+    relative: &Path,
+    depth: usize,
+    files: &mut BTreeMap<String, Entry>,
+    total: &mut usize,
+    entries: &mut usize,
+) -> Result<Oid, String> {
+    if depth > 64 {
+        return Err("成果物の階層が深すぎます".into());
+    }
+    checked_directory(&root.join(relative))?;
+    let mut children = Vec::new();
+    for item in fs::read_dir(root.join(relative)).map_err(|e| e.to_string())? {
+        *entries += 1;
+        if *entries > MAX_ENTRIES {
+            return Err("成果物の項目数が多すぎます".into());
+        }
+        let item = item.map_err(|e| e.to_string())?;
+        let name = item
+            .file_name()
+            .into_string()
+            .map_err(|_| "成果物の名前を読み取れません")?;
+        name_valid(&name)?;
+        let meta = fs::symlink_metadata(item.path()).map_err(|e| e.to_string())?;
+        if meta.file_type().is_symlink() {
+            return Err("成果物にリンクは使用できません".into());
+        }
+        let path = relative.join(&name);
+        let (mode, oid) = if meta.is_dir() {
+            (
+                0o40000,
+                artifact_tree(root, &path, depth + 1, files, total, entries)?,
+            )
+        } else if meta.is_file() {
+            let bytes = read_file(
+                &item.path(),
+                MAX_FILE.min(MAX_ARTIFACT.saturating_sub(*total)),
+            )?;
+            *total += bytes.len();
+            #[cfg(unix)]
+            let executable = {
+                use std::os::unix::fs::PermissionsExt;
+                meta.permissions().mode() & 0o111 != 0
+            };
+            #[cfg(not(unix))]
+            let executable = false;
+            let mode = if executable { 0o100755 } else { 0o100644 };
+            let oid = Oid::hash_object(ObjectType::Blob, &bytes).map_err(|e| e.to_string())?;
+            files.insert(
+                path.to_str().ok_or("成果物のパスが不正です")?.into(),
+                Entry { mode, oid },
+            );
+            (mode, oid)
+        } else {
+            return Err("成果物に未対応のファイルが含まれています".into());
+        };
+        let sort = if mode == 0o40000 {
+            format!("{name}/")
+        } else {
+            name.clone()
+        };
+        children.push((sort, name, mode, oid));
+    }
+    children.sort_by(|a, b| a.0.as_bytes().cmp(b.0.as_bytes()));
+    let mut tree = Vec::new();
+    for (_, name, mode, oid) in children {
+        tree.extend_from_slice(format!("{mode:o} {name}").as_bytes());
+        tree.push(0);
+        tree.extend_from_slice(oid.as_bytes());
+    }
+    Oid::hash_object(ObjectType::Tree, &tree).map_err(|e| e.to_string())
+}
+fn verified_object(
+    repo: &Repository,
+    oid: Oid,
+    kind: ObjectType,
+    limit: usize,
+) -> Result<Vec<u8>, String> {
+    let database = repo.odb().map_err(|e| e.to_string())?;
+    let (size, actual) = database
+        .read_header(oid)
+        .map_err(|_| "比較元のGitオブジェクトが見つかりません")?;
+    if actual != kind || size > limit {
+        return Err("比較元データが大きすぎるか不正です".into());
+    }
+    let object = database
+        .read(oid)
+        .map_err(|_| "比較元データを読み取れません")?;
+    if object.kind() != kind
+        || object.data().len() > limit
+        || Oid::hash_object(kind, object.data()).map_err(|e| e.to_string())? != oid
+    {
+        return Err("比較元データの内容が識別子と一致しません".into());
+    }
+    Ok(object.data().to_vec())
+}
+fn base_tree(
+    repo: &Repository,
+    oid: Oid,
+    prefix: &str,
+    depth: usize,
+    files: &mut BTreeMap<String, Entry>,
+    entries: &mut usize,
+) -> Result<(), String> {
+    if depth > 64 {
+        return Err("比較元の階層が深すぎます".into());
+    }
+    let bytes = verified_object(repo, oid, ObjectType::Tree, 4 * 1024 * 1024)?;
+    let mut cursor = 0;
+    let mut names = BTreeSet::new();
+    while cursor < bytes.len() {
+        *entries += 1;
+        if *entries > MAX_ENTRIES {
+            return Err("比較元の項目数が多すぎます".into());
+        }
+        let space = bytes[cursor..]
+            .iter()
+            .position(|b| *b == b' ')
+            .map(|n| n + cursor)
+            .ok_or("比較元ツリーの形式が不正です")?;
+        let mode = std::str::from_utf8(&bytes[cursor..space])
+            .ok()
+            .and_then(|mode| u32::from_str_radix(mode, 8).ok())
+            .ok_or("比較元の属性が不正です")?;
+        let end = bytes[space + 1..]
+            .iter()
+            .position(|b| *b == 0)
+            .map(|n| n + space + 1)
+            .ok_or("比較元ツリーの名前が不正です")?;
+        let name = std::str::from_utf8(&bytes[space + 1..end])
+            .map_err(|_| "比較元の名前を読み取れません")?;
+        name_valid(name)?;
+        if !names.insert(name) {
+            return Err("比較元に重複した名前があります".into());
+        }
+        let next = end
+            .checked_add(21)
+            .filter(|next| *next <= bytes.len())
+            .ok_or("比較元の識別子が不正です")?;
+        let child = Oid::from_bytes(&bytes[end + 1..next]).map_err(|e| e.to_string())?;
+        cursor = next;
+        let path = if prefix.is_empty() {
+            name.into()
+        } else {
+            format!("{prefix}/{name}")
+        };
+        match mode {
+            0o40000 => base_tree(repo, child, &path, depth + 1, files, entries)?,
+            0o100644 | 0o100755 => {
+                files.insert(path, Entry { oid: child, mode });
+            }
+            _ => return Err("比較元のリンクやサブモジュールには対応していません".into()),
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn fixture(after: &[u8]) -> (tempfile::TempDir, PathBuf, super::super::Run) {
+        let directory = tempfile::tempdir().unwrap();
+        let storage = directory.path().canonicalize().unwrap();
+        let id = uuid::Uuid::new_v4().to_string();
+        let job = storage.join("development").join(&id);
+        fs::create_dir_all(&job).unwrap();
+        let repo = Repository::init(job.join("repository")).unwrap();
+        let original = repo.blob(b"Before the change\n").unwrap();
+        let mut builder = repo.treebuilder(None).unwrap();
+        builder.insert("report.txt", original, 0o100644).unwrap();
+        let tree = builder.write().unwrap();
+        let signature = git2::Signature::now("Fixture", "fixture@example.test").unwrap();
+        let commit = repo
+            .commit(
+                Some("HEAD"),
+                &signature,
+                &signature,
+                "fixture",
+                &repo.find_tree(tree).unwrap(),
+                &[],
+            )
+            .unwrap();
+        let modified = repo.blob(after).unwrap();
+        builder.insert("report.txt", modified, 0o100644).unwrap();
+        let verified = builder.write().unwrap();
+        let artifact = super::super::artifact::export_verified_tree(
+            &job.join("repository"),
+            &job,
+            &verified.to_string(),
+        )
+        .unwrap();
+        let root = storage.join("original-project");
+        let checks = json!([{"command":"fixture verification","exitCode":0}]);
+        fs::write(job.join("source.json"),serde_json::to_vec(&json!({"root":root,"baseCommit":commit.to_string(),"baseBranch":"main","branch":"fixture","originUrl":"https://user:secret@example.test/team/project.git?token=secret"})).unwrap()).unwrap();
+        fs::write(job.join("result.json"),serde_json::to_vec(&json!({"worktreePath":artifact,"baseCommit":commit.to_string(),"baseBranch":"main","branch":"fixture","verifiedTree":verified.to_string(),"changedPaths":["report.txt"],"checks":checks})).unwrap()).unwrap();
+        let run = super::super::Run {
+            id,
+            started_at: 1,
+            finished_at: Some(2),
+            status: "completed".into(),
+            summary: "Prepared changes".into(),
+            reason: "Requested work".into(),
+            changed_paths: vec!["report.txt".into()],
+            can_undo: false,
+            development_path: Some(artifact.to_string_lossy().into_owned()),
+            pull_request_url: None,
+            branch: Some("fixture".into()),
+            validation_summary: None,
+            source_root: None,
+        };
+        (directory, storage, run)
+    }
+    #[test]
+    fn legacy_result_has_original_source_and_complete_verified_before_after() {
+        let (_directory, storage, run) = fixture(b"After the change\n");
+        let context = load(&storage, &run).unwrap();
+        assert_eq!(
+            context.source_root,
+            storage.join("original-project").to_string_lossy()
+        );
+        assert_eq!(
+            context.changes[0].before.as_deref(),
+            Some("Before the change\n")
+        );
+        assert_eq!(
+            context.changes[0].after.as_deref(),
+            Some("After the change\n")
+        );
+        assert_eq!(
+            context.origin.as_deref(),
+            Some("https://example.test/team/project.git")
+        );
+        assert_eq!(context.checks.len(), 1);
+    }
+    #[test]
+    fn unavailable_or_tampered_artifacts_fail_without_inventing_context() {
+        let (_directory, storage, run) = fixture(b"After\n");
+        let artifact = PathBuf::from(run.development_path.as_ref().unwrap());
+        fs::write(artifact.join("report.txt"), "Tampered\n").unwrap();
+        assert!(load(&storage, &run).unwrap_err().contains("変わっています"));
+        assert!(load_for_judgment(&storage, &run)
+            .unwrap_err()
+            .contains("変わっています"));
+        fs::remove_file(
+            storage
+                .join("development")
+                .join(&run.id)
+                .join("result.json"),
+        )
+        .unwrap();
+        assert!(load(&storage, &run).is_err());
+    }
+    #[test]
+    fn binary_and_oversized_changed_content_are_not_silently_truncated() {
+        let (_directory, storage, run) = fixture(b"binary\0payload");
+        assert!(load(&storage, &run).is_err());
+        let (_directory, storage, run) = fixture(&vec![b'x'; MAX_TEXT + 1]);
+        assert!(load(&storage, &run).is_err());
+    }
+    #[test]
+    fn judgments_bound_large_utf8_text_and_explicitly_omit_binary_content() {
+        let bytes = "変更内容です。".repeat(MAX_TEXT / 3).into_bytes();
+        let (_directory, storage, run) = fixture(&bytes);
+        assert!(load(&storage, &run).is_err());
+        let context = load_for_judgment(&storage, &run).unwrap();
+        let change = &context.changes[0];
+        assert_eq!(change.before.as_deref(), Some("Before the change\n"));
+        assert!(!change.before_omitted);
+        assert!(!change.before_truncated);
+        let preview = change.after.as_ref().unwrap();
+        assert!(!preview.is_empty() && preview.len() <= MAX_PREVIEW);
+        assert!(bytes.starts_with(preview.as_bytes()));
+        assert!(change.after_truncated);
+        assert!(!change.after_omitted);
+        let serialized = serde_json::to_value(&context).unwrap();
+        assert_eq!(serialized["changes"][0]["afterTruncated"], true);
+
+        for bytes in [b"binary\0payload".to_vec(), vec![0xff, 0xfe, 0xfd]] {
+            let (_directory, storage, run) = fixture(&bytes);
+            assert!(load(&storage, &run).is_err());
+            let context = load_for_judgment(&storage, &run).unwrap();
+            let change = &context.changes[0];
+            assert!(change.after.is_none());
+            assert!(change.after_omitted);
+            assert!(!change.after_truncated);
+            assert_eq!(change.after_mode, Some(0o100644));
+        }
+    }
+    #[test]
+    fn judgment_preview_budget_handles_many_files_and_utf8_boundaries() {
+        let bytes = "資料".repeat(MAX_PREVIEW).into_bytes();
+        let mut total = 0;
+        for _ in 0..100 {
+            let preview = bounded_text(bytes.clone(), &mut total);
+            assert!(total <= MAX_TEXT);
+            if let Some(text) = preview.text {
+                assert!(bytes.starts_with(text.as_bytes()));
+                assert!(preview.truncated);
+                assert!(!preview.omitted);
+            } else {
+                assert!(preview.omitted);
+                assert!(!preview.truncated);
+            }
+        }
+        assert!(total >= MAX_TEXT - 3);
+        let mut almost_full = MAX_TEXT - 1;
+        let preview = bounded_text("資".as_bytes().to_vec(), &mut almost_full);
+        assert!(preview.text.is_none() && preview.omitted);
+        assert_eq!(almost_full, MAX_TEXT - 1);
+        let empty = bounded_text(vec![], &mut almost_full);
+        assert_eq!(empty.text.as_deref(), Some(""));
+        assert!(!empty.omitted && !empty.truncated);
+    }
+    #[test]
+    fn native_delivery_verifies_large_and_binary_artifacts_without_model_text() {
+        for bytes in [vec![b'x'; MAX_TEXT + 1], b"binary\0payload".to_vec()] {
+            let (_directory, storage, run) = fixture(&bytes);
+            assert!(load(&storage, &run).is_err());
+            let context = load_for_native_delivery(&storage, &run, &json!(null)).unwrap();
+            assert_eq!(context.changes.len(), 1);
+            assert_eq!(context.changes[0].path, "report.txt");
+            assert_eq!(context.changes[0].before_mode, Some(0o100644));
+            assert_eq!(context.changes[0].after_mode, Some(0o100644));
+            assert!(context.changes[0].before.is_none());
+            assert!(context.changes[0].after.is_none());
+            let artifact = PathBuf::from(run.development_path.as_ref().unwrap());
+            fs::write(artifact.join("report.txt"), "Changed after verification").unwrap();
+            assert!(load_for_native_delivery(&storage, &run, &json!(null)).is_err());
+        }
+    }
+    #[test]
+    fn metadata_delivery_keeps_source_paths_and_legacy_handoff_binding() {
+        let (_directory, storage, mut run) = fixture(&vec![b'x'; MAX_TEXT + 1]);
+        run.changed_paths = vec!["unreviewed.txt".into()];
+        assert!(load_for_native_delivery(&storage, &run, &json!(null)).is_err());
+        assert!(load_for_judgment(&storage, &run).is_err());
+        let (_directory, storage, run, mut action) = historical_handoff();
+        assert!(load_for_native_delivery(&storage, &run, &action).is_ok());
+        assert!(load_action_for_judgment(&storage, &run, &action).is_ok());
+        action["delivery"] = json!({"repository":"another/repository"});
+        assert!(load_for_native_delivery(&storage, &run, &action).is_err());
+        assert!(load_action_for_judgment(&storage, &run, &action).is_err());
+    }
+    #[cfg(unix)]
+    #[test]
+    fn symlink_artifact_and_metadata_are_rejected() {
+        use std::os::unix::fs::symlink;
+        let (_directory, storage, run) = fixture(b"After\n");
+        let artifact = PathBuf::from(run.development_path.as_ref().unwrap());
+        fs::remove_file(artifact.join("report.txt")).unwrap();
+        symlink("/etc/passwd", artifact.join("report.txt")).unwrap();
+        assert!(load(&storage, &run).is_err());
+        assert!(load_for_judgment(&storage, &run).is_err());
+        let source = storage
+            .join("development")
+            .join(&run.id)
+            .join("source.json");
+        fs::remove_file(&source).unwrap();
+        symlink("/etc/passwd", source).unwrap();
+        assert!(load(&storage, &run).is_err());
+    }
+    #[test]
+    fn mismatched_source_and_changed_paths_are_rejected() {
+        let (_directory, storage, mut run) = fixture(b"After\n");
+        run.source_root = Some("/unrelated-project".into());
+        assert!(load(&storage, &run).is_err());
+        assert!(load_for_judgment(&storage, &run).is_err());
+        run.source_root = None;
+        run.changed_paths = vec!["unrelated.txt".into()];
+        assert!(load(&storage, &run).is_err());
+    }
+
+    fn historical_handoff() -> (
+        tempfile::TempDir,
+        PathBuf,
+        super::super::Run,
+        serde_json::Value,
+    ) {
+        let (directory, storage, mut run) = fixture(b"After the change\n");
+        run.status = "failed".into();
+        run.summary = "Prepared changes; waiting for approval".into();
+        let path = storage
+            .join("development")
+            .join(&run.id)
+            .join("result.json");
+        let mut result: serde_json::Value =
+            serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        let request = json!({
+            "operation": "Deliver the verified report",
+            "target": "https://example.test/team/reports",
+            "impact": "The team receives the requested report",
+            "details": "Send the exact verified report and confirm its receipt",
+            "reason": "The delegated purpose requires delivery",
+            "networkAccess": true
+        });
+        result["readyForReview"] = json!(true);
+        result["requestedAction"] = request.clone();
+        result["question"] = serde_json::Value::Null;
+        fs::write(&path, serde_json::to_vec(&result).unwrap()).unwrap();
+        let action = json!({
+            "id": uuid::Uuid::new_v4().to_string(),
+            "runId": run.id,
+            "status": "approved",
+            "sourceRoot": storage.join("original-project"),
+            "artifactPath": result["worktreePath"],
+            "changedPaths": result["changedPaths"],
+            "checks": result["checks"],
+            "operation": request["operation"],
+            "target": request["target"],
+            "impact": request["impact"],
+            "details": request["details"],
+            "summary": request["reason"],
+            "networkAccess": request["networkAccess"]
+        });
+        (directory, storage, run, action)
+    }
+
+    #[test]
+    fn historical_failed_preparation_continues_only_its_verified_frozen_handoff_read_only() {
+        let (_directory, storage, run, mut action) = historical_handoff();
+        let job = storage.join("development").join(&run.id);
+        let result_before = fs::read(job.join("result.json")).unwrap();
+        let source_before = fs::read(job.join("source.json")).unwrap();
+        assert!(load(&storage, &run).is_err());
+        let context = load_for_action(&storage, &run, &action).unwrap();
+        assert_eq!(
+            context.changes[0].after.as_deref(),
+            Some("After the change\n")
+        );
+        assert_eq!(run.status, "failed");
+        assert_eq!(fs::read(job.join("result.json")).unwrap(), result_before);
+        assert_eq!(fs::read(job.join("source.json")).unwrap(), source_before);
+        action["status"] = json!("executing");
+        assert!(load_for_action(&storage, &run, &action).is_ok());
+        assert!(!storage.join("action-executions").exists());
+    }
+
+    #[test]
+    fn historical_continuation_rejects_other_actions_and_unfinished_or_cancelled_sources() {
+        let (_directory, storage, run, action) = historical_handoff();
+        for (field, value) in [
+            ("id", json!("invalid")),
+            ("runId", json!(uuid::Uuid::new_v4().to_string())),
+            ("sourceRoot", json!("/different-project")),
+            ("artifactPath", json!("/different-artifact")),
+            ("changedPaths", json!(["different.txt"])),
+            ("checks", json!([])),
+            ("operation", json!("Deliver another report")),
+            ("target", json!("https://example.test/other-team")),
+            ("impact", json!("Other recipients receive the report")),
+            ("details", json!("Send different content")),
+            ("summary", json!("Another purpose")),
+            ("networkAccess", json!(false)),
+            ("status", json!("failed")),
+            ("status", json!("pending")),
+        ] {
+            let mut changed = action.clone();
+            changed[field] = value;
+            assert!(
+                load_for_action(&storage, &run, &changed).is_err(),
+                "{field}"
+            );
+        }
+        for status in ["running", "cancelled", "undone", "proposed"] {
+            let mut changed = run.clone();
+            changed.status = status.into();
+            assert!(load_for_action(&storage, &changed, &action).is_err());
+        }
+        let mut unfinished = run.clone();
+        unfinished.finished_at = None;
+        assert!(load_for_action(&storage, &unfinished, &action).is_err());
+    }
+
+    #[test]
+    fn historical_continuation_requires_ready_passing_checks_and_complete_handoff() {
+        let (_directory, storage, run, action) = historical_handoff();
+        let path = storage
+            .join("development")
+            .join(&run.id)
+            .join("result.json");
+        let original: serde_json::Value =
+            serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        for (field, value) in [
+            ("readyForReview", json!(false)),
+            ("question", json!("Who should receive the report?")),
+            ("requestedAction", serde_json::Value::Null),
+            ("checks", json!([])),
+            (
+                "checks",
+                json!([{"command":"fixture verification","exitCode":1}]),
+            ),
+        ] {
+            let mut changed = original.clone();
+            changed[field] = value;
+            fs::write(&path, serde_json::to_vec(&changed).unwrap()).unwrap();
+            let mut matching_action = action.clone();
+            matching_action["checks"] = changed["checks"].clone();
+            assert!(
+                load_for_action(&storage, &run, &matching_action).is_err(),
+                "{field}"
+            );
+        }
+    }
+
+    #[test]
+    fn historical_continuation_keeps_artifact_and_source_integrity_checks() {
+        let (_directory, storage, run, action) = historical_handoff();
+        let artifact = Path::new(run.development_path.as_ref().unwrap());
+        fs::write(artifact.join("report.txt"), "Changed after verification\n").unwrap();
+        assert!(load_for_action(&storage, &run, &action)
+            .unwrap_err()
+            .contains("変わっています"));
+        let (_directory, storage, run, action) = historical_handoff();
+        let path = storage
+            .join("development")
+            .join(&run.id)
+            .join("source.json");
+        let mut source: serde_json::Value =
+            serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        source["baseCommit"] = json!("0000000000000000000000000000000000000000");
+        fs::write(path, serde_json::to_vec(&source).unwrap()).unwrap();
+        assert!(load_for_action(&storage, &run, &action).is_err());
+    }
+
+    #[test]
+    #[ignore = "read-only verification of a user-selected saved run; requires YORISHIRO_REVIEW_RUN_ID"]
+    fn live_saved_artifact_context() {
+        let id = std::env::var("YORISHIRO_REVIEW_RUN_ID").expect("explicit saved run ID");
+        let storage = dirs::home_dir().unwrap().join(".yorishiro/autonomy");
+        let status: super::super::Status =
+            serde_json::from_slice(&fs::read(storage.join("state.json")).unwrap()).unwrap();
+        let run = status
+            .runs
+            .iter()
+            .find(|run| run.id == id)
+            .expect("saved run");
+        let context = load(&storage, run).unwrap();
+        assert!(!context.source_root.is_empty());
+        assert!(!context.changes.is_empty());
+        println!(
+            "Verified saved context: {} changed text files, {} checks",
+            context.changes.len(),
+            context.checks.len()
+        );
+    }
+}

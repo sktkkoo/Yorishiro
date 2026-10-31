@@ -39,7 +39,7 @@ function fixture() {
       return vi.fn();
     }),
   };
-  const relay = vi.fn(() => cleanup);
+  const relay = vi.fn<typeof startCameraPreviewRelay>(() => cleanup);
   const changed = vi.fn();
   const host = new CameraPreviewHost(model, changed, transport, relay);
   return {
@@ -164,4 +164,15 @@ it("relay bounds image dimensions, limits rate and never queues while a send is 
   expect(pause).toHaveBeenCalledOnce();
   expect(video.srcObject).toBeNull();
   expect(fail).not.toHaveBeenCalled();
+});
+
+it("passes delivery mode from the current owner to detached camera frames", async () => {
+  const f = fixture();
+  f.host.update({ ...f.model, deliveryMode: "on-demand" });
+  await f.host.detach();
+  const readFrame = f.relay.mock.calls[0][1];
+  expect(readFrame()?.deliveryMode).toBe("on-demand");
+  f.host.update(f.model);
+  expect(readFrame()?.deliveryMode).toBe("context");
+  f.host.dispose();
 });

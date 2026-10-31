@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { VoicePlaybackLeaseSync } from "./voice-playback-lease-sync";
+import { VoicePlaybackLeaseSync, type VoicePlaybackLeaseUpdate } from "./voice-playback-lease-sync";
 import { VoicePlayer } from "./voice-player";
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -26,6 +26,36 @@ async function flushUpdates(): Promise<void> {
 }
 
 describe("VoicePlaybackLeaseSync", () => {
+  it("keeps Auto silent when GPT Live releases fallback playback", async () => {
+    const update = vi.fn(async (_state: VoicePlaybackLeaseUpdate) => {});
+    const player = new VoicePlayer();
+    const sync = new VoicePlaybackLeaseSync(player, {
+      registerOwner: vi.fn(async () => "owner-a"),
+      update,
+    });
+    await sync.setEnabled(false);
+    await sync.setSuppressed("auto-workspace", true);
+    await sync.setEnabled(true);
+    expect(player.isPlaybackEnabled()).toBe(false);
+    expect(update.mock.calls[update.mock.calls.length - 1]?.[0]).toMatchObject({ enabled: false });
+    await sync.setSuppressed("auto-workspace", false);
+    expect(player.isPlaybackEnabled()).toBe(true);
+  });
+
+  it("does not release a live conversation when Auto closes", async () => {
+    const player = new VoicePlayer();
+    const sync = new VoicePlaybackLeaseSync(player, {
+      registerOwner: vi.fn(async () => "owner-a"),
+      update: vi.fn(async () => {}),
+    });
+    await sync.setSuppressed("auto-workspace", true);
+    await sync.setEnabled(false);
+    await sync.setSuppressed("auto-workspace", false);
+    expect(player.isPlaybackEnabled()).toBe(false);
+    await sync.setEnabled(true);
+    expect(player.isPlaybackEnabled()).toBe(true);
+  });
+
   it("keeps the owner when stop succeeds before the older start claim rejects", async () => {
     const startUpdate = deferred();
     const stopUpdate = deferred();

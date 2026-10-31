@@ -1,5 +1,7 @@
 # Decisions — topic-indexed 決定 / 制約 log
 
+- [autonomous-document-work.md](autonomous-document-work.md) — 対話で範囲を決め、発話なしで進める復元付き文書作業。設定からOn/Off、専用workerとhostによる実行境界。
+
 > **Note for international readers:** This directory contains internal design decision records written in Japanese. It is intended for active development and is not translated. For an English overview of the project's design philosophy, see [`docs/philosophy/`](../philosophy/) (the `*.md` files are English; `*.ja.md` are Japanese).
 
 > このファイルは「**topic から最新の決定を 1 ページで掴みたい**」時の入口。対象：dev / AI。各 entry は「結論 + 理由 + 代替案 + 改訂履歴」を 1 ページに集約。
@@ -121,6 +123,8 @@
 - [**motion-quality-actual-avatar-review.md**](motion-quality-actual-avatar-review.md) — 実際の Yori モデルによる変更前後の再生記録。固定ステップの幾何計測とブラウザーの実時間再生を区別する
 - [**terminal-idle-intensity-calibration.md**](terminal-idle-intensity-calibration.md) — 標準の待機を静かにし、活発を従来の標準相当にする。会話の手の位置は別の強度契約で保持
 - [**agent-adapter.md**](agent-adapter.md) — Terminal agent (Claude / Codex / OpenCode / 将来) の adapter 抽象化と capability flag set
+- [**claude-screen-sharing.md**](claude-screen-sharing.md) — 明示共有した最新画像を現在のClaude会話に限定してMCP取得。UserPromptSubmitで取得可能を通知し、画像更新だけでは推論を開始しない
+- [**agent-onboarding.md**](agent-onboarding.md) — 導入済み CLI は自動選択して起動し、未導入時だけ個別の明示インストールを案内。詳細を折りたたみ、公式 CLI の認証と利用規約を利用者自身の経路に保つ
 - [**session-status-attention.md**](session-status-attention.md) — session ごとの観察 read model（lifecycle / activity / unread / exit / attention）と TabIndicator badge。許可待ち（`input`）は screen fast path を主に、agent hook（手動起動 shell は per-session shim で sessionId attribution）と OSC を fallback に観察し、focus / 出力では消さず、確定入力 / screen 消失 / resume hook で解除する。照明通知は attention 1 件につき一度だけの 2-pulse cue で、継続点滅はアンチパターン
 - [**codex-terminal-agent.md**](codex-terminal-agent.md) — `terminalAgent` config で Claude Code / Codex を選ぶ。Codex は `developer_instructions` で persona overlay を渡し、base instructions は置換しない。Yorishiro MCP は session-scoped config、`$yori-*` は `~/.agents/skills/` の user skills として渡す
 - [**codex-realtime-voice.md**](codex-realtime-voice.md) — Codex TUI と session-scoped app-server を共有し、同じ thread に WebRTC 音声 UI を足す。PTY stdin には書かず、マイク・音声出力は host が所有

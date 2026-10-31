@@ -14,6 +14,30 @@ const strings: QuickChatInputStrings = {
 afterEach(cleanup);
 
 describe("QuickChatInput", () => {
+  it.each([
+    "",
+    "draft",
+  ])("closes without submitting or changing %j via the close button", (value) => {
+    const onClose = vi.fn();
+    const onSubmit = vi.fn();
+    const onChange = vi.fn();
+    render(
+      <QuickChatInput
+        value={value}
+        strings={strings}
+        onChange={onChange}
+        onSubmit={onSubmit}
+        onClose={onClose}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: strings.close }));
+
+    expect(onClose).toHaveBeenCalledOnce();
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
   it("focuses the input when it appears", () => {
     render(
       <QuickChatInput
@@ -71,6 +95,34 @@ describe("QuickChatInput", () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
+  it.each([
+    { key: "Escape", isComposing: true },
+    { key: "Enter", keyCode: 229 },
+    { key: "Escape", keyCode: 229 },
+  ])("leaves IME keystrokes to the input: %j", (keyEvent) => {
+    const onSubmit = vi.fn();
+    const onClose = vi.fn();
+    render(
+      <QuickChatInput
+        value="変換中"
+        strings={strings}
+        onChange={vi.fn()}
+        onSubmit={onSubmit}
+        onClose={onClose}
+      />,
+    );
+
+    const input = screen.getByRole("textbox");
+    expect(fireEvent.keyDown(input, keyEvent)).toBe(true);
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(onSubmit).toHaveBeenCalledOnce();
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
   it("closes with Escape", () => {
     const onClose = vi.fn();
     render(
@@ -85,6 +137,48 @@ describe("QuickChatInput", () => {
 
     fireEvent.keyDown(screen.getByRole("textbox"), { key: "Escape" });
     expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it.each([strings.send, strings.close])("closes with Escape while %s is focused", (name) => {
+    const onClose = vi.fn();
+    const onSubmit = vi.fn();
+    render(
+      <QuickChatInput
+        value="draft"
+        strings={strings}
+        onChange={vi.fn()}
+        onSubmit={onSubmit}
+        onClose={onClose}
+      />,
+    );
+    const button = screen.getByRole("button", { name });
+    button.focus();
+    fireEvent.keyDown(button, { key: "Escape" });
+
+    expect(onClose).toHaveBeenCalledOnce();
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it.each(["", " \n "])("keeps sending disabled for a blank draft: %j", (value) => {
+    const onSubmit = vi.fn();
+    render(
+      <QuickChatInput
+        value={value}
+        strings={strings}
+        onChange={vi.fn()}
+        onSubmit={onSubmit}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const send = screen.getByRole<HTMLButtonElement>("button", { name: strings.send });
+    expect(send.disabled).toBe(true);
+    fireEvent.click(send);
+    fireEvent.submit(screen.getByRole("dialog"));
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(screen.getByRole<HTMLButtonElement>("button", { name: strings.close }).disabled).toBe(
+      false,
+    );
   });
 });
 

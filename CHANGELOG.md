@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+## 0.7.8 - 2026-10-24
+
+- Added first-run installation guidance for Codex and Claude Code, automatic selection of an installed agent, and a shell fallback when setup is deferred. Healthy startup checks now stay unobtrusive.
+- Improved character motion with recorded standing and conversation playback, quieter posture variations, occasional stretches, and speech gestures that finish naturally before returning to idle.
+- Improved foot grounding, transitions, hand poses, and motion intensity, and enabled shared speech gestures on imported VRM avatars. Removed the automatic startup bow and unsuitable automatic head-shake reactions.
+- Added optional sequential-frame contact sheets for screen and camera sharing, configurable grid sizes, and clearer capture and delivery status. Motion sharing is opt-in, and sharing controls remain available only for Codex.
+- Synchronized detached sharing controls, previews, and scene colors, and improved camera framing around the resident and conversational gestures.
+- Fixed terminal input colors after scene changes, disabled decorative Codex composer sparkles, and reduced background flashes during streamed updates.
+- Fixed Codex conversations becoming unavailable when large plugin inventories exceeded the terminal proxy's WebSocket limits.
+- Fixed explicitly selecting Simple Room being overridden.
+
 ## 0.7.7 - 2026-09-12
 
 - Added Animates-inspired conversation controls to Portrait, Call, and Theater: tap Command to open a Spotlight-like Quick Chat input, or hold Command to start GPT Live. Quick Chat replies fall back to the macOS Voice Summary path when the agent did not already speak its own summary. While voice is connected, Command toggles microphone mute and a compact status pill provides explicit mute and end controls.

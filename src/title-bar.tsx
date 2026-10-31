@@ -45,6 +45,9 @@ export interface TitleBarProps {
   readonly language?: string;
   readonly onToggleVoice?: () => void;
   readonly screenSharingControl?: ReactNode;
+  readonly autoModeActive?: boolean;
+  readonly autoModePendingCount?: number;
+  readonly onToggleAutoMode?: () => void;
   readonly tabs?: ReactNode;
   readonly viewModes?: ReadonlyArray<UiPackEntry>;
   readonly activeViewModeId?: string | null;
@@ -73,6 +76,9 @@ export default function TitleBar({
   language,
   onToggleVoice,
   screenSharingControl,
+  autoModeActive = false,
+  autoModePendingCount = 0,
+  onToggleAutoMode,
   tabs,
   viewModes = [],
   activeViewModeId = null,
@@ -263,6 +269,20 @@ export default function TitleBar({
           </button>
         ) : null}
         {screenSharingControl}
+        {onToggleAutoMode ? (
+          <button
+            type="button"
+            className="title-bar-button title-bar-auto-button"
+            aria-label="Auto"
+            aria-pressed={autoModeActive}
+            onClick={onToggleAutoMode}
+          >
+            Auto
+            {autoModePendingCount > 0 ? (
+              <span className="title-bar-auto-count">{autoModePendingCount}</span>
+            ) : null}
+          </button>
+        ) : null}
       </div>
       {voiceError ? (
         <div

@@ -144,7 +144,12 @@ export default function Terminal({
   }, [sessionId, visible]);
 
   useEffect(() => {
-    if (visible && active) getTerminalRuntime(sessionId).focus();
+    if (!visible || !active) return;
+    // Arrow navigation keeps keyboard focus on the tab so the next arrow can move again.
+    const focused = document.activeElement;
+    if (focused?.matches('[role="tab"]:focus-visible') && focused.closest(".tab-indicator-tabs"))
+      return;
+    getTerminalRuntime(sessionId).focus();
   }, [sessionId, visible, active]);
 
   useEffect(() => {

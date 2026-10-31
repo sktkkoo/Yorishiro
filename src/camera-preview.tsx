@@ -1,8 +1,10 @@
 import { ExternalLink, PanelBottom, Square } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import "./camera-preview.css";
+import type { SharingDeliveryMode } from "./runtime/sharing-delivery";
 
 export interface CameraPreviewProps {
+  readonly deliveryMode?: SharingDeliveryMode;
   readonly sourceKind?: "camera" | "screen";
   readonly stream?: MediaStream;
   readonly imageDataUrl?: string;
@@ -19,6 +21,7 @@ export interface CameraPreviewProps {
 
 /** Local-only monitor of the already-owned camera. Unmount never stops the capture owner's tracks. */
 export function CameraPreview({
+  deliveryMode = "context",
   sourceKind = "camera",
   stream,
   imageDataUrl,
@@ -35,6 +38,23 @@ export function CameraPreview({
   const videoRef = useRef<HTMLVideoElement>(null);
   const [playbackBlocked, setPlaybackBlocked] = useState(false);
   const japanese = language.startsWith("ja");
+  const ready = Boolean(lastSharedAt && lastCapturedAt && lastSharedAt >= lastCapturedAt);
+  const captureStatus =
+    deliveryMode === "on-demand"
+      ? ready
+        ? japanese
+          ? "共有準備完了"
+          : "Ready to share"
+        : japanese
+          ? "撮影済み・準備中"
+          : "Captured · preparing"
+      : ready
+        ? japanese
+          ? "AI送信済み"
+          : "Sent to AI"
+        : japanese
+          ? "撮影済み・送信待ち"
+          : "Captured · waiting";
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !stream) return;
@@ -53,7 +73,7 @@ export function CameraPreview({
 
   return (
     <section
-      className={`camera-preview${detached ? " camera-preview--detached" : ""}${sourceKind === "screen" ? " camera-preview--screen" : ""}${imageDataUrl ? " camera-preview--capture-grid" : ""}${imageDataUrl && lastSharedAt && lastCapturedAt && lastSharedAt >= lastCapturedAt ? " camera-preview--sent" : ""}`}
+      className={`camera-preview${detached ? " camera-preview--detached" : ""}${sourceKind === "screen" ? " camera-preview--screen" : ""}${imageDataUrl ? " camera-preview--capture-grid" : ""}${imageDataUrl && ready ? " camera-preview--sent" : ""}`}
       data-screen-preview-inline={sourceKind === "screen" && !detached ? "" : undefined}
       data-no-window-drag
       aria-label={
@@ -69,13 +89,7 @@ export function CameraPreview({
       <header data-tauri-drag-region={detached ? "" : undefined}>
         {sourceKind === "screen" ? (
           <span className="camera-preview-capture-status camera-preview-capture-status--header">
-            {lastSharedAt && lastCapturedAt && lastSharedAt >= lastCapturedAt
-              ? japanese
-                ? "AI送信済み"
-                : "Sent to AI"
-              : japanese
-                ? "撮影済み・送信待ち"
-                : "Captured · waiting"}
+            {captureStatus}
           </span>
         ) : null}
         {onDetach || onAttach ? (
@@ -151,9 +165,13 @@ export function CameraPreview({
             src={imageDataUrl}
             alt={
               sourceKind === "screen"
-                ? japanese
-                  ? "直近に共有した画面"
-                  : "Last shared screen"
+                ? deliveryMode === "on-demand"
+                  ? japanese
+                    ? "直近に取得した画面"
+                    : "Latest captured screen"
+                  : japanese
+                    ? "直近に共有した画面"
+                    : "Last shared screen"
                 : japanese
                   ? "共有中のカメラ映像"
                   : "Shared camera view"
@@ -164,7 +182,7 @@ export function CameraPreview({
         ) : null}
         {sourceKind === "screen" ? (
           <span
-            className={`camera-preview-capture-cue camera-preview-capture-cue--stable ${lastSharedAt && lastCapturedAt && lastSharedAt >= lastCapturedAt ? "camera-preview-capture-cue--sent" : "camera-preview-capture-cue--queued"}`}
+            className={`camera-preview-capture-cue camera-preview-capture-cue--stable ${ready ? "camera-preview-capture-cue--sent" : "camera-preview-capture-cue--queued"}`}
             aria-hidden="true"
           />
         ) : lastCapturedAt !== undefined && Date.now() - lastCapturedAt < 1500 ? (

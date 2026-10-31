@@ -84,6 +84,8 @@ pub struct ScreenSharingSnapshot {
     permission_kind: Option<crate::media_permissions::MediaPermissionKind>,
     last_observed_at: Option<u64>,
     language: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    delivery_mode: Option<crate::claude_screen_sharing::VisualDeliveryMode>,
 }
 
 fn default_preview_visible() -> bool {
@@ -448,6 +450,7 @@ mod tests {
                 permission_kind: None,
                 last_observed_at: None,
                 language: "ja".into(),
+                delivery_mode: None,
             },
         }
     }
@@ -525,6 +528,16 @@ mod tests {
         assert!(validate_action(&state, &request).is_err());
     }
 
+    #[test]
+    fn on_demand_delivery_survives_native_snapshot_round_trip() {
+        let mut snapshot = published().snapshot;
+        snapshot.delivery_mode = Some(crate::claude_screen_sharing::VisualDeliveryMode::OnDemand);
+        let encoded = serde_json::to_value(&snapshot).unwrap();
+        assert_eq!(encoded["deliveryMode"], "on-demand");
+        let decoded: ScreenSharingSnapshot = serde_json::from_value(encoded).unwrap();
+        assert_eq!(decoded.delivery_mode, snapshot.delivery_mode);
+        assert!(decoded.validate().is_ok());
+    }
     #[test]
     fn three_minute_interval_round_trips_through_native_payloads() {
         let mut snapshot = published().snapshot;

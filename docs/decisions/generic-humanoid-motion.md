@@ -11,7 +11,7 @@ admission failure, not evidence that retargeting itself failed.
 
 When the caller does not supply an explicit profile, Body now selects the reviewed
 Yori profile for its exact hash, otherwise a generic humanoid speech profile.
-The generic profile shares the five current speech entries and their strength,
+The generic profile shares the four current speech entries and their strength,
 frequency, transition and recovery policy. Idle Chatting 2, Shrugging and upper
 Idle remain excluded. Standard retains each entry's baseline; Lively and Over
 retain full authored strength. Existing VRMA normalized-humanoid retargeting and

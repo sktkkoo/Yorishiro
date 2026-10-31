@@ -1,6 +1,7 @@
 use crate::chat_approvals::{
     ChatApprovalChoice, ChatApprovalDecision, ChatApprovalLabel, ChatApprovalRequest,
 };
+use crate::realtime_bridge::codex_websocket_config;
 use futures_util::{SinkExt, StreamExt};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
@@ -316,12 +317,20 @@ async fn proxy_connection(
     selected_thread: Arc<Mutex<Option<SelectedThread>>>,
     approvals: CodexChatApprovals,
 ) -> Result<(), String> {
-    let client = tokio_tungstenite::accept_hdr_async(client_stream, RejectBrowserOrigin)
-        .await
-        .map_err(|error| format!("TUI handshake failed: {error}"))?;
-    let (upstream, _) = tokio_tungstenite::connect_async(&upstream_endpoint)
-        .await
-        .map_err(|error| format!("upstream connection failed: {error}"))?;
+    let client = tokio_tungstenite::accept_hdr_async_with_config(
+        client_stream,
+        RejectBrowserOrigin,
+        Some(codex_websocket_config()),
+    )
+    .await
+    .map_err(|error| format!("TUI handshake failed: {error}"))?;
+    let (upstream, _) = tokio_tungstenite::connect_async_with_config(
+        &upstream_endpoint,
+        Some(codex_websocket_config()),
+        false,
+    )
+    .await
+    .map_err(|error| format!("upstream connection failed: {error}"))?;
     let (mut client_sink, mut client_stream) = client.split();
     let (mut upstream_sink, mut upstream_stream) = upstream.split();
     let mut thread_selection_requests = HashMap::new();
@@ -1817,6 +1826,67 @@ mod tests {
             .respond(&card.id, "allow".to_string())
             .await
             .is_err());
+    }
+
+    #[tokio::test]
+    async fn forwards_large_inventory_frames_and_keeps_the_connection_usable() {
+        // The installed Codex plugin/list response exceeded 19 MB. A single
+        // frame above tungstenite's default 16 MiB used to disconnect the TUI.
+        let inventory = serde_json::json!({
+            "id": "plugin-list",
+            "result": { "data": "x".repeat(17 << 20) }
+        })
+        .to_string();
+        let expected_len = inventory.len();
+        let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+            .await
+            .expect("upstream listener");
+        let address = listener.local_addr().expect("upstream address");
+        let upstream_task = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.expect("upstream accept");
+            let mut socket =
+                tokio_tungstenite::accept_async_with_config(stream, Some(codex_websocket_config()))
+                    .await
+                    .expect("upstream handshake");
+            socket
+                .send(Message::Text(inventory.into()))
+                .await
+                .expect("inventory response");
+            // Also exercise the client-facing receive limit with a large frame.
+            let echo = socket.next().await.expect("echo").expect("valid echo");
+            assert_eq!(echo.len(), expected_len);
+            socket
+                .send(Message::Text("still connected".into()))
+                .await
+                .expect("follow-up");
+        });
+        let proxy = CodexTuiProxy::spawn(format!("ws://{address}")).expect("proxy starts");
+        let (mut client, _) = tokio_tungstenite::connect_async_with_config(
+            proxy.endpoint(),
+            Some(codex_websocket_config()),
+            false,
+        )
+        .await
+        .expect("proxy handshake");
+        tokio::time::timeout(std::time::Duration::from_secs(10), async {
+            let inventory = client
+                .next()
+                .await
+                .expect("inventory")
+                .expect("valid inventory");
+            assert!(matches!(&inventory, Message::Text(_)));
+            assert_eq!(inventory.len(), expected_len);
+            client.send(inventory).await.expect("echo inventory");
+            let follow_up = client
+                .next()
+                .await
+                .expect("follow-up")
+                .expect("valid follow-up");
+            assert_eq!(follow_up, Message::Text("still connected".into()));
+            upstream_task.await.expect("upstream task");
+        })
+        .await
+        .expect("large inventory round trip completes");
     }
 
     #[tokio::test]

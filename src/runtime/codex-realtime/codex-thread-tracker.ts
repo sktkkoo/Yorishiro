@@ -6,6 +6,7 @@ import {
   sessionRealtimeSend,
 } from "../../bindings/tauri-commands";
 import { type ChatTranscript, chatTranscriptFromCodexTurns } from "../chat-transcript";
+import { AutonomyConversationTransport } from "./autonomy-conversation";
 import { ScreenContextNotifications } from "./screen-context-notifications";
 import { type ScreenObservationFrame, ScreenObservationTransport } from "./screen-observation";
 import { screenPointerPreferenceNotice } from "./screen-sharing-prompts";
@@ -91,6 +92,24 @@ export class CodexThreadTracker {
     request: (method, params) => this.request(method, params as Record<string, unknown>),
     getThreadId: () => this.getScreenThreadId(),
   });
+  private readonly autonomyConversation = new AutonomyConversationTransport({
+    request: (method, params) => this.request(method, params),
+    getThreadId: () => this.getScreenThreadId(),
+    assertSelectedThread: async (threadId) => {
+      const epoch = this.epoch;
+      const selected = await sessionRealtimeSelectedThread({ sessionId: this.sessionId });
+      if (selected && selected !== threadId && epoch === this.epoch) {
+        this.considerProxyThread(selected, epoch);
+      }
+      if (
+        epoch !== this.epoch ||
+        this.getScreenThreadId() !== threadId ||
+        (selected && selected !== threadId) ||
+        (this.validatingThreadId && this.validatingThreadId !== threadId)
+      )
+        throw new Error("The Main Agent conversation changed before sending");
+    },
+  });
 
   constructor(
     sessionId: string,
@@ -146,6 +165,10 @@ export class CodexThreadTracker {
       throw new Error("Codex returned an invalid chat transcript");
     }
     return chatTranscriptFromCodexTurns(threadId, result.data);
+  }
+
+  sendAutonomyMessage(text: string, language: "ja" | "en" = "ja"): Promise<string> {
+    return this.autonomyConversation.send(text, language);
   }
 
   shareScreenObservation(frame: ScreenObservationFrame, signal?: AbortSignal) {
@@ -244,6 +267,7 @@ export class CodexThreadTracker {
   }
 
   stop(): void {
+    this.autonomyConversation.cancel();
     this.pointerNotifications.reset();
     this.screenObservation.cancel();
     this.epoch += 1;
@@ -364,6 +388,7 @@ export class CodexThreadTracker {
 
   private setCurrentThreadId(threadId: string | null): void {
     if (this.currentThreadId === threadId) return;
+    this.autonomyConversation.cancel();
     this.screenObservation.cancel();
     this.pointerNotificationController.abort();
     this.pointerNotificationController = new AbortController();
@@ -391,6 +416,7 @@ export class CodexThreadTracker {
    */
   private considerProxyThread(threadId: string, epoch: number): void {
     if (threadId === this.currentThreadId || threadId === this.validatingThreadId) return;
+    this.autonomyConversation.cancel();
     this.validatingThreadId = threadId;
     const generation = ++this.threadSelectionGeneration;
     void this.request("thread/read", { threadId, includeTurns: false })
@@ -514,6 +540,7 @@ export class CodexThreadTracker {
     }
 
     if (message.method === "turn/completed") {
+      this.autonomyConversation.onTurnCompleted(message.params);
       this.handleCompletedTurn(message.params);
       return;
     }

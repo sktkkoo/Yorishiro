@@ -39,10 +39,10 @@ AIと働く時間は、これからもっと長くなります。かつてフィ
 
 ### 前提条件
 
-Yorishiroはユーザーのローカル環境にインストールされたClaude CodeまたはCodexをターミナル上で自動起動する仕組みです。そのため：
+Yorishiroはローカルの[Claude Code](https://code.claude.com/docs/en/setup)または[Codex](https://developers.openai.com/codex/cli)をターミナル内で起動します。
 
-- **事前に[Claude Code](https://docs.anthropic.com/en/docs/claude-code)または[Codex](https://github.com/openai/codex)の環境構築が必要です**
-- YorishiroがAPIキーを要求・保存・直接利用することはありません。ユーザー環境で認証済みのterminal agentをそのまま起動します。そのため、Claude Code/Codex側でログイン済み、またはAPIキー等が設定済みの場合、そのagentが通常どおり外部APIを利用する可能性があります
+- **導入済みのエージェントがあれば、そのまま起動します。** 見つからない場合は、CodexとClaude Codeを個別に「公式からインストール」できます。選んだボタンを押したときだけ公式インストーラーを実行します。導入にはインターネット接続が必要です。
+- ログインは、エージェントの公式手順でご自身のアカウントを使用します。公式ガイド、手動導入用コマンド、利用規約は「詳細」から確認できます。Yorishiroのセットアップが認証情報を収集・仲介することはありません。
 
 ### インストール（macOS）
 
@@ -73,7 +73,9 @@ npm run tauri dev
 
 起動すると設定済みのterminal agentがターミナル内で立ち上がり、同梱のVRMキャラクター **Yori**（ヨリ）が隣に表示されます。普段通りにClaude CodeまたはCodexを使えます。
 
-初回起動時には、選択中のagent、ユーザーデータディレクトリ、safe mode、pack、startup reportを確認するhealth checkが表示されます。同じ内容は後から設定画面の「Status」セクションでも確認できます。
+起動時は、設定中のエージェントが使えればそのまま起動します。Claude CodeとCodexの両方があっても選択画面は表示しません。設定中のものが見つからなければ、導入済みのCodex、または最初に見つかった別のエージェントを選んで保存します。使えるエージェントがない場合だけセットアップを表示します。「あとで設定する」を選ぶと、エージェントを起動せずshellで続けられます。
+
+初回のhealth checkは、問題がなければ表示せずに進み、対処が必要な問題がある場合に案内します。詳しい結果は設定画面の「Status」から確認できます。[初回起動のトラブルシューティング](docs/troubleshooting.ja.md#初回起動と-health-check)も参照してください。
 
 ### ビューモード
 
@@ -141,9 +143,9 @@ Codex 0.145.0以降でGPT Liveによる音声会話を利用できます。マ�
 
 タイトルバーの共有アイコンから、画面やカメラの静止画像を現在のCodexの会話に共有できます。macOSの画面共有では、画面全体・ウィンドウ・範囲選択の各モードを選べます。範囲選択では、共有する領域を移動・リサイズできます。カメラ共有では、使用するカメラを選んで共有を開始します。
 
-更新間隔は**10〜180秒**で、短いほどトークン消費が増えます。送信を止めるには**「共有を停止」**を押してください。
+更新間隔は**10〜180秒**です。画像がCodexの会話に追加され、短い間隔ほどトークン消費が増える場合があります。**「共有を停止」**で撮影を止めます。
 
-**エージェントの指し示しは実験的機能です。** 画面全体の共有中にAIに頼むと、矢印や囲みで場所を示してくれます。指し示しを使う場合は、Astra以上のモデルを推奨します。ウィンドウ共有・範囲選択・カメラ共有では利用できません。
+**エージェントの指し示しは実験的機能です。** 画面全体の共有中にAIに頼むと、矢印や囲みで場所を示してくれます。Codexで指し示しを使う場合は、Astra以上のモデルを推奨します。ウィンドウ共有・範囲選択・カメラ共有では利用できません。
 
 <p align="center">
   <img src="docs/assets/screen-sharing-controls.png" alt="画面全体・ウィンドウ・範囲選択のタブ、更新間隔、プレビューを設定する画面共有パネル" width="480" />
@@ -269,7 +271,7 @@ packやinit.jsが変わるたびに、チェックポイントが自動で作ら
 
 ## Status
 
-**v0.7.7**
+**v0.7.8**
 
 実装フェーズの途中です。API・データ形状・pack仕様は今後変わります。
 
@@ -297,7 +299,7 @@ packやinit.jsが変わるたびに、チェックポイントが自動で作ら
 - 住人の`git push`成功を花火で祝う（同梱Yoriペルソナの反応）
 - Light Alert: agentが入力・許可待ちになると明かりがついて知らせる
 - ターミナルリンク: 表示中のHTTP/HTTPS URLをCmd+clickして既定ブラウザで開く
-- 画面共有 / カメラ共有: 静止画像を10〜180秒間隔で現在のCodexの会話に共有。macOSでは画面全体・ウィンドウ・範囲選択に対応し、画面全体では実験的なエージェントの指し示しも利用可能
+- 画面共有 / カメラ共有: 静止画像を10〜180秒間隔でCodexに共有。macOSでは画面全体・ウィンドウ・範囲選択に対応し、画面全体では実験的なエージェントの指し示しも利用可能
 - コンテキスト共有: Voice SummaryとTerminal Reference Marker（Cmd+Shift+click / Option+Shift+drag）
 - Journalによる長期記憶と、セッション開始時の想起
 - 復元: pack / init.js / 設定の自動チェックポイントと、可逆な巻き戻し
@@ -316,7 +318,7 @@ packやinit.jsが変わるたびに、チェックポイントが自動で作ら
 
 ## Agent support
 
-[Claude Code](https://docs.anthropic.com/en/docs/claude-code)または[Codex](https://github.com/openai/codex)をMain Agentとして使用できます。エージェント未設定時の既定値はCodexです。設定画面または`~/.yorishiro/config.json`から選択してください。どちらも自動起動・persona prompt overlay・PTY observation・Yorishiro MCP accessに対応しています。
+[Claude Code](https://code.claude.com/docs/en/setup)または[Codex](https://developers.openai.com/codex/cli)をMain Agentとして使用できます。設定中のものを優先し、使えるエージェントを自動選択します。あとから設定画面または`~/.yorishiro/config.json`で変更できます。どちらも自動起動・persona prompt overlay・PTY observation・Yorishiro MCP accessに対応しています。
 
 agentによってコマンド記法が異なります。詳しくは[Yorishiroのコマンドとスキル](#yorishiroのコマンドとスキル)を参照してください。
 

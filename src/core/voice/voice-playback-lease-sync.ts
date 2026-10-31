@@ -15,6 +15,8 @@ export class VoicePlaybackLeaseSync {
   private ownerPromise: Promise<string> | null = null;
   private ownerId: string | null = null;
   private latestUpdateAttempt = 0;
+  private requestedEnabled = true;
+  private readonly suppressions = new Set<string>();
 
   constructor(
     private readonly player: VoicePlayer,
@@ -22,7 +24,21 @@ export class VoicePlaybackLeaseSync {
   ) {}
 
   async setEnabled(enabled: boolean): Promise<void> {
-    const ownership = this.player.setPlaybackEnabled(enabled);
+    this.requestedEnabled = enabled;
+    await this.publish();
+  }
+
+  /** Host surfaces cannot release another audio owner's suppression. */
+  async setSuppressed(owner: string, suppressed: boolean): Promise<void> {
+    if (suppressed) this.suppressions.add(owner);
+    else this.suppressions.delete(owner);
+    await this.publish();
+  }
+
+  private async publish(): Promise<void> {
+    const ownership = this.player.setPlaybackEnabled(
+      this.requestedEnabled && this.suppressions.size === 0,
+    );
     const attempt = ++this.latestUpdateAttempt;
     const ownerId = await this.getOwnerId();
 

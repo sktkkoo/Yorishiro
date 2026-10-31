@@ -30,6 +30,8 @@ export type SharingSourceKind = "screen" | "camera";
 
 interface Options {
   screenAvailable?: boolean;
+  /** メモリ上の画像を更新する transport は、同一画像でも公開期限を更新する。 */
+  deduplicate?: boolean;
   available: boolean;
   /** Changes on main-agent/thread replacement; voice reconnection keeps this lease. */
   ownerKey: string;
@@ -125,6 +127,7 @@ function normalizeIntervalSeconds(value: number): number {
 export function useScreenSharing({
   available: baseAvailable,
   screenAvailable = true,
+  deduplicate = true,
   ownerKey,
   share,
   onTiming,
@@ -170,6 +173,7 @@ export function useScreenSharing({
     share,
     onTiming,
     intervalSeconds,
+    deduplicate,
     contactSheetFrameCount,
     sourceKind,
     screenSourceKind,
@@ -183,6 +187,7 @@ export function useScreenSharing({
     share,
     onTiming,
     intervalSeconds,
+    deduplicate,
     contactSheetFrameCount,
     sourceKind,
     screenSourceKind,
@@ -539,6 +544,7 @@ export function useScreenSharing({
           // Reuse identical pixels while their native reference remains valid. A
           // replacement token (for example after sleep/expiry) must reach the agent.
           if (
+            latest.current.deduplicate &&
             lastImage.current?.dataUrl === outgoingFrame.dataUrl &&
             lastImage.current.frameId === outgoingFrame.frameId
           ) {
@@ -872,6 +878,7 @@ export function useScreenSharing({
     sources,
     sourceId,
     intervalSeconds,
+    deduplicate,
     contactSheetFrameCount,
     active,
     busy: busy || adjustingRegion,

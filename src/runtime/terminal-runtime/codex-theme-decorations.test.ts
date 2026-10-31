@@ -154,6 +154,30 @@ describe("Codex cached surface adaptation", () => {
     adapter.dispose();
   });
 
+  it("adapts streamed fills before xterm's next render and retains unchanged rows", () => {
+    const { adapter, cells, stale, term, fire, decorations, markers } = setup();
+    cells[0] = [{ color: stale }, { color: stale }];
+    cells[1] = [{ color: stale }];
+    adapter.update({ enabled: true, background: "#ffffff" });
+    expect(term.registerDecoration).toHaveBeenCalledTimes(2);
+
+    cells[1].push({ color: stale });
+    fire("write");
+
+    // No separate RAF: the render already scheduled by xterm sees the new fill.
+    expect(term.registerDecoration).toHaveBeenCalledTimes(3);
+    expect(decorations[0].dispose).not.toHaveBeenCalled();
+    expect(markers[0].isDisposed).toBe(false);
+    expect(decorations[1].dispose).toHaveBeenCalledOnce();
+    expect(markers[1].isDisposed).toBe(true);
+
+    fire("write");
+    expect(term.registerDecoration).toHaveBeenCalledTimes(3);
+    adapter.dispose();
+    expect(decorations[0].dispose).toHaveBeenCalledOnce();
+    expect(decorations[2].dispose).toHaveBeenCalledOnce();
+  });
+
   it("supports observed light startup palettes, reverse transitions, and returning to original colors", () => {
     const { adapter, cells, term } = setup();
     adapter.recordStartupBackground("rgba(231,231,217,1)");
@@ -164,6 +188,63 @@ describe("Codex cached surface adaptation", () => {
     );
     adapter.update({ enabled: true, background: "#e7e7d9" });
     expect(term.registerDecoration).toHaveBeenCalledTimes(1);
+    adapter.dispose();
+  });
+
+  it("adapts attached light-scene fills without receiving the original startup query", () => {
+    const { adapter, cells, term, fire, flush } = setup();
+    cells[0] = [{ color: 0xddddd0 }, { color: 0xe2e2d4 }, { color: 0xaa0000 }];
+    const options = {
+      enabled: true,
+      background: "#141619",
+      sourceBackgrounds: ["#e7e7d9"],
+    };
+    adapter.update(options);
+    expect(term.registerDecoration).toHaveBeenCalledTimes(2);
+    expect(term.registerDecoration).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ x: 0, width: 1, backgroundColor: "#303134" }),
+    );
+    expect(term.registerDecoration).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        x: 1,
+        width: 1,
+        backgroundColor: codexSurfaceColor("#141619", "history"),
+      }),
+    );
+    adapter.update(options);
+    fire("write");
+    flush();
+    expect(term.registerDecoration).toHaveBeenCalledTimes(2);
+    adapter.dispose();
+  });
+
+  it("rechecks an unchanged theme when scene palettes become available after attachment", () => {
+    const { adapter, cells, term } = setup();
+    cells[0] = [{ color: 0xddddd0 }];
+    adapter.update({ enabled: true, background: "#141619" });
+    expect(term.registerDecoration).not.toHaveBeenCalled();
+    adapter.update({
+      enabled: true,
+      background: "#141619",
+      sourceBackgrounds: ["#e7e7d9"],
+    });
+    expect(term.registerDecoration).toHaveBeenCalledWith(
+      expect.objectContaining({ backgroundColor: "#303134" }),
+    );
+    adapter.dispose();
+  });
+
+  it("remembers applied scene colors even when a startup query was missed", () => {
+    const { adapter, cells, term } = setup();
+    cells[0] = [{ color: 0xddddd0 }];
+    adapter.update({ enabled: true, background: "#e7e7d9" });
+    expect(term.registerDecoration).not.toHaveBeenCalled();
+    adapter.update({ enabled: true, background: "#141619" });
+    expect(term.registerDecoration).toHaveBeenCalledWith(
+      expect.objectContaining({ backgroundColor: "#303134" }),
+    );
     adapter.dispose();
   });
 

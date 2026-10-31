@@ -15,6 +15,27 @@ afterEach(() => {
 });
 
 describe("local camera preview", () => {
+  it.each([
+    ["ja", "共有準備完了", "撮影済み・準備中", "AI送信済み"],
+    ["en", "Ready to share", "Captured · preparing", "Sent to AI"],
+  ])("distinguishes a staged image from an image sent to the agent in %s", (language, ready, pending, sent) => {
+    const p = {
+      sourceKind: "screen" as const,
+      imageDataUrl: "data:image/jpeg;base64,YQ==",
+      lastCapturedAt: 1000,
+      lastSharedAt: 1000,
+      language,
+      onStop: vi.fn(),
+    };
+    const view = render(<CameraPreview {...p} deliveryMode="on-demand" />);
+    expect(screen.getByText(ready)).toBeTruthy();
+    expect(screen.queryByText(sent)).toBeNull();
+    view.rerender(<CameraPreview {...p} deliveryMode="on-demand" lastCapturedAt={2000} />);
+    expect(screen.getByText(pending)).toBeTruthy();
+    view.rerender(<CameraPreview {...p} />);
+    expect(screen.getByText(sent)).toBeTruthy();
+  });
+
   it("offers explicit detach and attach controls without acquiring a second camera", () => {
     const onStop = vi.fn();
     const onDetach = vi.fn();

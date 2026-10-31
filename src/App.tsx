@@ -24,7 +24,7 @@ import type {
 import { LevaPanel } from "leva";
 import * as Postprocessing from "postprocessing";
 import * as React from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import * as ReactJsxRuntime from "react/jsx-runtime";
 import * as ReactDomClient from "react-dom/client";
 import * as THREE from "three";
@@ -100,6 +100,8 @@ import {
 import { CameraPreview } from "./camera-preview";
 import CharacterSurface from "./character-surface";
 import { ChatView } from "./chat-view";
+import { AgentSetupDialog } from "./components/AgentSetupDialog";
+import { AutoWorkspace } from "./components/AutoWorkspace";
 import { QuickChatInput, QuickVoiceIndicator } from "./components/QuickChatInput";
 import { RestoreConfirmDialog } from "./components/RestoreConfirmDialog";
 import {
@@ -144,7 +146,12 @@ import {
   restoreConfirmStrings,
 } from "./i18n/strings";
 import { useReloadCurtain } from "./reload-curtain";
-import { createBodyStateExpressionAdapter } from "./runtime/agent-state-expression";
+import { hasSavedAgentChoice } from "./runtime/agent-setup";
+import { AgentSetupController } from "./runtime/agent-setup-controller";
+import {
+  createBodyStateExpressionAdapter,
+  type StateExpressionConversationPhase,
+} from "./runtime/agent-state-expression";
 import { createVoiceStateExpressionBridge } from "./runtime/agent-state-expression/voice-state-expression-bridge";
 import { type AmbientAudioRuntime, initAmbientAudio } from "./runtime/ambient-audio";
 import {
@@ -167,6 +174,13 @@ import {
   startToolAttentionProducer,
 } from "./runtime/attention-producers";
 import { getAttentionRuntime } from "./runtime/attention-runtime";
+import { useAutonomyStatus } from "./runtime/autonomy/client";
+import {
+  AUTONOMY_CONFIRMATION_AVAILABLE,
+  AUTONOMY_WORK_REVIEW_AVAILABLE,
+  readAutonomyConfirmationNotice,
+  readAutonomyWorkReviewNotice,
+} from "./runtime/autonomy/voice-setup";
 import { registerBundledAttentionAura } from "./runtime/bundled-attention-aura";
 import { registerBundledMusicShelf } from "./runtime/bundled-music-shelf";
 import { registerBundledPomodoro } from "./runtime/bundled-pomodoro";
@@ -178,8 +192,10 @@ import { useCodexRealtime } from "./runtime/codex-realtime/use-codex-realtime";
 import { useScreenPointerSettings } from "./runtime/codex-realtime/use-screen-pointer-settings";
 import { useScreenSharing } from "./runtime/codex-realtime/use-screen-sharing";
 import {
+  consumePendingAutoConversation,
   consumePendingRealtimeStart,
   isVoiceEntryAvailable,
+  markPendingAutoConversation,
   markPendingRealtimeStart,
   resolveVoiceEntryAction,
 } from "./runtime/codex-realtime/voice-entry";
@@ -952,6 +968,7 @@ function emitPresenceLevelChanged(level: PresenceLevel): void {
 }
 
 const FIRST_RUN_HEALTH_SEEN_KEY = "yorishiro:first-run-health-seen";
+const AGENT_CHOICE_SAVED_KEY = "yorishiro:agent-choice-saved";
 
 function FirstRunHealthPanel({
   report,
@@ -1002,8 +1019,7 @@ function FirstRunHealthPanel({
         </div>
         {report.summary === "error" && (
           <div className="first-run-health-note">
-            The terminal may already be trying to start in the background. Open Settings to switch
-            agents or continue after reviewing the issue.
+            Open Settings to review these checks, or continue after reviewing the issue.
           </div>
         )}
         <div className="first-run-health-actions">
@@ -1036,13 +1052,21 @@ function App() {
   // ── State placement rule ────────────────────────────────────
   // 5 種類の置き場が混在する。**何を入れるかで決める**：
   //   useState        : UI が直接読む / mount/unmount に追従させたい React state（cwd, vrmPath, isUserLayerReady, activeScene, primaryPersona, vrmUrl）
-  //   useRef          : render を起こさない mutable cell（bodyRef, greetedRef, inTurnRef）
+  //   useRef          : render を起こさない mutable cell（bodyRef, inTurnRef）
   //   useMemo         : derive が安いが ref-stable に保ちたい view-side compute（bodyDevLog, folderName）
   //   hot-data        : HMR 越しに 1 instance のみ生かしたい runtime singleton（runtime stack 全体、各 registry）
   //   module-registry : 各 trigger / swap-in module の registry（getModuleRegistry()）
   // 詳細: src/runtime/README.md §HMR と singleton
 
   const [cwd, setCwd] = useState<string | null>(() => localStorage.getItem(CWD_STORAGE_KEY));
+  const [pendingAutoConversation] = useState(() => consumePendingAutoConversation());
+  const [autoWorkspaceOpen, setAutoWorkspaceOpen] = useState(pendingAutoConversation);
+  const [autoAudioError, setAutoAudioError] = useState<string | null>(null);
+  const [autoConversationPhase, setAutoConversationPhase] =
+    useState<StateExpressionConversationPhase>("disconnected");
+  const pendingAutoVoiceStartRef = useRef(pendingAutoConversation);
+  // Background work and approval notifications outlive the workspace surface.
+  const autoWorkStatus = useAutonomyStatus();
   const [homeDir, setHomeDir] = useState<string | null>(null);
   // Persona resume gate（session-persona-gate.ts）の判定結果。boot Step 2 が
   // isUserLayerReady より先に書き、session restore effect が respawn mode と
@@ -1378,6 +1402,12 @@ function App() {
   }, []);
 
   // ── Runtime stack (HMR-surviving singleton) ─────────────────
+
+  const agentSetupController = getOrInit("app:agent-setup", () => new AgentSetupController());
+  const agentSetup = useSyncExternalStore(
+    agentSetupController.subscribe,
+    agentSetupController.getSnapshot,
+  );
 
   const runtime = getOrInit("app:runtime", () => {
     const time = new Time();
@@ -1849,6 +1879,53 @@ function App() {
         }
         // 実起動 agent の解決は resolveEffectiveAgent に集約する（health-check と共有）。
         terminalAgent = resolveEffectiveAgent(config);
+        // 初回 health check の agent 導入を PTY spawn より前に完了させる。
+        // 明示的な shell / カスタム実行ファイルの profile は自動検出で上書きしない。
+        if (defaultSpec?.kind !== "shell" && !defaultSpec?.command) {
+          let hasSavedChoice = config.defaultProfile !== null;
+          try {
+            const rawConfig: unknown = JSON.parse(configText || "{}");
+            hasSavedChoice = hasSavedAgentChoice({
+              hasConfiguredChoice:
+                hasSavedChoice ||
+                (rawConfig !== null &&
+                  typeof rawConfig === "object" &&
+                  "terminalAgent" in rawConfig),
+              savedChoiceMarker: localStorage.getItem(AGENT_CHOICE_SAVED_KEY),
+              legacyHealthSeen: localStorage.getItem(FIRST_RUN_HEALTH_SEEN_KEY) === "1",
+            });
+            // 未選択も記録し、「あとで」の health check を旧版の選択と誤認しない。
+            localStorage.setItem(AGENT_CHOICE_SAVED_KEY, hasSavedChoice ? "1" : "0");
+          } catch {
+            // 壊れた設定は未選択として扱い、復旧可能な導入画面を出す。
+          }
+          const selectedAgent = await agentSetupController.prepare({
+            preferredAgent: terminalAgent,
+            hasSavedChoice,
+            persistChoice: async (agent) => {
+              await updateYorishiroConfig((current) => ({
+                ...current,
+                terminalAgent: agent,
+                defaultProfile:
+                  resolveEffectiveAgent(current) === agent ? current.defaultProfile : null,
+              }));
+              try {
+                localStorage.setItem(AGENT_CHOICE_SAVED_KEY, "1");
+              } catch {
+                // 設定ファイルへの保存が成功していれば起動を続けられる。
+              }
+            },
+          });
+          if (selectedAgent === null) {
+            // 「あとで」は未導入 agent を起動せず、通常の shell で続ける。
+            defaultSpec = { kind: "shell", integration: true };
+            markMainSessionRespawnPending();
+          } else if (selectedAgent !== terminalAgent) {
+            terminalAgent = selectedAgent;
+            defaultSpec = null;
+            markMainSessionRespawnPending();
+          }
+        }
         personaRegistry.setPrimaryPersona(
           resolvePrimaryPersonaForLanguage(config.primaryPersona, resolvedLanguage),
         );
@@ -2608,15 +2685,14 @@ function App() {
       // フラグは pre-fill 成功直後に立てる（AI の判断に依存しない確実な経路）。
       try {
         const done = await checkTutorialDone();
-        if (!done) {
+        if (!done && defaultSpec?.kind !== "shell") {
           setTimeout(async () => {
             try {
-              const config = parseConfig(await readYorishiroConfigText());
               await ptyWrite({
                 data: resolveFixedTerminalPrompt(
                   "tutorial",
                   appLanguageRef.current.resolved,
-                  config.terminalAgent,
+                  terminalAgent,
                 ),
               });
               await markTutorialDone();
@@ -3007,6 +3083,9 @@ function App() {
     isSessionRestoreReady,
     resolvedSystemPrompt !== undefined,
   );
+  // 導入を後回しにした Main の shell には会話入力を送らない。
+  // 表示中の tab は問わず、別の shell tab で作業中も Main Agent は利用できる。
+  const mainAgentAvailable = canMountTerminals && defaultSpec?.kind !== "shell";
   const getTerminalSpec = useCallback(
     (sessionId: SessionId): SpawnSpec => {
       if (sessionId !== DEFAULT_SESSION_ID) {
@@ -3250,12 +3329,25 @@ function App() {
     if (localStorage.getItem(FIRST_RUN_HEALTH_SEEN_KEY) === "1") return;
     let cancelled = false;
     void collectAppHealthReport().then((report) => {
-      if (!cancelled) setFirstRunHealth(report);
+      if (cancelled) return;
+      // 正常なら直接起動する。導入画面で扱った項目だけの場合も案内を重ねない。
+      // agent と無関係な warning / error は引き続き表示する。
+      if (
+        report.summary === "ok" ||
+        (agentSetupController.wasPresented &&
+          !report.items.some(
+            (item) => item.id !== "agent" && item.id !== "agent-options" && item.status !== "ok",
+          ))
+      ) {
+        localStorage.setItem(FIRST_RUN_HEALTH_SEEN_KEY, "1");
+        return;
+      }
+      setFirstRunHealth(report);
     });
     return () => {
       cancelled = true;
     };
-  }, [isUserLayerReady, collectAppHealthReport]);
+  }, [isUserLayerReady, collectAppHealthReport, agentSetupController]);
 
   const dismissFirstRunHealth = useCallback(() => {
     localStorage.setItem(FIRST_RUN_HEALTH_SEEN_KEY, "1");
@@ -4089,22 +4181,32 @@ function App() {
   // GPT Live は Main Agent が所有する。表示中の terminal tab は接続寿命に影響させず、
   // shell で手作業中も音声会話を継続する。Main の置換中だけ tracker/client を畳み、
   // voice intent を保ったまま新 thread へ自動再接続する。
-  const codexVoiceAvailable = terminalAgent === "codex" && !mainSessionReplacing;
-  const voiceEntryAvailable = isVoiceEntryAvailable();
-  const greetedRef = useRef(false);
+  const codexVoiceAvailable =
+    mainAgentAvailable && terminalAgent === "codex" && !mainSessionReplacing;
+  const voiceEntryAvailable = mainAgentAvailable && isVoiceEntryAvailable();
   const inTurnRef = useRef(false);
   const applyRealtimeLipSyncSource = useCallback((source: LipSyncSource) => {
     bodyRef.current?.setLipSyncSource(source);
   }, []);
-  const realtimeStateExpressionCallbacks = useMemo(
-    () => createBodyStateExpressionAdapter(() => bodyRef.current),
-    [],
-  );
+  const realtimeStateExpressionCallbacks = useMemo(() => {
+    const bodyAdapter = createBodyStateExpressionAdapter(() => bodyRef.current);
+    return {
+      ...bodyAdapter,
+      onConversationPhaseChange: (phase: StateExpressionConversationPhase) => {
+        bodyAdapter.onConversationPhaseChange?.(phase);
+        setAutoConversationPhase(phase);
+      },
+    };
+  }, []);
   const speechScreenCaptureRef = useRef<(() => Promise<void>) | null>(null);
   const {
     state: codexRealtimeState,
     stop: stopCodexRealtime,
     toggle: toggleCodexRealtime,
+    prepareAutonomyConversation,
+    requestAutonomyConversation,
+    sendAutonomyMessage,
+    notifyAutonomyWorkReview,
     setMicrophoneMuted: setCodexMicrophoneMuted,
     trackQuickChatPrompt,
     readChatTranscript,
@@ -4213,8 +4315,22 @@ function App() {
       return;
     }
     pendingRealtimeStartRef.current = false;
-    void toggleCodexRealtime();
-  }, [codexRealtimeState.status, codexVoiceAvailable, toggleCodexRealtime]);
+    if (pendingAutoVoiceStartRef.current) {
+      pendingAutoVoiceStartRef.current = false;
+      getUiRegistry().setActiveUi(null);
+      applyPresenceLevelFromApp("default", "settings");
+      setAutoWorkspaceOpen(true);
+      void requestAutonomyConversation(appLanguageRef.current.resolved).catch((error: unknown) => {
+        setAutoAudioError(error instanceof Error ? error.message : String(error));
+      });
+    } else void toggleCodexRealtime();
+  }, [
+    codexRealtimeState.status,
+    codexVoiceAvailable,
+    requestAutonomyConversation,
+    toggleCodexRealtime,
+    applyPresenceLevelFromApp,
+  ]);
 
   useEffect(() => {
     if (mainSessionReplacing || !voiceReconnectPending || codexRealtimeState.status === "idle") {
@@ -4224,6 +4340,7 @@ function App() {
   }, [codexRealtimeState.status, mainSessionReplacing, voiceReconnectPending]);
 
   const handleToggleVoice = useCallback(async () => {
+    if (!mainAgentAvailable) return;
     if (isConversationTransitionActive(mainConversationTransitionGateRef.current)) return;
     if (voiceReconnectPending) {
       stopCodexRealtime();
@@ -4231,7 +4348,9 @@ function App() {
       return;
     }
     if (codexVoiceAvailable) {
-      await toggleCodexRealtime();
+      if (autoWorkspaceOpen && ["idle", "error"].includes(codexRealtimeState.status)) {
+        await requestAutonomyConversation(appLanguageRef.current.resolved);
+      } else await toggleCodexRealtime();
       return;
     }
 
@@ -4250,22 +4369,129 @@ function App() {
     });
   }, [
     codexVoiceAvailable,
+    mainAgentAvailable,
     stopCodexRealtime,
     terminalAgent,
     toggleCodexRealtime,
     voiceReconnectPending,
+    autoWorkspaceOpen,
+    codexRealtimeState.status,
+    requestAutonomyConversation,
   ]);
+
+  useEffect(() => {
+    // Auto never falls back to unsolicited TTS. GPT Live owns its separate
+    // remote audio; opening Auto and ending a call do not change that owner.
+    void voicePlaybackLeaseSync
+      .setSuppressed("auto-workspace", autoWorkspaceOpen)
+      .catch((error: unknown) => {
+        setAutoAudioError(error instanceof Error ? error.message : String(error));
+      });
+  }, [autoWorkspaceOpen, voicePlaybackLeaseSync]);
+
+  useEffect(() => {
+    if (!autoWorkspaceOpen || codexRealtimeState.status !== "active") return;
+    let cancelled = false;
+    // An existing call receives Auto context without restarting or greeting.
+    void prepareAutonomyConversation(appLanguage.resolved).catch((error: unknown) => {
+      if (!cancelled) setAutoAudioError(error instanceof Error ? error.message : String(error));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    autoWorkspaceOpen,
+    codexRealtimeState.status,
+    appLanguage.resolved,
+    prepareAutonomyConversation,
+  ]);
+
+  const handleAutoVoiceStart = useCallback(async () => {
+    setAutoAudioError(null);
+    if (
+      !mainAgentAvailable ||
+      isConversationTransitionActive(mainConversationTransitionGateRef.current)
+    ) {
+      throw new Error(
+        appLanguageRef.current.resolved === "en"
+          ? "The conversation is not ready yet."
+          : "会話の準備ができていません。",
+      );
+    }
+    if (!codexVoiceAvailable) {
+      pendingAutoVoiceStartRef.current = true;
+      await handleToggleVoice();
+      return;
+    }
+    setCodexMicrophoneMuted(false);
+    await requestAutonomyConversation(appLanguageRef.current.resolved);
+  }, [
+    mainAgentAvailable,
+    codexVoiceAvailable,
+    handleToggleVoice,
+    requestAutonomyConversation,
+    setCodexMicrophoneMuted,
+  ]);
+
+  const handleCloseAutoWorkspace = useCallback(() => {
+    if (pendingAutoVoiceStartRef.current) {
+      pendingAutoVoiceStartRef.current = false;
+      pendingRealtimeStartRef.current = false;
+    }
+    setAutoWorkspaceOpen(false);
+  }, []);
+
+  const handleEndAutoConversation = useCallback(() => {
+    pendingAutoVoiceStartRef.current = false;
+    pendingRealtimeStartRef.current = false;
+    setVoiceReconnectPending(false);
+    setAutoAudioError(null);
+    stopCodexRealtime();
+  }, [stopCodexRealtime]);
+
+  useEffect(() => {
+    const onReview = (event: Event) => {
+      if ((event as CustomEvent<unknown>).detail === null) {
+        void notifyAutonomyWorkReview(null);
+        return;
+      }
+      const review = readAutonomyWorkReviewNotice(event, appLanguageRef.current.resolved);
+      if (!review) return;
+      // The voice hook queues the latest pending card while disconnected and
+      // deduplicates only accepted native submissions, never mere host events.
+      void notifyAutonomyWorkReview(review).catch((error: unknown) => {
+        console.warn("[autonomy] voice review notice unavailable", error);
+      });
+    };
+    const onConfirmation = (event: Event) => {
+      const detail = (event as CustomEvent<unknown>).detail;
+      const notice = readAutonomyConfirmationNotice(event, appLanguageRef.current.resolved);
+      if (detail !== null && !notice) return;
+      void notifyAutonomyWorkReview(notice, "confirmation").catch((error: unknown) => {
+        console.warn("[autonomy] confirmation voice notice unavailable", error);
+      });
+    };
+    window.addEventListener(AUTONOMY_WORK_REVIEW_AVAILABLE, onReview);
+    window.addEventListener(AUTONOMY_CONFIRMATION_AVAILABLE, onConfirmation);
+    return () => {
+      window.removeEventListener(AUTONOMY_WORK_REVIEW_AVAILABLE, onReview);
+      window.removeEventListener(AUTONOMY_CONFIRMATION_AVAILABLE, onConfirmation);
+    };
+  }, [notifyAutonomyWorkReview]);
 
   const screenPointerSettings = useScreenPointerSettings({
     persist: (screenPointersEnabled) => updateConfig({ screenPointersEnabled }),
     notify: notifyScreenPointersEnabled,
   });
+  const sharingDeliveryMode = "context";
   const screenSharingAvailable = codexVoiceAvailable && screenThreadId !== null;
+  const screenSharingOwnerKey = `${tabState.mainSessionId}:${screenThreadId ?? ""}`;
   const screenSharing = useScreenSharing({
     available: screenSharingAvailable,
     screenAvailable: /Mac/i.test(navigator.platform),
-    ownerKey: `${tabState.mainSessionId}:${screenThreadId ?? ""}`,
+    ownerKey: screenSharingOwnerKey,
     share: shareScreenObservation,
+    deduplicate: true,
     onTiming: (timing) => {
       devLog.write({ subsystem: "ScreenSharing", phase: "capture-context", data: timing });
     },
@@ -4304,6 +4530,7 @@ function App() {
     activePresentationViewModeIdValue === "portrait" ||
     activePresentationViewModeIdValue === "companion";
   const screenPreviewWindow = useScreenPreviewWindow({
+    deliveryMode: sharingDeliveryMode,
     sourceKey: screenSharing.screenPreviewKey,
     visible: screenPreviewVisible,
     initiallyDetached: initiallyDetachedPreview,
@@ -4316,6 +4543,7 @@ function App() {
   const setPreviewVisible =
     screenSharing.sourceKind === "camera" ? setCameraPreviewVisible : setScreenPreviewVisible;
   const cameraPreviewWindow = useCameraPreviewWindow({
+    deliveryMode: sharingDeliveryMode,
     stream: screenSharing.cameraStream,
     visible: cameraPreviewVisible,
     initiallyDetached: initiallyDetachedPreview,
@@ -4326,6 +4554,7 @@ function App() {
   });
   speechScreenCaptureRef.current = screenSharing.active ? screenSharing.captureNow : null;
   const auxiliaryScreenSharing = useAuxiliaryScreenSharing({
+    deliveryMode: sharingDeliveryMode,
     ...screenSharing,
     previewVisible,
     setPreviewVisible,
@@ -4340,7 +4569,7 @@ function App() {
           (screenSharing.screenSourceKind === "display" ? screenPointerSettings.error : undefined))
         : undefined),
     available: screenSharing.available,
-    ownerKey: `${tabState.mainSessionId}:${screenThreadId ?? ""}`,
+    ownerKey: screenSharingOwnerKey,
     language: appLanguage.resolved,
   });
 
@@ -4366,20 +4595,6 @@ function App() {
             personaRegistry,
           }),
         );
-        if (!greetedRef.current) {
-          greetedRef.current = true;
-          // Delay the greeting nod so it feels like a considered "hello"
-          // instead of a reflex the moment the VRM appears on screen.
-          setTimeout(() => {
-            bodyRef.current?.createCharacterAPI().play("anim:VRMA_small_nod", {
-              mask: "upper-body",
-              fadeInMs: 1200,
-              fadeOutMs: 800,
-              weight: 0.8,
-              speed: 0.7,
-            });
-          }, 3000);
-        }
       } else {
         bodyRef.current?.setLipSyncSource(null);
         dispatcher.setContextFactory(createStubPersonaContextFactory());
@@ -4615,6 +4830,7 @@ function App() {
   // ── Settings ─────────────────────────────────────────────
 
   const handleOpenSettings = useCallback(() => {
+    handleCloseAutoWorkspace();
     const uiPackRegistry = getUiRegistry();
     const uiState = getUiStateStore();
     const current = uiPackRegistry.getActiveUi()?.id ?? null;
@@ -4632,10 +4848,11 @@ function App() {
     // 閉じている → 開く。現 activeUi を previous として保存。
     uiState.set(SETTINGS_PACK_ID, PREVIOUS_ACTIVE_UI_KEY, current);
     uiPackRegistry.setActiveUi(SETTINGS_PACK_ID);
-  }, []);
+  }, [handleCloseAutoWorkspace]);
 
   const handleSelectViewMode = useCallback(
     (id: string | null) => {
+      handleCloseAutoWorkspace();
       setViewModeHudVisible(false);
       if (id === "chat") tabManager.switchTo(tabManager.getState().mainSessionId);
       getUiRegistry().setActiveUi(id);
@@ -4643,10 +4860,11 @@ function App() {
         console.warn("[App] failed to persist View Mode", error);
       });
     },
-    [updateYorishiroConfig, tabManager],
+    [handleCloseAutoWorkspace, updateYorishiroConfig, tabManager],
   );
 
   const handleVoiceEntryCancel = useCallback(() => {
+    pendingAutoVoiceStartRef.current = false;
     setVoiceEntryDialog(null);
   }, []);
 
@@ -4654,15 +4872,36 @@ function App() {
     if (voiceEntryDialog?.mode !== "switch" || voiceEntryDialog.targetAgentId === null) return;
     const targetAgentId = voiceEntryDialog.targetAgentId;
     setVoiceEntryDialog(null);
-    void switchMainAgent(targetAgentId, markPendingRealtimeStart);
+    void switchMainAgent(targetAgentId, () => {
+      if (pendingAutoVoiceStartRef.current) markPendingAutoConversation();
+      else markPendingRealtimeStart();
+    });
   }, [switchMainAgent, voiceEntryDialog]);
 
   const handleVoiceEntryOpenSettings = useCallback(() => {
+    pendingAutoVoiceStartRef.current = false;
     setVoiceEntryDialog(null);
     if (getUiRegistry().getActiveUi()?.id !== SETTINGS_PACK_ID) {
       handleOpenSettings();
     }
   }, [handleOpenSettings]);
+
+  const handleToggleAutoWorkspace = useCallback(() => {
+    if (autoWorkspaceOpen) {
+      handleCloseAutoWorkspace();
+      return;
+    }
+    // Use the regular character surface; do not create a second VRM or terminal.
+    getUiRegistry().setActiveUi(null);
+    setViewModeHudVisible(false);
+    setQuickChatOpen(false);
+    applyPresenceLevelFromApp("default", "settings");
+    setAutoWorkspaceOpen(true);
+  }, [autoWorkspaceOpen, applyPresenceLevelFromApp, handleCloseAutoWorkspace]);
+
+  useEffect(() => {
+    if (activeUiId !== null) setAutoWorkspaceOpen(false);
+  }, [activeUiId]);
 
   const [vrmUrl, setVrmUrl] = useState<string | null>(null);
 
@@ -4980,7 +5219,7 @@ function App() {
   }, [cwd, homeDir, tabManager, tabState.mainSessionId, tabState.sessions]);
 
   const readCurrentMainConversationSelection = useCallback(async () => {
-    if (!supportsConversationNavigation(terminalAgent)) return null;
+    if (!mainAgentAvailable || !supportsConversationNavigation(terminalAgent)) return null;
     const mainSessionId = tabManager.getState().mainSessionId;
     const generation = mainConversationGenerationRef.current;
     try {
@@ -4993,7 +5232,7 @@ function App() {
       console.warn("[session-navigation] failed to read provider conversation state", error);
       return null;
     }
-  }, [tabManager, terminalAgent]);
+  }, [mainAgentAvailable, tabManager, terminalAgent]);
 
   const readConfirmedMainConversationId = useCallback(async (): Promise<string | null> => {
     const selected = await readConversationSelectionWithin(
@@ -5010,6 +5249,7 @@ function App() {
   }, [readCurrentMainConversationSelection]);
 
   const spawnFreshMainConversation = useCallback(async (): Promise<string | null> => {
+    if (!mainAgentAvailable) return null;
     const mainSessionId = tabManager.getState().mainSessionId;
     const sessionCwd = getSessionCwd(mainSessionId);
     const params = {
@@ -5019,7 +5259,7 @@ function App() {
     mainConversationGenerationRef.current += 1;
     const result = await getTerminalRuntime(mainSessionId).forceRespawnWithParams(params);
     return result?.replacedConfirmedSessionId ?? null;
-  }, [cwd, getSessionCwd, getTerminalSpec, tabManager]);
+  }, [cwd, getSessionCwd, getTerminalSpec, mainAgentAvailable, tabManager]);
 
   const resumeMainConversationExactly = useCallback(
     async (
@@ -5028,6 +5268,7 @@ function App() {
       readonly sessionId: string;
       readonly replacedConfirmedSessionId: string | null;
     }> => {
+      if (!mainAgentAvailable) throw new Error("The main session is not an agent.");
       const mainSessionId = tabManager.getState().mainSessionId;
       const sessionCwd = getSessionCwd(mainSessionId);
       const params = {
@@ -5065,6 +5306,7 @@ function App() {
       cwd,
       getSessionCwd,
       getTerminalSpec,
+      mainAgentAvailable,
       readCurrentMainConversationSelection,
       tabManager,
       terminalAgent,
@@ -5091,7 +5333,7 @@ function App() {
 
   const tryHydrateActiveDraft = useCallback(
     async (timeoutMs: number, coalesceByGeneration: boolean): Promise<string | null> => {
-      if (!supportsConversationNavigation(terminalAgent)) return null;
+      if (!mainAgentAvailable || !supportsConversationNavigation(terminalAgent)) return null;
       const trail = mainConversationTrailRef.current;
       const entry = currentConversationEntry(trail);
       if (entry?.kind !== "new-draft") return null;
@@ -5146,6 +5388,7 @@ function App() {
     },
     [
       dispatchMainConversationTrail,
+      mainAgentAvailable,
       readConfirmedMainConversationId,
       readCurrentMainConversationSelection,
       terminalAgent,
@@ -5248,14 +5491,14 @@ function App() {
   );
 
   useEffect(() => {
-    if (!supportsConversationNavigation(terminalAgent)) {
+    if (!mainAgentAvailable || !supportsConversationNavigation(terminalAgent)) {
       dispatchMainConversationTrail({ type: "reset" });
     }
-  }, [dispatchMainConversationTrail, terminalAgent]);
+  }, [dispatchMainConversationTrail, mainAgentAvailable, terminalAgent]);
 
   useEffect(() => {
     if (
-      !canMountTerminals ||
+      !mainAgentAvailable ||
       !supportsConversationNavigation(terminalAgent) ||
       mainConversationTrail.entries.length > 0 ||
       mainConversationTrail.transient !== null
@@ -5282,8 +5525,8 @@ function App() {
       cancelled = true;
     };
   }, [
-    canMountTerminals,
     dispatchMainConversationTrail,
+    mainAgentAvailable,
     mainConversationTrail.entries.length,
     mainConversationTrail.transient,
     readConfirmedMainConversationId,
@@ -5291,7 +5534,7 @@ function App() {
   ]);
 
   const handleNewMainConversation = useCallback(async () => {
-    if (!canMountTerminals) return;
+    if (!mainAgentAvailable) return;
     const transitionLease = beginMainConversationTransition("new");
     if (transitionLease === null) return;
     let handedOffToSpawnEffect = false;
@@ -5337,10 +5580,10 @@ function App() {
     }
   }, [
     beginMainConversationTransition,
-    canMountTerminals,
     codexRealtimeState.status,
     dispatchMainConversationTrail,
     finishMainConversationTransition,
+    mainAgentAvailable,
     prepareActiveDraftForReplacement,
     reconcileCachedConversationSelectionBeforeTransition,
     refreshCachedConversationSelectionImmediately,
@@ -5349,7 +5592,7 @@ function App() {
   ]);
 
   useEffect(() => {
-    if (!canMountTerminals || mainFreshRequestSeq === 0) return;
+    if (!mainAgentAvailable || mainFreshRequestSeq === 0) return;
     if (mainFreshEnqueuedSeqRef.current >= mainFreshRequestSeq) return;
 
     const rollbackLaunch = pendingFreshRollbackLaunchRef.current;
@@ -5416,9 +5659,9 @@ function App() {
         finishMainConversationTransition(transitionLease);
       });
   }, [
-    canMountTerminals,
     dispatchMainConversationTrail,
     finishMainConversationTransition,
+    mainAgentAvailable,
     mainFreshRequestSeq,
     reconcileReplacedConfirmedSession,
     restoreMainConversationLaunch,
@@ -5428,7 +5671,7 @@ function App() {
 
   const handleMainConversationNavigation = useCallback(
     async (direction: ConversationNavigationDirection) => {
-      if (!supportsConversationNavigation(terminalAgent)) return;
+      if (!mainAgentAvailable || !supportsConversationNavigation(terminalAgent)) return;
       const transitionLease = beginMainConversationTransition(direction);
       if (transitionLease === null) return;
       let currentEntry: ActiveConversationEntry | null = null;
@@ -5532,6 +5775,7 @@ function App() {
       codexRealtimeState.status,
       dispatchMainConversationTrail,
       finishMainConversationTransition,
+      mainAgentAvailable,
       prepareActiveDraftForReplacement,
       reconcileReplacedConfirmedSession,
       reconcileCachedConversationSelectionBeforeTransition,
@@ -5545,7 +5789,7 @@ function App() {
   );
 
   useEffect(() => {
-    if (!canMountTerminals || !supportsConversationNavigation(terminalAgent)) return;
+    if (!mainAgentAvailable || !supportsConversationNavigation(terminalAgent)) return;
     const runtime = getTerminalRuntime(tabManager.getState().mainSessionId);
     const subscription = runtime.subscribeUserInput((data) => {
       if (!data || isConversationTransitionActive(mainConversationTransitionGateRef.current)) {
@@ -5585,7 +5829,7 @@ function App() {
     });
     return () => subscription.dispose();
   }, [
-    canMountTerminals,
+    mainAgentAvailable,
     observeConversationSelectionAfterSubmit,
     tabManager,
     terminalAgent,
@@ -5623,7 +5867,7 @@ function App() {
   const chatPresented = chatModeActive && tabState.activeSessionId === tabState.mainSessionId;
   const chatSessionStatus = sessionStatusById.get(tabState.mainSessionId);
   const chatApprovals = useChatApprovals({
-    enabled: chatPresented && canMountTerminals && !mainSessionReplacing,
+    enabled: chatPresented && mainAgentAvailable && !mainSessionReplacing,
     sessionId: tabState.mainSessionId,
     agent: terminalAgent,
     generation: mainConversationGenerationRef.current,
@@ -5635,7 +5879,7 @@ function App() {
   const chatCanSend =
     chatPresented &&
     chatSupported &&
-    canMountTerminals &&
+    mainAgentAvailable &&
     !mainSessionReplacing &&
     chatSessionStatus?.lifecycle === "running" &&
     !chatRequiresAttention &&
@@ -5656,7 +5900,7 @@ function App() {
     [chatCanSend, tabManager],
   );
   const chatConversation = useChatConversation({
-    enabled: chatPresented && canMountTerminals && !mainSessionReplacing,
+    enabled: chatPresented && mainAgentAvailable && !mainSessionReplacing,
     sessionId: tabState.mainSessionId,
     agent: terminalAgent,
     generation: mainConversationGenerationRef.current,
@@ -5667,7 +5911,7 @@ function App() {
     canSend: chatCanSend,
   });
   const chatStatus =
-    !chatSupported || chatSessionStatus?.lifecycle === "exited"
+    !mainAgentAvailable || !chatSupported || chatSessionStatus?.lifecycle === "exited"
       ? "unavailable"
       : chatRequiresAttention
         ? "attention"
@@ -5718,7 +5962,7 @@ function App() {
   };
   const conversationShortcutEnabled =
     conversationPaletteMode &&
-    canMountTerminals &&
+    mainAgentAvailable &&
     !mainSessionReplacing &&
     firstRunHealth === null &&
     restoreDialog === null &&
@@ -5773,7 +6017,7 @@ function App() {
 
   const handleQuickChatSubmit = useCallback(() => {
     const prompt = quickChatDraft.trim();
-    if (!quickChatEnabled || prompt.length === 0) return;
+    if (!mainAgentAvailable || !quickChatEnabled || prompt.length === 0) return;
     const mainSessionId = tabManager.getState().mainSessionId;
     tabManager.switchTo(mainSessionId);
     setQuickChatDraft("");
@@ -5784,7 +6028,7 @@ function App() {
         quickChatSpeechPendingRef.current = requestId ? { requestId, explicitSpeech: false } : null;
         getTerminalRuntime(mainSessionId).submitUserText(prompt);
       });
-  }, [quickChatDraft, quickChatEnabled, tabManager, trackQuickChatPrompt]);
+  }, [mainAgentAvailable, quickChatDraft, quickChatEnabled, tabManager, trackQuickChatPrompt]);
 
   // ── PTY exit → auto-respawn / tab close ────────────────────
   const ptyExitCleanupRef = useRef<(() => void) | null>(null);
@@ -5892,6 +6136,8 @@ function App() {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.code === "Escape" && quickChatOpen) {
+        // This capture listener runs before QuickChatInput's own IME guard.
+        if (event.isComposing || event.keyCode === 229) return;
         event.preventDefault();
         event.stopPropagation();
         setQuickChatOpen(false);
@@ -5993,6 +6239,7 @@ function App() {
     >
       {screenSharing.active && cameraPreviewVisible && cameraPreviewWindow.inlineVisible ? (
         <CameraPreview
+          deliveryMode={sharingDeliveryMode}
           stream={
             screenSharing.screenPreviewFrame ? undefined : (screenSharing.cameraStream ?? undefined)
           }
@@ -6013,6 +6260,7 @@ function App() {
       screenSharing.screenPreviewFrame &&
       screenPreviewWindow.inlineVisible ? (
         <CameraPreview
+          deliveryMode={sharingDeliveryMode}
           sourceKind="screen"
           imageDataUrl={screenSharing.screenPreviewFrame.imageDataUrl}
           opening={screenPreviewWindow.opening}
@@ -6034,15 +6282,15 @@ function App() {
         terminalShortcutHint={viewModeShortcuts[0]?.hint}
         viewModeShortcutHints={viewModeShortcutHints}
         settingsShortcutHint={/Mac/i.test(navigator.platform) ? "⌘," : "Ctrl+,"}
-        showSidebarToggle={!viewModeOwnsChrome}
+        showSidebarToggle={!viewModeOwnsChrome && !autoWorkspaceOpen}
         settingsLabel={strings.settings}
         onToggleSidebar={handleToggleSidebar}
         onOpenSettings={handleOpenSettings}
         viewModes={viewModes}
         activeViewModeId={pickerActiveViewModeId}
         onSelectViewMode={handleSelectViewMode}
-        voiceAvailable={voiceEntryAvailable}
-        voiceDisabled={mainSessionReplacing}
+        voiceAvailable={voiceEntryAvailable && !autoWorkspaceOpen}
+        voiceDisabled={!mainAgentAvailable || mainSessionReplacing}
         voiceState={titleBarVoiceState}
         voiceMicrophoneActive={codexRealtimeState.microphoneActive === true}
         voiceLabel={
@@ -6059,6 +6307,7 @@ function App() {
         screenSharingControl={
           codexVoiceAvailable ? (
             <ScreenSharingControl
+              deliveryMode={sharingDeliveryMode}
               activeViewModeId={activePresentationViewModeIdValue}
               previewVisible={previewVisible}
               onPreviewVisibleChange={setPreviewVisible}
@@ -6101,13 +6350,22 @@ function App() {
             />
           ) : null
         }
+        autoModeActive={autoWorkspaceOpen}
+        onToggleAutoMode={handleToggleAutoWorkspace}
+        autoModePendingCount={
+          (autoWorkStatus?.pendingActions?.filter((action) => action.status === "pending").length ??
+            0) + (autoWorkStatus?.pendingWork ? 1 : 0)
+        }
         tabs={
           <TabIndicator
             state={tabState}
             labels={sessionTabLabels}
             statuses={sessionStatusById}
             hookBadges={sessionHookBadges}
-            onSelectSession={(sessionId) => tabManager.switchTo(sessionId)}
+            onSelectSession={(sessionId) => {
+              handleCloseAutoWorkspace();
+              tabManager.switchTo(sessionId);
+            }}
             backConversationLabel={
               mainSessionReplacing
                 ? strings.switchingConversation
@@ -6116,10 +6374,12 @@ function App() {
                   : strings.noBackConversation
             }
             backConversationDisabled={
-              mainSessionReplacing || !canNavigateConversation(mainConversationTrail, "back")
+              !mainAgentAvailable ||
+              mainSessionReplacing ||
+              !canNavigateConversation(mainConversationTrail, "back")
             }
             onBackConversation={
-              supportsConversationNavigation(terminalAgent)
+              mainAgentAvailable && supportsConversationNavigation(terminalAgent)
                 ? () => void handleMainConversationNavigation("back")
                 : undefined
             }
@@ -6131,17 +6391,19 @@ function App() {
                   : strings.noForwardConversation
             }
             forwardConversationDisabled={
-              mainSessionReplacing || !canNavigateConversation(mainConversationTrail, "forward")
+              !mainAgentAvailable ||
+              mainSessionReplacing ||
+              !canNavigateConversation(mainConversationTrail, "forward")
             }
             onForwardConversation={
-              supportsConversationNavigation(terminalAgent)
+              mainAgentAvailable && supportsConversationNavigation(terminalAgent)
                 ? () => void handleMainConversationNavigation("forward")
                 : undefined
             }
             newConversationLabel={
               mainSessionReplacing ? strings.switchingConversation : strings.newConversation
             }
-            newConversationDisabled={mainSessionReplacing}
+            newConversationDisabled={!mainAgentAvailable || mainSessionReplacing}
             onNewConversation={() => void handleNewMainConversation()}
             onAddSession={() => tabManager.openShell(cwd)}
             onCloseSession={(sessionId) => tabManager.close(sessionId)}
@@ -6201,6 +6463,7 @@ function App() {
         {canMountTerminals && (
           <div className="conversation-workspace" data-chat-active={chatPresented}>
             <TerminalWorkspace
+              presented={!autoWorkspaceOpen}
               sessions={tabState.sessions}
               activeSessionId={tabState.activeSessionId}
               cwd={cwd}
@@ -6261,6 +6524,29 @@ function App() {
           </div>
         )}
       </div>
+      <AutoWorkspace
+        open={autoWorkspaceOpen}
+        language={appLanguage.resolved}
+        cwd={cwd}
+        onClose={handleCloseAutoWorkspace}
+        conversation={{
+          available: voiceEntryAvailable,
+          state: {
+            ...codexRealtimeState,
+            status: titleBarVoiceState,
+            error: autoAudioError ?? codexRealtimeState.error,
+          },
+          phase: autoConversationPhase,
+          onStart: handleAutoVoiceStart,
+          onEnd: handleEndAutoConversation,
+          onSetMuted: setCodexMicrophoneMuted,
+        }}
+        onSendMessage={
+          terminalAgent === "codex"
+            ? (text) => sendAutonomyMessage(text, appLanguage.resolved)
+            : undefined
+        }
+      />
       {quickChatOpen && quickChatEnabled ? (
         <QuickChatInput
           value={quickChatDraft}
@@ -6275,7 +6561,7 @@ function App() {
           onClose={() => setQuickChatOpen(false)}
         />
       ) : null}
-      {quickVoiceStatus !== null && conversationShortcutEnabled ? (
+      {quickVoiceStatus !== null && conversationShortcutEnabled && !autoWorkspaceOpen ? (
         <QuickVoiceIndicator
           status={quickVoiceStatus}
           muted={codexRealtimeState.microphoneMuted === true}
@@ -6292,7 +6578,27 @@ function App() {
           onStop={stopCodexRealtime}
         />
       ) : null}
-      {firstRunHealth && (
+      {agentSetup.visible && (
+        <AgentSetupDialog
+          language={appLanguage.resolved}
+          agents={agentSetup.agents}
+          reason={agentSetup.reason}
+          busy={agentSetup.busy}
+          error={agentSetup.error}
+          installations={agentSetup.installations}
+          onInstall={(agent) => {
+            void agentSetupController.install(agent);
+          }}
+          onSelect={(agent) => {
+            void agentSetupController.select(agent);
+          }}
+          onRefresh={() => {
+            void agentSetupController.refresh();
+          }}
+          onSkip={agentSetupController.skip}
+        />
+      )}
+      {firstRunHealth && !agentSetup.visible && (
         <FirstRunHealthPanel
           report={firstRunHealth}
           onOpenSettings={handleOpenSettings}

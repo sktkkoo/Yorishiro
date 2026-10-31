@@ -34,7 +34,8 @@ describe("character motion program admission", () => {
     expect(generic.programs.map((program) => program.entry)).toEqual(
       yori.programs.filter((program) => program.role === "speech").map((program) => program.entry),
     );
-    expect(generic.programs).toHaveLength(5);
+    expect(generic.programs).toHaveLength(4);
+    expect(generic.byAnimation.has("/animations/mixamo/Thoughtful Head Shake.vrma")).toBe(false);
     expect(generic.rejections).toEqual([]);
     expect(generic.support).toEqual({ recorded: false, fallback: true });
     expect(generic.footContacts.size).toBe(0);
@@ -75,7 +76,8 @@ describe("character motion program admission", () => {
       compiled.programs.some(
         ({ entry }) =>
           ["anim:Idle", "anim:Idle Chatting 2"].includes(entry.animation) ||
-          entry.animation.includes("Shrugging"),
+          entry.animation.includes("Shrugging") ||
+          entry.animation.includes("Thoughtful Head Shake"),
       ),
     ).toBe(false);
     const hip = compiled.byAnimation.get("anim:VRMA_06_HandOnHip");
@@ -83,7 +85,7 @@ describe("character motion program admission", () => {
     expect(hip?.entry.cooldownMs).toBe(180_000);
     expect(compiled.cadence.postureDurationMs[1]).toBeLessThanOrEqual(12_000);
     expect(compiled.programs.filter((program) => program.role === "ambient")).toEqual([]);
-    expect(compiled.programs.filter((program) => program.role === "speech")).toHaveLength(5);
+    expect(compiled.programs.filter((program) => program.role === "speech")).toHaveLength(4);
   });
 
   it("snapshots nested authoring data so one character's later edits cannot mutate a live profile", () => {

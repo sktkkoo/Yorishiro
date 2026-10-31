@@ -16,6 +16,89 @@ const strings: VoiceEntryDialogStrings = {
 afterEach(cleanup);
 
 describe("VoiceEntryDialog", () => {
+  it.each(["switch", "setup"] as const)("keeps keyboard focus inside the %s dialog", (mode) => {
+    render(
+      <VoiceEntryDialog
+        mode={mode}
+        strings={strings}
+        onCancel={vi.fn()}
+        onConfirmSwitch={vi.fn()}
+        onOpenSettings={vi.fn()}
+      />,
+    );
+
+    const cancel = screen.getByRole("button", { name: strings.cancel });
+    const confirm = screen.getByRole("button", {
+      name: mode === "switch" ? strings.confirmSwitch : strings.openSettings,
+    });
+    expect(document.activeElement).toBe(cancel);
+    expect(fireEvent.keyDown(cancel, { key: "Tab", shiftKey: true })).toBe(false);
+    expect(document.activeElement).toBe(confirm);
+    expect(fireEvent.keyDown(confirm, { key: "Tab" })).toBe(false);
+    expect(document.activeElement).toBe(cancel);
+    expect(fireEvent.keyDown(cancel, { key: "Tab" })).toBe(true);
+  });
+
+  it("returns focus to the opener when closed", () => {
+    const opener = document.createElement("button");
+    document.body.append(opener);
+    opener.focus();
+    try {
+      const { unmount } = render(
+        <VoiceEntryDialog
+          mode="switch"
+          strings={strings}
+          onCancel={vi.fn()}
+          onConfirmSwitch={vi.fn()}
+          onOpenSettings={vi.fn()}
+        />,
+      );
+      unmount();
+      expect(document.activeElement).toBe(opener);
+    } finally {
+      opener.remove();
+    }
+  });
+
+  it("does not restore focus to an opener that has been removed", () => {
+    const opener = document.createElement("button");
+    document.body.append(opener);
+    opener.focus();
+    const { unmount } = render(
+      <VoiceEntryDialog
+        mode="setup"
+        strings={strings}
+        onCancel={vi.fn()}
+        onConfirmSwitch={vi.fn()}
+        onOpenSettings={vi.fn()}
+      />,
+    );
+    const focus = vi.spyOn(opener, "focus");
+    opener.remove();
+    unmount();
+    expect(focus).not.toHaveBeenCalled();
+  });
+
+  it.each(["switch", "setup"] as const)("cancels %s with Escape without starting voice", (mode) => {
+    const onCancel = vi.fn();
+    const onConfirmSwitch = vi.fn();
+    const onOpenSettings = vi.fn();
+    render(
+      <VoiceEntryDialog
+        mode={mode}
+        strings={strings}
+        onCancel={onCancel}
+        onConfirmSwitch={onConfirmSwitch}
+        onOpenSettings={onOpenSettings}
+      />,
+    );
+
+    fireEvent.keyDown(screen.getByRole("button", { name: strings.cancel }), { key: "Escape" });
+    expect(onCancel).toHaveBeenCalledOnce();
+    expect(onConfirmSwitch).not.toHaveBeenCalled();
+    expect(onOpenSettings).not.toHaveBeenCalled();
+  });
+
   it("only switches after explicit confirmation", () => {
     const onConfirmSwitch = vi.fn();
     render(

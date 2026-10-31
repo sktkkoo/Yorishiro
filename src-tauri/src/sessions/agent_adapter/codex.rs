@@ -59,6 +59,12 @@ impl TerminalAgent for CodexAgent {
         args.push("-c".to_string());
         args.push(codex_yorishiro_mcp_config_arg(mcp_endpoint));
 
+        // Codex's decorative composer stars look like rendering noise in the
+        // embedded terminal. Keep normal status animations, and scope this
+        // override to Yorishiro launches instead of changing the user's config.
+        args.push("-c".to_string());
+        args.push("tui.whimsy=false".to_string());
+
         if let Some(prompt) =
             super::merge_system_prompt_and_reminder(ctx.system_prompt, ctx.prompt_reminder)
         {

@@ -95,6 +95,7 @@ export default function AuxiliaryScreenPreview() {
           lastCapturedAt={frame.lastCapturedAt}
           lastSharedAt={frame.lastSharedAt}
           language={frame.language}
+          deliveryMode={frame.deliveryMode}
           opening={pending}
           error={error}
           onAttach={() => void request("attach")}

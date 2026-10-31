@@ -1,6 +1,7 @@
 import type { AgentDescriptor } from "../../bindings/tauri-commands";
 
 export const PENDING_REALTIME_START_KEY = "yorishiro:pending-realtime-start";
+const PENDING_AUTO_CONVERSATION_KEY = "yorishiro:pending-auto-conversation";
 
 export type VoiceEntryAction =
   | { readonly kind: "start" }
@@ -58,6 +59,26 @@ export function consumePendingRealtimeStart(storage: Storage = sessionStorage): 
   try {
     const pending = storage.getItem(PENDING_REALTIME_START_KEY) === "1";
     storage.removeItem(PENDING_REALTIME_START_KEY);
+    return pending;
+  } catch {
+    return false;
+  }
+}
+
+/** Preserve the explicit Auto entry across the Main Agent switch/reload. */
+export function markPendingAutoConversation(storage: Storage = sessionStorage): void {
+  try {
+    storage.setItem(PENDING_AUTO_CONVERSATION_KEY, "1");
+    markPendingRealtimeStart(storage);
+  } catch {
+    // The user can start the conversation again if session storage is unavailable.
+  }
+}
+
+export function consumePendingAutoConversation(storage: Storage = sessionStorage): boolean {
+  try {
+    const pending = storage.getItem(PENDING_AUTO_CONVERSATION_KEY) === "1";
+    storage.removeItem(PENDING_AUTO_CONVERSATION_KEY);
     return pending;
   } catch {
     return false;

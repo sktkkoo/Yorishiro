@@ -85,6 +85,8 @@ vi.mock("../../bindings/tauri-commands", () => ({
     } else if (request.method === "thread/inject_items") {
       if (bridge.pendingInjections) bridge.injectionResponders.push(() => respond({}));
       else respond({});
+    } else if (request.method === "turn/start") {
+      respond({ turn: { id: "auto-turn", status: "inProgress", items: [] } });
     } else if (request.method === "thread/turns/list") {
       if (bridge.turnListFailuresRemaining > 0) {
         bridge.turnListFailuresRemaining -= 1;
@@ -212,6 +214,61 @@ describe("CodexThreadTracker", () => {
     tracker.stop();
     await rejected;
     bridge.turnListResponders.shift()?.();
+  });
+
+  it("sends Auto text into the validated Main thread without microphone or PTY input", async () => {
+    const tracker = new CodexThreadTracker("main-session");
+    await tracker.start();
+    bridge.sent = [];
+    const response = tracker.sendAutonomyMessage("今の結果を教えて");
+    await vi.waitFor(() =>
+      expect(bridge.sent.some((message) => message.method === "turn/start")).toBe(true),
+    );
+    expect(bridge.sent.find((message) => message.method === "turn/start")?.params).toEqual({
+      threadId: "thread-1",
+      input: [{ type: "text", text: "今の結果を教えて", text_elements: [] }],
+    });
+    bridge.channel?.onmessage(
+      JSON.stringify({
+        method: "turn/completed",
+        params: {
+          threadId: "thread-1",
+          turn: {
+            id: "auto-turn",
+            status: "completed",
+            items: [{ type: "agentMessage", phase: "final_answer", text: "完了しています" }],
+          },
+        },
+      }),
+    );
+    await expect(response).resolves.toBe("完了しています");
+    tracker.stop();
+  });
+
+  it("rejects Auto input when the native selected thread changed before the next poll", async () => {
+    const tracker = new CodexThreadTracker("main-session");
+    await tracker.start();
+    bridge.sent = [];
+    bridge.selectedThread = "thread-2";
+    await expect(tracker.sendAutonomyMessage("前の会話への指示")).rejects.toThrow(
+      "会話が切り替わりました",
+    );
+    expect(bridge.sent.some((message) => message.method === "turn/start")).toBe(false);
+    tracker.stop();
+  });
+
+  it("does not submit Auto input after context injection outlives tracker shutdown", async () => {
+    const tracker = new CodexThreadTracker("main-session");
+    await tracker.start();
+    bridge.sent = [];
+    bridge.pendingInjections = true;
+    const response = tracker.sendAutonomyMessage("ここで進めて");
+    const rejected = expect(response).rejects.toThrow("会話が切り替わりました");
+    await vi.waitFor(() => expect(bridge.injectionResponders).toHaveLength(1));
+    tracker.stop();
+    bridge.injectionResponders[0]();
+    await rejected;
+    expect(bridge.sent.some((message) => message.method === "turn/start")).toBe(false);
   });
 
   it("shares directly with its validated owner and immediately stops on unload", async () => {

@@ -5,6 +5,7 @@ import type { InterruptProtectionMode } from "../runtime/terminal-runtime";
 import Terminal from "../terminal";
 
 interface TerminalWorkspaceProps {
+  readonly presented?: boolean;
   readonly sessions: ReadonlyArray<SessionId>;
   readonly activeSessionId: SessionId;
   readonly cwd: string | null;
@@ -20,6 +21,7 @@ interface TerminalWorkspaceProps {
 }
 
 export default function TerminalWorkspace({
+  presented = true,
   sessions,
   activeSessionId,
   cwd,
@@ -52,7 +54,9 @@ export default function TerminalWorkspace({
 
   return (
     <div className="terminal-workspace">
-      {sessions.map((sessionId) => renderTerminal(sessionId, sessionId === activeSessionId))}
+      {sessions.map((sessionId) =>
+        renderTerminal(sessionId, presented && sessionId === activeSessionId),
+      )}
     </div>
   );
 }

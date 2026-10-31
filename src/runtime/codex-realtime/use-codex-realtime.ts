@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { LipSyncSource } from "../../core/body";
 import type { StateExpressionSchedulerCallbacks } from "../agent-state-expression";
+import type { AutonomyWorkReviewNotice } from "../autonomy/voice-setup";
 import type { ChatTranscript } from "../chat-transcript";
 import {
   CodexRealtimeClient,
@@ -26,6 +27,10 @@ export interface CodexRealtimeClientLike extends LipSyncSource {
   setMicrophoneMuted(muted: boolean): void;
   notifyScreenContext?(capturedAt: string, availability?: ScreenPointerAvailability): Promise<void>;
   notifyScreenPointersEnabled?(enabled: boolean): Promise<void>;
+  requestAutonomyConversation?(language?: "ja" | "en"): Promise<void>;
+  prepareAutonomyConversation?(language?: "ja" | "en"): Promise<void>;
+  appendUserText?(text: string, language?: "ja" | "en"): Promise<void>;
+  notifyAutonomyWorkReview?(review: AutonomyWorkReviewNotice): Promise<void>;
 }
 
 export type CodexRealtimeClientFactory = (
@@ -46,6 +51,7 @@ export type CodexRealtimeClientFactory = (
 export interface CodexThreadTrackerLike {
   getCurrentThreadId(): string | null;
   readChatTranscript?(): Promise<ChatTranscript>;
+  sendAutonomyMessage?(text: string, language?: "ja" | "en"): Promise<string>;
   trackQuickChatPrompt(prompt: string): Promise<string | null>;
   start(): Promise<void>;
   stop(): void;
@@ -126,6 +132,13 @@ interface UseCodexRealtimeResult {
   readonly state: CodexRealtimeState;
   readonly stop: () => void;
   readonly toggle: () => Promise<void>;
+  readonly requestAutonomyConversation: (language?: "ja" | "en") => Promise<void>;
+  readonly prepareAutonomyConversation: (language?: "ja" | "en") => Promise<void>;
+  readonly sendAutonomyMessage: (text: string, language?: "ja" | "en") => Promise<string>;
+  readonly notifyAutonomyWorkReview: (
+    review: AutonomyWorkReviewNotice | null,
+    channel?: "daily" | "confirmation",
+  ) => Promise<void>;
   readonly setMicrophoneMuted: (muted: boolean) => void;
   readonly trackQuickChatPrompt: (prompt: string) => Promise<string | null>;
   readonly readChatTranscript: () => Promise<ChatTranscript>;
@@ -193,6 +206,12 @@ export function useCodexRealtime({
   createThreadTracker = defaultCreateThreadTracker,
 }: UseCodexRealtimeOptions): UseCodexRealtimeResult {
   const clientRef = useRef<CodexRealtimeClientLike | null>(null);
+  const pendingAutonomyReviews = useRef(
+    new Map<"daily" | "confirmation", AutonomyWorkReviewNotice>(),
+  );
+  const acceptedAutonomyReviews = useRef(new Set<string>());
+  const autonomyReviewAttempts = useRef(new WeakMap<CodexRealtimeClientLike, Set<string>>());
+  const autonomyReviewFlight = useRef<Promise<void> | null>(null);
   const threadTrackerRef = useRef<CodexThreadTrackerLike | null>(null);
   const screenNotificationsRef = useRef(new ScreenContextNotifications());
   const pointerNotificationsRef = useRef(new ScreenContextNotifications());
@@ -230,6 +249,7 @@ export function useCodexRealtime({
   const onQuickChatResponseRef = useRef(onQuickChatResponse);
   const onUserSpeechStartedRef = useRef(onUserSpeechStarted);
   const sessionIdRef = useRef(sessionId);
+  const autonomyOwnerRef = useRef({ sessionId, available });
   const voiceIntentRef = useRef(false);
   const fallbackPlaybackTransitionRef = useRef(0);
   const fallbackPlaybackQueueRef = useRef<Promise<void>>(Promise.resolve());
@@ -247,6 +267,9 @@ export function useCodexRealtime({
   onPersonaApplicationRef.current = onPersonaApplication;
   onQuickChatResponseRef.current = onQuickChatResponse;
   onUserSpeechStartedRef.current = onUserSpeechStarted;
+  // UI actions may await a draft flush before calling a render's callback.
+  // Read the current owner before any side effect, not only after delivery.
+  autonomyOwnerRef.current = { sessionId, available };
 
   const clearSharedScreenContext = useCallback(() => {
     const context = sharedScreenContextRef.current;
@@ -593,9 +616,268 @@ export function useCodexRealtime({
     await start();
   }, [start, stop]);
 
+  const prepareAutonomyConversation = useCallback(
+    async (language: "ja" | "en" = "ja"): Promise<void> => {
+      const client = clientRef.current;
+      const tracker = threadTrackerRef.current;
+      const expectedThreadId = tracker?.getCurrentThreadId() ?? null;
+      if (
+        autonomyOwnerRef.current.sessionId !== sessionId ||
+        (screenThreadId !== null && expectedThreadId !== screenThreadId)
+      ) {
+        throw new Error(
+          language === "en"
+            ? "The conversation changed before preparation."
+            : "準備前に会話が切り替わりました。",
+        );
+      }
+      // Opening Auto is not permission to start or reconnect a microphone.
+      if (!client || client.getStatus() !== "active") return;
+      if (
+        !available ||
+        !autonomyOwnerRef.current.available ||
+        !tracker ||
+        !client.prepareAutonomyConversation
+      ) {
+        throw new Error(
+          language === "en"
+            ? "This voice connection does not support Auto conversation."
+            : "この音声接続はAutoの会話に対応していません。",
+        );
+      }
+      await client.prepareAutonomyConversation(language);
+      if (
+        clientRef.current !== client ||
+        client.getStatus() !== "active" ||
+        threadTrackerRef.current !== tracker ||
+        sessionIdRef.current !== sessionId ||
+        autonomyOwnerRef.current.sessionId !== sessionId ||
+        !autonomyOwnerRef.current.available ||
+        tracker.getCurrentThreadId() !== expectedThreadId
+      ) {
+        throw new Error(
+          language === "en"
+            ? "The conversation changed during preparation."
+            : "準備中に会話が切り替わりました。",
+        );
+      }
+    },
+    [available, sessionId, screenThreadId],
+  );
+
+  const requestAutonomyConversation = useCallback(
+    async (language: "ja" | "en" = "ja") => {
+      const english = language === "en";
+      const expectedThreadId = threadTrackerRef.current?.getCurrentThreadId() ?? null;
+      if (
+        autonomyOwnerRef.current.sessionId !== sessionId ||
+        (screenThreadId !== null && expectedThreadId !== screenThreadId)
+      ) {
+        throw new Error(
+          english
+            ? "The conversation changed before starting."
+            : "開始前に会話が切り替わりました。",
+        );
+      }
+      if (!available || !autonomyOwnerRef.current.available || !threadTrackerRef.current) {
+        throw new Error(
+          english
+            ? "Voice conversation requires Codex. Switch to Codex or continue by text."
+            : "音声での相談にはCodexの音声会話が必要です。Codexへ切り替えるか、文字で相談してください。",
+        );
+      }
+      // Never toggle an existing session: that would stop an ongoing conversation.
+      if (!clientRef.current) await start();
+      if (
+        sessionIdRef.current !== sessionId ||
+        (expectedThreadId !== null &&
+          threadTrackerRef.current?.getCurrentThreadId() !== expectedThreadId)
+      ) {
+        throw new Error(
+          english
+            ? "The conversation changed while preparing the connection. Please try again."
+            : "相談の準備中に会話が切り替わりました。もう一度お試しください。",
+        );
+      }
+      const client = clientRef.current;
+      if (!client || client.getStatus() !== "active") {
+        throw new Error(
+          english
+            ? "Voice is not connected yet. Check the connection and microphone permission, then try again."
+            : "音声会話の接続が完了していません。音声接続とマイクの許可を確認して、もう一度お試しください。",
+        );
+      }
+      if (!client.requestAutonomyConversation) {
+        throw new Error(
+          english
+            ? "This voice connection does not support Auto conversation. Continue by text."
+            : "この音声接続はAutoの会話に対応していません。文字で続けてください。",
+        );
+      }
+      await client.requestAutonomyConversation(language);
+      if (clientRef.current !== client || client.getStatus() !== "active") {
+        throw new Error(
+          english
+            ? "The voice conversation changed during the request. Please try again."
+            : "相談中に音声会話が切り替わりました。もう一度お試しください。",
+        );
+      }
+    },
+    [available, sessionId, screenThreadId, start],
+  );
+
   const setMicrophoneMuted = useCallback((muted: boolean) => {
     clientRef.current?.setMicrophoneMuted(muted);
   }, []);
+
+  const sendAutonomyMessage = useCallback(
+    async (text: string, language: "ja" | "en" = "ja"): Promise<string> => {
+      const tracker = threadTrackerRef.current;
+      const expectedThreadId = tracker?.getCurrentThreadId() ?? null;
+      if (
+        autonomyOwnerRef.current.sessionId !== sessionId ||
+        (screenThreadId !== null && expectedThreadId !== screenThreadId)
+      ) {
+        throw new Error(
+          language === "en"
+            ? "The conversation changed before sending."
+            : "送信前に会話が切り替わりました。",
+        );
+      }
+      if (!available || !autonomyOwnerRef.current.available || !tracker) {
+        throw new Error(
+          language === "en"
+            ? "The Codex conversation is unavailable."
+            : "Codexの会話に接続できません。しばらくしてから再送してください。",
+        );
+      }
+      const liveClient = clientRef.current;
+      if (liveClient?.getStatus() === "connecting") {
+        throw new Error(
+          language === "en"
+            ? "Wait for the voice connection before sending."
+            : "音声の接続が完了してから送信してください。",
+        );
+      }
+      if (liveClient?.getStatus() === "active") {
+        if (!liveClient.appendUserText) {
+          throw new Error(
+            language === "en"
+              ? "This voice connection cannot receive text."
+              : "この音声接続には文字を送信できません。",
+          );
+        }
+        await liveClient.appendUserText(text, language);
+        if (
+          clientRef.current !== liveClient ||
+          liveClient.getStatus() !== "active" ||
+          threadTrackerRef.current !== tracker ||
+          sessionIdRef.current !== sessionId ||
+          autonomyOwnerRef.current.sessionId !== sessionId ||
+          !autonomyOwnerRef.current.available ||
+          tracker.getCurrentThreadId() !== expectedThreadId
+        ) {
+          throw new Error(
+            language === "en"
+              ? "The conversation changed after sending. Check delivery before sending again."
+              : "送信後に会話が切り替わりました。再送する前に届いているか確認してください。",
+          );
+        }
+        // Live will use the supplement in its own conversation timing. Do not
+        // invent an assistant reply, start another turn, or synthesize speech.
+        return "";
+      }
+      if (!tracker.sendAutonomyMessage) {
+        throw new Error(
+          language === "en"
+            ? "This conversation cannot receive text."
+            : "この会話には文字を送信できません。",
+        );
+      }
+      const response = await tracker.sendAutonomyMessage(text, language);
+      if (
+        threadTrackerRef.current !== tracker ||
+        sessionIdRef.current !== sessionId ||
+        tracker.getCurrentThreadId() !== expectedThreadId
+      ) {
+        throw new Error(
+          language === "en"
+            ? "The conversation changed while waiting for the reply."
+            : "返事を待つ間に会話が切り替わりました。",
+        );
+      }
+      return response;
+    },
+    [available, sessionId, screenThreadId],
+  );
+
+  const flushAutonomyReview = useCallback(async (): Promise<void> => {
+    if (autonomyReviewFlight.current) {
+      await autonomyReviewFlight.current.catch(() => {});
+      return flushAutonomyReview();
+    }
+    const client = clientRef.current;
+    // Background proposals never start microphone capture or reconnect voice.
+    const entry = [...pendingAutonomyReviews.current.entries()].find(
+      ([, notice]) =>
+        !acceptedAutonomyReviews.current.has(notice.id) &&
+        (!client || !autonomyReviewAttempts.current.get(client)?.has(notice.id)),
+    );
+    const review = entry?.[1];
+    if (
+      !review ||
+      client?.getStatus() !== "active" ||
+      !client.notifyAutonomyWorkReview ||
+      acceptedAutonomyReviews.current.has(review.id)
+    )
+      return;
+    // Retry a failed submission on the next user-started voice connection,
+    // rather than repeating it on every poll or active-state notification.
+    const attempts = autonomyReviewAttempts.current.get(client) ?? new Set<string>();
+    if (attempts.has(review.id)) return;
+    attempts.add(review.id);
+    autonomyReviewAttempts.current.set(client, attempts);
+    if (attempts.size > 128) {
+      const oldest = attempts.values().next().value;
+      if (oldest !== undefined) attempts.delete(oldest);
+    }
+    const delivery = client.notifyAutonomyWorkReview(review);
+    autonomyReviewFlight.current = delivery;
+    try {
+      await delivery;
+      if (clientRef.current === client && client.getStatus() === "active") {
+        acceptedAutonomyReviews.current.add(review.id);
+        if (acceptedAutonomyReviews.current.size > 128) {
+          const oldest = acceptedAutonomyReviews.current.values().next().value;
+          if (oldest !== undefined) acceptedAutonomyReviews.current.delete(oldest);
+        }
+        if (entry && pendingAutonomyReviews.current.get(entry[0])?.id === review.id)
+          pendingAutonomyReviews.current.delete(entry[0]);
+      }
+    } finally {
+      autonomyReviewFlight.current = null;
+    }
+    await flushAutonomyReview();
+  }, []);
+
+  const notifyAutonomyWorkReview = useCallback(
+    async (
+      review: AutonomyWorkReviewNotice | null,
+      channel: "daily" | "confirmation" = "daily",
+    ) => {
+      if (review) pendingAutonomyReviews.current.set(channel, review);
+      else pendingAutonomyReviews.current.delete(channel);
+      await flushAutonomyReview();
+    },
+    [flushAutonomyReview],
+  );
+
+  useEffect(() => {
+    if (state.status !== "active") return;
+    void flushAutonomyReview().catch((error: unknown) => {
+      console.warn("[autonomy] pending voice review notice unavailable", error);
+    });
+  }, [state.status, flushAutonomyReview]);
 
   useEffect(() => {
     clearSharedScreenContext();
@@ -778,6 +1060,10 @@ export function useCodexRealtime({
     state,
     stop,
     toggle,
+    requestAutonomyConversation,
+    prepareAutonomyConversation,
+    sendAutonomyMessage,
+    notifyAutonomyWorkReview,
     setMicrophoneMuted,
     trackQuickChatPrompt,
     readChatTranscript,

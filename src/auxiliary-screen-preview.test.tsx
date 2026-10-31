@@ -35,3 +35,21 @@ it("shows the external window only after its image loads, without waiting text",
   await act(async () => fireEvent.load(screen.getByRole("img")));
   expect(bridge.show).toHaveBeenCalledTimes(1);
 });
+
+it.each([
+  ["ja", "共有準備完了"],
+  ["en", "Ready to share"],
+])("preserves on-demand status in the detached preview in %s", async (language, ready) => {
+  bridge.listen.mockResolvedValue(() => {});
+  bridge.read.mockResolvedValue({
+    leaseId: "lease",
+    imageDataUrl: "data:image/jpeg;base64,AAAA",
+    lastCapturedAt: 100,
+    lastSharedAt: 100,
+    deliveryMode: "on-demand",
+    language,
+  });
+  render(<AuxiliaryScreenPreview />);
+  expect(await screen.findByText(ready)).toBeTruthy();
+  expect(screen.queryByText(/Sent to AI|AI送信済み/)).toBeNull();
+});

@@ -38,10 +38,10 @@ Much of Yorishiro itself has been developed in collaboration with the inhabitant
 
 ### Prerequisites
 
-Yorishiro automatically launches Claude Code or Codex installed on your local machine inside its terminal. This means:
+Yorishiro runs [Claude Code](https://code.claude.com/docs/en/setup) or [Codex](https://developers.openai.com/codex/cli) locally inside its terminal.
 
-- **You need [Claude Code](https://docs.anthropic.com/en/docs/claude-code) or [Codex](https://github.com/openai/codex) already set up on your system**
-- Yorishiro never asks for, stores, or directly uses API keys. It launches the terminal agent already authenticated in your environment; if Claude Code or Codex is logged in or configured with API credentials, that agent may use its normal external APIs after launch
+- **An installed agent starts automatically.** If none is available, setup offers separate **Install official CLI** buttons for Codex and Claude Code. Each button runs the provider’s official installer only when you choose it; installation requires internet access.
+- Sign in through the agent’s official login flow with your own account. Expand **Details** for official guides, a manual installation command, and provider terms. Yorishiro’s setup does not collect or mediate your credentials.
 
 ### Install (macOS)
 
@@ -72,7 +72,9 @@ npm run tauri dev
 
 On launch, the configured terminal agent starts inside the terminal and **Yori**, the bundled VRM character, appears beside it. Use Claude Code or Codex as you normally would.
 
-The first launch runs a health check for the selected agent, user data directory, safe mode state, packs, and startup report. The same report is available later from the "Status" section in Settings.
+At launch, Yorishiro starts your preferred agent if available, including when both Claude Code and Codex are installed. If that agent is missing, it selects an installed Codex or the first other available agent and saves the choice. Setup opens only when no usable agent is found. **Set up later** opens a shell without starting an agent.
+
+The initial health check runs quietly when everything is ready and still shows issues that need attention. The full report is available from the "Status" section in Settings. See [first-run troubleshooting](docs/troubleshooting.md#first-run-and-health-checks).
 
 ### View modes
 
@@ -147,11 +149,11 @@ Set `codexRealtimeVoice` in `~/.yorishiro/config.json` to choose the GPT Live ou
 
 ### Screen sharing / Camera sharing (Codex)
 
-Use the sharing icon in the title bar to send screen or camera stills to the current Codex conversation. Screen sharing on macOS supports entire-display, window, and area-selection modes. In area-selection mode, you can move and resize the shared area. For camera sharing, select a camera and start sharing.
+Use the sharing icon in the title bar to share screen or camera stills with the current Codex conversation. Screen sharing on macOS supports entire-display, window, and area-selection modes. In area-selection mode, you can move and resize the shared area. For camera sharing, select a camera and start sharing.
 
-Set the update interval to **10–180 seconds**; shorter intervals use more tokens. Use **Stop sharing** to stop sending images.
+Set the update interval to **10–180 seconds**. Codex receives images in its conversation context; shorter intervals can use more tokens. Use **Stop sharing** to stop capture.
 
-**Agent pointing is experimental.** During entire-display sharing, ask the AI to point out a location, and it will mark it with an arrow or outline. We recommend Astra or a higher-capability model for agent pointing. It is unavailable for window sharing, area-selection mode, and camera sharing.
+**Agent pointing is experimental.** During entire-display sharing, ask the AI to point out a location, and it will mark it with an arrow or outline. For Codex, we recommend Astra or a higher-capability model for agent pointing. It is unavailable for window sharing, area-selection mode, and camera sharing.
 
 <p align="center">
   <img src="docs/assets/screen-sharing-controls-en.png" alt="Screen sharing settings with display, window, and area-selection tabs, update interval, and preview toggle" width="320" />
@@ -277,7 +279,7 @@ Three characteristics define this mechanism.
 
 ## Status
 
-**v0.7.7**
+**v0.7.8**
 
 Under active development. APIs, data shapes, and pack specs will change.
 
@@ -305,7 +307,7 @@ What works today:
 - Fireworks celebrate a successful `git push` by the inhabitant (bundled Yori persona)
 - Light Alert: a light comes on when the agent waits for your input or approval
 - Terminal links: Cmd+click a visible HTTP/HTTPS URL to open it in the default browser
-- Screen sharing / Camera sharing: still images for the current Codex conversation at 10–180 second intervals; macOS supports display, window, and area-selection modes, with experimental agent pointing for entire displays
+- Screen sharing / Camera sharing: still images for Codex at 10–180 second intervals; macOS supports display, window, and area-selection modes, with experimental agent pointing for entire displays
 - Context sharing: Voice Summary and Terminal Reference Markers (Cmd+Shift+click / Option+Shift+drag)
 - Journal: long-term memory across sessions, with recall at session start
 - Restore: automatic checkpoints for packs / init.js / settings, with reversible rollback
@@ -324,7 +326,7 @@ What works today:
 
 ## Agent support
 
-Use either [Claude Code](https://docs.anthropic.com/en/docs/claude-code) or [Codex](https://github.com/openai/codex) as the Main Agent. Codex is the default when no agent is configured. Select one in Settings or `~/.yorishiro/config.json`. Both support auto-launch, persona prompt overlay, PTY observation, and Yorishiro MCP access.
+Use either [Claude Code](https://code.claude.com/docs/en/setup) or [Codex](https://developers.openai.com/codex/cli) as the Main Agent. Yorishiro automatically selects an available agent, preferring your configured choice. You can change it in Settings or `~/.yorishiro/config.json`. Both support auto-launch, persona prompt overlay, PTY observation, and Yorishiro MCP access.
 
 Command syntax differs by agent; see [Yorishiro commands and skills](#yorishiro-commands-and-skills).
 

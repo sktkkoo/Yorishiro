@@ -4,7 +4,7 @@ Yorishiro の設定画面。`activeUi` を `"yorishiro-settings"` に一時 swap
 
 ## 開く動線
 
-- chrome（`src/sidebar.tsx`）の歯車 icon button
+- title bar（`src/title-bar.tsx`）の歯車 icon button
 - user が init.js で `setActiveUi("yorishiro-settings")` を呼ぶ自由経路
 
 ## 閉じる動線
@@ -17,6 +17,8 @@ Yorishiro の設定画面。`activeUi` を `"yorishiro-settings"` に一時 swap
 - **ターミナル**: Coding agent（Claude Code / Codex）。OpenCode adapter は内部に残すが、dropdown には表示しない
 - **ショートカット**: terminal に選択中 agent 用の固定 shortcut prompt（Claude Code は `/yori:shortcut ...`、Codex は `$yori-shortcut ...`、OpenCode は `/yori-shortcut ...`）を pre-fill する button
 - フッタ: `⌘R / Ctrl+R` の hint
+
+おまかせ作業はタイトルバーの Auto から開く host-owned `AutoWorkspace` へ移した。設定 Pack に自動作業の On/Off や範囲設定は置かない。会話、依頼の委任、実行結果、停止・復元は同じ作業画面で扱う（[Auto workspace の設計](../../../docs/decisions/auto-workspace.md)）。
 
 ## Fork
 
@@ -36,6 +38,8 @@ Yorishiro の設定画面。`activeUi` を `"yorishiro-settings"` に一時 swap
 - VRM catalog / bounded thumbnail / file picker / confirmed removal (`list_vrm_avatars` + `read_vrm_thumbnail` + `@tauri-apps/plugin-dialog` + `import_vrm` + `remove_vrm_avatar`)
 - `localStorage["yorishiro:vrm"]` の magic string を直接読んでいる
 - updater / process relaunch、app 固有 i18n、snapshot 表示 helper、language/config policy helper、bundled default scene manifest
+
+以前の `AutonomySettings` widget とその internal import は撤去した。自動作業の mutable client や範囲更新は、設定 Pack にも通常 Pack API にも公開しない。移行の記録は `system-settings-privileged-boundary.md` §4 を参照。
 
 これらを user Pack に公開するには permission declaration、host-side gate、approval UX の設計が必要。今回 raw Tauri passthrough は追加しない。terminal 入力については `insertFixedPrompt` の固定 key 集合が SDK 公開面であり、任意書き込み口は追加しない方針（`input-prefill-boundary.md`）。
 

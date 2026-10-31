@@ -15,7 +15,7 @@ interface AppErrorBoundaryState {
   readonly error: Error | null;
   readonly errorInfo: React.ErrorInfo | null;
   readonly homeDir: string | null;
-  readonly copied: boolean;
+  readonly copyStatus: "idle" | "copying" | "copied" | "failed";
   readonly snapshots: ReadonlyArray<SnapshotEntry> | null;
   readonly restoreTarget: RestoreDialogTarget | null;
 }
@@ -37,6 +37,21 @@ function crashRestoreStrings(): { readonly locale: string; readonly strings: UiS
   return { locale, strings: getStrings(locale) };
 }
 
+const COPY_STRINGS = {
+  en: {
+    copy: "Copy safe mode command",
+    copying: "Copying…",
+    copied: "Copied",
+    failed: "Couldn’t copy. Select and copy the safe mode command above.",
+  },
+  ja: {
+    copy: "セーフモードのコマンドをコピー",
+    copying: "コピー中…",
+    copied: "コピーしました",
+    failed: "コピーできませんでした。上のコマンドを選択してコピーしてください。",
+  },
+} as const;
+
 export class AppErrorBoundary extends React.Component<
   AppErrorBoundaryProps,
   AppErrorBoundaryState
@@ -45,10 +60,12 @@ export class AppErrorBoundary extends React.Component<
     error: null,
     errorInfo: null,
     homeDir: null,
-    copied: false,
+    copyStatus: "idle",
     snapshots: null,
     restoreTarget: null,
   };
+
+  private copyInFlight = false;
 
   static getDerivedStateFromError(error: Error): Partial<AppErrorBoundaryState> {
     return { error };
@@ -63,6 +80,20 @@ export class AppErrorBoundary extends React.Component<
     void snapshotList()
       .then((snapshots) => this.setState({ snapshots }))
       .catch(() => this.setState({ snapshots: [] }));
+  }
+
+  private async copySafeModeCommand(command: string): Promise<void> {
+    if (this.copyInFlight) return;
+    this.copyInFlight = true;
+    this.setState({ copyStatus: "copying" });
+    try {
+      await navigator.clipboard.writeText(command);
+      this.setState({ copyStatus: "copied" });
+    } catch {
+      this.setState({ copyStatus: "failed" });
+    } finally {
+      this.copyInFlight = false;
+    }
   }
 
   private renderRestoreSection(): React.ReactNode {
@@ -149,8 +180,9 @@ export class AppErrorBoundary extends React.Component<
   }
 
   render(): React.ReactNode {
-    const { error, errorInfo, homeDir } = this.state;
+    const { error, errorInfo, homeDir, copyStatus } = this.state;
     if (error === null) return this.props.children;
+    const copy = COPY_STRINGS[resolveLanguage("auto", getBrowserLocales())];
 
     const startupReport = homeDir
       ? `${homeDir}/last-startup.json`
@@ -192,18 +224,20 @@ export class AppErrorBoundary extends React.Component<
             </a>
             <button
               type="button"
-              onClick={() => {
-                void navigator.clipboard?.writeText(safeModeCommand).then(() => {
-                  this.setState({ copied: true });
-                });
-              }}
+              disabled={copyStatus === "copying"}
+              onClick={() => void this.copySafeModeCommand(safeModeCommand)}
             >
-              {this.state.copied ? "Copied" : "Copy safe mode command"}
+              {copyStatus === "copying"
+                ? copy.copying
+                : copyStatus === "copied"
+                  ? copy.copied
+                  : copy.copy}
             </button>
             <button type="button" onClick={() => window.location.reload()}>
               Reload
             </button>
           </div>
+          {copyStatus === "failed" ? <p role="alert">{copy.failed}</p> : null}
         </section>
       </main>
     );

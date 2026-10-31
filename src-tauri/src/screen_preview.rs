@@ -69,6 +69,8 @@ pub struct ScreenPreviewFrame {
     last_captured_at: Option<f64>,
     last_shared_at: Option<f64>,
     language: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    delivery_mode: Option<crate::claude_screen_sharing::VisualDeliveryMode>,
     #[serde(default)]
     sequence: u64,
 }
@@ -487,8 +489,19 @@ mod tests {
             last_captured_at: Some(123.0),
             last_shared_at: None,
             language: "ja".into(),
+            delivery_mode: None,
             sequence: 0,
         }
+    }
+    #[test]
+    fn on_demand_delivery_survives_native_preview_round_trip() {
+        let mut value = frame();
+        value.delivery_mode = Some(crate::claude_screen_sharing::VisualDeliveryMode::OnDemand);
+        let encoded = serde_json::to_value(&value).unwrap();
+        assert_eq!(encoded["deliveryMode"], "on-demand");
+        let decoded: ScreenPreviewFrame = serde_json::from_value(encoded).unwrap();
+        assert_eq!(decoded.delivery_mode, value.delivery_mode);
+        assert!(decoded.validate().is_ok());
     }
     #[test]
     fn bounds_and_schema_reject_external_urls_credentials_and_invalid_timestamps() {
