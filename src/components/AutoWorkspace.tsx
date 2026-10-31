@@ -351,7 +351,7 @@ export function AutoWorkspace({
       </>
     );
   }
-  function renderRun(run: AutonomyRun) {
+  function renderRun(run: AutonomyRun, includeActiveActions = false) {
     const pullRequestUrl = resultLink(run.pullRequestUrl);
     const start = runTime(run.startedAt, copy.started);
     const end =
@@ -365,7 +365,8 @@ export function AutoWorkspace({
           );
     const decisions = (status?.pendingActions ?? []).filter(
       (action) =>
-        action.runId === run.id && !["pending", "approved", "executing"].includes(action.status),
+        action.runId === run.id &&
+        (includeActiveActions || !["pending", "approved", "executing"].includes(action.status)),
     );
     return (
       <article className="auto-result" aria-label={copy.result}>
@@ -452,7 +453,7 @@ export function AutoWorkspace({
             key={`${action.id}:${action.payloadDigest}`}
             action={action}
             language={language}
-            disabled={working || stopping}
+            disabled={working || stopping || busy.has("delegate")}
           />
         ))}
       </article>
@@ -545,7 +546,7 @@ export function AutoWorkspace({
                     <ArrowLeft size={15} aria-hidden="true" />
                     {copy.current}
                   </button>
-                  {selectedRun && renderRun(selectedRun)}
+                  {selectedRun && renderRun(selectedRun, true)}
                 </>
               ) : (
                 <>
@@ -589,6 +590,27 @@ export function AutoWorkspace({
                       {status.contract.automaticActionApproval && (
                         <p className="auto-scope-note">{copy.savedGrant}</p>
                       )}
+                      <details>
+                        <summary>{copy.savedScope}</summary>
+                        <p className="auto-path">{status.contract.root}</p>
+                        <p>
+                          {copy.localOperations}:{" "}
+                          {status.contract.allowedOperations.length
+                            ? status.contract.allowedOperations
+                                .map(
+                                  (operation) =>
+                                    ({
+                                      write: copy.operationWrite,
+                                      move: copy.operationMove,
+                                      trash: copy.operationTrash,
+                                    })[operation],
+                                )
+                                .join(language === "ja" ? "・" : ", ")
+                            : copy.noLocalOperations}
+                        </p>
+                        {!status.contract.automaticActionApproval && <p>{copy.externalScope}</p>}
+                        <p>{copy.executionAuthority}</p>
+                      </details>
                       <div className="auto-work-state">
                         <span role="status">{phaseLabel()}</span>
                         <div className="auto-actions">

@@ -43,6 +43,56 @@ afterEach(() => {
 });
 
 describe("post-work operation confirmation", () => {
+  it.each([
+    ["ja", "ja-JP", "確認の作成日時"],
+    ["en", "en-US", "Request created"],
+  ] as const)("dates requests in %s without presenting creation as execution", (language, locale, label) => {
+    const createdAt = Date.UTC(2026, 9, 31, 12, 34);
+    const date = new Date(createdAt);
+    const view = render(
+      <AutonomyActionReview
+        action={{ ...action, createdAt }}
+        language={language}
+        disabled={false}
+      />,
+    );
+    const time = view.container.querySelector("time");
+    expect(time?.getAttribute("datetime")).toBe(date.toISOString());
+    expect(time?.textContent).toBe(
+      date.toLocaleString(locale, {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+    );
+    expect(time?.parentElement?.textContent).toContain(label);
+    view.rerender(
+      <AutonomyActionReview
+        action={{ ...action, createdAt, status: "completed", autoApproved: true }}
+        language={language}
+        disabled={false}
+      />,
+    );
+    expect(view.container.querySelector("time")?.getAttribute("datetime")).toBe(date.toISOString());
+    expect(view.container.querySelector("time")?.parentElement?.textContent).toContain(label);
+    expect(approveAutonomyAction).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    NaN,
+    Infinity,
+    1e20,
+  ])("omits an invalid request date (%s) without hiding the operation", (createdAt) => {
+    const view = render(
+      <AutonomyActionReview action={{ ...action, createdAt }} disabled={false} />,
+    );
+    expect(view.container.querySelector("time")).toBeNull();
+    expect(screen.getByRole("heading", { name: action.operation })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "承認する" })).toBeTruthy();
+  });
+
   it("shows a non-Git operation, target, impact and exact contents without executing", () => {
     render(<AutonomyActionReview action={action} disabled={false} />);
     expect(screen.getByRole("heading", { name: action.operation })).toBeTruthy();

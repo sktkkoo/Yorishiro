@@ -20,6 +20,7 @@ import {
   useAutonomyStatus,
 } from "../runtime/autonomy/client";
 import type {
+  AutonomyAction,
   AutonomyContract,
   AutonomyDraftSnapshot,
   AutonomyStatus,
@@ -284,7 +285,11 @@ describe("AutoWorkspace", () => {
       },
     });
     render(<AutoWorkspace {...props()} />);
-    expect(screen.getByText("保存済みの自動許可：送信・公開を含む")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "保存済みの自動許可：この目的・対象に必要な送信・公開などを個別確認なしで実行",
+      ),
+    ).toBeTruthy();
     expect(saveAutonomyContract).not.toHaveBeenCalled();
     expect(setAutonomyEnabled).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "依頼を切り替える" }));
@@ -306,6 +311,46 @@ describe("AutoWorkspace", () => {
     );
     expect(contract.automaticActionApproval).toBe(true);
     expect(contract.allowedOperations).toEqual(["write"]);
+  });
+  it.each([
+    [
+      "ja",
+      ["write"],
+      "任せている範囲",
+      "フォルダ内で許可した操作: 編集",
+      "送信・公開はその都度確認",
+    ],
+    [
+      "en",
+      ["move", "trash"],
+      "Delegated scope",
+      "Allowed operations in this folder: Move, Archive",
+      "Confirm sending and publishing each time",
+    ],
+    [
+      "en",
+      [],
+      "Delegated scope",
+      "Allowed operations in this folder: None",
+      "Confirm sending and publishing each time",
+    ],
+  ] as const)("shows the saved scope in %s without expanding authority", (language, operations, title, local, external) => {
+    const saved = {
+      ...contract,
+      allowedOperations: [...operations],
+      automaticActionApproval: false,
+    };
+    setStatus({ contract: saved });
+    render(<AutoWorkspace {...props({ language })} />);
+    const summary = screen.getByText(title);
+    fireEvent.click(summary);
+    const details = summary.closest("details");
+    expect(details?.textContent).toContain(saved.root);
+    expect(details?.textContent).toContain(local);
+    expect(details?.textContent).toContain(external);
+    expect(saveAutonomyContract).not.toHaveBeenCalled();
+    expect(editAutonomyDraft).not.toHaveBeenCalled();
+    expect(setAutonomyEnabled).not.toHaveBeenCalled();
   });
   it("changes a running contract's cadence without stopping it or replacing its grant", async () => {
     const current = { ...contract, intervalMinutes: 37, maxRunsPerDay: 6 };
@@ -611,6 +656,80 @@ describe("AutoWorkspace", () => {
     await waitFor(() =>
       expect(approveAutonomyAction).toHaveBeenCalledExactlyOnceWith("action-1", "exact-digest"),
     );
+  });
+  it.each([
+    "ja",
+    "en",
+  ] as const)("keeps outstanding operations actionable in their historical result in %s", async (language) => {
+    const action: AutonomyAction = {
+      id: "historical-action",
+      runId: "earlier",
+      kind: "operation",
+      payloadDigest: "historical-digest",
+      status: "pending",
+      createdAt: 2,
+      summary: "Share report",
+      sourceRoot: "/work/notes",
+      operation: "Share report",
+      target: "team/report.md",
+      impact: "Visible to the team",
+      details: "Exact report contents",
+      changedPaths: [],
+      checks: [],
+    };
+    const runs = [
+      { id: "latest", startedAt: 3, summary: "Latest result" },
+      { id: "earlier", startedAt: 1, summary: "Earlier result" },
+    ].map((run) => ({
+      ...run,
+      finishedAt: run.startedAt + 1,
+      status: "completed" as const,
+      reason: "",
+      changedPaths: [],
+      canUndo: false,
+    }));
+    setStatus({ contract, runs, pendingActions: [action] });
+    const p = props({ language });
+    const view = render(<AutoWorkspace {...p} />);
+    const approve = language === "ja" ? "承認する" : "Approve";
+    const history = language === "ja" ? "作業履歴" : "Work history";
+    expect(screen.getAllByRole("heading", { name: action.operation })).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: history }));
+    fireEvent.click(screen.getByRole("button", { name: /Latest result/ }));
+    expect(screen.queryByRole("heading", { name: action.operation })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: history }));
+    fireEvent.click(screen.getByRole("button", { name: /Earlier result/ }));
+    expect(screen.getByText(action.target)).toBeTruthy();
+    expect(screen.getByText(action.impact)).toBeTruthy();
+    expect(screen.getByText(action.details)).toBeTruthy();
+    expect(approveAutonomyAction).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: approve }));
+    await waitFor(() =>
+      expect(approveAutonomyAction).toHaveBeenCalledExactlyOnceWith(
+        action.id,
+        action.payloadDigest,
+      ),
+    );
+    setStatus({ contract, runs, phase: "stopping", pendingActions: [action] });
+    view.rerender(<AutoWorkspace {...p} />);
+    expect((screen.getByRole("button", { name: approve }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+    setStatus({
+      contract,
+      runs,
+      pendingActions: [{ ...action, status: "approved", autoApproved: true }],
+    });
+    view.rerender(<AutoWorkspace {...p} />);
+    expect(screen.queryByRole("button", { name: approve })).toBeNull();
+    const cancel = language === "ja" ? "承認を取り消す" : "Cancel approval";
+    fireEvent.click(screen.getByRole("button", { name: cancel }));
+    await waitFor(() => expect(declineAutonomyAction).toHaveBeenCalledExactlyOnceWith(action.id));
+    setStatus({ contract, runs, pendingActions: [{ ...action, status: "executing" }] });
+    view.rerender(<AutoWorkspace {...p} />);
+    expect(screen.getByRole("heading", { name: action.operation })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: approve })).toBeNull();
+    expect(screen.queryByRole("button", { name: cancel })).toBeNull();
   });
   it("uses real result evidence and preserves restoration errors", async () => {
     setStatus({
