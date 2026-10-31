@@ -272,6 +272,19 @@ export async function approvePendingWork(id: string): Promise<void> {
   await refreshAfterAction();
 }
 
+/** Change only the schedule, retaining the exact current grant and any running work. */
+export async function updateAutonomyCadence(
+  expectedContract: AutonomyContract,
+  intervalMinutes: number,
+  maxRunsPerDay: number,
+): Promise<void> {
+  try {
+    await invoke("autonomy_update_cadence", { expectedContract, intervalMinutes, maxRunsPerDay });
+  } finally {
+    await refreshAfterAction();
+  }
+}
+
 export async function declinePendingWork(id: string): Promise<void> {
   await invoke("autonomy_review", { id, approved: false });
   await refreshAfterAction();

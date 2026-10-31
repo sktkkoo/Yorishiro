@@ -36,6 +36,23 @@ function deferred<T>() {
 }
 
 describe("shared autonomy draft editor", () => {
+  it("uses the latest saved cadence for a future request without replacing an existing draft or input", () => {
+    const editor = new AutonomyDraftEditor(vi.fn());
+    const saved = { ...draft, enabled: true };
+    editor.hydrate(saved);
+    editor.hydrate({ ...saved, intervalMinutes: 120, maxRunsPerDay: 8 });
+    expect(editor.getSnapshot().values).toMatchObject({ intervalMinutes: 120, maxRunsPerDay: 8 });
+    editor.edit("goal", "入力途中");
+    editor.hydrate({ ...saved, intervalMinutes: 60, maxRunsPerDay: 2 });
+    expect(editor.getSnapshot().values).toMatchObject({ goal: "入力途中", intervalMinutes: 120 });
+    const existing = new AutonomyDraftEditor(vi.fn());
+    existing.receive(snapshot(1, { intervalMinutes: 15, maxRunsPerDay: 3 }));
+    existing.hydrate({ ...saved, intervalMinutes: 120, maxRunsPerDay: 8 });
+    expect(existing.getSnapshot().values).toMatchObject({ intervalMinutes: 15, maxRunsPerDay: 3 });
+    existing.receive({ revision: 2, draft: null });
+    existing.hydrate({ ...saved, intervalMinutes: 120, maxRunsPerDay: 8 });
+    expect(existing.getSnapshot().values).toMatchObject({ intervalMinutes: 120, maxRunsPerDay: 8 });
+  });
   it("preserves saved automatic action permission when editing another field", async () => {
     const submit = vi.fn().mockResolvedValue({
       snapshot: snapshot(1, { goal: "edited", automaticActionApproval: true }),

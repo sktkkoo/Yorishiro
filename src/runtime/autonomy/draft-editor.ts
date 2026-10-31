@@ -96,7 +96,6 @@ export class AutonomyDraftEditor {
   private generation = 0;
   private version = 0;
   private editVersion = 0;
-  private hydrated = false;
   private listeners = new Set<() => void>();
   private state: DraftEditorState = this.project();
 
@@ -149,10 +148,8 @@ export class AutonomyDraftEditor {
   }
 
   hydrate(contract: AutonomyContract | null | undefined) {
-    if (!contract || this.hydrated || this.baseId !== null || this.edits.size || this.inFlight)
-      return;
-    this.hydrated = true;
-    this.values = {
+    if (!contract || this.baseId !== null || this.edits.size || this.inFlight) return;
+    const next: DraftValues = {
       goal: contract.goal,
       root: contract.root,
       allowedOperations: contract.allowedOperations,
@@ -163,6 +160,8 @@ export class AutonomyDraftEditor {
       publishPullRequest: false,
       automaticActionApproval: contract.automaticActionApproval ?? false,
     };
+    if (FIELDS.every((key) => same(this.values[key], next[key]))) return;
+    this.values = next;
     this.remote = { ...this.values };
     this.publish();
   }
@@ -193,7 +192,6 @@ export class AutonomyDraftEditor {
       this.publish();
       return;
     }
-    this.hydrated = true;
     const next = valuesOf(snapshot.draft);
     this.explanation = snapshot.draft.explanation;
     for (const key of FIELDS) {
@@ -307,8 +305,10 @@ export function useAutonomyDraftEditor(
 ) {
   const [editor] = useState(() => new AutonomyDraftEditor(editAutonomyDraft));
   const state = useSyncExternalStore(editor.subscribe, editor.getSnapshot);
-  useEffect(() => editor.receive(snapshot), [editor, snapshot]);
-  useEffect(() => editor.hydrate(contract), [editor, contract]);
+  useEffect(() => {
+    editor.receive(snapshot);
+    editor.hydrate(contract);
+  }, [editor, contract, snapshot]);
   useEffect(() => {
     if (!state.canSubmit) return;
     const editVersion = state.editVersion;

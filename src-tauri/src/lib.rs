@@ -3919,6 +3919,7 @@ pub fn run() {
             agent_setup::install_terminal_agent,
             autonomy::autonomy_status,
             autonomy::autonomy_save,
+            autonomy::cadence::autonomy_update_cadence,
             autonomy::autonomy_set_enabled,
             autonomy::autonomy_pause,
             autonomy::autonomy_tick,
