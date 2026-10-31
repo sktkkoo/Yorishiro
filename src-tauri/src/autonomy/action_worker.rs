@@ -136,11 +136,16 @@ fn prepare(
         }
         // The initial frozen request binds the verified artifact; successors
         // retain that binding through their completed ancestor chain.
-        let initial = history
+        let mut initial = history
             .first()
             .map(serde_json::to_value)
             .transpose()
             .map_err(|e| e.to_string())?;
+        if let Some(initial) = initial.as_mut() {
+            // The completed ancestor proves this historical frozen approval
+            // was executed; read-only validation still uses its original role.
+            initial["status"] = json!("executing");
+        }
         let review = super::review_context::load_for_action(
             &storage,
             run,
@@ -460,6 +465,28 @@ pub(super) async fn execute(
     };
     let workspace = prepare(storage, &action, run, contract, history)?;
     let restrictions = super::policy::codex_restrictions_for_action(&workspace.root, network)?;
+    if let Some(delivery) = &action["delivery"].as_object() {
+        // A fixed native capability uses the installed CLI's own authentication;
+        // tokens and the user's Keychain remain outside all model tools.
+        if !restrictions.trim().is_empty() {
+            return Err("既存のコマンド制限を認証付き公開操作に安全に引き継げないため停止しました。制限は変更していません".into());
+        }
+        let delivery: super::github_delivery::Delivery =
+            serde_json::from_value(json!(delivery)).map_err(|_| "公開操作の内容が不正です")?;
+        delivery.validate(action["target"].as_str().unwrap_or(""), network)?;
+        let review = workspace
+            .review
+            .as_ref()
+            .ok_or("公開する検証済み成果物がありません")?;
+        return super::github_delivery::execute(
+            &workspace.job,
+            &workspace.work,
+            review,
+            &delivery,
+            cancel,
+        )
+        .await;
+    }
     let config = profile(
         &workspace,
         network,
@@ -695,6 +722,107 @@ mod tests {
         assert!(prepare(&storage, &action, &run, &contract, &[]).is_err());
         contract.allowed_operations = vec!["write".into()];
         assert!(prepare(&storage, &action, &run, &contract, &[]).is_err());
+    }
+
+    #[test]
+    fn successive_operations_retain_the_exact_commit_and_separate_their_receipts() {
+        let temp = tempfile::tempdir().unwrap();
+        let directory = temp.path().canonicalize().unwrap();
+        let root = directory.join("source");
+        let storage = directory.join("state");
+        fs::create_dir(&root).unwrap();
+        fs::create_dir(&storage).unwrap();
+        let run: Run = serde_json::from_value(json!({
+            "id":uuid::Uuid::new_v4().to_string(),"startedAt":1,"status":"completed",
+            "summary":"verified update","reason":"delegated work","changedPaths":[],"canUndo":false
+        }))
+        .unwrap();
+        let contract: Contract = serde_json::from_value(json!({
+            "goal":"Commit, push and create a PR", "root":root,
+            "allowedOperations":["write","move","trash"], "intervalMinutes":30,
+            "maxRunsPerDay":48,"enabled":true
+        }))
+        .unwrap();
+        let mut committed: actions::Action = serde_json::from_value(json!({
+            "id":uuid::Uuid::new_v4().to_string(), "runId":run.id,"sourceRoot":root,
+            "status":"executing","kind":"operation","createdAt":1,"summary":"Commit verified update",
+            "operation":"Commit", "target":"private copy","impact":"Create local history",
+            "details":"Commit the verified files"
+        })).unwrap();
+        committed.payload_digest = actions::digest(&committed).unwrap();
+        let first = prepare(&storage, &json!(committed), &run, &contract, &[]).unwrap();
+        let repository = git2::Repository::init(first.work.join("repository")).unwrap();
+        fs::write(first.work.join("repository/change.txt"), "verified change").unwrap();
+        let mut index = repository.index().unwrap();
+        index.add_path(Path::new("change.txt")).unwrap();
+        let tree = repository.find_tree(index.write_tree().unwrap()).unwrap();
+        let author = git2::Signature::now("Fixture", "fixture@example.test").unwrap();
+        let oid = repository
+            .commit(
+                Some("HEAD"),
+                &author,
+                &author,
+                "Verified update",
+                &tree,
+                &[],
+            )
+            .unwrap();
+        committed.status = actions::ActionStatus::Completed;
+        committed.execution_summary = Some(format!("Created commit {oid}"));
+        let mut pushed = committed.clone();
+        pushed.id = uuid::Uuid::new_v4().to_string();
+        pushed.parent_action_id = Some(committed.id.clone());
+        pushed.status = actions::ActionStatus::Executing;
+        pushed.operation = "Push verified commit".into();
+        pushed.network_access = true;
+        pushed.target = "https://github.com/example/project.git".into();
+        pushed.payload_digest = actions::digest(&pushed).unwrap();
+        let second = prepare(
+            &storage,
+            &json!(pushed),
+            &run,
+            &contract,
+            &[committed.clone()],
+        )
+        .unwrap();
+        assert_eq!(first.work, second.work);
+        assert_ne!(first.job, second.job);
+        pushed.status = actions::ActionStatus::Completed;
+        let mut create_pr = pushed.clone();
+        create_pr.id = uuid::Uuid::new_v4().to_string();
+        create_pr.parent_action_id = Some(pushed.id.clone());
+        create_pr.status = actions::ActionStatus::Executing;
+        create_pr.operation = "Create the pull request".into();
+        create_pr.payload_digest = actions::digest(&create_pr).unwrap();
+        let third = prepare(
+            &storage,
+            &json!(create_pr),
+            &run,
+            &contract,
+            &[committed, pushed],
+        )
+        .unwrap();
+        assert_eq!(third.work, first.work);
+        assert_eq!(
+            git2::Repository::open(third.work.join("repository"))
+                .unwrap()
+                .head()
+                .unwrap()
+                .target(),
+            Some(oid)
+        );
+        let config: toml::Value =
+            toml::from_str(&profile(&third, true, &["github.com".into()], None)).unwrap();
+        let filesystem = config["permissions"][PROFILE]["filesystem"]
+            .as_table()
+            .unwrap();
+        assert_eq!(
+            filesystem[third.work.to_str().unwrap()].as_str(),
+            Some("write")
+        );
+        assert!(!filesystem.contains_key(first.job.to_str().unwrap()));
+        assert!(!filesystem.contains_key(second.job.to_str().unwrap()));
+        assert!(prepare(&storage, &json!(create_pr), &run, &contract, &[]).is_err());
     }
 
     #[tokio::test]

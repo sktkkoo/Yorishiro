@@ -10,6 +10,7 @@ mod artifact;
 mod development;
 pub(crate) mod draft;
 mod files;
+mod github_delivery;
 mod goal_handoff;
 mod policy;
 mod process_supervisor;
@@ -1181,7 +1182,7 @@ async fn execute_development(
             .await?
         {
             goal_handoff::Decision::Complete => result.requested_action = None,
-            goal_handoff::Decision::Action(request) => result.requested_action = Some(request),
+            goal_handoff::Decision::Action(request) => result.requested_action = Some(*request),
             goal_handoff::Decision::Question(question) => {
                 result.requested_action = None;
                 result.question = Some(question);
@@ -2084,6 +2085,7 @@ mod tests {
                 impact: "Recipient will receive the message".into(),
                 details: "Exact message body".into(),
                 reason: "Delivery is outside local scope".into(),
+                delivery: None,
             }),
         }
     }

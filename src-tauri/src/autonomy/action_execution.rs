@@ -415,6 +415,14 @@ pub(super) fn finish(state: &AutonomyState, deferred: DeferredFinish) {
                 .clone()
                 .or_else(|| action.error.clone())
                 .unwrap_or_else(|| "操作結果を確認してください".into());
+            if action.delivery.is_some() {
+                run.pull_request_url = action.result_url.clone();
+            }
+        }
+        if action.status == ActionStatus::Completed && action.delivery.is_some() {
+            if let Some(source) = next.runs.iter_mut().find(|run| run.id == action.run_id) {
+                source.pull_request_url = action.result_url.clone();
+            }
         }
     }
     let automatic_failure = current
@@ -571,6 +579,7 @@ mod tests {
                 details: "Replace the approved text".into(),
                 reason: "Requested maintenance".into(),
                 network_access: false,
+                delivery: None,
             },
             vec![],
         )
@@ -672,6 +681,7 @@ mod tests {
                     details: first.details,
                     reason: first.summary,
                     network_access: true,
+                    delivery: None,
                 },
                 vec![],
             )
@@ -720,6 +730,7 @@ mod tests {
                 details: first.details,
                 reason: first.summary,
                 network_access: true,
+                delivery: None,
             },
             vec![],
         )
@@ -751,6 +762,7 @@ mod tests {
                     details: "Send the exact prepared report once".into(),
                     reason: "The purpose requires delivery".into(),
                     network_access: true,
+                    delivery: None,
                 },
                 vec![],
             )
@@ -810,6 +822,7 @@ mod tests {
                     details: "Send the exact verified report once".into(),
                     reason: "Today's approved work requires delivery".into(),
                     network_access: true,
+                    delivery: None,
                 },
                 vec![],
             )
@@ -872,6 +885,7 @@ mod tests {
                         .into(),
                     reason: "The report cannot be built without its declared dependencies".into(),
                     network_access: true,
+                    delivery: None,
                 },
                 vec![],
             )
