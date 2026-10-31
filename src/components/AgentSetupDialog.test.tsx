@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
 
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { useSyncExternalStore } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AGENT_SETUP_GUIDES, type DetectedAgent } from "../runtime/agent-setup";
+import { AgentSetupController } from "../runtime/agent-setup-controller";
 import { AgentSetupDialog, type AgentSetupDialogProps } from "./AgentSetupDialog";
 
 vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: vi.fn().mockResolvedValue(undefined) }));
@@ -40,6 +42,82 @@ afterEach(() => {
 });
 
 describe("AgentSetupDialog", () => {
+  it.each([
+    "en",
+    "ja",
+  ] as const)("retries failed detection without choosing an agent in %s", async (language) => {
+    let rejectDetection!: (error: Error) => void;
+    const pendingDetection = new Promise<readonly DetectedAgent[]>((_, reject) => {
+      rejectDetection = reject;
+    });
+    const detect = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("Detection failed"))
+      .mockReturnValueOnce(pendingDetection)
+      .mockResolvedValueOnce([{ ...agents[0], path: "/test/bin/codex" }, agents[1]]);
+    const controller = new AgentSetupController({ detect });
+    const persistChoice = vi.fn();
+    const ready = controller.prepare({
+      preferredAgent: "codex",
+      hasSavedChoice: false,
+      persistChoice,
+    });
+    await waitFor(() => expect(controller.getSnapshot().visible).toBe(true));
+    const callbacks = props({ language });
+    function Setup() {
+      const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
+      return (
+        <AgentSetupDialog {...callbacks} {...state} onRefresh={() => void controller.refresh()} />
+      );
+    }
+    render(<Setup />);
+    expect(screen.getByRole("alert").textContent).toBe("Detection failed");
+    const retry = screen.getByRole("button", {
+      name: language === "ja" ? "再確認" : "Check again",
+    }) as HTMLButtonElement;
+    fireEvent.click(retry);
+    expect(retry.disabled).toBe(true);
+    expect(retry.textContent).toBe(language === "ja" ? "処理中…" : "Please wait…");
+    expect(screen.queryByRole("alert")).toBeNull();
+    fireEvent.click(retry);
+    expect(detect).toHaveBeenCalledTimes(2);
+
+    await act(async () => rejectDetection(new Error("Still unavailable")));
+    expect(screen.getByRole("alert").textContent).toBe("Still unavailable");
+    expect(retry.disabled).toBe(false);
+    fireEvent.click(retry);
+    await screen.findByRole("button", { name: language === "ja" ? "Codex を使う" : "Use Codex" });
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(detect).toHaveBeenCalledTimes(3);
+    expect(persistChoice).not.toHaveBeenCalled();
+    expect(callbacks.onInstall).not.toHaveBeenCalled();
+    expect(callbacks.onSelect).not.toHaveBeenCalled();
+    expect(callbacks.onSkip).not.toHaveBeenCalled();
+    act(() => controller.skip());
+    await expect(ready).resolves.toBeNull();
+  });
+
+  it("allows manual rechecks after installation finishes", () => {
+    const callbacks = props({
+      installations: { codex: { phase: "installing", output: "Downloading…" } },
+    });
+    const { rerender } = render(<AgentSetupDialog {...callbacks} />);
+    const retry = screen.getByRole("button", { name: "Check again" }) as HTMLButtonElement;
+    expect(retry.disabled).toBe(true);
+    fireEvent.click(retry);
+    expect(callbacks.onRefresh).not.toHaveBeenCalled();
+    rerender(
+      <AgentSetupDialog
+        {...callbacks}
+        installations={{ codex: { phase: "complete", output: "Installed." } }}
+      />,
+    );
+    expect(retry.disabled).toBe(false);
+    fireEvent.click(retry);
+    expect(callbacks.onRefresh).toHaveBeenCalledOnce();
+    expect(callbacks.onInstall).not.toHaveBeenCalled();
+  });
+
   it("shows one shared account note above the agents without running anything on render", () => {
     const callbacks = props();
     render(<AgentSetupDialog {...callbacks} />);
