@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { open as choosePath } from "@tauri-apps/plugin-dialog";
-import { openPath } from "@tauri-apps/plugin-opener";
+import { openPath, openUrl } from "@tauri-apps/plugin-opener";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -133,6 +133,7 @@ beforeEach(() => {
     approveAutonomyAction,
     declineAutonomyAction,
     openPath,
+    openUrl,
   ])
     vi.mocked(fn).mockResolvedValue(undefined);
   vi.mocked(choosePath).mockResolvedValue("/work/chosen");
@@ -640,6 +641,191 @@ describe("AutoWorkspace", () => {
     fireEvent.click(screen.getByRole("button", { name: "元に戻す" }));
     expect(await screen.findByRole("alert")).toHaveProperty("textContent", "変更が競合しています");
     expect(screen.queryByText("復元済み")).toBeNull();
+  });
+  it.each([
+    ["ja", "PRを開く", "作業履歴"],
+    ["en", "Open pull request", "Work history"],
+  ] as const)("opens the saved PR from current results and history in %s", async (language, label, history) => {
+    const pullRequestUrl = "https://github.com/example/project/pull/42";
+    const earlierPullRequestUrl = "https://github.com/example/project/pull/41";
+    setStatus({
+      contract,
+      runs: [
+        {
+          id: "published",
+          startedAt: 3,
+          finishedAt: 4,
+          status: "completed",
+          summary: "Published change",
+          reason: "",
+          changedPaths: [],
+          canUndo: false,
+          pullRequestUrl,
+        },
+        {
+          id: "earlier-published",
+          startedAt: 1,
+          finishedAt: 2,
+          status: "completed",
+          summary: "Earlier published change",
+          reason: "",
+          changedPaths: [],
+          canUndo: false,
+          pullRequestUrl: earlierPullRequestUrl,
+        },
+      ],
+    });
+    render(<AutoWorkspace {...props({ language })} />);
+    expect(openUrl).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: label }).getAttribute("title")).toBe(pullRequestUrl);
+    fireEvent.click(screen.getByRole("button", { name: label }));
+    await waitFor(() => expect(openUrl).toHaveBeenCalledExactlyOnceWith(pullRequestUrl));
+    fireEvent.click(screen.getByRole("button", { name: history }));
+    fireEvent.click(screen.getByRole("button", { name: /Earlier published change/ }));
+    expect(screen.getByRole("button", { name: label }).getAttribute("title")).toBe(
+      earlierPullRequestUrl,
+    );
+    vi.mocked(openUrl).mockRejectedValueOnce(new Error("Browser unavailable"));
+    fireEvent.click(screen.getByRole("button", { name: label }));
+    expect(await screen.findByRole("alert")).toHaveProperty("textContent", "Browser unavailable");
+    fireEvent.click(screen.getByRole("button", { name: label }));
+    await waitFor(() => expect(openUrl).toHaveBeenCalledTimes(3));
+    expect(openUrl).toHaveBeenLastCalledWith(earlierPullRequestUrl);
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it.each([
+    undefined,
+    "",
+    "invalid",
+    "file:///etc/passwd",
+    "javascript:alert(1)",
+    "https://user:secret@example.test/pull/42",
+  ])("does not offer an invalid PR destination: %s", (pullRequestUrl) => {
+    setStatus({
+      runs: [
+        {
+          id: "result",
+          startedAt: 1,
+          finishedAt: 2,
+          status: "completed",
+          summary: "Result",
+          reason: "",
+          changedPaths: [],
+          canUndo: false,
+          pullRequestUrl,
+        },
+      ],
+    });
+    render(<AutoWorkspace {...props()} />);
+    expect(screen.queryByRole("button", { name: "PRを開く" })).toBeNull();
+    expect(openUrl).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    "ja",
+    "en",
+  ] as const)("shows compact start/end times and honest summary states in %s", (language) => {
+    const run = {
+      id: "run-1",
+      startedAt: new Date(2026, 9, 30, 10, 15, 37).getTime(),
+      finishedAt: new Date(2026, 9, 30, 11, 22, 49).getTime(),
+      status: "failed" as const,
+      summary: "  ",
+      reason: "",
+      changedPaths: [],
+      canUndo: false,
+    };
+    setStatus({ runs: [run] });
+    const p = props({ language });
+    const view = render(<AutoWorkspace {...p} />);
+    const locale = language === "ja" ? "ja-JP" : "en-US";
+    const unavailable = language === "ja" ? "要約なし" : "No summary";
+    const working = language === "ja" ? "作業中" : "Working";
+    const dateOptions = {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    } as const;
+    const timeOptions = { hour: "2-digit", minute: "2-digit" } as const;
+    const times = () => Array.from(document.querySelectorAll("time"));
+    expect(screen.getByText(unavailable)).toBeTruthy();
+    expect(times().map((time) => time.dateTime)).toEqual([
+      new Date(run.startedAt).toISOString(),
+      new Date(run.finishedAt).toISOString(),
+    ]);
+    expect(times().map((time) => time.textContent)).toEqual([
+      new Date(run.startedAt).toLocaleString(locale, dateOptions),
+      new Date(run.finishedAt).toLocaleTimeString(locale, timeOptions),
+    ]);
+    // A date-changing run keeps the end date visible, rather than implying the same day.
+    const nextDay = new Date(2026, 9, 31, 11, 22, 49).getTime();
+    setStatus({ runs: [{ ...run, finishedAt: nextDay }] });
+    view.rerender(<AutoWorkspace {...p} />);
+    expect(times()[1].textContent).toBe(new Date(nextDay).toLocaleString(locale, dateOptions));
+    fireEvent.click(
+      screen.getByRole("button", { name: language === "ja" ? "作業履歴" : "Work history" }),
+    );
+    expect(screen.getByText(unavailable)).toBeTruthy();
+    expect(times()[0].textContent).toBe(
+      new Date(run.startedAt).toLocaleString(locale, dateOptions),
+    );
+    setStatus({ runs: [{ ...run, status: "running", finishedAt: null }] });
+    view.rerender(<AutoWorkspace {...p} />);
+    expect(screen.queryByText(unavailable)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: new RegExp(working) }));
+    expect(document.querySelector(".auto-result-summary")?.textContent).toBe(working);
+    expect(times()).toHaveLength(1);
+  });
+
+  it.each([
+    "completed",
+    "failed",
+    "cancelled",
+    "undone",
+    "proposed",
+  ] as const)("never describes a %s result with an empty summary as ongoing work", (status) => {
+    setStatus({
+      runs: [
+        {
+          id: "empty-summary",
+          startedAt: 1,
+          finishedAt: 2,
+          status,
+          summary: " \n ",
+          reason: "",
+          changedPaths: [],
+          canUndo: false,
+        },
+      ],
+    });
+    render(<AutoWorkspace {...props()} />);
+    expect(document.querySelector(".auto-result-summary")?.textContent).toBe("要約なし");
+    expect(screen.queryByText("作業を進めています")).toBeNull();
+  });
+
+  it("keeps an otherwise valid saved result available when its timestamps are invalid", () => {
+    setStatus({
+      runs: [
+        {
+          id: "old-result",
+          startedAt: Number.MAX_VALUE,
+          finishedAt: Number.MAX_VALUE,
+          status: "completed",
+          summary: "Saved result",
+          reason: "",
+          changedPaths: [],
+          canUndo: false,
+          pullRequestUrl: "https://github.com/example/project/pull/42",
+        },
+      ],
+    });
+    render(<AutoWorkspace {...props()} />);
+    expect(screen.getByText("Saved result")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "PRを開く" })).toBeTruthy();
+    expect(document.querySelectorAll("time")).toHaveLength(0);
   });
   it("does not submit text mid-composition and never shows the removed individual settings", async () => {
     const send = vi.fn(async () => "了解");
