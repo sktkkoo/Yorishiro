@@ -3,18 +3,7 @@ import { useId, useRef, useState } from "react";
 import { AUTONOMY_ACTION_COPY } from "../i18n/autonomy-action";
 import { approveAutonomyAction, declineAutonomyAction } from "../runtime/autonomy/client";
 import type { AutonomyAction } from "../runtime/autonomy/types";
-
-function resultLink(value: string | null | undefined): string | null {
-  if (!value) return null;
-  try {
-    const url = new URL(value);
-    return ["https:", "http:"].includes(url.protocol) && !url.username && !url.password
-      ? url.href
-      : null;
-  } catch {
-    return null;
-  }
-}
+import { resultLink } from "./result-link";
 
 /** Reviews the exact operation and shows its execution outcome. */
 export function AutonomyActionReview({

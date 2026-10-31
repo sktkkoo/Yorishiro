@@ -1,5 +1,5 @@
 import { open as choosePath } from "@tauri-apps/plugin-dialog";
-import { openPath } from "@tauri-apps/plugin-opener";
+import { openPath, openUrl } from "@tauri-apps/plugin-opener";
 import {
   ArrowLeft,
   ArrowUp,
@@ -33,6 +33,7 @@ import { type DraftField, useAutonomyDraftEditor } from "../runtime/autonomy/dra
 import type { AutonomyContract, AutonomyRun, SetupMessage } from "../runtime/autonomy/types";
 import { AutoCadence } from "./AutoCadence";
 import { AutonomyActionReview } from "./AutonomyActionReview";
+import { resultLink } from "./result-link";
 import "./AutoWorkspace.css";
 
 export interface AutoConversation {
@@ -325,7 +326,43 @@ export function AutoWorkspace({
       proposed: copy.proposed,
     }[run.status];
   }
+  function runSummary(run: AutonomyRun) {
+    return run.summary.trim() || (run.status === "running" ? copy.working : copy.noSummary);
+  }
+  function runTime(timestamp: number, label: string, timeOnly = false) {
+    const date = new Date(timestamp);
+    if (!Number.isFinite(date.getTime())) return null;
+    const locale = language === "ja" ? "ja-JP" : "en-US";
+    const fullDate = date.toLocaleString(locale, {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    return (
+      <>
+        <span className="auto-sr-only">{label} </span>
+        <time dateTime={date.toISOString()} title={fullDate}>
+          {timeOnly
+            ? date.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" })
+            : fullDate}
+        </time>
+      </>
+    );
+  }
   function renderRun(run: AutonomyRun) {
+    const pullRequestUrl = resultLink(run.pullRequestUrl);
+    const start = runTime(run.startedAt, copy.started);
+    const end =
+      run.finishedAt === null
+        ? null
+        : runTime(
+            run.finishedAt,
+            copy.finished,
+            Boolean(start) &&
+              new Date(run.finishedAt).toDateString() === new Date(run.startedAt).toDateString(),
+          );
     const decisions = (status?.pendingActions ?? []).filter(
       (action) =>
         action.runId === run.id && !["pending", "approved", "executing"].includes(action.status),
@@ -336,7 +373,14 @@ export function AutoWorkspace({
           <h2>{copy.result}</h2>
           <span>{runLabel(run)}</span>
         </header>
-        <p className="auto-result-summary">{run.summary || copy.noSummary}</p>
+        {(start || end) && (
+          <p className="auto-muted">
+            {start}
+            {start && end && " – "}
+            {end}
+          </p>
+        )}
+        <p className="auto-result-summary">{runSummary(run)}</p>
         {run.changedPaths.length > 0 && (
           <section>
             <h3>{copy.changed}</h3>
@@ -361,6 +405,16 @@ export function AutoWorkspace({
           </details>
         )}
         <div className="auto-actions">
+          {pullRequestUrl && (
+            <button
+              type="button"
+              title={pullRequestUrl}
+              disabled={busy.has(`pr:${run.id}`)}
+              onClick={() => void perform(`pr:${run.id}`, () => openUrl(pullRequestUrl))}
+            >
+              {copy.openPullRequest}
+            </button>
+          )}
           {localPath(run.developmentPath) && (
             <button
               type="button"
@@ -460,12 +514,8 @@ export function AutoWorkspace({
                     }}
                   >
                     <span>
-                      {run.summary || copy.noSummary}
-                      <small>
-                        {new Date(run.startedAt).toLocaleString(
-                          language === "ja" ? "ja-JP" : "en-US",
-                        )}
-                      </small>
+                      <span className="auto-history-summary">{runSummary(run)}</span>
+                      <small>{runTime(run.startedAt, copy.started)}</small>
                     </span>
                     <span>{runLabel(run)}</span>
                   </button>

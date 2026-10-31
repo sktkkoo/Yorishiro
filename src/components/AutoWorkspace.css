@@ -450,11 +450,13 @@
 }
 .auto-history-row > span:first-child {
   min-width: 0;
+  overflow-wrap: anywhere;
+}
+.auto-history-summary {
   display: -webkit-box;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  overflow-wrap: anywhere;
 }
 .auto-history-row > span:last-child {
   flex-shrink: 0;
