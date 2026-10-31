@@ -153,7 +153,7 @@ export class AutonomyConversationTransport {
     if (this.current(run)) void this.poll(run);
   }
 
-  private acceptTurn(run: TurnRun, turn: Record<string, unknown>): void {
+  private acceptTurn(run: TurnRun, turn: Record<string, unknown>, fullItems = false): void {
     if (!this.current(run) || turn.id !== run.turnId) return;
     if (turn.status === "failed" || turn.status === "interrupted") {
       const reason =
@@ -168,6 +168,16 @@ export class AutonomyConversationTransport {
       // Completion notifications may omit items; poll full items before
       // calling a successful turn an empty answer.
       if (reply) this.finish(run, reply);
+      else if (fullItems)
+        this.finish(
+          run,
+          undefined,
+          new Error(
+            run.language === "en"
+              ? "The conversation completed without a reply. Check the Main Agent conversation before retrying."
+              : "会話は完了しましたが、返事がありません。再送する前にMain Agentの会話を確認してください。",
+          ),
+        );
     }
   }
 
@@ -182,7 +192,7 @@ export class AutonomyConversationTransport {
       });
       if (!this.current(run)) return;
       if (record(result) && Array.isArray(result.data)) {
-        for (const turn of result.data) if (record(turn)) this.acceptTurn(run, turn);
+        for (const turn of result.data) if (record(turn)) this.acceptTurn(run, turn, true);
       }
     } catch {
       // Events remain authoritative; a transient history-read failure can retry

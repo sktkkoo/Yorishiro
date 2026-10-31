@@ -120,6 +120,44 @@ describe("Auto native conversation", () => {
     expect(f.request.mock.calls.filter(([method]) => method === "turn/start")).toHaveLength(1);
   });
 
+  it("retrieves a reply when a completion notification omits items", async () => {
+    const f = fixture();
+    const answer = f.transport.send("進み具合は？");
+    await flush();
+    f.transport.onTurnCompleted({
+      threadId: "main",
+      turn: { id: "turn-1", status: "completed" },
+    });
+    f.request.mockResolvedValue({
+      data: [
+        {
+          id: "turn-1",
+          status: "completed",
+          items: [{ type: "agentMessage", phase: "final_answer", text: "作業中です" }],
+        },
+      ],
+    });
+    await vi.advanceTimersByTimeAsync(1_000);
+    await expect(answer).resolves.toBe("作業中です");
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it.each([
+    ["ja", "再送する前にMain Agentの会話を確認"],
+    ["en", "Check the Main Agent conversation before retrying"],
+  ] as const)("reports a completed conversation without a reply in %s", async (language, message) => {
+    const f = fixture();
+    f.request.mockImplementation(async (method) => {
+      if (method === "turn/start") return { turn: { id: "turn-1", status: "inProgress" } };
+      if (method === "thread/turns/list")
+        return { data: [{ id: "turn-1", status: "completed", items: [] }] };
+      return {};
+    });
+    await expect(f.transport.send("進み具合は？", language)).rejects.toThrow(message);
+    expect(f.request.mock.calls.filter(([method]) => method === "turn/start")).toHaveLength(1);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it("ignores other threads and turns, and rejects parallel submissions", async () => {
     const f = fixture();
     const answer = f.transport.send("最初の依頼");
