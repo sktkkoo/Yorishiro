@@ -581,6 +581,27 @@ export function AutoWorkspace({
                       {status.contract.automaticActionApproval && (
                         <p className="auto-scope-note">{copy.savedGrant}</p>
                       )}
+                      <details>
+                        <summary>{copy.savedScope}</summary>
+                        <p className="auto-path">{status.contract.root}</p>
+                        <p>
+                          {copy.localOperations}:{" "}
+                          {status.contract.allowedOperations.length
+                            ? status.contract.allowedOperations
+                                .map(
+                                  (operation) =>
+                                    ({
+                                      write: copy.operationWrite,
+                                      move: copy.operationMove,
+                                      trash: copy.operationTrash,
+                                    })[operation],
+                                )
+                                .join(language === "ja" ? "・" : ", ")
+                            : copy.noLocalOperations}
+                        </p>
+                        {!status.contract.automaticActionApproval && <p>{copy.externalScope}</p>}
+                        <p>{copy.executionAuthority}</p>
+                      </details>
                       <div className="auto-work-state">
                         <span role="status">{phaseLabel()}</span>
                         <div className="auto-actions">
