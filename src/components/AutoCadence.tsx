@@ -1,5 +1,5 @@
 import { ChevronDown, LoaderCircle } from "lucide-react";
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { AUTO_WORKSPACE_COPY } from "../i18n/auto-workspace";
 import type { AutonomyContract } from "../runtime/autonomy/types";
 
@@ -32,6 +32,9 @@ export function AutoCadence({
   const copy = AUTO_WORKSPACE_COPY[language];
   const id = useId();
   const trigger = useRef<HTMLButtonElement>(null);
+  const limitInput = useRef<HTMLInputElement>(null);
+  const restoreFocus = useRef(false);
+  const [invalidLimit, setInvalidLimit] = useState(false);
   const [edit, setEdit] = useState<{
     baseline: string;
     baselineValue: string;
@@ -52,19 +55,30 @@ export function AutoCadence({
       ? `${duration(value.intervalMinutes, language)}間隔 · 24時間で${value.maxRunsPerDay}回まで`
       : `${duration(value.intervalMinutes, language)} intervals · up to ${value.maxRunsPerDay} runs / 24h`;
 
+  useEffect(() => {
+    if (restoreFocus.current && !edit && !saving) {
+      restoreFocus.current = false;
+      trigger.current?.focus();
+    }
+  }, [edit, saving]);
+
   function close() {
+    restoreFocus.current = true;
     setEdit(null);
     setError(null);
+    setInvalidLimit(false);
     onExpandedChange?.(false);
-    trigger.current?.focus();
   }
   async function save() {
     if (!edit || stale || savingRef.current || disabled) return;
     const limit = Number(edit.limit);
     if (!Number.isSafeInteger(limit) || limit < 1) {
+      setInvalidLimit(true);
       setError(copy.invalidCadence);
+      limitInput.current?.focus();
       return;
     }
+    setInvalidLimit(false);
     savingRef.current = true;
     setSaving(true);
     setError(null);
@@ -101,6 +115,7 @@ export function AutoCadence({
               limit: String(value.maxRunsPerDay),
             });
             setError(null);
+            setInvalidLimit(false);
             onExpandedChange?.(true);
           }
         }}
@@ -114,7 +129,12 @@ export function AutoCadence({
           aria-label={copy.frequency}
           className="auto-cadence-editor"
           onKeyDown={(event) => {
-            if (event.key === "Escape" && !event.nativeEvent.isComposing) {
+            if (event.nativeEvent.isComposing) return;
+            if (event.key === "Enter" && event.target instanceof HTMLInputElement) {
+              event.preventDefault();
+              void save();
+            }
+            if (event.key === "Escape") {
               event.preventDefault();
               event.stopPropagation();
               if (!saving) close();
@@ -141,13 +161,22 @@ export function AutoCadence({
             <label>
               {copy.runLimit}
               <input
+                ref={limitInput}
+                aria-invalid={invalidLimit || undefined}
+                aria-describedby={invalidLimit ? `${id}-error` : undefined}
                 type="number"
                 min={1}
                 max={Number.MAX_SAFE_INTEGER}
                 step={1}
                 value={edit.limit}
                 disabled={disabled || saving}
-                onChange={(event) => setEdit({ ...edit, limit: event.target.value })}
+                onChange={(event) => {
+                  setEdit({ ...edit, limit: event.target.value });
+                  if (invalidLimit) {
+                    setInvalidLimit(false);
+                    setError(null);
+                  }
+                }}
               />
             </label>
             <div className="auto-actions">
@@ -166,7 +195,7 @@ export function AutoCadence({
             </div>
           </div>
           {(error || (stale && !saving)) && (
-            <p className="auto-cadence-error" role="alert">
+            <p id={`${id}-error`} className="auto-cadence-error" role="alert">
               {stale ? copy.cadenceChanged : error}
             </p>
           )}
