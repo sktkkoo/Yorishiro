@@ -31,6 +31,10 @@ pub struct RequestedAction {
     /// External communication must be shown and approved with this exact request.
     #[serde(default)]
     pub network_access: bool,
+    /// Optional native capability for exact GitHub publication using the user's
+    /// installed authenticated CLI. No credentials enter the reasoning worker.
+    #[serde(default)]
+    pub delivery: Option<super::github_delivery::Delivery>,
 }
 impl RequestedAction {
     pub fn validate(&self) -> Result<(), String> {
@@ -57,13 +61,28 @@ impl RequestedAction {
                 );
             }
         }
+        if let Some(delivery) = &self.delivery {
+            delivery.validate(&self.target, self.network_access)?;
+            if [
+                &delivery.repository,
+                &delivery.branch,
+                &delivery.base_branch,
+                &delivery.title,
+                &delivery.body,
+            ]
+            .iter()
+            .any(|value| !self.details.contains(value.as_str()))
+            {
+                return Err("公開するリポジトリ・ブランチ・PRのタイトルと本文を操作内容にも正確に記載してください".into());
+            }
+        }
         Ok(())
     }
 }
 
 pub fn request_schema() -> Value {
-    json!({"type":"object","additionalProperties":false,
-    "required":["operation","target","impact","details","reason","networkAccess"],
+    let mut schema = json!({"type":"object","additionalProperties":false,
+    "required":["operation","target","impact","details","reason","networkAccess","delivery"],
     "properties": {
         "operation":{"type":"string","minLength":1,"maxLength":500},
         "target":{"type":"string","minLength":1,"maxLength":2000,"description":"The exact operation target. For networkAccess=true, enumerate explicit http/https/ssh URLs for every actual communication host, including API endpoints. Only these hosts are permitted; the host never guesses service-specific endpoints or authentication methods."},
@@ -71,7 +90,11 @@ pub fn request_schema() -> Value {
         "details":{"type":"string","minLength":1,"maxLength":16000},
         "networkAccess":{"type":"boolean","description":"True only when this exact operation requires communication to its explicit external target; shown before approval."},
         "reason":{"type":"string","minLength":1,"maxLength":2000}
-    }})
+    }});
+    schema["properties"]["delivery"] = json!({"anyOf": [
+        {"type":"null"}, schemars::schema_for!(super::github_delivery::Delivery)
+    ], "description":"Optional exact native GitHub push and PR capability. Use only when the delegated objective requires GitHub delivery and the saved origin identifies that repository. Never infer GitHub for other services. Its repository, branch, baseBranch, title and body must also appear verbatim in details."});
+    schema
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -106,6 +129,8 @@ pub struct Action {
     #[serde(default)]
     pub(super) network_access: bool,
     #[serde(default)]
+    pub(super) delivery: Option<super::github_delivery::Delivery>,
+    #[serde(default)]
     pub(super) execution_summary: Option<String>,
     #[serde(default)]
     pub(super) result_url: Option<String>,
@@ -135,6 +160,9 @@ pub(super) fn digest(action: &Action) -> Result<String, String> {
     // Preserve legacy offline approval digests; adding network authority always changes it.
     if action.network_access {
         payload["networkAccess"] = json!(true);
+    }
+    if let Some(delivery) = &action.delivery {
+        payload["delivery"] = json!(delivery);
     }
     if action.auto_approved {
         payload["autoApproved"] = json!(true);
@@ -343,6 +371,7 @@ pub(super) fn recover(status: &mut Status) -> Result<bool, String> {
             details: action.details.clone(),
             reason: action.summary.clone(),
             network_access: action.network_access,
+            delivery: action.delivery.clone(),
         };
         request.validate_fields()?;
         if action.kind != "operation"
@@ -580,6 +609,7 @@ fn queue_linked(
         checks,
         error: None,
         network_access: request.network_access,
+        delivery: request.delivery.clone(),
         execution_summary: None,
         result_url: None,
         auto_approved: false,
@@ -619,6 +649,7 @@ fn queue_linked(
             && previous.changed_paths == action.changed_paths
             && previous.checks == action.checks
             && previous.network_access == action.network_access
+            && previous.delivery == action.delivery
             && previous.parent_action_id == action.parent_action_id
     }) {
         return Ok(existing.clone());
@@ -946,6 +977,7 @@ mod tests {
             details: "Exact message body".into(),
             reason: "User objective requires delivery".into(),
             network_access: false,
+            delivery: None,
         };
         let action = queue(&mut runtime, &run_id, &request, vec![]).unwrap();
         (runtime, directory, action)
@@ -990,6 +1022,40 @@ mod tests {
         .is_err());
     }
     #[test]
+    fn continuation_binds_lineage_and_preserves_manual_network_approval() {
+        let (mut runtime, _directory, action) = fixture();
+        runtime.status.pending_actions[0].status = ActionStatus::Completed;
+        runtime.status.pending_actions[0].continuation_pending = true;
+        runtime.status.pending_actions[0].goal_complete = Some(false);
+        let request = RequestedAction {
+            operation: "Publish the prepared change".into(),
+            target: "https://forge.example/team/project https://api.forge.example".into(),
+            impact: "The verified change becomes available for review".into(),
+            details: "Push the existing commit and open the requested review".into(),
+            reason: "Delivery is part of the delegated purpose".into(),
+            network_access: true,
+            delivery: None,
+        };
+        let next = queue_continuation(&mut runtime, &action.id, &request).unwrap();
+        assert_eq!(next.parent_action_id.as_deref(), Some(action.id.as_str()));
+        assert_eq!(next.run_id, action.run_id);
+        assert_eq!(next.status, ActionStatus::Pending);
+        assert!(!next.auto_approved);
+        assert!(next.network_access);
+        assert_eq!(chain(&runtime.status, &next).unwrap()[0].id, action.id);
+        let mut changed = next.clone();
+        changed.parent_action_id = None;
+        assert_ne!(digest(&changed).unwrap(), next.payload_digest);
+        runtime.status.pending_actions[1].status = ActionStatus::Completed;
+        runtime.status.pending_actions[1].continuation_pending = true;
+        runtime.status.pending_actions[1].goal_complete = Some(false);
+        let mut duplicate = request.clone();
+        duplicate.reason = "A different explanation must not repeat a successful send".into();
+        assert!(queue_continuation(&mut runtime, &next.id, &duplicate).is_err());
+        runtime.status.pending_actions[0].status = ActionStatus::Interrupted;
+        assert!(chain(&runtime.status, &next).is_err());
+    }
+    #[test]
     fn network_capability_is_bound_to_approval_and_defaults_off_for_legacy_records() {
         let (_runtime, _directory, mut action) = fixture();
         let original = action.payload_digest.clone();
@@ -1029,6 +1095,7 @@ mod tests {
             details: "The exact prepared report content".into(),
             reason: "The saved objective requires delivery".into(),
             network_access: true,
+            delivery: None,
         };
         (runtime, directory, first.run_id, request)
     }
@@ -1042,6 +1109,7 @@ mod tests {
             details: action.details,
             reason: action.summary,
             network_access: true,
+            delivery: None,
         };
         assert!(request.validate().is_err());
         request.target = "https://delivery.example.test/report".into();
@@ -1130,6 +1198,7 @@ mod tests {
             details: action.details,
             reason: action.summary,
             network_access: false,
+            delivery: None,
         };
         let error = assess_necessity(
             &root,
@@ -1366,6 +1435,7 @@ mod tests {
             details: "x".into(),
             reason: "x".into(),
             network_access: false,
+            delivery: None,
         };
         assert!(request.validate().is_err());
     }
@@ -1397,6 +1467,7 @@ mod tests {
             details: "Exact report contents".into(),
             reason: "Requested update".into(),
             network_access: false,
+            delivery: None,
         };
         let second = queue(&mut runtime, &first.run_id, &request, vec![]).unwrap();
         assert_ne!(first.id, second.id);
@@ -1422,6 +1493,7 @@ mod tests {
                 details: "Exact report contents".into(),
                 reason: "Requested update".into(),
                 network_access: false,
+                delivery: None,
             },
         )
         .unwrap();

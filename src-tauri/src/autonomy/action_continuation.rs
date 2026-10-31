@@ -506,11 +506,12 @@ mod tests {
             details: "Push commit abc123 from the same private copy".into(),
             reason: "Required for the original pull request".into(),
             network_access: true,
+            delivery: None,
         };
         assert!(!finish(
             &state,
             &claimed,
-            Ok(goal_handoff::Decision::Action(request))
+            Ok(goal_handoff::Decision::Action(Box::new(request)))
         ));
         let runtime = super::super::lock(&state).unwrap();
         assert_eq!(runtime.status.pending_actions.len(), 1);
@@ -543,11 +544,12 @@ mod tests {
             details: "Push existing commit abc123 and create the described pull request".into(),
             reason: "Delivery remains after the successful local commit".into(),
             network_access: true,
+            delivery: None,
         };
         assert!(finish(
             &state,
             &claimed,
-            Ok(goal_handoff::Decision::Action(request))
+            Ok(goal_handoff::Decision::Action(Box::new(request)))
         ));
         let runtime = super::super::lock(&state).unwrap();
         assert_eq!(runtime.status.pending_actions.len(), 2);
@@ -568,6 +570,7 @@ mod tests {
             details: "Push commit abc123 from the preserved private copy".into(),
             reason: "Required to deliver the prepared update".into(),
             network_access: true,
+            delivery: None,
         }
     }
 

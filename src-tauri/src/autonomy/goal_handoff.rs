@@ -9,7 +9,7 @@ use tokio_util::sync::CancellationToken;
 #[derive(Debug)]
 pub(super) enum Decision {
     Complete,
-    Action(RequestedAction),
+    Action(Box<RequestedAction>),
     Question(String),
 }
 
@@ -56,7 +56,7 @@ fn decode(value: Value) -> Result<Decision, String> {
         (Outcome::Completed, None, None) => Ok(Decision::Complete),
         (Outcome::Action, Some(request), None) => {
             request.validate()?;
-            Ok(Decision::Action(request))
+            Ok(Decision::Action(Box::new(request)))
         }
         (Outcome::Question, None, Some(question))
             if !question.trim().is_empty()
@@ -176,9 +176,13 @@ pub(super) async fn assess_execution(
     let review = if run.development_path.is_some() {
         let storage = storage.to_path_buf();
         let run = run.clone();
+        let mut initial = serde_json::to_value(&history[0]).map_err(|error| error.to_string())?;
+        // A successful ancestor can originate in an older version that marked
+        // preparation failed while awaiting this exact frozen approval.
+        initial["status"] = json!("executing");
         Some(
             tauri::async_runtime::spawn_blocking(move || {
-                super::review_context::load(&storage, &run)
+                super::review_context::load_for_action(&storage, &run, &initial)
             })
             .await
             .map_err(|error| error.to_string())??,
