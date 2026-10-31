@@ -26,7 +26,7 @@ async function flushUpdates(): Promise<void> {
 }
 
 describe("VoicePlaybackLeaseSync", () => {
-  it("keeps quiet mode silent when GPT Live releases fallback playback", async () => {
+  it("keeps Auto silent when GPT Live releases fallback playback", async () => {
     const update = vi.fn(async (_state: VoicePlaybackLeaseUpdate) => {});
     const player = new VoicePlayer();
     const sync = new VoicePlaybackLeaseSync(player, {
@@ -34,23 +34,23 @@ describe("VoicePlaybackLeaseSync", () => {
       update,
     });
     await sync.setEnabled(false);
-    await sync.setSuppressed("auto-quiet", true);
+    await sync.setSuppressed("auto-workspace", true);
     await sync.setEnabled(true);
     expect(player.isPlaybackEnabled()).toBe(false);
     expect(update.mock.calls[update.mock.calls.length - 1]?.[0]).toMatchObject({ enabled: false });
-    await sync.setSuppressed("auto-quiet", false);
+    await sync.setSuppressed("auto-workspace", false);
     expect(player.isPlaybackEnabled()).toBe(true);
   });
 
-  it("does not release a live conversation when quiet mode closes", async () => {
+  it("does not release a live conversation when Auto closes", async () => {
     const player = new VoicePlayer();
     const sync = new VoicePlaybackLeaseSync(player, {
       registerOwner: vi.fn(async () => "owner-a"),
       update: vi.fn(async () => {}),
     });
-    await sync.setSuppressed("auto-quiet", true);
+    await sync.setSuppressed("auto-workspace", true);
     await sync.setEnabled(false);
-    await sync.setSuppressed("auto-quiet", false);
+    await sync.setSuppressed("auto-workspace", false);
     expect(player.isPlaybackEnabled()).toBe(false);
     await sync.setEnabled(true);
     expect(player.isPlaybackEnabled()).toBe(true);

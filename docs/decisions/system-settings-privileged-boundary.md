@@ -71,7 +71,7 @@ raw IPC allowlist は拡張しない。自動作業の開始・停止・契約�
 App host と native boundary の責務であり、通常 SDK に公開しない。
 
 `settings-privileged-boundary.test.ts` は設定 Pack に app component import と
-`runtime/autonomy` import がないことを検査する。表示モードの変更は実行権限を変更しない。
+`runtime/autonomy` import がないことを検査する。音声の接続・切断と画面の開閉は実行権限を変更しない。
 委任と承認の現行契約は [auto-workspace.md](auto-workspace.md) と
 [autonomous-document-work.md](autonomous-document-work.md) に記載する。
 

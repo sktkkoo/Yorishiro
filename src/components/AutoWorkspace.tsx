@@ -32,7 +32,6 @@ import type { AutonomyContract, AutonomyRun, SetupMessage } from "../runtime/aut
 import { AutonomyActionReview } from "./AutonomyActionReview";
 import "./AutoWorkspace.css";
 
-export type AutoInteractionMode = "conversation" | "quiet";
 export interface AutoConversation {
   readonly available: boolean;
   readonly state: {
@@ -51,8 +50,6 @@ export interface AutoWorkspaceProps {
   readonly language: "ja" | "en";
   readonly cwd: string | null;
   readonly onClose: () => void;
-  readonly mode: AutoInteractionMode;
-  readonly onModeChange: (mode: AutoInteractionMode) => void;
   readonly conversation: AutoConversation;
   readonly onSendMessage?: (text: string) => Promise<string>;
 }
@@ -81,8 +78,6 @@ export function AutoWorkspace({
   language,
   cwd,
   onClose,
-  mode,
-  onModeChange,
   conversation,
   onSendMessage,
 }: AutoWorkspaceProps) {
@@ -125,6 +120,7 @@ export function AutoWorkspace({
     editing || Boolean(draftState.values.goal.trim() && (draft.draft || !status?.contract));
   const callActive = conversation.state.status === "active";
   const callConnecting = conversation.state.status === "connecting";
+  const callInProgress = callActive || callConnecting;
 
   useEffect(() => {
     mounted.current = true;
@@ -133,12 +129,12 @@ export function AutoWorkspace({
     };
   }, []);
   useEffect(() => {
-    if (!open || mode !== "quiet") composing.current = false;
-  }, [open, mode]);
+    if (!open) composing.current = false;
+  }, [open]);
   useEffect(() => {
-    // A draft sync must not open the microphone after leaving the voice surface.
-    if (!open || mode === "quiet") voiceIntent.current += 1;
-  }, [open, mode]);
+    // Cancel a delayed entry if the view closes or another entry starts a call.
+    if (!open || callInProgress) voiceIntent.current += 1;
+  }, [open, callInProgress]);
   useEffect(() => {
     if (!open || !status || seeded.current) return;
     seeded.current = true;
@@ -236,7 +232,7 @@ export function AutoWorkspace({
   }
   async function sendMessage() {
     const text = message.trim();
-    if (!text || composing.current || inFlight.current.has("consult")) return;
+    if (!text || callConnecting || composing.current || inFlight.current.has("consult")) return;
     await perform("consult", async () => {
       await editor.flush();
       const next = [
@@ -391,23 +387,6 @@ export function AutoWorkspace({
       >
         <header className="auto-header">
           <h1 id={titleId}>{copy.title}</h1>
-          <fieldset className="auto-mode" aria-label={copy.mode}>
-            {(["conversation", "quiet"] as const).map((value) => (
-              <button
-                type="button"
-                key={value}
-                aria-pressed={mode === value}
-                onClick={() => {
-                  if (value !== mode) {
-                    voiceIntent.current += 1;
-                    onModeChange(value);
-                  }
-                }}
-              >
-                {copy[value]}
-              </button>
-            ))}
-          </fieldset>
           <button
             type="button"
             className="auto-history-button"
@@ -431,7 +410,7 @@ export function AutoWorkspace({
           </button>
         </header>
         <div className="auto-content">
-          {(error || status?.error || (mode === "quiet" && conversation.state.error)) && (
+          {(error || status?.error || conversation.state.error) && (
             <p className="auto-error" role="alert">
               {error || status?.error || conversation.state.error}
             </p>
@@ -661,7 +640,7 @@ export function AutoWorkspace({
                   {selectedRun && selectedRun.status !== "running" && renderRun(selectedRun)}
                 </>
               )}
-              {mode === "quiet" && !selectedRunId && (
+              {!selectedRunId && (
                 <form
                   className="auto-composer"
                   onSubmit={(event) => {
@@ -699,7 +678,7 @@ export function AutoWorkspace({
                   <button
                     type="submit"
                     className="auto-primary"
-                    disabled={busy.has("consult") || !message.trim()}
+                    disabled={callConnecting || busy.has("consult") || !message.trim()}
                     aria-label={busy.has("consult") ? copy.sending : copy.send}
                   >
                     {busy.has("consult") ? copy.sending : copy.send}
@@ -708,7 +687,7 @@ export function AutoWorkspace({
                 </form>
               )}
               {messages.length > 0 && (
-                <details className="auto-conversation-log" open={mode === "quiet"}>
+                <details className="auto-conversation-log" open>
                   <summary>{copy.conversationHistory}</summary>
                   <div role="log">
                     {messages.map((item) => (
@@ -724,74 +703,67 @@ export function AutoWorkspace({
           )}
         </div>
       </section>
-      {mode === "conversation" && (
-        <section className="auto-conversation-rail" aria-label={copy.conversation}>
-          {(callActive || callConnecting) && (
-            <p role="status" className="auto-call-status">
-              {callConnecting
-                ? copy.connecting
-                : conversation.state.microphoneMuted
-                  ? copy.muted
-                  : conversation.phase === "assistant-speaking"
-                    ? copy.speaking
-                    : conversation.phase === "assistant-responding"
-                      ? copy.thinking
-                      : copy.listening}
-            </p>
-          )}
-          {conversation.latestUtterance && (
-            <p className="auto-utterance" aria-live="polite">
-              {conversation.latestUtterance}
-            </p>
-          )}
-          {conversation.state.error && (
-            <p className="auto-call-error" role="alert">
-              {conversation.state.error}
-            </p>
-          )}
-          <div className="auto-call-controls">
-            {callActive || callConnecting ? (
-              <>
-                <button
-                  type="button"
-                  className="auto-icon"
-                  disabled={!callActive}
-                  aria-label={conversation.state.microphoneMuted ? copy.unmute : copy.mute}
-                  aria-pressed={conversation.state.microphoneMuted === true}
-                  onClick={() => conversation.onSetMuted(!conversation.state.microphoneMuted)}
-                >
-                  {conversation.state.microphoneMuted ? (
-                    <MicOff size={18} aria-hidden="true" />
-                  ) : (
-                    <Mic size={18} aria-hidden="true" />
-                  )}
-                </button>
-                <button type="button" onClick={conversation.onEnd}>
-                  {copy.end}
-                  <X size={15} aria-hidden="true" />
-                </button>
-              </>
-            ) : (
+      <section className="auto-conversation-rail" aria-label={copy.voice}>
+        {callInProgress && (
+          <p role="status" className="auto-call-status">
+            {callConnecting
+              ? copy.connecting
+              : conversation.state.microphoneMuted
+                ? copy.muted
+                : conversation.phase === "assistant-speaking"
+                  ? copy.speaking
+                  : conversation.phase === "assistant-responding"
+                    ? copy.thinking
+                    : copy.listening}
+          </p>
+        )}
+        {conversation.latestUtterance && (
+          <p className="auto-utterance" aria-live="polite">
+            {conversation.latestUtterance}
+          </p>
+        )}
+        <div className="auto-call-controls">
+          {callInProgress ? (
+            <>
               <button
                 type="button"
-                className="auto-talk"
-                disabled={busy.has("voice")}
-                onClick={() =>
-                  void perform("voice", async () => {
-                    const intent = ++voiceIntent.current;
-                    await editor.flush();
-                    if (!mounted.current || intent !== voiceIntent.current) return;
-                    await conversation.onStart();
-                  })
-                }
+                className="auto-icon"
+                disabled={!callActive}
+                aria-label={conversation.state.microphoneMuted ? copy.unmute : copy.mute}
+                aria-pressed={conversation.state.microphoneMuted === true}
+                onClick={() => conversation.onSetMuted(!conversation.state.microphoneMuted)}
               >
-                <Mic size={17} aria-hidden="true" />
-                {copy.talk}
+                {conversation.state.microphoneMuted ? (
+                  <MicOff size={18} aria-hidden="true" />
+                ) : (
+                  <Mic size={18} aria-hidden="true" />
+                )}
               </button>
-            )}
-          </div>
-        </section>
-      )}
+              <button type="button" onClick={conversation.onEnd}>
+                {copy.end}
+                <X size={15} aria-hidden="true" />
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              className="auto-talk"
+              disabled={busy.has("voice")}
+              onClick={() =>
+                void perform("voice", async () => {
+                  const intent = ++voiceIntent.current;
+                  await editor.flush();
+                  if (!mounted.current || intent !== voiceIntent.current) return;
+                  await conversation.onStart();
+                })
+              }
+            >
+              <Mic size={17} aria-hidden="true" />
+              {copy.talk}
+            </button>
+          )}
+        </div>
+      </section>
     </>,
     document.body,
   );

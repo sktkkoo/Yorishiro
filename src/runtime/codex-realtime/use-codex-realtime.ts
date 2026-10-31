@@ -27,6 +27,8 @@ export interface CodexRealtimeClientLike extends LipSyncSource {
   notifyScreenContext?(capturedAt: string, availability?: ScreenPointerAvailability): Promise<void>;
   notifyScreenPointersEnabled?(enabled: boolean): Promise<void>;
   requestAutonomyConversation?(language?: "ja" | "en"): Promise<void>;
+  prepareAutonomyConversation?(language?: "ja" | "en"): Promise<void>;
+  appendUserText?(text: string, language?: "ja" | "en"): Promise<void>;
   notifyAutonomyWorkReview?(review: AutonomyWorkReviewNotice): Promise<void>;
 }
 
@@ -129,6 +131,7 @@ interface UseCodexRealtimeResult {
   readonly stop: () => void;
   readonly toggle: () => Promise<void>;
   readonly requestAutonomyConversation: (language?: "ja" | "en") => Promise<void>;
+  readonly prepareAutonomyConversation: (language?: "ja" | "en") => Promise<void>;
   readonly sendAutonomyMessage: (text: string, language?: "ja" | "en") => Promise<string>;
   readonly notifyAutonomyWorkReview: (
     review: AutonomyWorkReviewNotice | null,
@@ -610,6 +613,55 @@ export function useCodexRealtime({
     await start();
   }, [start, stop]);
 
+  const prepareAutonomyConversation = useCallback(
+    async (language: "ja" | "en" = "ja"): Promise<void> => {
+      const client = clientRef.current;
+      const tracker = threadTrackerRef.current;
+      const expectedThreadId = tracker?.getCurrentThreadId() ?? null;
+      if (
+        autonomyOwnerRef.current.sessionId !== sessionId ||
+        (screenThreadId !== null && expectedThreadId !== screenThreadId)
+      ) {
+        throw new Error(
+          language === "en"
+            ? "The conversation changed before preparation."
+            : "準備前に会話が切り替わりました。",
+        );
+      }
+      // Opening Auto is not permission to start or reconnect a microphone.
+      if (!client || client.getStatus() !== "active") return;
+      if (
+        !available ||
+        !autonomyOwnerRef.current.available ||
+        !tracker ||
+        !client.prepareAutonomyConversation
+      ) {
+        throw new Error(
+          language === "en"
+            ? "This voice connection does not support Auto conversation."
+            : "この音声接続はAutoの会話に対応していません。",
+        );
+      }
+      await client.prepareAutonomyConversation(language);
+      if (
+        clientRef.current !== client ||
+        client.getStatus() !== "active" ||
+        threadTrackerRef.current !== tracker ||
+        sessionIdRef.current !== sessionId ||
+        autonomyOwnerRef.current.sessionId !== sessionId ||
+        !autonomyOwnerRef.current.available ||
+        tracker.getCurrentThreadId() !== expectedThreadId
+      ) {
+        throw new Error(
+          language === "en"
+            ? "The conversation changed during preparation."
+            : "準備中に会話が切り替わりました。",
+        );
+      }
+    },
+    [available, sessionId, screenThreadId],
+  );
+
   const requestAutonomyConversation = useCallback(
     async (language: "ja" | "en" = "ja") => {
       const english = language === "en";
@@ -627,7 +679,7 @@ export function useCodexRealtime({
       if (!available || !autonomyOwnerRef.current.available || !threadTrackerRef.current) {
         throw new Error(
           english
-            ? "Voice setup requires Codex voice. Switch to Codex or use text setup."
+            ? "Voice conversation requires Codex. Switch to Codex or continue by text."
             : "音声での相談にはCodexの音声会話が必要です。Codexへ切り替えるか、文字で相談してください。",
         );
       }
@@ -640,7 +692,7 @@ export function useCodexRealtime({
       ) {
         throw new Error(
           english
-            ? "The conversation changed while preparing setup. Please try again."
+            ? "The conversation changed while preparing the connection. Please try again."
             : "相談の準備中に会話が切り替わりました。もう一度お試しください。",
         );
       }
@@ -655,15 +707,15 @@ export function useCodexRealtime({
       if (!client.requestAutonomyConversation) {
         throw new Error(
           english
-            ? "This voice connection does not support setup. Use text setup instead."
-            : "この音声接続は設定の相談に対応していません。文字で相談してください。",
+            ? "This voice connection does not support Auto conversation. Continue by text."
+            : "この音声接続はAutoの会話に対応していません。文字で続けてください。",
         );
       }
       await client.requestAutonomyConversation(language);
       if (clientRef.current !== client || client.getStatus() !== "active") {
         throw new Error(
           english
-            ? "The voice conversation changed during setup. Please try again."
+            ? "The voice conversation changed during the request. Please try again."
             : "相談中に音声会話が切り替わりました。もう一度お試しください。",
         );
       }
@@ -689,11 +741,54 @@ export function useCodexRealtime({
             : "送信前に会話が切り替わりました。",
         );
       }
-      if (!available || !autonomyOwnerRef.current.available || !tracker?.sendAutonomyMessage) {
+      if (!available || !autonomyOwnerRef.current.available || !tracker) {
         throw new Error(
           language === "en"
             ? "The Codex conversation is unavailable."
             : "Codexの会話に接続できません。しばらくしてから再送してください。",
+        );
+      }
+      const liveClient = clientRef.current;
+      if (liveClient?.getStatus() === "connecting") {
+        throw new Error(
+          language === "en"
+            ? "Wait for the voice connection before sending."
+            : "音声の接続が完了してから送信してください。",
+        );
+      }
+      if (liveClient?.getStatus() === "active") {
+        if (!liveClient.appendUserText) {
+          throw new Error(
+            language === "en"
+              ? "This voice connection cannot receive text."
+              : "この音声接続には文字を送信できません。",
+          );
+        }
+        await liveClient.appendUserText(text, language);
+        if (
+          clientRef.current !== liveClient ||
+          liveClient.getStatus() !== "active" ||
+          threadTrackerRef.current !== tracker ||
+          sessionIdRef.current !== sessionId ||
+          autonomyOwnerRef.current.sessionId !== sessionId ||
+          !autonomyOwnerRef.current.available ||
+          tracker.getCurrentThreadId() !== expectedThreadId
+        ) {
+          throw new Error(
+            language === "en"
+              ? "The conversation changed after sending. Check delivery before sending again."
+              : "送信後に会話が切り替わりました。再送する前に届いているか確認してください。",
+          );
+        }
+        // Live will use the supplement in its own conversation timing. Do not
+        // invent an assistant reply, start another turn, or synthesize speech.
+        return "";
+      }
+      if (!tracker.sendAutonomyMessage) {
+        throw new Error(
+          language === "en"
+            ? "This conversation cannot receive text."
+            : "この会話には文字を送信できません。",
         );
       }
       const response = await tracker.sendAutonomyMessage(text, language);
@@ -951,6 +1046,7 @@ export function useCodexRealtime({
     stop,
     toggle,
     requestAutonomyConversation,
+    prepareAutonomyConversation,
     sendAutonomyMessage,
     notifyAutonomyWorkReview,
     setMicrophoneMuted,

@@ -83,8 +83,6 @@ function props(overrides: Partial<AutoWorkspaceProps> = {}): AutoWorkspaceProps 
     language: "ja",
     cwd: "/work/current",
     onClose: vi.fn(),
-    mode: "conversation",
-    onModeChange: vi.fn(),
     conversation: {
       available: true,
       state: { status: "idle" },
@@ -164,17 +162,22 @@ describe("AutoWorkspace", () => {
     fireEvent.click(screen.getByRole("button", { name: "話しかける" }));
     await waitFor(() => expect(p.conversation.onStart).toHaveBeenCalledOnce());
     expect(document.querySelector("canvas")).toBeNull();
-    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(screen.getByRole("textbox", { name: "よりに伝える" })).toBeTruthy();
     expect(saveAutonomyContract).not.toHaveBeenCalled();
   });
-  it("preserves text through mode and visibility changes, and routes text through the Main Agent", async () => {
+  it("preserves text through call and visibility changes, and routes text through the Main Agent", async () => {
     const send = vi.fn(async () => "了解しました");
-    const p = props({ mode: "quiet", onSendMessage: send });
+    const p = props({ onSendMessage: send });
     const view = render(<AutoWorkspace {...p} />);
     fireEvent.change(screen.getByRole("textbox", { name: "よりに伝える" }), {
       target: { value: "結論を先にして" },
     });
-    view.rerender(<AutoWorkspace {...p} mode="conversation" />);
+    view.rerender(
+      <AutoWorkspace {...p} conversation={{ ...p.conversation, state: { status: "active" } }} />,
+    );
+    expect(
+      (screen.getByRole("textbox", { name: "よりに伝える" }) as HTMLTextAreaElement).value,
+    ).toBe("結論を先にして");
     view.rerender(<AutoWorkspace {...p} open={false} />);
     view.rerender(<AutoWorkspace {...p} />);
     expect(
@@ -187,7 +190,7 @@ describe("AutoWorkspace", () => {
     expect(await screen.findByText("了解しました")).toBeTruthy();
   });
   it.each([
-    "quiet",
+    "connecting",
     "closed",
   ])("does not start delayed voice after switching to %s", async (destination) => {
     const response = deferred<Awaited<ReturnType<typeof editAutonomyDraft>>>();
@@ -199,7 +202,10 @@ describe("AutoWorkspace", () => {
     view.rerender(
       <AutoWorkspace
         {...p}
-        mode={destination === "quiet" ? "quiet" : "conversation"}
+        conversation={{
+          ...p.conversation,
+          state: { status: destination === "connecting" ? "connecting" : "idle" },
+        }}
         open={destination !== "closed"}
       />,
     );
@@ -215,7 +221,7 @@ describe("AutoWorkspace", () => {
     const send = vi.fn(async () => {
       throw new Error("worker is active");
     });
-    render(<AutoWorkspace {...props({ mode: "quiet", onSendMessage: send })} />);
+    render(<AutoWorkspace {...props({ onSendMessage: send })} />);
     fireEvent.change(screen.getByRole("textbox", { name: "よりに伝える" }), {
       target: { value: "この依頼を追加して" },
     });
@@ -226,6 +232,41 @@ describe("AutoWorkspace", () => {
     ).toBe("この依頼を追加して");
     expect(consultAutonomy).not.toHaveBeenCalled();
     expect(screen.queryByRole("log")).toBeNull();
+  });
+  it("keeps text available through connection, mute and hangup without restarting the call", async () => {
+    const send = vi.fn(async () => "");
+    const p = props({ onSendMessage: send });
+    const view = render(<AutoWorkspace {...p} />);
+    const input = screen.getByRole("textbox", { name: "よりに伝える" });
+    fireEvent.change(input, { target: { value: "対象は notes/meeting.md です" } });
+    for (const state of [
+      { status: "connecting" as const },
+      { status: "active" as const },
+      { status: "active" as const, microphoneMuted: true },
+    ]) {
+      view.rerender(<AutoWorkspace {...p} conversation={{ ...p.conversation, state }} />);
+      expect(screen.getByRole("textbox", { name: "よりに伝える" })).toBe(input);
+      expect((input as HTMLTextAreaElement).value).toBe("対象は notes/meeting.md です");
+      expect(screen.getByRole("button", { name: "会話を終了" })).toBeTruthy();
+      expect(screen.queryByRole("button", { name: "話しかける" })).toBeNull();
+      expect((screen.getByRole("button", { name: "伝える" }) as HTMLButtonElement).disabled).toBe(
+        state.status === "connecting",
+      );
+    }
+    fireEvent.click(screen.getByRole("button", { name: "伝える" }));
+    await waitFor(() =>
+      expect(send).toHaveBeenCalledExactlyOnceWith("対象は notes/meeting.md です"),
+    );
+    await waitFor(() => expect((input as HTMLTextAreaElement).value).toBe(""));
+    expect(screen.getByRole("log").textContent).toBe("あなた対象は notes/meeting.md です");
+    expect(screen.queryByText("返答")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "会話を終了" }));
+    expect(p.conversation.onEnd).toHaveBeenCalledOnce();
+    view.rerender(<AutoWorkspace {...p} />);
+    expect(screen.getByRole("textbox", { name: "よりに伝える" })).toBe(input);
+    expect(screen.getByRole("button", { name: "話しかける" })).toBeTruthy();
+    expect(p.conversation.onStart).not.toHaveBeenCalled();
+    expect(pauseAutonomy).not.toHaveBeenCalled();
   });
   it("keeps saved authority untouched and requires explicit normalized delegation of an AI draft", async () => {
     setStatus({ contract, phase: "paused" });
@@ -290,7 +331,7 @@ describe("AutoWorkspace", () => {
   it("keeps work running when leaving the view or ending voice, while Stop stays available during text work", async () => {
     setStatus({ contract, phase: "thinking" });
     const response = deferred<string>();
-    const p = props({ mode: "quiet", onSendMessage: vi.fn(() => response.promise) });
+    const p = props({ onSendMessage: vi.fn(() => response.promise) });
     const view = render(<AutoWorkspace {...p} />);
     fireEvent.change(screen.getByRole("textbox", { name: "よりに伝える" }), {
       target: { value: "進め方を相談したい" },
@@ -305,7 +346,7 @@ describe("AutoWorkspace", () => {
     );
     vi.mocked(pauseAutonomy).mockClear();
     const live = { ...p.conversation, state: { status: "active" as const } };
-    view.rerender(<AutoWorkspace {...p} mode="conversation" conversation={live} />);
+    view.rerender(<AutoWorkspace {...p} conversation={live} />);
     fireEvent.click(screen.getByRole("button", { name: "会話を終了" }));
     expect(live.onEnd).toHaveBeenCalledOnce();
     fireEvent.click(screen.getByRole("button", { name: "おまかせを閉じる" }));
@@ -451,7 +492,7 @@ describe("AutoWorkspace", () => {
   });
   it("does not submit text mid-composition and never shows the removed individual settings", async () => {
     const send = vi.fn(async () => "了解");
-    render(<AutoWorkspace {...props({ mode: "quiet", onSendMessage: send })} />);
+    render(<AutoWorkspace {...props({ onSendMessage: send })} />);
     const input = screen.getByRole("textbox", { name: "よりに伝える" });
     fireEvent.compositionStart(input);
     fireEvent.change(input, { target: { value: "整理" } });
@@ -463,5 +504,7 @@ describe("AutoWorkspace", () => {
     expect(screen.queryAllByRole("checkbox")).toHaveLength(0);
     expect(screen.queryAllByRole("spinbutton")).toHaveLength(0);
     expect(screen.queryAllByRole("radio")).toHaveLength(0);
+    expect(screen.queryByRole("button", { name: "話しながら" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "静かに" })).toBeNull();
   });
 });

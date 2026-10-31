@@ -190,6 +190,13 @@ export class CodexRealtimeClient implements LipSyncSource {
   private acceptRemoteSdp: ((sdp: string) => void) | null = null;
   private rejectRemoteSdp: ((reason: Error) => void) | null = null;
   private state: CodexRealtimeState = { status: "idle" };
+  private pendingUserText: { readonly attempt: number } | null = null;
+  private autonomyPreparation: {
+    readonly attempt: number;
+    readonly threadId: string;
+    readonly language: "ja" | "en";
+    readonly delivery: Promise<void>;
+  } | null = null;
   private stopping = false;
   private startAttemptEpoch = 0;
   private startRunEpoch = 0;
@@ -245,6 +252,104 @@ export class CodexRealtimeClient implements LipSyncSource {
 
   getStatus(): CodexRealtimeStatus {
     return this.state.status;
+  }
+
+  /** Passively prepare an existing call. Never starts a mic or requests speech. */
+  async prepareAutonomyConversation(language: "ja" | "en" = "ja"): Promise<void> {
+    if (this.state.status !== "active" || !this.threadId) return;
+    const attempt = this.startAttemptEpoch;
+    const threadId = this.threadId;
+    this.assertAutonomyOwner(attempt, threadId);
+    const previous = this.autonomyPreparation;
+    const sameOwner = previous?.attempt === attempt && previous.threadId === threadId;
+    let delivery = sameOwner && previous.language === language ? previous.delivery : null;
+    if (!delivery) {
+      delivery = (async () => {
+        // Serialize language changes so an earlier context cannot arrive after
+        // the latest one. Returning to a prior language installs it again.
+        if (sameOwner) await previous.delivery;
+        this.assertAutonomyOwner(attempt, threadId);
+        await this.request("thread/realtime/appendText", {
+          threadId,
+          role: "developer",
+          text:
+            "Host UI metadata only. Do not greet, speak, or start work because this context arrived. Apply it to the user's next request. " +
+            autonomyConversationContext(language),
+        });
+        this.assertAutonomyOwner(attempt, threadId);
+      })().catch(() => {
+        this.assertAutonomyOwner(attempt, threadId);
+        throw new Error(
+          language === "en"
+            ? "Could not prepare the Auto conversation. Reconnect voice before sending."
+            : "Autoの会話を準備できませんでした。音声を接続し直してください。",
+        );
+      });
+      // Keep failed attempts too: rendering, concurrent input, and opening Auto
+      // again must not silently retry context after uncertain delivery.
+      this.autonomyPreparation = { attempt, threadId, language, delivery };
+    }
+    await delivery;
+    this.assertAutonomyOwner(attempt, threadId);
+  }
+
+  /** User-authored supplements belong to the current Live conversation, not
+   * developer context or a second Main Agent turn. An ACK proves receipt only.
+   */
+  async appendUserText(text: string, language: "ja" | "en" = "ja"): Promise<void> {
+    const english = language === "en";
+    const prompt = text.trim();
+    if (!prompt || prompt.length > 8_000) {
+      throw new Error(
+        english
+          ? "Enter a message of up to 8,000 characters."
+          : "8,000文字以内で入力してください。",
+      );
+    }
+    if (this.state.status !== "active" || !this.threadId) {
+      throw new Error(
+        english
+          ? "Wait for the voice connection before sending."
+          : "音声の接続が完了してから送信してください。",
+      );
+    }
+    const attempt = this.startAttemptEpoch;
+    const threadId = this.threadId;
+    const selected = this.getPreferredThreadId();
+    if (selected !== null && selected !== threadId) {
+      throw new Error(
+        english ? "The conversation changed before sending." : "送信前に会話が切り替わりました。",
+      );
+    }
+    if (this.pendingUserText?.attempt === attempt) {
+      throw new Error(
+        english
+          ? "Wait for the previous message to finish sending."
+          : "前のメッセージの送信を待ってください。",
+      );
+    }
+    const delivery = { attempt };
+    this.pendingUserText = delivery;
+    try {
+      await this.prepareAutonomyConversation(language);
+      this.assertAutonomyOwner(attempt, threadId);
+      try {
+        // Codex CLI 0.166.0 generated ThreadRealtimeAppendTextParams explicitly
+        // accepts role=user. V3 appends conversation context; do not force speech.
+        await this.request("thread/realtime/appendText", { threadId, role: "user", text: prompt });
+        this.assertAutonomyOwner(attempt, threadId);
+      } catch {
+        // Delivery can have succeeded before a lost ACK or disconnect. Never
+        // retry this input as another Live message or as a Main Agent turn.
+        throw new Error(
+          english
+            ? "Message delivery could not be confirmed. Check the conversation before sending it again."
+            : "送信を確認できませんでした。再送する前に会話を確認してください。",
+        );
+      }
+    } finally {
+      if (this.pendingUserText === delivery) this.pendingUserText = null;
+    }
   }
 
   /** A prepared proposal may be mentioned only inside an already active conversation. */
@@ -322,17 +427,8 @@ export class CodexRealtimeClient implements LipSyncSource {
     }
     const attempt = this.startAttemptEpoch;
     const threadId = this.threadId;
-    const assertSetupOwner = () => {
-      this.assertAttemptOwner(attempt);
-      if (this.state.status !== "active" || this.threadId !== threadId) {
-        throw new StartAttemptCancelledError();
-      }
-    };
-    await this.request("thread/realtime/appendText", {
-      threadId,
-      role: "developer",
-      text: autonomyConversationContext(language),
-    });
+    const assertSetupOwner = () => this.assertAutonomyOwner(attempt, threadId);
+    await this.prepareAutonomyConversation(language);
     assertSetupOwner();
     // Codex's native speakable-text route is distinct from developer context.
     // A successful append ACK is not evidence that audio was produced or played.
@@ -349,11 +445,11 @@ export class CodexRealtimeClient implements LipSyncSource {
       throw new Error(
         english
           ? unsupported
-            ? "This Codex version could not send the opening question. Voice is still connected. Tell me what work you'd like to delegate, or continue in Quiet mode."
-            : "Could not confirm delivery of the opening question. Voice is still connected. Tell me what work you'd like to delegate, or continue in Quiet mode."
+            ? "This Codex version could not send the opening question. Voice is still connected. Tell me what work you'd like to delegate, or continue by text."
+            : "Could not confirm delivery of the opening question. Voice is still connected. Tell me what work you'd like to delegate, or continue by text."
           : unsupported
-            ? "このCodexでは最初の呼びかけを送れませんでした。音声会話は接続中です。このまま任せたい仕事を話しかけるか、静かにモードで続けてください。"
-            : "最初の呼びかけの送信を確認できませんでした。音声会話は接続中です。このまま任せたい仕事を話しかけるか、静かにモードで続けてください。",
+            ? "このCodexでは最初の呼びかけを送れませんでした。音声会話は接続中です。このまま任せたい仕事を話しかけるか、文字で続けてください。"
+            : "最初の呼びかけの送信を確認できませんでした。音声会話は接続中です。このまま任せたい仕事を話しかけるか、文字で続けてください。",
       );
     }
     assertSetupOwner();
@@ -1313,6 +1409,7 @@ export class CodexRealtimeClient implements LipSyncSource {
   }
 
   private disposeResources(finalMessage?: string): void {
+    this.autonomyPreparation = null;
     this.stateExpressionController?.cancelAll();
     this.stopRemoteSpeechObservation();
     this.rejectAllPending(new Error("Codex realtime conversation stopped"));
@@ -1357,6 +1454,17 @@ export class CodexRealtimeClient implements LipSyncSource {
     if (!this.isAttemptOwner(attempt) || (peer !== undefined && this.peer !== peer)) {
       throw new StartAttemptCancelledError();
     }
+  }
+
+  private assertAutonomyOwner(attempt: number, threadId: string): void {
+    this.assertAttemptOwner(attempt);
+    const selected = this.getPreferredThreadId();
+    if (
+      this.state.status !== "active" ||
+      this.threadId !== threadId ||
+      (selected !== null && selected !== threadId)
+    )
+      throw new StartAttemptCancelledError();
   }
 
   private invalidateAttempt(attempt?: number): void {

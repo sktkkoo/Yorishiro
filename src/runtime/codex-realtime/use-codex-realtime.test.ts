@@ -20,7 +20,55 @@ import {
 
 const ZERO_MOUTH: MouthValues = { aa: 0, ih: 0, ou: 0, ee: 0, oh: 0 };
 
-describe("autonomy voice setup", () => {
+describe("Auto conversation", () => {
+  it("prepares an already active call without starting, stopping, speaking or sending user text", async () => {
+    const { result, clients, sendAutonomyMessage, unmount } = setup([]);
+    await result.current.prepareAutonomyConversation();
+    expect(clients).toHaveLength(0);
+    await act(() => result.current.toggle());
+    await result.current.prepareAutonomyConversation();
+    expect(clients[0].prepareAutonomyConversation).not.toHaveBeenCalled();
+    act(() => clients[0].emit({ status: "active" }));
+    await result.current.prepareAutonomyConversation("en");
+    expect(clients[0].prepareAutonomyConversation).toHaveBeenCalledExactlyOnceWith("en");
+    expect(clients[0].start).toHaveBeenCalledTimes(1);
+    expect(clients[0].stop).not.toHaveBeenCalled();
+    expect(clients[0].requestAutonomyConversation).not.toHaveBeenCalled();
+    expect(clients[0].appendUserText).not.toHaveBeenCalled();
+    expect(sendAutonomyMessage).not.toHaveBeenCalled();
+    unmount();
+  });
+
+  it("rejects a passive preparation callback retained across a Main switch", async () => {
+    const { result, clients, rerender, unmount } = setup([]);
+    await act(() => result.current.toggle());
+    act(() => clients[0].emit({ status: "active" }));
+    const oldPrepare = result.current.prepareAutonomyConversation;
+    rerender({ sessionId: "new-main", available: true });
+    await expect(oldPrepare("en")).rejects.toThrow("changed before preparation");
+    expect(clients[0].prepareAutonomyConversation).not.toHaveBeenCalled();
+    unmount();
+  });
+
+  it("rejects a late passive preparation ACK after hangup", async () => {
+    const { result, clients, unmount } = setup([]);
+    await act(() => result.current.toggle());
+    act(() => clients[0].emit({ status: "active" }));
+    let acknowledge: () => void = () => {};
+    clients[0].prepareAutonomyConversation.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        acknowledge = resolve;
+      }),
+    );
+    const pending = result.current.prepareAutonomyConversation("en");
+    const rejection = expect(pending).rejects.toThrow("changed during preparation");
+    act(() => result.current.stop());
+    acknowledge();
+    await rejection;
+    expect(clients[0].requestAutonomyConversation).not.toHaveBeenCalled();
+    unmount();
+  });
+
   it("rejects callbacks retained across a Main session switch before sending or opening a mic", async () => {
     const { result, clients, sendAutonomyMessage, rerender, unmount } = setup([]);
     const oldSend = result.current.sendAutonomyMessage;
@@ -52,7 +100,7 @@ describe("autonomy voice setup", () => {
     const oldStart = result.current.requestAutonomyConversation;
     rerender({ sessionId: "main", available: false });
     await expect(oldSend("message", "en")).rejects.toThrow("unavailable");
-    await expect(oldStart("en")).rejects.toThrow("Codex voice");
+    await expect(oldStart("en")).rejects.toThrow("requires Codex");
     expect(sendAutonomyMessage).not.toHaveBeenCalled();
     expect(clients).toHaveLength(0);
     unmount();
@@ -62,7 +110,7 @@ describe("autonomy voice setup", () => {
     const { result, clients, unmount } = setup([]);
     const oldStart = result.current.requestAutonomyConversation;
     unmount();
-    await expect(oldStart("en")).rejects.toThrow("Codex voice");
+    await expect(oldStart("en")).rejects.toThrow("requires Codex");
     expect(clients).toHaveLength(0);
   });
 
@@ -73,6 +121,112 @@ describe("autonomy voice setup", () => {
     );
     expect(sendAutonomyMessage).toHaveBeenCalledExactlyOnceWith("どこまで進んだ？", "en");
     expect(clients).toHaveLength(0);
+    unmount();
+  });
+
+  it("sends text supplements to the active Live conversation without a second Main turn", async () => {
+    const { result, clients, sendAutonomyMessage, unmount } = setup([]);
+    await act(() => result.current.toggle());
+    act(() => clients[0].emit({ status: "active" }));
+    const text = "Reference: https://example.com/brief and src/App.tsx";
+    await expect(result.current.sendAutonomyMessage(text, "en")).resolves.toBe("");
+    expect(clients[0].appendUserText).toHaveBeenCalledExactlyOnceWith(text, "en");
+    expect(sendAutonomyMessage).not.toHaveBeenCalled();
+    expect(clients[0].start).toHaveBeenCalledTimes(1);
+    expect(clients[0].stop).not.toHaveBeenCalled();
+    expect(clients[0].requestAutonomyConversation).not.toHaveBeenCalled();
+    unmount();
+  });
+
+  it("keeps text supplements in Live while the microphone is muted", async () => {
+    const { result, clients, sendAutonomyMessage, unmount } = setup([]);
+    await act(() => result.current.toggle());
+    act(() => clients[0].emit({ status: "active" }));
+    act(() => result.current.setMicrophoneMuted(true));
+    await expect(result.current.sendAutonomyMessage("このファイルです")).resolves.toBe("");
+    expect(clients[0].appendUserText).toHaveBeenCalledExactlyOnceWith("このファイルです", "ja");
+    expect(clients[0].setMicrophoneMuted).toHaveBeenCalledExactlyOnceWith(true);
+    expect(result.current.state.microphoneMuted).toBe(true);
+    expect(sendAutonomyMessage).not.toHaveBeenCalled();
+    unmount();
+  });
+
+  it("rejects text during connection without sending it through either route", async () => {
+    const { result, clients, sendAutonomyMessage, unmount } = setup([]);
+    await act(() => result.current.toggle());
+    await expect(result.current.sendAutonomyMessage("keep this draft", "en")).rejects.toThrow(
+      "Wait for the voice connection",
+    );
+    expect(clients[0].appendUserText).not.toHaveBeenCalled();
+    expect(sendAutonomyMessage).not.toHaveBeenCalled();
+    unmount();
+  });
+
+  it("never retries an uncertain Live supplement as a Main turn", async () => {
+    const { result, clients, sendAutonomyMessage, unmount } = setup([]);
+    await act(() => result.current.toggle());
+    act(() => clients[0].emit({ status: "active" }));
+    clients[0].appendUserText.mockRejectedValueOnce(new Error("Delivery could not be confirmed"));
+    await expect(result.current.sendAutonomyMessage("supplement", "en")).rejects.toThrow(
+      "Delivery could not be confirmed",
+    );
+    expect(clients[0].appendUserText).toHaveBeenCalledTimes(1);
+    expect(sendAutonomyMessage).not.toHaveBeenCalled();
+    unmount();
+  });
+
+  it("rejects a Live ACK after hangup without resending, then routes new idle input to Main", async () => {
+    const { result, clients, sendAutonomyMessage, unmount } = setup([]);
+    await act(() => result.current.toggle());
+    act(() => clients[0].emit({ status: "active" }));
+    let acknowledge: () => void = () => {};
+    clients[0].appendUserText.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        acknowledge = resolve;
+      }),
+    );
+    const pending = result.current.sendAutonomyMessage("supplement", "en");
+    const rejection = expect(pending).rejects.toThrow("Check delivery before sending again");
+    act(() => result.current.stop());
+    acknowledge();
+    await rejection;
+    expect(sendAutonomyMessage).not.toHaveBeenCalled();
+    await expect(result.current.sendAutonomyMessage("new message", "en")).resolves.toBe(
+      "Current work",
+    );
+    expect(sendAutonomyMessage).toHaveBeenCalledExactlyOnceWith("new message", "en");
+    unmount();
+  });
+
+  it("rejects a Live ACK from a replaced Main session without falling back", async () => {
+    const { result, clients, sendAutonomyMessage, rerender, unmount } = setup([]);
+    await act(() => result.current.toggle());
+    act(() => clients[0].emit({ status: "active" }));
+    let acknowledge: () => void = () => {};
+    clients[0].appendUserText.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        acknowledge = resolve;
+      }),
+    );
+    const pending = result.current.sendAutonomyMessage("supplement", "en");
+    const rejection = expect(pending).rejects.toThrow("Check delivery before sending again");
+    rerender({ sessionId: "new-main", available: true });
+    acknowledge();
+    await rejection;
+    expect(sendAutonomyMessage).not.toHaveBeenCalled();
+    unmount();
+  });
+
+  it("uses the Main tracker for new text after a Live connection error", async () => {
+    const { result, clients, sendAutonomyMessage, unmount } = setup([]);
+    await act(() => result.current.toggle());
+    act(() => clients[0].emit({ status: "error", error: "connection lost" }));
+    await expect(result.current.sendAutonomyMessage("new request", "en")).resolves.toBe(
+      "Current work",
+    );
+    expect(clients[0].appendUserText).not.toHaveBeenCalled();
+    expect(sendAutonomyMessage).toHaveBeenCalledExactlyOnceWith("new request", "en");
+    expect(clients[0].start).toHaveBeenCalledTimes(1);
     unmount();
   });
 
@@ -129,7 +283,7 @@ describe("autonomy voice setup", () => {
     expect(clients[0].stop).not.toHaveBeenCalled();
     rerender({ sessionId: "main", available: false });
     await expect(result.current.requestAutonomyConversation("en")).rejects.toThrow(
-      "Voice setup requires Codex voice",
+      "Voice conversation requires Codex",
     );
     expect(clients[0].requestAutonomyConversation).not.toHaveBeenCalled();
   });
@@ -357,6 +511,8 @@ function deferred(): {
 
 class FakeClient implements CodexRealtimeClientLike {
   readonly requestAutonomyConversation = vi.fn(async () => {});
+  readonly prepareAutonomyConversation = vi.fn(async (_language?: "ja" | "en") => {});
+  readonly appendUserText = vi.fn(async (_text: string, _language?: "ja" | "en") => {});
   readonly notifyAutonomyWorkReview = vi.fn(
     async (_review: { id: string; goal: string; reason: string; summary: string }) => {},
   );

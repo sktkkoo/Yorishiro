@@ -17,7 +17,7 @@ Pack 管理、event dispatch、module registry、singleton service。core primit
 | `ambient-audio/` | Scene Pack の `ambient` 宣言を Howler.js で再生する engine と ScenePackRegistry への配線 | `index.ts` | [README](./ambient-audio/README.md) |
 | `claude-screen-observation.ts` / `use-claude-screen-sharing.ts` | 明示共有の最新画像を現在のClaude会話に限定して公開し、会話変更・停止で失効 | `ClaudeScreenObservationTransport` / `useClaudeScreenSharing` | [claude-screen-sharing.md](../../docs/decisions/claude-screen-sharing.md) |
 | `sharing-delivery.ts` | 会話へ添付済みと必要時に取得可能な状態を区別するUI契約 | `SharingDeliveryMode` | inline / auxiliary controls・previewで共通 |
-| `codex-realtime/` | Codex TUI と同じ Main thread に WebRTC 音声を接続し、remote audio を lip sync source にする。Auto の文字相談も同じ thread へ送る | `index.ts` | experimental、host-owned UI。音声の停止と作業の停止は独立 |
+| `codex-realtime/` | Codex TUI と同じ Main thread に WebRTC 音声を接続し、remote audio を lip sync source にする。Auto の文字相談は音声接続中も同じ会話へ送る | `index.ts` | experimental、host-owned UI。音声状態から操作を表示し、通信モードは保存しない。音声の終了・画面の開閉・作業の停止は独立 |
 | `event-bus/` | Trigger dispatch engine — 環境 event → trigger match → reaction emit | `event-bus.ts` | Twin-trigger / Synthetic event の dispatch loop |
 | `persona-registry/` | Persona の state 管理 — **single-active**（複数 register 可、外に出すのは 1 個） | `persona-registry-impl.ts` | [decisions/persona-multi-instance.md](../../docs/decisions/persona-multi-instance.md) |
 | `persona-reflex/` | Active persona の reflex（customTriggers + responses）を EventBus に bridge | `persona-reflex-dispatcher.ts` | [decisions/motion-effect-trigger-axes.md](../../docs/decisions/motion-effect-trigger-axes.md) |

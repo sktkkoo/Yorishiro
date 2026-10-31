@@ -2,9 +2,7 @@ export const AUTO_WORKSPACE_COPY = {
   ja: {
     title: "おまかせ",
     close: "おまかせを閉じる",
-    conversation: "話しながら",
-    quiet: "静かに",
-    mode: "過ごし方",
+    voice: "音声対話",
     history: "作業履歴",
     current: "いまの仕事",
     empty: "まだ任せた仕事はありません",
@@ -77,9 +75,7 @@ export const AUTO_WORKSPACE_COPY = {
   en: {
     title: "Auto",
     close: "Close Auto",
-    conversation: "Talk together",
-    quiet: "Quiet",
-    mode: "Interaction mode",
+    voice: "Voice conversation",
     history: "Work history",
     current: "Current work",
     empty: "No work delegated yet",

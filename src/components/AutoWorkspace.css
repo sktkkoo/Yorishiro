@@ -81,22 +81,6 @@
   margin-right: auto;
   white-space: nowrap;
 }
-.auto-mode {
-  display: flex;
-  padding: 2px;
-  gap: 2px;
-  border: 1px solid var(--auto-line);
-  border-radius: 7px;
-}
-.auto-mode button {
-  border: 0;
-  font-size: 11px;
-  min-height: 29px;
-}
-.auto-mode button[aria-pressed="true"] {
-  background: var(--yorishiro-button-bg);
-  color: var(--yorishiro-fg);
-}
 .auto-header .auto-history-button {
   border: 0;
   font-size: 11px;
@@ -422,14 +406,6 @@
   overflow-wrap: anywhere;
   text-shadow: 0 1px 5px var(--yorishiro-bg);
 }
-.auto-call-error {
-  margin-bottom: 12px;
-  padding: 8px;
-  border-radius: 5px;
-  background: var(--yorishiro-panel-bg);
-  pointer-events: auto;
-  overflow-wrap: anywhere;
-}
 .auto-sr-only {
   position: absolute;
   width: 1px;
@@ -552,9 +528,6 @@
   }
   .auto-content {
     padding: 18px 20px 50px;
-  }
-  .auto-mode {
-    order: 2;
   }
   .auto-delegate-row,
   .auto-current-heading {

@@ -28,7 +28,7 @@ export class VoicePlaybackLeaseSync {
     await this.publish();
   }
 
-  /** Temporary host modes cannot release another audio owner's suppression. */
+  /** Host surfaces cannot release another audio owner's suppression. */
   async setSuppressed(owner: string, suppressed: boolean): Promise<void> {
     if (suppressed) this.suppressions.add(owner);
     else this.suppressions.delete(owner);

@@ -1054,11 +1054,6 @@ function App() {
   const [cwd, setCwd] = useState<string | null>(() => localStorage.getItem(CWD_STORAGE_KEY));
   const [pendingAutoConversation] = useState(() => consumePendingAutoConversation());
   const [autoWorkspaceOpen, setAutoWorkspaceOpen] = useState(pendingAutoConversation);
-  const [autoInteractionMode, setAutoInteractionMode] = useState<"conversation" | "quiet">(() =>
-    !pendingAutoConversation && localStorage.getItem("yorishiro:auto-interaction") === "quiet"
-      ? "quiet"
-      : "conversation",
-  );
   const [autoAudioError, setAutoAudioError] = useState<string | null>(null);
   const [autoConversationPhase, setAutoConversationPhase] =
     useState<StateExpressionConversationPhase>("disconnected");
@@ -4185,6 +4180,7 @@ function App() {
     state: codexRealtimeState,
     stop: stopCodexRealtime,
     toggle: toggleCodexRealtime,
+    prepareAutonomyConversation,
     requestAutonomyConversation,
     sendAutonomyMessage,
     notifyAutonomyWorkReview,
@@ -4300,7 +4296,6 @@ function App() {
       getUiRegistry().setActiveUi(null);
       applyPresenceLevelFromApp("default", "settings");
       setAutoWorkspaceOpen(true);
-      setAutoInteractionMode("conversation");
       void requestAutonomyConversation(appLanguageRef.current.resolved).catch((error: unknown) => {
         setAutoAudioError(error instanceof Error ? error.message : String(error));
       });
@@ -4323,17 +4318,6 @@ function App() {
   const handleToggleVoice = useCallback(async () => {
     if (!mainAgentAvailable) return;
     if (isConversationTransitionActive(mainConversationTransitionGateRef.current)) return;
-    if (autoWorkspaceOpen && autoInteractionMode === "quiet") {
-      setAutoInteractionMode("conversation");
-      try {
-        localStorage.setItem("yorishiro:auto-interaction", "conversation");
-      } catch {
-        /* Optional preference. */
-      }
-      void voicePlaybackLeaseSync.setSuppressed("auto-quiet", false).catch((error: unknown) => {
-        setAutoAudioError(error instanceof Error ? error.message : String(error));
-      });
-    }
     if (voiceReconnectPending) {
       stopCodexRealtime();
       setVoiceReconnectPending(false);
@@ -4367,49 +4351,36 @@ function App() {
     toggleCodexRealtime,
     voiceReconnectPending,
     autoWorkspaceOpen,
-    autoInteractionMode,
-    voicePlaybackLeaseSync,
     codexRealtimeState.status,
     requestAutonomyConversation,
   ]);
 
-  const handleAutoModeChange = useCallback(
-    (mode: "conversation" | "quiet") => {
-      setAutoAudioError(null);
-      setAutoInteractionMode(mode);
-      try {
-        localStorage.setItem("yorishiro:auto-interaction", mode);
-      } catch {
-        /* Optional preference. */
-      }
-      // Claim quiet ownership synchronously before stop restores fallback playback.
-      void voicePlaybackLeaseSync
-        .setSuppressed("auto-quiet", mode === "quiet")
-        .catch((error: unknown) => {
-          setAutoAudioError(error instanceof Error ? error.message : String(error));
-        });
-      if (mode === "quiet") {
-        pendingAutoVoiceStartRef.current = false;
-        pendingRealtimeStartRef.current = false;
-        setVoiceReconnectPending(false);
-        stopCodexRealtime();
-      }
-    },
-    [stopCodexRealtime, voicePlaybackLeaseSync],
-  );
+  useEffect(() => {
+    // Auto never falls back to unsolicited TTS. GPT Live owns its separate
+    // remote audio; opening Auto and ending a call do not change that owner.
+    void voicePlaybackLeaseSync
+      .setSuppressed("auto-workspace", autoWorkspaceOpen)
+      .catch((error: unknown) => {
+        setAutoAudioError(error instanceof Error ? error.message : String(error));
+      });
+  }, [autoWorkspaceOpen, voicePlaybackLeaseSync]);
 
   useEffect(() => {
-    const quiet = autoWorkspaceOpen && autoInteractionMode === "quiet";
-    void voicePlaybackLeaseSync.setSuppressed("auto-quiet", quiet).catch((error: unknown) => {
-      setAutoAudioError(error instanceof Error ? error.message : String(error));
+    if (!autoWorkspaceOpen || codexRealtimeState.status !== "active") return;
+    let cancelled = false;
+    // An existing call receives Auto context without restarting or greeting.
+    void prepareAutonomyConversation(appLanguage.resolved).catch((error: unknown) => {
+      if (!cancelled) setAutoAudioError(error instanceof Error ? error.message : String(error));
     });
-    if (quiet) {
-      pendingAutoVoiceStartRef.current = false;
-      pendingRealtimeStartRef.current = false;
-      setVoiceReconnectPending(false);
-      stopCodexRealtime();
-    }
-  }, [autoWorkspaceOpen, autoInteractionMode, stopCodexRealtime, voicePlaybackLeaseSync]);
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    autoWorkspaceOpen,
+    codexRealtimeState.status,
+    appLanguage.resolved,
+    prepareAutonomyConversation,
+  ]);
 
   const handleAutoVoiceStart = useCallback(async () => {
     setAutoAudioError(null);
@@ -4900,19 +4871,7 @@ function App() {
     setQuickChatOpen(false);
     applyPresenceLevelFromApp("default", "settings");
     setAutoWorkspaceOpen(true);
-    if (autoInteractionMode === "conversation" && codexRealtimeState.status === "active") {
-      void requestAutonomyConversation(appLanguageRef.current.resolved).catch((error: unknown) => {
-        setAutoAudioError(error instanceof Error ? error.message : String(error));
-      });
-    }
-  }, [
-    autoWorkspaceOpen,
-    autoInteractionMode,
-    codexRealtimeState.status,
-    requestAutonomyConversation,
-    applyPresenceLevelFromApp,
-    handleCloseAutoWorkspace,
-  ]);
+  }, [autoWorkspaceOpen, applyPresenceLevelFromApp, handleCloseAutoWorkspace]);
 
   useEffect(() => {
     if (activeUiId !== null) setAutoWorkspaceOpen(false);
@@ -6397,8 +6356,6 @@ function App() {
         language={appLanguage.resolved}
         cwd={cwd}
         onClose={handleCloseAutoWorkspace}
-        mode={autoInteractionMode}
-        onModeChange={handleAutoModeChange}
         conversation={{
           available: voiceEntryAvailable,
           state: {
