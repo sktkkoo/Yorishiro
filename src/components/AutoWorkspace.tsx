@@ -1,5 +1,5 @@
 import { open as choosePath } from "@tauri-apps/plugin-dialog";
-import { openPath } from "@tauri-apps/plugin-opener";
+import { openPath, openUrl } from "@tauri-apps/plugin-opener";
 import {
   ArrowLeft,
   ArrowUp,
@@ -72,6 +72,18 @@ const folderName = (path: string) =>
     .pop() || path;
 const localPath = (path?: string) =>
   Boolean(path && !path.includes("\0") && (/^\//.test(path) || /^[A-Za-z]:[\\/]/.test(path)));
+
+function pullRequestLink(value?: string): string | null {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    return ["https:", "http:"].includes(url.protocol) && !url.username && !url.password
+      ? url.href
+      : null;
+  } catch {
+    return null;
+  }
+}
 
 /** Host workspace. Subscriptions and in-progress conversations outlive its visibility. */
 export function AutoWorkspace({
@@ -326,6 +338,7 @@ export function AutoWorkspace({
     }[run.status];
   }
   function renderRun(run: AutonomyRun) {
+    const pullRequestUrl = pullRequestLink(run.pullRequestUrl);
     const decisions = (status?.pendingActions ?? []).filter(
       (action) =>
         action.runId === run.id && !["pending", "approved", "executing"].includes(action.status),
@@ -361,6 +374,16 @@ export function AutoWorkspace({
           </details>
         )}
         <div className="auto-actions">
+          {pullRequestUrl && (
+            <button
+              type="button"
+              title={pullRequestUrl}
+              disabled={busy.has(`pr:${run.id}`)}
+              onClick={() => void perform(`pr:${run.id}`, () => openUrl(pullRequestUrl))}
+            >
+              {copy.openPullRequest}
+            </button>
+          )}
           {localPath(run.developmentPath) && (
             <button
               type="button"

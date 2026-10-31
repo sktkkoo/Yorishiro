@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { open as choosePath } from "@tauri-apps/plugin-dialog";
-import { openPath } from "@tauri-apps/plugin-opener";
+import { openPath, openUrl } from "@tauri-apps/plugin-opener";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -133,6 +133,7 @@ beforeEach(() => {
     approveAutonomyAction,
     declineAutonomyAction,
     openPath,
+    openUrl,
   ])
     vi.mocked(fn).mockResolvedValue(undefined);
   vi.mocked(choosePath).mockResolvedValue("/work/chosen");
@@ -640,6 +641,75 @@ describe("AutoWorkspace", () => {
     fireEvent.click(screen.getByRole("button", { name: "元に戻す" }));
     expect(await screen.findByRole("alert")).toHaveProperty("textContent", "変更が競合しています");
     expect(screen.queryByText("復元済み")).toBeNull();
+  });
+  it.each([
+    "ja",
+    "en",
+  ] as const)("opens the saved PR from history in %s and preserves opening errors", async (language) => {
+    const pullRequestUrl = "https://github.com/example/project/pull/42";
+    setStatus({
+      runs: [
+        {
+          id: "published",
+          startedAt: 1,
+          finishedAt: 2,
+          status: "completed",
+          summary: "Published change",
+          reason: "",
+          changedPaths: [],
+          canUndo: false,
+          pullRequestUrl,
+        },
+      ],
+    });
+    vi.mocked(openUrl).mockRejectedValueOnce(new Error("Could not open browser"));
+    render(<AutoWorkspace {...props({ language })} />);
+    fireEvent.click(
+      screen.getByRole("button", { name: language === "ja" ? "作業履歴" : "Work history" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Published change/ }));
+    const button = screen.getByRole("button", {
+      name: language === "ja" ? "PRを開く" : "Open pull request",
+    }) as HTMLButtonElement;
+    expect(button.title).toBe(pullRequestUrl);
+    expect(openUrl).not.toHaveBeenCalled();
+    fireEvent.click(button);
+    await waitFor(() => expect(openUrl).toHaveBeenCalledExactlyOnceWith(pullRequestUrl));
+    expect(await screen.findByRole("alert")).toHaveProperty(
+      "textContent",
+      "Could not open browser",
+    );
+    expect(screen.getByText("Published change")).toBeTruthy();
+    fireEvent.click(button);
+    await waitFor(() => expect(openUrl).toHaveBeenCalledTimes(2));
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+  it.each([
+    undefined,
+    "",
+    "not a URL",
+    "javascript:alert(1)",
+    "file:///work/result",
+    "https://user:secret@example.test/pr/1",
+  ])("does not offer an invalid or unsafe PR URL: %s", (pullRequestUrl) => {
+    setStatus({
+      runs: [
+        {
+          id: "published",
+          startedAt: 1,
+          finishedAt: 2,
+          status: "completed",
+          summary: "Published change",
+          reason: "",
+          changedPaths: [],
+          canUndo: false,
+          pullRequestUrl,
+        },
+      ],
+    });
+    render(<AutoWorkspace {...props()} />);
+    expect(screen.queryByRole("button", { name: "PRを開く" })).toBeNull();
+    expect(openUrl).not.toHaveBeenCalled();
   });
   it("does not submit text mid-composition and never shows the removed individual settings", async () => {
     const send = vi.fn(async () => "了解");
