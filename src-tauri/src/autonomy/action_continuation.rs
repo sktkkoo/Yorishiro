@@ -287,7 +287,7 @@ fn finish(
                     .contract
                     .enabled
                     .then_some(now.saturating_add(claim.contract.interval_minutes * 60_000));
-                super::action_execution::complete_daily_work(&mut next, now);
+                super::action_execution::complete_goal(&mut next, now);
             }
             Ok(goal_handoff::Decision::Action(_)) => {
                 next.phase = "awaitingAction".into();
@@ -482,6 +482,69 @@ mod tests {
         assert!(runtime.status.next_run_at.is_none());
         assert!(runtime.active_run_id.is_none());
         assert_eq!(runtime.status.runs[1].status, "completed");
+    }
+
+    #[test]
+    fn completed_goal_assessment_stops_automatic_work_but_preserves_daily_review() {
+        for daily in [false, true] {
+            let (state, _directory, _) = fixture();
+            if daily {
+                let mut runtime = super::super::lock(&state).unwrap();
+                let scope = runtime.status.contract.as_mut().unwrap();
+                scope.review_mode = super::super::ReviewMode::Daily;
+                let fingerprint = super::super::actions::scope_fingerprint(scope).unwrap();
+                runtime.status.pending_actions[0].continuation_scope = Some(fingerprint);
+            }
+            let Claimed::Assessment(claimed) =
+                claim(&mut super::super::lock(&state).unwrap(), false, |_| Ok(())).unwrap()
+            else {
+                panic!("expected assessment");
+            };
+            assert!(!finish(
+                &state,
+                &claimed,
+                Ok(goal_handoff::Decision::Complete)
+            ));
+            let runtime = super::super::lock(&state).unwrap();
+            assert_eq!(runtime.status.contract.as_ref().unwrap().enabled, daily);
+            assert_eq!(
+                runtime.status.phase,
+                if daily { "idle" } else { "completed" }
+            );
+            assert_eq!(runtime.status.next_run_at.is_some(), daily);
+            if daily {
+                assert!(runtime.status.daily_work.as_ref().unwrap().complete);
+            }
+            assert_eq!(runtime.status.pending_actions[0].goal_complete, Some(true));
+            assert!(!runtime.status.pending_actions[0].continuation_pending);
+            assert_eq!(runtime.status.runs.len(), 2);
+            assert_eq!(runtime.status.runs[1].status, "completed");
+            assert!(runtime.active_run_id.is_none());
+        }
+    }
+
+    #[test]
+    fn late_completion_cannot_disable_a_replacement_scope() {
+        let (state, _directory, _) = fixture();
+        let Claimed::Assessment(claimed) =
+            claim(&mut super::super::lock(&state).unwrap(), false, |_| Ok(())).unwrap()
+        else {
+            panic!("expected assessment");
+        };
+        let mut replacement = claimed.contract.clone();
+        replacement.goal = "Prepare a different result".into();
+        super::super::save_contract(&state, replacement).unwrap();
+        assert!(!finish(
+            &state,
+            &claimed,
+            Ok(goal_handoff::Decision::Complete)
+        ));
+        let runtime = super::super::lock(&state).unwrap();
+        let scope = runtime.status.contract.as_ref().unwrap();
+        assert_eq!(scope.goal, "Prepare a different result");
+        assert!(scope.enabled);
+        assert!(runtime.status.next_run_at.is_some());
+        assert_ne!(runtime.status.phase, "completed");
     }
 
     #[test]

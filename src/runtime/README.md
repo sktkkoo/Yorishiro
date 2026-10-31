@@ -11,13 +11,13 @@ Pack 管理、event dispatch、module registry、singleton service。core primit
 | Module | 責務 | Entry | 備考 |
 |---|---|---|---|
 | `agent-setup.ts` | 登録済み terminal agent の実行ファイル検出、利用可能な agent の自動選択、公式導入リンク | `detectInstalledAgents` / `resolveAgentStartup` | [agent-onboarding.md](../../docs/decisions/agent-onboarding.md) |
-| `autonomy/` | 合意済みの文書作業の自動起動、状態照会、停止・復元・設定のhost bridge | `client.ts` | [autonomous-document-work.md](../../docs/decisions/autonomous-document-work.md) |
+| `autonomy/` | Auto workspace の共有依頼案、明示委任、状態照会、起動、停止・復元、操作の確認を扱う host bridge | `client.ts` / `draft-editor.ts` | [実行境界](../../docs/decisions/autonomous-document-work.md)、[Auto workspace](../../docs/decisions/auto-workspace.md)。状態購読は画面を閉じても維持する |
 | `agent-setup-controller.ts` | 初回 health check の選択待ち、独立した導入進捗、ウィンドウ復帰時の再検出・選択保存・shell での続行 | `AgentSetupController` | host-owned store。導入完了だけでは agent を起動しない |
 | `agent-install.ts` | 公式 installer を実行する Tauri command と main window 宛ての進捗 event の bridge | `installTerminalAgent` / `listenAgentInstallOutput` | 明示的な install 操作からのみ呼ぶ |
 | `ambient-audio/` | Scene Pack の `ambient` 宣言を Howler.js で再生する engine と ScenePackRegistry への配線 | `index.ts` | [README](./ambient-audio/README.md) |
 | `claude-screen-observation.ts` / `use-claude-screen-sharing.ts` | 明示共有の最新画像を現在のClaude会話に限定して公開し、会話変更・停止で失効 | `ClaudeScreenObservationTransport` / `useClaudeScreenSharing` | [claude-screen-sharing.md](../../docs/decisions/claude-screen-sharing.md) |
 | `sharing-delivery.ts` | 会話へ添付済みと必要時に取得可能な状態を区別するUI契約 | `SharingDeliveryMode` | inline / auxiliary controls・previewで共通 |
-| `codex-realtime/` | Codex TUI と同じ app-server thread に WebRTC 音声を接続し、remote audio を lip sync source にする | `index.ts` | experimental、host-owned UI |
+| `codex-realtime/` | Codex TUI と同じ Main thread に WebRTC 音声を接続し、remote audio を lip sync source にする。Auto の文字相談も同じ thread へ送る | `index.ts` | experimental、host-owned UI。音声の停止と作業の停止は独立 |
 | `event-bus/` | Trigger dispatch engine — 環境 event → trigger match → reaction emit | `event-bus.ts` | Twin-trigger / Synthetic event の dispatch loop |
 | `persona-registry/` | Persona の state 管理 — **single-active**（複数 register 可、外に出すのは 1 個） | `persona-registry-impl.ts` | [decisions/persona-multi-instance.md](../../docs/decisions/persona-multi-instance.md) |
 | `persona-reflex/` | Active persona の reflex（customTriggers + responses）を EventBus に bridge | `persona-reflex-dispatcher.ts` | [decisions/motion-effect-trigger-axes.md](../../docs/decisions/motion-effect-trigger-axes.md) |

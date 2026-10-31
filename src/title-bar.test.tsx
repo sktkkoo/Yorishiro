@@ -41,15 +41,21 @@ function renderTitleBar(overrides: Partial<Parameters<typeof TitleBar>[0]> = {})
 }
 
 describe("TitleBar View Mode picker", () => {
-  it("places the autonomous-work control directly after screen sharing", () => {
+  it("opens the unified Auto workspace and exposes its selected state", () => {
+    const toggle = vi.fn();
     renderTitleBar({
       screenSharingControl: <button type="button">Screen sharing</button>,
-      autonomyControl: <button type="button">Autonomous work</button>,
+      onToggleAutoMode: toggle,
+      autoModeActive: true,
+      autoModePendingCount: 2,
     });
     const sharing = screen.getByRole("button", { name: "Screen sharing" });
-    expect(sharing.nextElementSibling).toBe(
-      screen.getByRole("button", { name: "Autonomous work" }),
-    );
+    const auto = screen.getByRole("button", { name: "Auto" });
+    expect(sharing.nextElementSibling).toBe(auto);
+    expect(auto.getAttribute("aria-pressed")).toBe("true");
+    expect(auto.textContent).toContain("2");
+    fireEvent.click(auto);
+    expect(toggle).toHaveBeenCalledOnce();
   });
 
   it("exposes active state and selects a mode in two clicks", () => {

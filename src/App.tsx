@@ -98,7 +98,7 @@ import {
 import { CameraPreview } from "./camera-preview";
 import CharacterSurface from "./character-surface";
 import { AgentSetupDialog } from "./components/AgentSetupDialog";
-import { AutonomyPanel } from "./components/AutonomyPanel";
+import { AutoWorkspace } from "./components/AutoWorkspace";
 import { QuickChatInput, QuickVoiceIndicator } from "./components/QuickChatInput";
 import { RestoreConfirmDialog } from "./components/RestoreConfirmDialog";
 import {
@@ -145,7 +145,10 @@ import {
 import { useReloadCurtain } from "./reload-curtain";
 import { hasSavedAgentChoice } from "./runtime/agent-setup";
 import { AgentSetupController } from "./runtime/agent-setup-controller";
-import { createBodyStateExpressionAdapter } from "./runtime/agent-state-expression";
+import {
+  createBodyStateExpressionAdapter,
+  type StateExpressionConversationPhase,
+} from "./runtime/agent-state-expression";
 import { createVoiceStateExpressionBridge } from "./runtime/agent-state-expression/voice-state-expression-bridge";
 import { type AmbientAudioRuntime, initAmbientAudio } from "./runtime/ambient-audio";
 import {
@@ -168,10 +171,10 @@ import {
   startToolAttentionProducer,
 } from "./runtime/attention-producers";
 import { getAttentionRuntime } from "./runtime/attention-runtime";
+import { useAutonomyStatus } from "./runtime/autonomy/client";
 import {
   AUTONOMY_CONFIRMATION_AVAILABLE,
   AUTONOMY_WORK_REVIEW_AVAILABLE,
-  installAutonomyVoiceSetupBridge,
   readAutonomyConfirmationNotice,
   readAutonomyWorkReviewNotice,
 } from "./runtime/autonomy/voice-setup";
@@ -185,8 +188,10 @@ import { useCodexRealtime } from "./runtime/codex-realtime/use-codex-realtime";
 import { useScreenPointerSettings } from "./runtime/codex-realtime/use-screen-pointer-settings";
 import { useScreenSharing } from "./runtime/codex-realtime/use-screen-sharing";
 import {
+  consumePendingAutoConversation,
   consumePendingRealtimeStart,
   isVoiceEntryAvailable,
+  markPendingAutoConversation,
   markPendingRealtimeStart,
   resolveVoiceEntryAction,
 } from "./runtime/codex-realtime/voice-entry";
@@ -1047,6 +1052,19 @@ function App() {
   // 詳細: src/runtime/README.md §HMR と singleton
 
   const [cwd, setCwd] = useState<string | null>(() => localStorage.getItem(CWD_STORAGE_KEY));
+  const [pendingAutoConversation] = useState(() => consumePendingAutoConversation());
+  const [autoWorkspaceOpen, setAutoWorkspaceOpen] = useState(pendingAutoConversation);
+  const [autoInteractionMode, setAutoInteractionMode] = useState<"conversation" | "quiet">(() =>
+    !pendingAutoConversation && localStorage.getItem("yorishiro:auto-interaction") === "quiet"
+      ? "quiet"
+      : "conversation",
+  );
+  const [autoAudioError, setAutoAudioError] = useState<string | null>(null);
+  const [autoConversationPhase, setAutoConversationPhase] =
+    useState<StateExpressionConversationPhase>("disconnected");
+  const pendingAutoVoiceStartRef = useRef(pendingAutoConversation);
+  // Background work and approval notifications outlive the workspace surface.
+  const autoWorkStatus = useAutonomyStatus();
   const [homeDir, setHomeDir] = useState<string | null>(null);
   // Persona resume gate（session-persona-gate.ts）の判定結果。boot Step 2 が
   // isUserLayerReady より先に書き、session restore effect が respawn mode と
@@ -4152,16 +4170,23 @@ function App() {
   const applyRealtimeLipSyncSource = useCallback((source: LipSyncSource) => {
     bodyRef.current?.setLipSyncSource(source);
   }, []);
-  const realtimeStateExpressionCallbacks = useMemo(
-    () => createBodyStateExpressionAdapter(() => bodyRef.current),
-    [],
-  );
+  const realtimeStateExpressionCallbacks = useMemo(() => {
+    const bodyAdapter = createBodyStateExpressionAdapter(() => bodyRef.current);
+    return {
+      ...bodyAdapter,
+      onConversationPhaseChange: (phase: StateExpressionConversationPhase) => {
+        bodyAdapter.onConversationPhaseChange?.(phase);
+        setAutoConversationPhase(phase);
+      },
+    };
+  }, []);
   const speechScreenCaptureRef = useRef<(() => Promise<void>) | null>(null);
   const {
     state: codexRealtimeState,
     stop: stopCodexRealtime,
     toggle: toggleCodexRealtime,
-    requestAutonomySetup: requestAutonomyVoiceSetup,
+    requestAutonomyConversation,
+    sendAutonomyMessage,
     notifyAutonomyWorkReview,
     setMicrophoneMuted: setCodexMicrophoneMuted,
     trackQuickChatPrompt,
@@ -4270,8 +4295,23 @@ function App() {
       return;
     }
     pendingRealtimeStartRef.current = false;
-    void toggleCodexRealtime();
-  }, [codexRealtimeState.status, codexVoiceAvailable, toggleCodexRealtime]);
+    if (pendingAutoVoiceStartRef.current) {
+      pendingAutoVoiceStartRef.current = false;
+      getUiRegistry().setActiveUi(null);
+      applyPresenceLevelFromApp("default", "settings");
+      setAutoWorkspaceOpen(true);
+      setAutoInteractionMode("conversation");
+      void requestAutonomyConversation(appLanguageRef.current.resolved).catch((error: unknown) => {
+        setAutoAudioError(error instanceof Error ? error.message : String(error));
+      });
+    } else void toggleCodexRealtime();
+  }, [
+    codexRealtimeState.status,
+    codexVoiceAvailable,
+    requestAutonomyConversation,
+    toggleCodexRealtime,
+    applyPresenceLevelFromApp,
+  ]);
 
   useEffect(() => {
     if (mainSessionReplacing || !voiceReconnectPending || codexRealtimeState.status === "idle") {
@@ -4283,13 +4323,26 @@ function App() {
   const handleToggleVoice = useCallback(async () => {
     if (!mainAgentAvailable) return;
     if (isConversationTransitionActive(mainConversationTransitionGateRef.current)) return;
+    if (autoWorkspaceOpen && autoInteractionMode === "quiet") {
+      setAutoInteractionMode("conversation");
+      try {
+        localStorage.setItem("yorishiro:auto-interaction", "conversation");
+      } catch {
+        /* Optional preference. */
+      }
+      void voicePlaybackLeaseSync.setSuppressed("auto-quiet", false).catch((error: unknown) => {
+        setAutoAudioError(error instanceof Error ? error.message : String(error));
+      });
+    }
     if (voiceReconnectPending) {
       stopCodexRealtime();
       setVoiceReconnectPending(false);
       return;
     }
     if (codexVoiceAvailable) {
-      await toggleCodexRealtime();
+      if (autoWorkspaceOpen && ["idle", "error"].includes(codexRealtimeState.status)) {
+        await requestAutonomyConversation(appLanguageRef.current.resolved);
+      } else await toggleCodexRealtime();
       return;
     }
 
@@ -4313,29 +4366,93 @@ function App() {
     terminalAgent,
     toggleCodexRealtime,
     voiceReconnectPending,
+    autoWorkspaceOpen,
+    autoInteractionMode,
+    voicePlaybackLeaseSync,
+    codexRealtimeState.status,
+    requestAutonomyConversation,
   ]);
 
-  useEffect(
-    () =>
-      installAutonomyVoiceSetupBridge(async (language) => {
-        if (isConversationTransitionActive(mainConversationTransitionGateRef.current)) {
-          throw new Error(
-            appLanguageRef.current.resolved === "en"
-              ? "The conversation is switching. Try again once it is ready."
-              : "会話を切り替えています。切り替え後にもう一度お試しください。",
-          );
-        }
-        if (!codexVoiceAvailable) {
-          throw new Error(
-            appLanguageRef.current.resolved === "en"
-              ? "Voice setup requires a Codex voice conversation. Switch to Codex or use text setup here."
-              : "音声での相談にはCodexの音声会話が必要です。Codexへ切り替えるか、この画面で文字で相談してください。",
-          );
-        }
-        await requestAutonomyVoiceSetup(language ?? appLanguageRef.current.resolved);
-      }),
-    [codexVoiceAvailable, requestAutonomyVoiceSetup],
+  const handleAutoModeChange = useCallback(
+    (mode: "conversation" | "quiet") => {
+      setAutoAudioError(null);
+      setAutoInteractionMode(mode);
+      try {
+        localStorage.setItem("yorishiro:auto-interaction", mode);
+      } catch {
+        /* Optional preference. */
+      }
+      // Claim quiet ownership synchronously before stop restores fallback playback.
+      void voicePlaybackLeaseSync
+        .setSuppressed("auto-quiet", mode === "quiet")
+        .catch((error: unknown) => {
+          setAutoAudioError(error instanceof Error ? error.message : String(error));
+        });
+      if (mode === "quiet") {
+        pendingAutoVoiceStartRef.current = false;
+        pendingRealtimeStartRef.current = false;
+        setVoiceReconnectPending(false);
+        stopCodexRealtime();
+      }
+    },
+    [stopCodexRealtime, voicePlaybackLeaseSync],
   );
+
+  useEffect(() => {
+    const quiet = autoWorkspaceOpen && autoInteractionMode === "quiet";
+    void voicePlaybackLeaseSync.setSuppressed("auto-quiet", quiet).catch((error: unknown) => {
+      setAutoAudioError(error instanceof Error ? error.message : String(error));
+    });
+    if (quiet) {
+      pendingAutoVoiceStartRef.current = false;
+      pendingRealtimeStartRef.current = false;
+      setVoiceReconnectPending(false);
+      stopCodexRealtime();
+    }
+  }, [autoWorkspaceOpen, autoInteractionMode, stopCodexRealtime, voicePlaybackLeaseSync]);
+
+  const handleAutoVoiceStart = useCallback(async () => {
+    setAutoAudioError(null);
+    if (
+      !mainAgentAvailable ||
+      isConversationTransitionActive(mainConversationTransitionGateRef.current)
+    ) {
+      throw new Error(
+        appLanguageRef.current.resolved === "en"
+          ? "The conversation is not ready yet."
+          : "会話の準備ができていません。",
+      );
+    }
+    if (!codexVoiceAvailable) {
+      pendingAutoVoiceStartRef.current = true;
+      await handleToggleVoice();
+      return;
+    }
+    setCodexMicrophoneMuted(false);
+    await requestAutonomyConversation(appLanguageRef.current.resolved);
+  }, [
+    mainAgentAvailable,
+    codexVoiceAvailable,
+    handleToggleVoice,
+    requestAutonomyConversation,
+    setCodexMicrophoneMuted,
+  ]);
+
+  const handleCloseAutoWorkspace = useCallback(() => {
+    if (pendingAutoVoiceStartRef.current) {
+      pendingAutoVoiceStartRef.current = false;
+      pendingRealtimeStartRef.current = false;
+    }
+    setAutoWorkspaceOpen(false);
+  }, []);
+
+  const handleEndAutoConversation = useCallback(() => {
+    pendingAutoVoiceStartRef.current = false;
+    pendingRealtimeStartRef.current = false;
+    setVoiceReconnectPending(false);
+    setAutoAudioError(null);
+    stopCodexRealtime();
+  }, [stopCodexRealtime]);
 
   useEffect(() => {
     const onReview = (event: Event) => {
@@ -4717,6 +4834,7 @@ function App() {
   // ── Settings ─────────────────────────────────────────────
 
   const handleOpenSettings = useCallback(() => {
+    handleCloseAutoWorkspace();
     const uiPackRegistry = getUiRegistry();
     const uiState = getUiStateStore();
     const current = uiPackRegistry.getActiveUi()?.id ?? null;
@@ -4734,20 +4852,22 @@ function App() {
     // 閉じている → 開く。現 activeUi を previous として保存。
     uiState.set(SETTINGS_PACK_ID, PREVIOUS_ACTIVE_UI_KEY, current);
     uiPackRegistry.setActiveUi(SETTINGS_PACK_ID);
-  }, []);
+  }, [handleCloseAutoWorkspace]);
 
   const handleSelectViewMode = useCallback(
     (id: string | null) => {
+      handleCloseAutoWorkspace();
       setViewModeHudVisible(false);
       getUiRegistry().setActiveUi(id);
       void updateYorishiroConfig((config) => ({ ...config, activeUi: id })).catch((error) => {
         console.warn("[App] failed to persist View Mode", error);
       });
     },
-    [updateYorishiroConfig],
+    [handleCloseAutoWorkspace, updateYorishiroConfig],
   );
 
   const handleVoiceEntryCancel = useCallback(() => {
+    pendingAutoVoiceStartRef.current = false;
     setVoiceEntryDialog(null);
   }, []);
 
@@ -4755,15 +4875,48 @@ function App() {
     if (voiceEntryDialog?.mode !== "switch" || voiceEntryDialog.targetAgentId === null) return;
     const targetAgentId = voiceEntryDialog.targetAgentId;
     setVoiceEntryDialog(null);
-    void switchMainAgent(targetAgentId, markPendingRealtimeStart);
+    void switchMainAgent(targetAgentId, () => {
+      if (pendingAutoVoiceStartRef.current) markPendingAutoConversation();
+      else markPendingRealtimeStart();
+    });
   }, [switchMainAgent, voiceEntryDialog]);
 
   const handleVoiceEntryOpenSettings = useCallback(() => {
+    pendingAutoVoiceStartRef.current = false;
     setVoiceEntryDialog(null);
     if (getUiRegistry().getActiveUi()?.id !== SETTINGS_PACK_ID) {
       handleOpenSettings();
     }
   }, [handleOpenSettings]);
+
+  const handleToggleAutoWorkspace = useCallback(() => {
+    if (autoWorkspaceOpen) {
+      handleCloseAutoWorkspace();
+      return;
+    }
+    // Use the regular character surface; do not create a second VRM or terminal.
+    getUiRegistry().setActiveUi(null);
+    setViewModeHudVisible(false);
+    setQuickChatOpen(false);
+    applyPresenceLevelFromApp("default", "settings");
+    setAutoWorkspaceOpen(true);
+    if (autoInteractionMode === "conversation" && codexRealtimeState.status === "active") {
+      void requestAutonomyConversation(appLanguageRef.current.resolved).catch((error: unknown) => {
+        setAutoAudioError(error instanceof Error ? error.message : String(error));
+      });
+    }
+  }, [
+    autoWorkspaceOpen,
+    autoInteractionMode,
+    codexRealtimeState.status,
+    requestAutonomyConversation,
+    applyPresenceLevelFromApp,
+    handleCloseAutoWorkspace,
+  ]);
+
+  useEffect(() => {
+    if (activeUiId !== null) setAutoWorkspaceOpen(false);
+  }, [activeUiId]);
 
   const [vrmUrl, setVrmUrl] = useState<string | null>(null);
 
@@ -6046,14 +6199,14 @@ function App() {
         terminalShortcutHint={viewModeShortcuts[0]?.hint}
         viewModeShortcutHints={viewModeShortcutHints}
         settingsShortcutHint={/Mac/i.test(navigator.platform) ? "⌘," : "Ctrl+,"}
-        showSidebarToggle={!viewModeOwnsChrome}
+        showSidebarToggle={!viewModeOwnsChrome && !autoWorkspaceOpen}
         settingsLabel={strings.settings}
         onToggleSidebar={handleToggleSidebar}
         onOpenSettings={handleOpenSettings}
         viewModes={viewModes}
         activeViewModeId={pickerActiveViewModeId}
         onSelectViewMode={handleSelectViewMode}
-        voiceAvailable={voiceEntryAvailable}
+        voiceAvailable={voiceEntryAvailable && !autoWorkspaceOpen}
         voiceDisabled={!mainAgentAvailable || mainSessionReplacing}
         voiceState={titleBarVoiceState}
         voiceMicrophoneActive={codexRealtimeState.microphoneActive === true}
@@ -6114,14 +6267,22 @@ function App() {
             />
           ) : null
         }
-        autonomyControl={<AutonomyPanel language={appLanguage.resolved} />}
+        autoModeActive={autoWorkspaceOpen}
+        onToggleAutoMode={handleToggleAutoWorkspace}
+        autoModePendingCount={
+          (autoWorkStatus?.pendingActions?.filter((action) => action.status === "pending").length ??
+            0) + (autoWorkStatus?.pendingWork ? 1 : 0)
+        }
         tabs={
           <TabIndicator
             state={tabState}
             labels={sessionTabLabels}
             statuses={sessionStatusById}
             hookBadges={sessionHookBadges}
-            onSelectSession={(sessionId) => tabManager.switchTo(sessionId)}
+            onSelectSession={(sessionId) => {
+              handleCloseAutoWorkspace();
+              tabManager.switchTo(sessionId);
+            }}
             backConversationLabel={
               mainSessionReplacing
                 ? strings.switchingConversation
@@ -6218,6 +6379,7 @@ function App() {
         </div>
         {canMountTerminals && (
           <TerminalWorkspace
+            presented={!autoWorkspaceOpen}
             sessions={tabState.sessions}
             activeSessionId={tabState.activeSessionId}
             cwd={cwd}
@@ -6230,6 +6392,31 @@ function App() {
           />
         )}
       </div>
+      <AutoWorkspace
+        open={autoWorkspaceOpen}
+        language={appLanguage.resolved}
+        cwd={cwd}
+        onClose={handleCloseAutoWorkspace}
+        mode={autoInteractionMode}
+        onModeChange={handleAutoModeChange}
+        conversation={{
+          available: voiceEntryAvailable,
+          state: {
+            ...codexRealtimeState,
+            status: titleBarVoiceState,
+            error: autoAudioError ?? codexRealtimeState.error,
+          },
+          phase: autoConversationPhase,
+          onStart: handleAutoVoiceStart,
+          onEnd: handleEndAutoConversation,
+          onSetMuted: setCodexMicrophoneMuted,
+        }}
+        onSendMessage={
+          terminalAgent === "codex"
+            ? (text) => sendAutonomyMessage(text, appLanguage.resolved)
+            : undefined
+        }
+      />
       {quickChatOpen && quickChatEnabled ? (
         <QuickChatInput
           value={quickChatDraft}
@@ -6244,7 +6431,7 @@ function App() {
           onClose={() => setQuickChatOpen(false)}
         />
       ) : null}
-      {quickVoiceStatus !== null && conversationShortcutEnabled ? (
+      {quickVoiceStatus !== null && conversationShortcutEnabled && !autoWorkspaceOpen ? (
         <QuickVoiceIndicator
           status={quickVoiceStatus}
           muted={codexRealtimeState.microphoneMuted === true}

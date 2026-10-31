@@ -26,7 +26,7 @@ export interface CodexRealtimeClientLike extends LipSyncSource {
   setMicrophoneMuted(muted: boolean): void;
   notifyScreenContext?(capturedAt: string, availability?: ScreenPointerAvailability): Promise<void>;
   notifyScreenPointersEnabled?(enabled: boolean): Promise<void>;
-  requestAutonomySetup?(language?: "ja" | "en"): Promise<void>;
+  requestAutonomyConversation?(language?: "ja" | "en"): Promise<void>;
   notifyAutonomyWorkReview?(review: AutonomyWorkReviewNotice): Promise<void>;
 }
 
@@ -47,6 +47,7 @@ export type CodexRealtimeClientFactory = (
 
 export interface CodexThreadTrackerLike {
   getCurrentThreadId(): string | null;
+  sendAutonomyMessage?(text: string, language?: "ja" | "en"): Promise<string>;
   trackQuickChatPrompt(prompt: string): Promise<string | null>;
   start(): Promise<void>;
   stop(): void;
@@ -127,7 +128,8 @@ interface UseCodexRealtimeResult {
   readonly state: CodexRealtimeState;
   readonly stop: () => void;
   readonly toggle: () => Promise<void>;
-  readonly requestAutonomySetup: (language?: "ja" | "en") => Promise<void>;
+  readonly requestAutonomyConversation: (language?: "ja" | "en") => Promise<void>;
+  readonly sendAutonomyMessage: (text: string, language?: "ja" | "en") => Promise<string>;
   readonly notifyAutonomyWorkReview: (
     review: AutonomyWorkReviewNotice | null,
     channel?: "daily" | "confirmation",
@@ -241,6 +243,7 @@ export function useCodexRealtime({
   const onQuickChatResponseRef = useRef(onQuickChatResponse);
   const onUserSpeechStartedRef = useRef(onUserSpeechStarted);
   const sessionIdRef = useRef(sessionId);
+  const autonomyOwnerRef = useRef({ sessionId, available });
   const voiceIntentRef = useRef(false);
   const fallbackPlaybackTransitionRef = useRef(0);
   const fallbackPlaybackQueueRef = useRef<Promise<void>>(Promise.resolve());
@@ -258,6 +261,9 @@ export function useCodexRealtime({
   onPersonaApplicationRef.current = onPersonaApplication;
   onQuickChatResponseRef.current = onQuickChatResponse;
   onUserSpeechStartedRef.current = onUserSpeechStarted;
+  // UI actions may await a draft flush before calling a render's callback.
+  // Read the current owner before any side effect, not only after delivery.
+  autonomyOwnerRef.current = { sessionId, available };
 
   const clearSharedScreenContext = useCallback(() => {
     const context = sharedScreenContextRef.current;
@@ -604,10 +610,21 @@ export function useCodexRealtime({
     await start();
   }, [start, stop]);
 
-  const requestAutonomySetup = useCallback(
+  const requestAutonomyConversation = useCallback(
     async (language: "ja" | "en" = "ja") => {
       const english = language === "en";
-      if (!available) {
+      const expectedThreadId = threadTrackerRef.current?.getCurrentThreadId() ?? null;
+      if (
+        autonomyOwnerRef.current.sessionId !== sessionId ||
+        (screenThreadId !== null && expectedThreadId !== screenThreadId)
+      ) {
+        throw new Error(
+          english
+            ? "The conversation changed before starting."
+            : "開始前に会話が切り替わりました。",
+        );
+      }
+      if (!available || !autonomyOwnerRef.current.available || !threadTrackerRef.current) {
         throw new Error(
           english
             ? "Voice setup requires Codex voice. Switch to Codex or use text setup."
@@ -616,7 +633,11 @@ export function useCodexRealtime({
       }
       // Never toggle an existing session: that would stop an ongoing conversation.
       if (!clientRef.current) await start();
-      if (sessionIdRef.current !== sessionId) {
+      if (
+        sessionIdRef.current !== sessionId ||
+        (expectedThreadId !== null &&
+          threadTrackerRef.current?.getCurrentThreadId() !== expectedThreadId)
+      ) {
         throw new Error(
           english
             ? "The conversation changed while preparing setup. Please try again."
@@ -631,14 +652,14 @@ export function useCodexRealtime({
             : "音声会話の接続が完了していません。音声接続とマイクの許可を確認して、もう一度お試しください。",
         );
       }
-      if (!client.requestAutonomySetup) {
+      if (!client.requestAutonomyConversation) {
         throw new Error(
           english
             ? "This voice connection does not support setup. Use text setup instead."
             : "この音声接続は設定の相談に対応していません。文字で相談してください。",
         );
       }
-      await client.requestAutonomySetup(language);
+      await client.requestAutonomyConversation(language);
       if (clientRef.current !== client || client.getStatus() !== "active") {
         throw new Error(
           english
@@ -647,12 +668,50 @@ export function useCodexRealtime({
         );
       }
     },
-    [available, sessionId, start],
+    [available, sessionId, screenThreadId, start],
   );
 
   const setMicrophoneMuted = useCallback((muted: boolean) => {
     clientRef.current?.setMicrophoneMuted(muted);
   }, []);
+
+  const sendAutonomyMessage = useCallback(
+    async (text: string, language: "ja" | "en" = "ja"): Promise<string> => {
+      const tracker = threadTrackerRef.current;
+      const expectedThreadId = tracker?.getCurrentThreadId() ?? null;
+      if (
+        autonomyOwnerRef.current.sessionId !== sessionId ||
+        (screenThreadId !== null && expectedThreadId !== screenThreadId)
+      ) {
+        throw new Error(
+          language === "en"
+            ? "The conversation changed before sending."
+            : "送信前に会話が切り替わりました。",
+        );
+      }
+      if (!available || !autonomyOwnerRef.current.available || !tracker?.sendAutonomyMessage) {
+        throw new Error(
+          language === "en"
+            ? "The Codex conversation is unavailable."
+            : "Codexの会話に接続できません。しばらくしてから再送してください。",
+        );
+      }
+      const response = await tracker.sendAutonomyMessage(text, language);
+      if (
+        threadTrackerRef.current !== tracker ||
+        sessionIdRef.current !== sessionId ||
+        tracker.getCurrentThreadId() !== expectedThreadId
+      ) {
+        throw new Error(
+          language === "en"
+            ? "The conversation changed while waiting for the reply."
+            : "返事を待つ間に会話が切り替わりました。",
+        );
+      }
+      return response;
+    },
+    [available, sessionId, screenThreadId],
+  );
 
   const flushAutonomyReview = useCallback(async (): Promise<void> => {
     if (autonomyReviewFlight.current) {
@@ -891,7 +950,8 @@ export function useCodexRealtime({
     state,
     stop,
     toggle,
-    requestAutonomySetup,
+    requestAutonomyConversation,
+    sendAutonomyMessage,
     notifyAutonomyWorkReview,
     setMicrophoneMuted,
     trackQuickChatPrompt,

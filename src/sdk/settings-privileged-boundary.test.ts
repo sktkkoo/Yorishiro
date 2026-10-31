@@ -30,7 +30,6 @@ describe("system settings privileged boundary", () => {
     );
 
     expect(privilegedImports).toEqual([
-      "../../../src/components/AutonomySettings",
       "../../../src/i18n/strings",
       "../../../src/runtime/history/describe-snapshot",
       "../../../src/runtime/language/language",
@@ -67,11 +66,11 @@ describe("system settings privileged boundary", () => {
     expect(source).not.toContain("src/sdk/");
   });
 
-  it("composes only the reviewed host-owned autonomy settings widget, without importing its mutable client", async () => {
+  it("keeps Auto workspace ownership out of the settings pack", async () => {
     const source = await readSettingsSource();
     expect(
       importedModuleIds(source).filter((moduleId) => moduleId.includes("/src/components/")),
-    ).toEqual(["../../../src/components/AutonomySettings"]);
+    ).toEqual([]);
     expect(source).not.toContain("src/runtime/autonomy/");
 
     // This is an app-release exception, not a new capability for UI pack code.

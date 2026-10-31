@@ -21,6 +21,84 @@ import {
 const ZERO_MOUTH: MouthValues = { aa: 0, ih: 0, ou: 0, ee: 0, oh: 0 };
 
 describe("autonomy voice setup", () => {
+  it("rejects callbacks retained across a Main session switch before sending or opening a mic", async () => {
+    const { result, clients, sendAutonomyMessage, rerender, unmount } = setup([]);
+    const oldSend = result.current.sendAutonomyMessage;
+    const oldStart = result.current.requestAutonomyConversation;
+    rerender({ sessionId: "new-main", available: true });
+    await expect(oldSend("元の会話への依頼")).rejects.toThrow("送信前に会話が切り替わりました");
+    await expect(oldStart()).rejects.toThrow("開始前に会話が切り替わりました");
+    expect(sendAutonomyMessage).not.toHaveBeenCalled();
+    expect(clients).toHaveLength(0);
+    unmount();
+  });
+
+  it("rejects callbacks retained across a selected thread change in the same Main session", async () => {
+    const { result, clients, sendAutonomyMessage, changeThread, unmount } = setup([]);
+    act(() => changeThread("thread-1"));
+    const oldSend = result.current.sendAutonomyMessage;
+    const oldStart = result.current.requestAutonomyConversation;
+    act(() => changeThread("thread-2"));
+    await expect(oldSend("前のタスクの続き")).rejects.toThrow("送信前に会話が切り替わりました");
+    await expect(oldStart()).rejects.toThrow("開始前に会話が切り替わりました");
+    expect(sendAutonomyMessage).not.toHaveBeenCalled();
+    expect(clients).toHaveLength(0);
+    unmount();
+  });
+
+  it("does not let an old available callback start voice after provider withdrawal", async () => {
+    const { result, clients, sendAutonomyMessage, rerender, unmount } = setup([]);
+    const oldSend = result.current.sendAutonomyMessage;
+    const oldStart = result.current.requestAutonomyConversation;
+    rerender({ sessionId: "main", available: false });
+    await expect(oldSend("message", "en")).rejects.toThrow("unavailable");
+    await expect(oldStart("en")).rejects.toThrow("Codex voice");
+    expect(sendAutonomyMessage).not.toHaveBeenCalled();
+    expect(clients).toHaveLength(0);
+    unmount();
+  });
+
+  it("does not start a microphone from a callback retained after unmount", async () => {
+    const { result, clients, unmount } = setup([]);
+    const oldStart = result.current.requestAutonomyConversation;
+    unmount();
+    await expect(oldStart("en")).rejects.toThrow("Codex voice");
+    expect(clients).toHaveLength(0);
+  });
+
+  it("sends quiet Auto messages through the Main tracker without opening voice", async () => {
+    const { result, clients, sendAutonomyMessage, unmount } = setup([]);
+    await expect(result.current.sendAutonomyMessage("どこまで進んだ？", "en")).resolves.toBe(
+      "Current work",
+    );
+    expect(sendAutonomyMessage).toHaveBeenCalledExactlyOnceWith("どこまで進んだ？", "en");
+    expect(clients).toHaveLength(0);
+    unmount();
+  });
+
+  it("rejects a late quiet reply after the Main session changes", async () => {
+    const { result, sendAutonomyMessage, rerender, unmount } = setup([]);
+    let complete!: (text: string) => void;
+    sendAutonomyMessage.mockReturnValueOnce(
+      new Promise<string>((resolve) => {
+        complete = resolve;
+      }),
+    );
+    const pending = result.current.sendAutonomyMessage("どこまで進んだ？");
+    const rejection = expect(pending).rejects.toThrow("会話が切り替わりました");
+    rerender({ sessionId: "another-main", available: true });
+    complete("Old reply");
+    await rejection;
+    unmount();
+  });
+
+  it("does not send quiet messages through an unavailable provider", async () => {
+    const { result, sendAutonomyMessage, rerender, unmount } = setup([]);
+    rerender({ sessionId: "main", available: false });
+    await expect(result.current.sendAutonomyMessage("status", "en")).rejects.toThrow("unavailable");
+    expect(sendAutonomyMessage).not.toHaveBeenCalled();
+    unmount();
+  });
   it("forwards English setup and preserves queued review language without reconnecting", async () => {
     const { result, clients } = setup([]);
     const review = {
@@ -35,8 +113,8 @@ describe("autonomy voice setup", () => {
     await act(() => result.current.toggle());
     await act(async () => clients[0].emit({ status: "active" }));
     expect(clients[0].notifyAutonomyWorkReview).toHaveBeenCalledExactlyOnceWith(review);
-    await act(() => result.current.requestAutonomySetup("en"));
-    expect(clients[0].requestAutonomySetup).toHaveBeenCalledExactlyOnceWith("en");
+    await act(() => result.current.requestAutonomyConversation("en"));
+    expect(clients[0].requestAutonomyConversation).toHaveBeenCalledExactlyOnceWith("en");
     await result.current.notifyAutonomyWorkReview({ ...review, language: "ja" });
     expect(clients[0].notifyAutonomyWorkReview).toHaveBeenCalledTimes(1);
     expect(clients[0].start).toHaveBeenCalledTimes(1);
@@ -45,15 +123,15 @@ describe("autonomy voice setup", () => {
   it("reports English setup availability errors without starting another conversation", async () => {
     const { result, clients, rerender } = setup([]);
     await act(() => result.current.toggle());
-    await expect(result.current.requestAutonomySetup("en")).rejects.toThrow(
+    await expect(result.current.requestAutonomyConversation("en")).rejects.toThrow(
       "Voice is not connected yet",
     );
     expect(clients[0].stop).not.toHaveBeenCalled();
     rerender({ sessionId: "main", available: false });
-    await expect(result.current.requestAutonomySetup("en")).rejects.toThrow(
+    await expect(result.current.requestAutonomyConversation("en")).rejects.toThrow(
       "Voice setup requires Codex voice",
     );
-    expect(clients[0].requestAutonomySetup).not.toHaveBeenCalled();
+    expect(clients[0].requestAutonomyConversation).not.toHaveBeenCalled();
   });
 
   it("keeps result confirmations queued when a daily proposal is withdrawn", async () => {
@@ -198,11 +276,11 @@ describe("autonomy voice setup", () => {
     const { result, clients } = setup([]);
     await act(() => result.current.toggle());
     act(() => clients[0].emit({ status: "active" }));
-    await act(() => result.current.requestAutonomySetup());
+    await act(() => result.current.requestAutonomyConversation());
     expect(clients).toHaveLength(1);
     expect(clients[0].start).toHaveBeenCalledTimes(1);
     expect(clients[0].stop).not.toHaveBeenCalled();
-    expect(clients[0].requestAutonomySetup).toHaveBeenCalledTimes(1);
+    expect(clients[0].requestAutonomyConversation).toHaveBeenCalledTimes(1);
   });
 
   it("starts an idle session before delivering the setup action", async () => {
@@ -210,26 +288,26 @@ describe("autonomy voice setup", () => {
     const { result, clients } = setup([connecting.promise]);
     let requested!: Promise<void>;
     act(() => {
-      requested = result.current.requestAutonomySetup();
+      requested = result.current.requestAutonomyConversation();
     });
     await vi.waitFor(() => expect(clients[0]?.start).toHaveBeenCalledTimes(1));
-    expect(clients[0].requestAutonomySetup).not.toHaveBeenCalled();
+    expect(clients[0].requestAutonomyConversation).not.toHaveBeenCalled();
     await act(async () => {
       clients[0].emit({ status: "active" });
       connecting.resolve();
       await requested;
     });
-    expect(clients[0].requestAutonomySetup).toHaveBeenCalledTimes(1);
+    expect(clients[0].requestAutonomyConversation).toHaveBeenCalledTimes(1);
   });
 
   it("does not stop a connection already in progress and reports unavailable providers", async () => {
     const { result, clients, rerender } = setup([]);
     await act(() => result.current.toggle());
-    await expect(result.current.requestAutonomySetup()).rejects.toThrow("接続");
+    await expect(result.current.requestAutonomyConversation()).rejects.toThrow("接続");
     expect(clients[0].stop).not.toHaveBeenCalled();
     rerender({ sessionId: "main", available: false });
-    await expect(result.current.requestAutonomySetup()).rejects.toThrow("Codex");
-    expect(clients[0].requestAutonomySetup).not.toHaveBeenCalled();
+    await expect(result.current.requestAutonomyConversation()).rejects.toThrow("Codex");
+    expect(clients[0].requestAutonomyConversation).not.toHaveBeenCalled();
   });
 
   it("rejects stale delivery after the conversation is stopped", async () => {
@@ -237,8 +315,8 @@ describe("autonomy voice setup", () => {
     await act(() => result.current.toggle());
     act(() => clients[0].emit({ status: "active" }));
     const delivery = deferred();
-    clients[0].requestAutonomySetup.mockReturnValueOnce(delivery.promise);
-    const requested = result.current.requestAutonomySetup();
+    clients[0].requestAutonomyConversation.mockReturnValueOnce(delivery.promise);
+    const requested = result.current.requestAutonomyConversation();
     const rejected = expect(requested).rejects.toThrow("切り替わりました");
     act(() => result.current.stop());
     delivery.resolve();
@@ -250,7 +328,7 @@ describe("autonomy voice setup", () => {
     const { result, clients, rerender } = setup([connecting.promise]);
     let requested!: Promise<void>;
     act(() => {
-      requested = result.current.requestAutonomySetup();
+      requested = result.current.requestAutonomyConversation();
     });
     const rejected = expect(requested).rejects.toThrow("会話が切り替わりました");
     await vi.waitFor(() => expect(clients[0]?.start).toHaveBeenCalledTimes(1));
@@ -259,7 +337,7 @@ describe("autonomy voice setup", () => {
       connecting.resolve();
       await rejected;
     });
-    for (const client of clients) expect(client.requestAutonomySetup).not.toHaveBeenCalled();
+    for (const client of clients) expect(client.requestAutonomyConversation).not.toHaveBeenCalled();
   });
 });
 
@@ -278,7 +356,7 @@ function deferred(): {
 }
 
 class FakeClient implements CodexRealtimeClientLike {
-  readonly requestAutonomySetup = vi.fn(async () => {});
+  readonly requestAutonomyConversation = vi.fn(async () => {});
   readonly notifyAutonomyWorkReview = vi.fn(
     async (_review: { id: string; goal: string; reason: string; summary: string }) => {},
   );
@@ -375,6 +453,9 @@ function setup(
     text: string;
   }) => void = () => {};
   const trackQuickChatPrompt = vi.fn(async (prompt: string) => `quick:${prompt}`);
+  const sendAutonomyMessage = vi.fn(
+    async (_text: string, _language?: "ja" | "en") => "Current work",
+  );
   const notifyPointerSetting = vi.fn(async (_enabled: boolean) => {});
   const shareScreenObservation = vi.fn(async (frame: ScreenObservationFrame) => ({
     status: "shared" as const,
@@ -422,6 +503,7 @@ function setup(
     return {
       getCurrentThreadId: () => trackedThreadId,
       trackQuickChatPrompt,
+      sendAutonomyMessage,
       shareScreenObservation,
       notifyScreenPointersEnabled: notifyPointerSetting,
       start: async () => {},
@@ -462,6 +544,7 @@ function setup(
     applyLipSyncSource,
     setFallbackPlaybackEnabled,
     trackQuickChatPrompt,
+    sendAutonomyMessage,
     completeQuickChat: (response: {
       requestId: string;
       threadId: string;
