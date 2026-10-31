@@ -22,6 +22,8 @@ export function AutonomyActionReview({
   const inFlight = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const resultUrl = resultLink(action.resultUrl);
+  const createdAt = new Date(action.createdAt);
+  const validCreatedAt = Number.isFinite(createdAt.getTime());
 
   async function perform(operation: () => Promise<void>) {
     if (inFlight.current) return;
@@ -49,6 +51,20 @@ export function AutonomyActionReview({
           </span>
           {action.autoApproved && (
             <span className="autonomy-run-badge">{copy.automaticPermission}</span>
+          )}
+          {validCreatedAt && (
+            <span>
+              {copy.createdAt}{" "}
+              <time dateTime={createdAt.toISOString()}>
+                {createdAt.toLocaleString(language === "ja" ? "ja-JP" : "en-US", {
+                  year: "numeric",
+                  month: "2-digit",
+                  day: "2-digit",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </time>
+            </span>
           )}
         </div>
         <h3 className="autonomy-action-title" id={titleId}>
