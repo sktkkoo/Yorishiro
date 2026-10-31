@@ -256,7 +256,10 @@ export async function saveAutonomyContract(
   contract: AutonomyContract,
   reviewedDraftId: string | null = null,
 ): Promise<void> {
-  await invoke("autonomy_save", { contract });
+  await invoke("autonomy_save", {
+    contract,
+    ...(reviewedDraftId ? { reviewedDraftId } : {}),
+  });
   if (reviewedDraftId) {
     // Acknowledge only the reviewed draft; a newer voice proposal must survive.
     await invoke("autonomy_draft_dismiss", { id: reviewedDraftId });

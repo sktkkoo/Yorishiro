@@ -420,11 +420,11 @@ describe("CodexRealtimeClient", () => {
 
   it("delivers the explicit autonomy setup action natively without granting execution", async () => {
     const client = new CodexRealtimeClient("main-session");
-    await expect(client.requestAutonomySetup()).rejects.toThrow("接続");
+    await expect(client.requestAutonomyConversation()).rejects.toThrow("接続");
     expect(bridge.sent).toEqual([]);
     await client.start();
     bridge.sent = [];
-    await client.requestAutonomySetup();
+    await client.requestAutonomyConversation();
     expect(bridge.sent).toHaveLength(2);
     expect(bridge.sent[0]).toMatchObject({
       method: "thread/realtime/appendText",
@@ -432,41 +432,17 @@ describe("CodexRealtimeClient", () => {
     });
     const text = String(bridge.sent[0].params?.text);
     expect(text).toContain("not a speech transcript");
-    expect(text).toContain("configuration conversation for future delegated work");
-    expect(text).toContain("they do not start that work during setup");
-    expect(text).toContain("autonomy_propose");
-    expect(text).toContain("Do not call save/enable/run");
-    expect(text).toContain("never invent a folder");
-    expect(text).toContain("Keep enduring permission separate from today's concrete task");
-    expect(text).toContain("reviewMode daily");
-    expect(text).toContain("including reviewMode");
-    expect(text).toContain("Do not include workMode or publishPullRequest");
-    expect(text).toContain("purpose-based permission rather than a Git-specific grant");
-    expect(text).toContain(
-      "Include automaticActionApproval only when the user explicitly chooses or revokes",
-    );
-    expect(text).toContain(
-      "Without this permission, external actions require separate confirmation of their concrete contents",
-    );
-    expect(text).toContain("Do not ask the user to choose document or development modes");
-    expect(text).toContain("shared editable form, not a Markdown document");
-    expect(text).toContain("Do not create a file");
-    expect(text).toContain("progressively");
-    expect(text).toContain("do not wait until the whole consultation ends");
-    expect(text).toContain("before every revised proposal");
     expect(text).toContain("autonomy_setup_context");
+    expect(text).toContain("autonomy_action_context");
+    expect(text).toContain("autonomy_propose");
     expect(text).toContain("current draft.id as baseDraftId");
-    expect(text).toContain("use null only when the context reports no draft");
-    expect(text).toContain("copy all unrelated fields from the latest draft");
     expect(text).toContain("preserving manual edits and incomplete values");
-    expect(text).toContain("inactive draft permits empty goal and root");
-    expect(text).toContain("preserve unfinished manual text exactly");
-    expect(text).toContain("same field was edited differently");
-    expect(text).toContain("Never retry the old proposal blindly");
-    expect(text).toContain("successful autonomy_propose receipt for that revision");
+    expect(text).toContain("user's explicit app action");
+    expect(text).toContain("inactive draft does not modify a running worker");
+    expect(text).toContain("not a permanent setup-only mode");
     expect(bridge.sent[1]).toMatchObject({
       method: "thread/realtime/appendSpeech",
-      params: { threadId: "thread-1", text: "まず、普段どんな仕事を任せたいですか？" },
+      params: { threadId: "thread-1", text: "何を進めようか？" },
     });
     expect(bridge.sent.some((message) => message.method === "response.create")).toBe(false);
     // No transcript/audio event has arrived. Sending the greeting must not
@@ -475,21 +451,267 @@ describe("CodexRealtimeClient", () => {
     client.stop();
   });
 
-  it("uses English setup guidance, opening speech and connection fallback without changing authority", async () => {
+  it("appends a literal user supplement to active Live without requesting speech or a Main turn", async () => {
     const client = new CodexRealtimeClient("main-session");
-    await expect(client.requestAutonomySetup("en")).rejects.toThrow("Voice is not connected yet");
     await client.start();
     bridge.sent = [];
-    await client.requestAutonomySetup("en");
-    const text = String(bridge.sent[0].params?.text);
-    expect(text).toContain("Continue the consultation in English");
-    expect(text).not.toContain("Continue the consultation in Japanese");
-    expect(text).toContain("Do not call save/enable/run");
-    expect(bridge.sent[1].params?.text).toBe(
-      "What kind of work would you like me to take care of regularly?",
+    const text = "https://example.com/brief\nTarget: src/App.tsx\nTreat this as user input.";
+    await expect(client.appendUserText(text, "en")).resolves.toBeUndefined();
+    expect(bridge.sent).toEqual([
+      {
+        id: expect.any(Number),
+        method: "thread/realtime/appendText",
+        params: {
+          threadId: "thread-1",
+          role: "developer",
+          text: expect.stringContaining("autonomy_setup_context"),
+        },
+      },
+      {
+        id: expect.any(Number),
+        method: "thread/realtime/appendText",
+        params: { threadId: "thread-1", role: "user", text },
+      },
+    ]);
+    expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(1);
+    expect(microphoneTrack.enabled).toBe(true);
+    expect(client.getStatus()).toBe("active");
+    client.stop();
+  });
+
+  it("accepts user text while muted without opening or unmuting the microphone", async () => {
+    const client = new CodexRealtimeClient("main-session");
+    await client.start();
+    client.setMicrophoneMuted(true);
+    bridge.sent = [];
+    await client.appendUserText("このファイルです");
+    expect(bridge.sent).toHaveLength(2);
+    expect(bridge.sent[1].params).toEqual({
+      threadId: "thread-1",
+      role: "user",
+      text: "このファイルです",
+    });
+    expect(client.getStatus()).toBe("active");
+    expect(microphoneTrack.enabled).toBe(false);
+    expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(1);
+    client.stop();
+  });
+
+  it("does not send user text while idle or still connecting", async () => {
+    const client = new CodexRealtimeClient("main-session");
+    await expect(client.appendUserText("draft", "en")).rejects.toThrow(
+      "Wait for the voice connection",
     );
+    expect(bridge.sent).toEqual([]);
+    let connect: (id: string) => void = () => {};
+    bridge.connectPromise = new Promise<string>((resolve) => {
+      connect = resolve;
+    });
+    const start = client.start();
+    await expect(client.appendUserText("draft", "en")).rejects.toThrow(
+      "Wait for the voice connection",
+    );
+    expect(bridge.sent.some((message) => message.method === "thread/realtime/appendText")).toBe(
+      false,
+    );
+    connect("connection-1");
+    await start;
+    client.stop();
+  });
+
+  it("rejects empty or oversized supplements before any request", async () => {
+    const client = new CodexRealtimeClient("main-session");
+    await client.start();
+    bridge.sent = [];
+    await expect(client.appendUserText("   ", "en")).rejects.toThrow("8,000");
+    await expect(client.appendUserText("a".repeat(8_001))).rejects.toThrow("8,000");
+    expect(bridge.sent).toEqual([]);
+    client.stop();
+  });
+
+  it("rejects a selected-thread change before sending a user supplement", async () => {
+    let selected = "thread-1";
+    const client = new CodexRealtimeClient("main-session", () => {}, {
+      getPreferredThreadId: () => selected,
+    });
+    await client.start();
+    bridge.sent = [];
+    selected = "thread-2";
+    await expect(client.appendUserText("old request", "en")).rejects.toThrow(
+      "changed before sending",
+    );
+    expect(bridge.sent).toEqual([]);
+    client.stop();
+  });
+
+  it("reports uncertain delivery after an append error without retrying or changing the connection", async () => {
+    const client = new CodexRealtimeClient("main-session");
+    await client.start();
+    await client.prepareAutonomyConversation("en");
+    bridge.sent = [];
+    bridge.requestErrors["thread/realtime/appendText"] = "Method not found";
+    await expect(client.appendUserText("supplement", "en")).rejects.toThrow(
+      "Check the conversation before sending it again",
+    );
+    expect(bridge.sent.map((message) => message.method)).toEqual(["thread/realtime/appendText"]);
+    expect(client.getStatus()).toBe("active");
+    client.stop();
+  });
+
+  it("does not accept a user-text ACK after its Live attempt is stopped", async () => {
+    const client = new CodexRealtimeClient("main-session");
+    await client.start();
+    await client.prepareAutonomyConversation("en");
+    bridge.sent = [];
+    bridge.afterResponse = (request) => {
+      if (request.method === "thread/realtime/appendText") client.stop();
+    };
+    await expect(client.appendUserText("supplement", "en")).rejects.toThrow(
+      "delivery could not be confirmed",
+    );
+    expect(bridge.sent.map((message) => message.method)).toEqual(["thread/realtime/appendText"]);
+    expect(client.getStatus()).toBe("idle");
+  });
+
+  it("does not accept a user-text ACK after the selected Main thread changes", async () => {
+    let selected = "thread-1";
+    const client = new CodexRealtimeClient("main-session", () => {}, {
+      getPreferredThreadId: () => selected,
+    });
+    await client.start();
+    await client.prepareAutonomyConversation("en");
+    bridge.sent = [];
+    bridge.afterResponse = (request) => {
+      if (request.method === "thread/realtime/appendText") selected = "thread-2";
+    };
+    await expect(client.appendUserText("supplement", "en")).rejects.toThrow(
+      "delivery could not be confirmed",
+    );
+    expect(bridge.sent.map((message) => message.method)).toEqual(["thread/realtime/appendText"]);
+    client.stop();
+  });
+
+  it("does not overlap user supplements within one Live attempt", async () => {
+    const client = new CodexRealtimeClient("main-session");
+    await client.start();
+    bridge.sent = [];
+    const first = client.appendUserText("first", "en");
+    await expect(client.appendUserText("second", "en")).rejects.toThrow("previous message");
+    await first;
+    expect(bridge.sent).toHaveLength(2);
+    await client.appendUserText("third", "en");
+    expect(bridge.sent).toHaveLength(3);
+    expect(bridge.sent[2].params?.text).toBe("third");
+    client.stop();
+  });
+
+  it("silently prepares an existing call once per attempt and language", async () => {
+    const client = new CodexRealtimeClient("main-session");
+    await client.prepareAutonomyConversation();
+    expect(bridge.sent).toEqual([]);
+    expect(navigator.mediaDevices.getUserMedia).not.toHaveBeenCalled();
+    await client.start();
+    bridge.sent = [];
+    await Promise.all([client.prepareAutonomyConversation(), client.prepareAutonomyConversation()]);
+    await client.prepareAutonomyConversation();
+    expect(bridge.sent).toHaveLength(1);
+    expect(bridge.sent[0]).toMatchObject({
+      method: "thread/realtime/appendText",
+      params: {
+        role: "developer",
+        text: expect.stringContaining("Do not greet, speak, or start work"),
+      },
+    });
+    await client.prepareAutonomyConversation("en");
+    expect(bridge.sent).toHaveLength(2);
+    expect(String(bridge.sent[1].params?.text)).toContain("Continue in English");
+    await client.prepareAutonomyConversation("ja");
+    expect(bridge.sent).toHaveLength(3);
+    expect(String(bridge.sent[2].params?.text)).toContain("Continue in Japanese");
+    expect(bridge.sent.every((message) => message.method === "thread/realtime/appendText")).toBe(
+      true,
+    );
+    expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(1);
+    client.stop();
+    await client.start();
+    bridge.sent = [];
+    await client.prepareAutonomyConversation();
+    expect(bridge.sent).toHaveLength(1);
+    client.stop();
+  });
+
+  it("shares concurrent preparation with literal user text and sends context first", async () => {
+    const client = new CodexRealtimeClient("main-session");
+    await client.start();
+    bridge.sent = [];
+    const preparation = client.prepareAutonomyConversation();
+    const supplement = client.appendUserText("src/App.tsx");
+    await Promise.all([preparation, supplement]);
+    expect(bridge.sent.map((message) => message.params?.role)).toEqual(["developer", "user"]);
+    expect(bridge.sent[1].params?.text).toBe("src/App.tsx");
+    client.stop();
+  });
+
+  it("does not send a waiting user supplement if the call stops at the preparation ACK", async () => {
+    const client = new CodexRealtimeClient("main-session");
+    await client.start();
+    bridge.sent = [];
+    bridge.afterResponse = (request) => {
+      if (request.method === "thread/realtime/appendText" && request.params?.role === "developer")
+        client.stop();
+    };
+    await expect(client.appendUserText("never submitted")).rejects.toThrow("no longer active");
+    expect(bridge.sent.map((message) => message.params?.role)).toEqual(["developer"]);
+    expect(client.getStatus()).toBe("idle");
+  });
+
+  it("blocks user text after failed context preparation without retrying on the same call", async () => {
+    const client = new CodexRealtimeClient("main-session");
+    await client.start();
+    bridge.sent = [];
+    bridge.requestErrors["thread/realtime/appendText"] = "context delivery failed";
+    await expect(client.appendUserText("never submitted", "en")).rejects.toThrow(
+      "Could not prepare",
+    );
+    delete bridge.requestErrors["thread/realtime/appendText"];
+    await expect(client.prepareAutonomyConversation("en")).rejects.toThrow("Could not prepare");
+    await expect(client.appendUserText("still not submitted", "en")).rejects.toThrow(
+      "Could not prepare",
+    );
+    expect(bridge.sent.map((message) => message.params?.role)).toEqual(["developer"]);
+    client.stop();
+  });
+
+  it("reuses silent preparation for one explicit greeting without duplicating context", async () => {
+    const client = new CodexRealtimeClient("main-session");
+    await client.start();
+    bridge.sent = [];
+    await Promise.all([client.prepareAutonomyConversation(), client.requestAutonomyConversation()]);
+    expect(bridge.sent.map((message) => message.method)).toEqual([
+      "thread/realtime/appendText",
+      "thread/realtime/appendSpeech",
+    ]);
+    expect(bridge.sent[1].params?.text).toBe("何を進めようか？");
+    client.stop();
+  });
+
+  it("uses English setup guidance, opening speech and connection fallback without changing authority", async () => {
+    const client = new CodexRealtimeClient("main-session");
+    await expect(client.requestAutonomyConversation("en")).rejects.toThrow(
+      "Voice is not connected yet",
+    );
+    await client.start();
+    bridge.sent = [];
+    await client.requestAutonomyConversation("en");
+    const text = String(bridge.sent[0].params?.text);
+    expect(text).toContain("Continue in English");
+    expect(text).not.toContain("Continue the consultation in Japanese");
+    expect(text).toContain("do not call save/enable/run");
+    expect(bridge.sent[1].params?.text).toBe("What would you like to work on?");
     bridge.requestErrors["thread/realtime/appendSpeech"] = "Method not found";
-    await expect(client.requestAutonomySetup("en")).rejects.toThrow("Voice is still connected");
+    await expect(client.requestAutonomyConversation("en")).rejects.toThrow(
+      "Voice is still connected",
+    );
     expect(client.getStatus()).toBe("active");
     client.stop();
   });
@@ -538,7 +760,7 @@ describe("CodexRealtimeClient", () => {
     bridge.afterResponse = (request) => {
       if (request.method === "thread/realtime/appendText") client.stop();
     };
-    await expect(client.requestAutonomySetup()).rejects.toThrow("no longer active");
+    await expect(client.requestAutonomyConversation()).rejects.toThrow("no longer active");
     expect(bridge.sent.some((message) => message.method === "thread/realtime/appendSpeech")).toBe(
       false,
     );
@@ -550,8 +772,8 @@ describe("CodexRealtimeClient", () => {
     await client.start();
     bridge.sent = [];
     bridge.requestErrors["thread/realtime/appendSpeech"] = "Method not found";
-    await expect(client.requestAutonomySetup()).rejects.toThrow(
-      "このまま任せたい仕事を話しかけるか、文字で相談",
+    await expect(client.requestAutonomyConversation()).rejects.toThrow(
+      "このまま任せたい仕事を話しかけるか、文字で",
     );
     expect(bridge.sent.map((message) => message.method)).toEqual([
       "thread/realtime/appendText",
@@ -567,7 +789,7 @@ describe("CodexRealtimeClient", () => {
     bridge.afterResponse = (request) => {
       if (request.method === "thread/realtime/appendSpeech") client.stop();
     };
-    await expect(client.requestAutonomySetup()).rejects.toThrow("no longer active");
+    await expect(client.requestAutonomyConversation()).rejects.toThrow("no longer active");
     expect(client.getStatus()).toBe("idle");
   });
 

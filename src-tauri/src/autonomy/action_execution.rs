@@ -462,7 +462,7 @@ pub(super) fn finish(state: &AutonomyState, deferred: DeferredFinish) {
             .map(|_| now);
     }
     if operation_success && goal_complete {
-        complete_daily_work(&mut next, now);
+        complete_goal(&mut next, now);
     }
     if automatic_failure {
         next.phase = "failed".into();
@@ -480,6 +480,34 @@ pub(super) fn finish(state: &AutonomyState, deferred: DeferredFinish) {
             "操作結果を保存できませんでした。同じ操作は繰り返していません: {error}"
         ));
     }
+}
+
+/// Finish the current purpose without abandoning another outstanding decision.
+/// Legacy daily scopes remain enabled for tomorrow's separately approved work.
+pub(super) fn complete_goal(status: &mut Status, now: u64) {
+    let Some(scope) = status.contract.as_ref() else {
+        return;
+    };
+    if scope.review_mode == super::ReviewMode::Daily {
+        complete_daily_work(status, now);
+        return;
+    }
+    if super::actions::has_pending(status) {
+        super::actions::park(status);
+        return;
+    }
+    if status
+        .pending_actions
+        .iter()
+        .any(|action| action.continuation_pending)
+    {
+        return;
+    }
+    status.contract.as_mut().unwrap().enabled = false;
+    status.phase = "completed".into();
+    status.next_run_at = None;
+    status.pending_work = None;
+    status.daily_work = None;
 }
 
 pub(super) fn complete_daily_work(status: &mut Status, now: u64) {
@@ -630,6 +658,114 @@ mod tests {
         assert!(!super::super::actions::has_pending(&runtime.status));
         assert_eq!(runtime.status.phase, "idle");
         assert!(runtime.status.next_run_at.is_some());
+    }
+    #[test]
+    fn completed_automatic_goal_stops_after_a_concrete_operation_and_stays_stopped_on_reload() {
+        let (state, _directory, id) = fixture();
+        let claimed = claim(&mut super::super::lock(&state).unwrap(), true, |_| Ok(()))
+            .unwrap()
+            .unwrap();
+        finish(
+            &state,
+            DeferredFinish {
+                id,
+                revision: claimed.revision,
+                cancel: claimed.cancel,
+                result: Ok(action_worker::ExecutionResult {
+                    summary: "The requested update and delivery are complete".into(),
+                    result_url: None,
+                    goal_complete: true,
+                }),
+            },
+        );
+        let mut runtime = super::super::lock(&state).unwrap();
+        assert_eq!(runtime.status.phase, "completed");
+        assert!(!runtime.status.contract.as_ref().unwrap().enabled);
+        assert!(runtime.status.next_run_at.is_none());
+        assert!(runtime.status.pending_work.is_none());
+        assert!(runtime.status.daily_work.is_none());
+        assert_eq!(
+            runtime.status.pending_actions[0].status,
+            ActionStatus::Completed
+        );
+        assert_eq!(runtime.status.runs[1].status, "completed");
+        assert!(claim(&mut runtime, false, |_| Ok(())).unwrap().is_none());
+        let (saved, _) = super::super::load_status_at(
+            runtime.storage_root.as_ref().unwrap(),
+            super::super::clock_ms(),
+        )
+        .unwrap();
+        assert_eq!(saved.phase, "completed");
+        assert!(!saved.contract.unwrap().enabled);
+        assert!(saved.next_run_at.is_none());
+    }
+    #[test]
+    fn completion_does_not_abandon_another_pending_or_approved_operation() {
+        for approved in [false, true] {
+            let (state, _directory, id) = fixture();
+            let other_id = {
+                let mut runtime = super::super::lock(&state).unwrap();
+                let source_id = runtime.status.pending_actions[0].run_id.clone();
+                let other = super::super::actions::queue(
+                    &mut runtime,
+                    &source_id,
+                    &super::super::actions::RequestedAction {
+                        operation: "Update the separate approved document".into(),
+                        target: "notes.md".into(),
+                        impact: "The document receives the reviewed update".into(),
+                        details: "Apply the exact second document update".into(),
+                        reason: "This is another outstanding decision".into(),
+                        network_access: false,
+                        delivery: None,
+                    },
+                    vec![],
+                )
+                .unwrap();
+                if approved {
+                    runtime.status.pending_actions[1].status = ActionStatus::Approved;
+                }
+                other.id
+            };
+            let claimed = claim(&mut super::super::lock(&state).unwrap(), true, |_| Ok(()))
+                .unwrap()
+                .unwrap();
+            finish(
+                &state,
+                DeferredFinish {
+                    id,
+                    revision: claimed.revision,
+                    cancel: claimed.cancel,
+                    result: Ok(action_worker::ExecutionResult {
+                        summary: "This operation fulfilled its goal".into(),
+                        result_url: None,
+                        goal_complete: true,
+                    }),
+                },
+            );
+            let mut runtime = super::super::lock(&state).unwrap();
+            assert!(runtime.status.contract.as_ref().unwrap().enabled);
+            assert_eq!(runtime.status.phase, "awaitingAction");
+            assert!(runtime.status.next_run_at.is_none());
+            let next = claim(&mut runtime, false, |_| Ok(())).unwrap();
+            assert_eq!(
+                next.as_ref().map(|next| &next.action.id),
+                approved.then_some(&other_id)
+            );
+        }
+    }
+    #[test]
+    fn completion_preserves_another_unfinished_read_only_continuation() {
+        let (state, _directory, _) = fixture();
+        let mut runtime = super::super::lock(&state).unwrap();
+        runtime.status.pending_actions[0].status = ActionStatus::Completed;
+        runtime.status.pending_actions[0].continuation_pending = true;
+        runtime.status.phase = "idle".into();
+        let now = super::super::clock_ms();
+        runtime.status.next_run_at = Some(now);
+        complete_goal(&mut runtime.status, now);
+        assert!(runtime.status.contract.as_ref().unwrap().enabled);
+        assert_eq!(runtime.status.next_run_at, Some(now));
+        assert_eq!(runtime.status.phase, "idle");
     }
     #[test]
     fn document_only_and_narrow_grants_never_launch_shell_tools() {

@@ -2,8 +2,8 @@
 //!
 //! A native conversation agent may propose a delegation after talking with the
 //! user. It can only replace this process-local draft. The existing main-window
-//! save command remains the sole route to an active contract, and approval of a
-//! daily task remains a separate user action.
+//! save command remains the sole route to an active contract. Existing daily
+//! review scopes retain their separate work approval.
 
 use super::{AutonomyState, Contract, WorkMode};
 use schemars::JsonSchema;
@@ -15,12 +15,12 @@ use tauri::Emitter;
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum ReviewMode {
-    Automatic,
     #[default]
+    Automatic,
     Daily,
 }
 
-/// Proposed enduring scope, not a command to start work or approve today's task.
+/// Proposed result and scope, never a command to start work.
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AutonomyProposal {
@@ -28,9 +28,8 @@ pub struct AutonomyProposal {
     /// a draft exists; refresh context and reconcile user edits before retrying.
     #[serde(default)]
     pub base_draft_id: Option<String>,
-    /// The enduring purpose agreed in conversation, at most 8000 UTF-8 bytes.
-    /// Keep empty if unknown; preserve existing manual edits exactly. Keep this
-    /// separate from the specific task proposed for today.
+    /// The requested result agreed in conversation, at most 8000 UTF-8 bytes.
+    /// Keep empty if unknown and preserve the user's latest edits exactly.
     pub goal: String,
     /// User-selected folder or their unfinished path input, at most 4096 bytes.
     /// Use empty if unknown; never invent or infer folder permission. Final app
@@ -42,14 +41,16 @@ pub struct AutonomyProposal {
     /// a narrower grant permits only the corresponding document operations.
     /// External sending is never authorized by these operations.
     pub allowed_operations: Vec<String>,
-    /// Interval between work opportunities, 5–1440 minutes.
+    /// Internal interval between work opportunities, 5–1440 minutes. Preserve
+    /// the current value, or use 30 for a new draft; do not ask users to tune it.
     pub interval_minutes: u64,
-    /// Maximum work runs in a rolling 24 hours. Positive JavaScript-safe integer.
+    /// Internal rolling 24-hour budget. Preserve the current value, or use 4
+    /// for a new draft. Positive JavaScript-safe integer.
     #[schemars(range(min = 1, max = "super::MAX_RUNS_PER_DAY"))]
     pub max_runs_per_day: usize,
-    /// daily: discuss today's concrete work and wait for the user's confirmation
-    /// before executing. automatic: work within the enduring scope without a
-    /// daily gate. Omitting this field proposes daily review.
+    /// automatic: pursue the requested result within the confirmed scope.
+    /// daily: compatibility for existing daily work review. Preserve an existing
+    /// choice; a new draft defaults to automatic without granting any authority.
     #[serde(default)]
     pub review_mode: ReviewMode,
     /// Optional change to the user's purpose-based automatic operation choice.
@@ -89,7 +90,7 @@ pub struct DraftSnapshot {
     pub draft: Option<Draft>,
 }
 
-/// A user's incomplete form is a draft, not permission to perform any work.
+/// An incomplete request is a draft, not permission to perform any work.
 #[derive(Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DraftPatch {
@@ -132,10 +133,11 @@ pub struct SetupContext {
     pub current_contract: Option<Contract>,
     pub draft: Option<Draft>,
     pub draft_revision: u64,
+    pub work_status: serde_json::Value,
     pub guidance: &'static str,
 }
 
-const GUIDANCE: &str = "Discuss the enduring purpose, selected folder, permitted local operations, schedule and daily review preference. Do not ask the user to choose a document/development mode. The host routes work based on the agreed scope: an exact Git repository root with all write/move/trash permissions uses an isolated copy for documents or code, while narrower grants and other folders use reversible document operations. Never expand a selected subfolder to its parent repository. Keep enduring permission separate from today's concrete work. daily review means the AI asks what to work on today and waits for the user's explicit app confirmation before execution. Use autonomy_propose to update the shared inactive setup draft as choices become clear. The user can edit this same draft directly; preserve their edits, pass its latest id as baseDraftId, and refresh autonomy_setup_context before each update. If an update conflicts, reread the latest draft and reconcile the user's changes before retrying, never blindly overwrite them. If the folder is unknown, leave root empty and let the user select it in the app. No MCP tool can activate a contract, approve today's work or execute file changes. The user may explicitly choose automaticActionApproval for concrete operations necessary to accomplish the saved purpose, including external sending and publication. This is purpose-based permission, not a Git-specific grant. Preserve the current choice unless the user explicitly changes it; omit the optional field to retain it. With this choice off, each concrete external operation requires separate confirmation. The inactive draft grants no permission until explicitly saved in the app. Preserve legacy document-only permission until the user explicitly saves a new scope. Never infer missing recipients, content or destinations or expand the agreed purpose.";
+const GUIDANCE: &str = "Discuss the result the user wants and its target. Offer a concrete, brief interpretation and ask at most one question about missing information that changes the result or scope. Do not ask users to configure intervals, run budgets, individual operation checkboxes, daily review, automatic approval, or document/development modes. Keep these internal fields from the latest draft or saved contract; only for a new request use intervalMinutes=30, maxRunsPerDay=4, reviewMode=automatic, allowedOperations=[], and automaticActionApproval=false until the user explicitly delegates a reviewed local-edit scope in the app. Describe the proposed result and exact folder clearly before that decision. A request to edit files can inform an inactive proposal, but neither conversation nor the model's proposal grants permission. If the folder is unknown, leave root empty and let the user select it in the app. The host routes an exact Git repository root with all write/move/trash permissions through an isolated copy; narrower grants and other folders retain their supported reversible document operations. Never expand a selected subfolder to its parent repository or silently upgrade a saved document-only scope. Use autonomy_propose as the request becomes clear. Refresh autonomy_setup_context before each update, preserve the user's latest changes and incomplete input, and pass the latest draft id as baseDraftId. If an update conflicts, reread and reconcile rather than blindly retrying. Existing saved scopes, daily review choices, budgets and permissions stay unchanged until the user explicitly replaces them. Preserve automaticActionApproval unless the user explicitly changes that existing choice; omit the optional field otherwise. New requests do not automatically authorize external sending or publication. No MCP tool can activate a contract, approve an operation or execute file changes. The user must explicitly delegate the reviewed scope in the app before work starts. Never invent recipients, content or destinations or expand the requested result. For progress questions, use workStatus: it is a bounded host-recorded snapshot at capturedAt, with the current phase, activeRunId, recentRuns, pendingActions and pendingWork. Do not claim to have read artifact bodies or know newer progress. Running work, pending approval and a successful intermediate operation are not proof that the whole purpose is complete. Additional directions only update an inactive draft; they do not alter the running worker.";
 
 #[derive(Default)]
 struct DraftStore(Mutex<DraftSnapshot>);
@@ -151,7 +153,7 @@ impl DraftStore {
             status: "proposal-only",
             applied: false,
             requires_review: true,
-            message: "Draft prepared. Review it in Yorishiro and confirm in the app before enabling work. This proposal did not change permissions, start work, or approve a daily task.",
+            message: "Request prepared. Review the result and target in Yorishiro, then explicitly delegate it in the app. This proposal did not change permissions or start work.",
             snapshot: result.snapshot,
         })
     }
@@ -201,6 +203,44 @@ impl DraftStore {
             .map_err(|_| "設定案を取得できません".into())
     }
 
+    fn with_reviewed_contract(
+        &self,
+        id: &str,
+        contract: &Contract,
+        save: impl FnOnce() -> Result<(), String>,
+    ) -> Result<(), String> {
+        let state = self.0.lock().map_err(|_| "依頼案を確認できません")?;
+        let draft = state
+            .draft
+            .as_ref()
+            .filter(|draft| draft.id == id)
+            .ok_or("確認中に依頼案が変わりました。最新の内容を確認してください")?;
+        let review_mode = match draft.review_mode {
+            ReviewMode::Automatic => super::ReviewMode::Automatic,
+            ReviewMode::Daily => super::ReviewMode::Daily,
+        };
+        if contract.goal != draft.goal
+            || contract.root != draft.root
+            || contract.allowed_operations != draft.allowed_operations
+            || contract.interval_minutes != draft.interval_minutes
+            || contract.max_runs_per_day != draft.max_runs_per_day
+            || contract.review_mode != review_mode
+            || contract.work_mode != draft.work_mode
+            || contract.publish_pull_request != draft.publish_pull_request
+            || contract.automatic_action_approval != draft.automatic_action_approval
+            || contract.development_repository.is_some()
+        {
+            return Err(
+                "確認した依頼案と開始する内容が一致しません。最新の内容を確認してください".into(),
+            );
+        }
+        // Keep the draft lock through durable save. A newer proposal cannot
+        // replace the reviewed request between validation and activation.
+        let result = save();
+        drop(state);
+        result
+    }
+
     fn dismiss(&self, id: &str) -> Result<Option<DraftSnapshot>, String> {
         let mut state = self.0.lock().map_err(|_| "設定案を更新できません")?;
         if state.draft.as_ref().is_some_and(|draft| draft.id == id) {
@@ -229,7 +269,7 @@ impl DraftStore {
             allowed_operations: Vec::new(),
             interval_minutes: 30,
             max_runs_per_day: 4,
-            review_mode: ReviewMode::Daily,
+            review_mode: ReviewMode::Automatic,
             explanation: String::new(),
         });
         if let Some(mode) = patch.work_mode {
@@ -278,6 +318,15 @@ fn next_revision(snapshot: &DraftSnapshot) -> Result<u64, String> {
 }
 
 static DRAFT: LazyLock<DraftStore> = LazyLock::new(DraftStore::default);
+
+/// Caller holds the runtime lock first, matching propose/consultation ordering.
+pub(super) fn with_reviewed_contract(
+    id: &str,
+    contract: &Contract,
+    save: impl FnOnce() -> Result<(), String>,
+) -> Result<(), String> {
+    DRAFT.with_reviewed_contract(id, contract, save)
+}
 
 fn auto_work_mode() -> WorkMode {
     WorkMode::Auto
@@ -367,14 +416,17 @@ pub(super) fn publish_consultation(
 }
 
 pub fn setup_context(state: &AutonomyState) -> Result<SetupContext, String> {
-    // Clone only the agreed scope; no file contents, run results or credentials
-    // are exposed by this conversation setup tool.
-    let current_contract = super::lock(state)?.status.contract.clone();
+    // Read saved scope and bounded host-owned progress under one runtime lock.
+    // No artifact bodies, action bodies, filesystem reads or credentials.
+    let runtime = super::lock(state)?;
+    let current_contract = runtime.status.contract.clone();
+    let work_status = super::work_status_context(&runtime);
     let snapshot = DRAFT.snapshot()?;
     Ok(SetupContext {
         current_contract,
         draft: snapshot.draft,
         draft_revision: snapshot.revision,
+        work_status,
         guidance: GUIDANCE,
     })
 }
@@ -622,21 +674,21 @@ mod tests {
     }
 
     #[test]
-    fn omitted_review_mode_defaults_to_daily_without_changing_requested_mode() {
+    fn new_proposals_default_to_automatic_and_preserve_explicit_daily_review() {
         let mut encoded = serde_json::to_value(proposal()).unwrap();
         encoded.as_object_mut().unwrap().remove("reviewMode");
         assert_eq!(
             serde_json::from_value::<AutonomyProposal>(encoded.clone())
                 .unwrap()
                 .review_mode,
-            ReviewMode::Daily
+            ReviewMode::Automatic
         );
-        encoded["reviewMode"] = json!("automatic");
+        encoded["reviewMode"] = json!("daily");
         assert_eq!(
             serde_json::from_value::<AutonomyProposal>(encoded.clone())
                 .unwrap()
                 .review_mode,
-            ReviewMode::Automatic
+            ReviewMode::Daily
         );
         encoded["reviewMode"] = json!("bypass");
         assert!(serde_json::from_value::<AutonomyProposal>(encoded).is_err());
@@ -790,7 +842,8 @@ mod tests {
         assert!(draft.goal.is_empty());
         assert!(draft.root.is_empty());
         assert!(draft.allowed_operations.is_empty());
-        assert_eq!(draft.review_mode, ReviewMode::Daily);
+        assert_eq!(draft.review_mode, ReviewMode::Automatic);
+        assert!(!draft.automatic_action_approval);
         for value in [
             json!({"enabled":true}),
             json!({"explanation":"changed"}),
@@ -842,6 +895,85 @@ mod tests {
             .collect();
         assert_eq!(results.iter().filter(|result| !result.conflict).count(), 1);
         assert_eq!(store.snapshot().unwrap().revision, 2);
+    }
+
+    fn reviewed_contract(draft: &Draft) -> Contract {
+        let mut value = serde_json::to_value(draft).unwrap();
+        let fields = value.as_object_mut().unwrap();
+        fields.remove("id");
+        fields.remove("explanation");
+        fields.insert("enabled".into(), json!(true));
+        serde_json::from_value(value).unwrap()
+    }
+
+    #[test]
+    fn reviewed_activation_holds_the_draft_until_save_and_rejects_changed_payload() {
+        let store = DraftStore::default();
+        let first = store.propose(proposal()).unwrap();
+        let draft = first.snapshot.draft.unwrap();
+        let contract = reviewed_contract(&draft);
+        let mut saved = false;
+        store
+            .with_reviewed_contract(&draft.id, &contract, || {
+                assert!(store.0.try_lock().is_err());
+                saved = true;
+                Ok(())
+            })
+            .unwrap();
+        assert!(saved);
+        for patch in [
+            json!({"goal":"An unseen new goal"}),
+            json!({"root":"/another/folder"}),
+            json!({"allowedOperations":["write","move","trash"]}),
+            json!({"intervalMinutes":60}),
+            json!({"maxRunsPerDay":100}),
+            json!({"reviewMode":"automatic"}),
+            json!({"workMode":"documents"}),
+            json!({"automaticActionApproval":true}),
+            json!({"publishPullRequest":true}),
+        ] {
+            let mut value = serde_json::to_value(&contract).unwrap();
+            value
+                .as_object_mut()
+                .unwrap()
+                .extend(patch.as_object().unwrap().clone());
+            let changed = serde_json::from_value::<Contract>(value).unwrap();
+            assert!(store
+                .with_reviewed_contract(&draft.id, &changed, || {
+                    panic!("an unreviewed payload must not reach save")
+                })
+                .is_err());
+        }
+        assert_eq!(store.get().unwrap(), Some(draft));
+    }
+
+    #[test]
+    fn reviewed_activation_rejects_a_newer_or_dismissed_draft_without_running_save() {
+        let store = DraftStore::default();
+        let first = store.propose(proposal()).unwrap();
+        let draft = first.snapshot.draft.unwrap();
+        let contract = reviewed_contract(&draft);
+        let edited = store
+            .edit(
+                Some(&draft.id),
+                DraftPatch {
+                    goal: Some("The user's newer request".into()),
+                    ..DraftPatch::default()
+                },
+            )
+            .unwrap();
+        assert!(store
+            .with_reviewed_contract(&draft.id, &contract, || {
+                panic!("a stale reviewed draft must not reach save")
+            })
+            .is_err());
+        let latest = edited.snapshot.draft.unwrap();
+        store.dismiss(&latest.id).unwrap();
+        assert!(store
+            .with_reviewed_contract(&latest.id, &reviewed_contract(&latest), || {
+                panic!("a dismissed draft must not reach save")
+            })
+            .is_err());
     }
 
     #[test]

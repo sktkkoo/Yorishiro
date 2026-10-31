@@ -17,6 +17,7 @@ import {
 } from "../agent-state-expression/controller";
 import type { StateExpressionSchedulerCallbacks } from "../agent-state-expression/scheduler";
 import { mediaPermissionError } from "../media-permissions";
+import { autonomyConversationContext } from "./autonomy-conversation";
 import {
   appendRealtimeDiagnostic,
   classifyRealtimeFailure,
@@ -189,6 +190,13 @@ export class CodexRealtimeClient implements LipSyncSource {
   private acceptRemoteSdp: ((sdp: string) => void) | null = null;
   private rejectRemoteSdp: ((reason: Error) => void) | null = null;
   private state: CodexRealtimeState = { status: "idle" };
+  private pendingUserText: { readonly attempt: number } | null = null;
+  private autonomyPreparation: {
+    readonly attempt: number;
+    readonly threadId: string;
+    readonly language: "ja" | "en";
+    readonly delivery: Promise<void>;
+  } | null = null;
   private stopping = false;
   private startAttemptEpoch = 0;
   private startRunEpoch = 0;
@@ -244,6 +252,104 @@ export class CodexRealtimeClient implements LipSyncSource {
 
   getStatus(): CodexRealtimeStatus {
     return this.state.status;
+  }
+
+  /** Passively prepare an existing call. Never starts a mic or requests speech. */
+  async prepareAutonomyConversation(language: "ja" | "en" = "ja"): Promise<void> {
+    if (this.state.status !== "active" || !this.threadId) return;
+    const attempt = this.startAttemptEpoch;
+    const threadId = this.threadId;
+    this.assertAutonomyOwner(attempt, threadId);
+    const previous = this.autonomyPreparation;
+    const sameOwner = previous?.attempt === attempt && previous.threadId === threadId;
+    let delivery = sameOwner && previous.language === language ? previous.delivery : null;
+    if (!delivery) {
+      delivery = (async () => {
+        // Serialize language changes so an earlier context cannot arrive after
+        // the latest one. Returning to a prior language installs it again.
+        if (sameOwner) await previous.delivery;
+        this.assertAutonomyOwner(attempt, threadId);
+        await this.request("thread/realtime/appendText", {
+          threadId,
+          role: "developer",
+          text:
+            "Host UI metadata only. Do not greet, speak, or start work because this context arrived. Apply it to the user's next request. " +
+            autonomyConversationContext(language),
+        });
+        this.assertAutonomyOwner(attempt, threadId);
+      })().catch(() => {
+        this.assertAutonomyOwner(attempt, threadId);
+        throw new Error(
+          language === "en"
+            ? "Could not prepare the Auto conversation. Reconnect voice before sending."
+            : "Autoの会話を準備できませんでした。音声を接続し直してください。",
+        );
+      });
+      // Keep failed attempts too: rendering, concurrent input, and opening Auto
+      // again must not silently retry context after uncertain delivery.
+      this.autonomyPreparation = { attempt, threadId, language, delivery };
+    }
+    await delivery;
+    this.assertAutonomyOwner(attempt, threadId);
+  }
+
+  /** User-authored supplements belong to the current Live conversation, not
+   * developer context or a second Main Agent turn. An ACK proves receipt only.
+   */
+  async appendUserText(text: string, language: "ja" | "en" = "ja"): Promise<void> {
+    const english = language === "en";
+    const prompt = text.trim();
+    if (!prompt || prompt.length > 8_000) {
+      throw new Error(
+        english
+          ? "Enter a message of up to 8,000 characters."
+          : "8,000文字以内で入力してください。",
+      );
+    }
+    if (this.state.status !== "active" || !this.threadId) {
+      throw new Error(
+        english
+          ? "Wait for the voice connection before sending."
+          : "音声の接続が完了してから送信してください。",
+      );
+    }
+    const attempt = this.startAttemptEpoch;
+    const threadId = this.threadId;
+    const selected = this.getPreferredThreadId();
+    if (selected !== null && selected !== threadId) {
+      throw new Error(
+        english ? "The conversation changed before sending." : "送信前に会話が切り替わりました。",
+      );
+    }
+    if (this.pendingUserText?.attempt === attempt) {
+      throw new Error(
+        english
+          ? "Wait for the previous message to finish sending."
+          : "前のメッセージの送信を待ってください。",
+      );
+    }
+    const delivery = { attempt };
+    this.pendingUserText = delivery;
+    try {
+      await this.prepareAutonomyConversation(language);
+      this.assertAutonomyOwner(attempt, threadId);
+      try {
+        // Codex CLI 0.166.0 generated ThreadRealtimeAppendTextParams explicitly
+        // accepts role=user. V3 appends conversation context; do not force speech.
+        await this.request("thread/realtime/appendText", { threadId, role: "user", text: prompt });
+        this.assertAutonomyOwner(attempt, threadId);
+      } catch {
+        // Delivery can have succeeded before a lost ACK or disconnect. Never
+        // retry this input as another Live message or as a Main Agent turn.
+        throw new Error(
+          english
+            ? "Message delivery could not be confirmed. Check the conversation before sending it again."
+            : "送信を確認できませんでした。再送する前に会話を確認してください。",
+        );
+      }
+    } finally {
+      if (this.pendingUserText === delivery) this.pendingUserText = null;
+    }
   }
 
   /** A prepared proposal may be mentioned only inside an already active conversation. */
@@ -310,7 +416,7 @@ export class CodexRealtimeClient implements LipSyncSource {
   }
 
   /** Fixed host UI action; never a transcription or permission to execute work. */
-  async requestAutonomySetup(language: "ja" | "en" = "ja"): Promise<void> {
+  async requestAutonomyConversation(language: "ja" | "en" = "ja"): Promise<void> {
     const english = language === "en";
     if (this.state.status !== "active" || !this.threadId) {
       throw new Error(
@@ -321,32 +427,8 @@ export class CodexRealtimeClient implements LipSyncSource {
     }
     const attempt = this.startAttemptEpoch;
     const threadId = this.threadId;
-    const assertSetupOwner = () => {
-      this.assertAttemptOwner(attempt);
-      if (this.state.status !== "active" || this.threadId !== threadId) {
-        throw new StartAttemptCancelledError();
-      }
-    };
-    await this.request("thread/realtime/appendText", {
-      threadId,
-      role: "developer",
-      text:
-        `Host UI action: the user clicked ${english ? "'Set up by voice'" : "『音声で相談する』"} to configure Yorishiro autonomous work. ` +
-        `This is not a speech transcript. A short opening question is supplied separately as speakable text. Continue the consultation in ${english ? "English" : "Japanese"}, asking one missing scope question at a time. ` +
-        "This is a configuration conversation for future delegated work. Requests to implement, review, commit, push or create pull requests describe what to put in the saved goal; they do not start that work during setup. Do not edit repository files, create worktrees, run implementation checks, commit, push or publish a pull request from this setup flow. Update only the inactive scope draft unless the user explicitly leaves setup and asks for immediate implementation. " +
-        "Use the current conversation and their answers to draft an enduring purpose, one folder, allowed local operations, interval, daily limit and reviewMode. Do not ask the user to choose document or development modes. " +
-        "Keep enduring permission separate from today's concrete task. Ask whether to discuss today's work before execution: reviewMode daily requires user confirmation of that day's work card; automatic permits work within the agreed scope without a daily gate. Propose daily when unspecified. " +
-        "The host chooses an execution method within the agreed scope. With all three local operations allowed and the exact root of a Git repository selected, it can work on documents or code and run tests in an isolated copy of committed files. Otherwise it supports reversible local text-document operations. Explain these actual scope limits when relevant, but keep one goal-driven setup flow. The user may explicitly choose automaticActionApproval for concrete operations necessary to achieve the saved purpose, including external sending and publication. This is purpose-based permission rather than a Git-specific grant. Without this permission, external actions require separate confirmation of their concrete contents. Existing saved scope stays unchanged until the user explicitly saves the reviewed new scope. " +
-        "Propose useful specifics rather than asking them to fill out settings. Ask only for missing scope information; never invent a folder or infer expanded permission. " +
-        "The setup is a shared editable form, not a Markdown document or a document-writing task. Do not create a file to represent these settings. " +
-        "Update the editable fields progressively as choices become clear during the conversation; do not wait until the whole consultation ends. " +
-        "At each setup turn, before reasoning from current form values and before every revised proposal, delegate to the main agent to call Yorishiro MCP autonomy_setup_context. The user may have edited the same form manually since your previous response. " +
-        "Then call autonomy_propose with the latest shared draft and only the intended conversational changes, including reviewMode. Include automaticActionApproval only when the user explicitly chooses or revokes automatic permission for purpose-required operations; otherwise omit it to preserve their current choice. Do not include workMode or publishPullRequest; execution routing and external-action restrictions are host-owned. Pass the exact current draft.id as baseDraftId; use null only when the context reports no draft. " +
-        "The tool takes a complete proposal: copy all unrelated fields from the latest draft, preserving manual edits and incomplete values rather than rebuilding it from old conversation memory or defaults. The inactive draft permits empty goal and root; keep unknown values empty and preserve unfinished manual text exactly instead of inventing a goal or folder just to fill a field. Final activation validates the completed scope separately. " +
-        "If the tool reports a draft conflict, fetch autonomy_setup_context again and compare it with the version you read. Preserve newer unrelated fields; if the same field was edited differently by the user, ask one short clarification rather than silently overwriting it. Never retry the old proposal blindly. " +
-        "That tool only proposes settings. Do not call save/enable/run or begin background work; the user reviews the populated draft and explicitly enables it in the host UI. " +
-        "Only say the editable fields were updated after the main agent confirms a successful autonomy_propose receipt for that revision. A spoken suggestion or tool request alone does not mean the form changed. If the tool is unavailable, say so clearly.",
-    });
+    const assertSetupOwner = () => this.assertAutonomyOwner(attempt, threadId);
+    await this.prepareAutonomyConversation(language);
     assertSetupOwner();
     // Codex's native speakable-text route is distinct from developer context.
     // A successful append ACK is not evidence that audio was produced or played.
@@ -354,9 +436,7 @@ export class CodexRealtimeClient implements LipSyncSource {
     try {
       await this.request("thread/realtime/appendSpeech", {
         threadId,
-        text: english
-          ? "What kind of work would you like me to take care of regularly?"
-          : "まず、普段どんな仕事を任せたいですか？",
+        text: english ? "What would you like to work on?" : "何を進めようか？",
       });
     } catch (error) {
       assertSetupOwner();
@@ -365,11 +445,11 @@ export class CodexRealtimeClient implements LipSyncSource {
       throw new Error(
         english
           ? unsupported
-            ? "This Codex version could not send the opening question. Voice is still connected. Tell me what work you'd like to delegate, or use text setup."
-            : "Could not confirm delivery of the opening question. Voice is still connected. Tell me what work you'd like to delegate, or use text setup."
+            ? "This Codex version could not send the opening question. Voice is still connected. Tell me what work you'd like to delegate, or continue by text."
+            : "Could not confirm delivery of the opening question. Voice is still connected. Tell me what work you'd like to delegate, or continue by text."
           : unsupported
-            ? "このCodexでは最初の呼びかけを送れませんでした。音声会話は接続中です。このまま任せたい仕事を話しかけるか、文字で相談してください。"
-            : "最初の呼びかけの送信を確認できませんでした。音声会話は接続中です。このまま任せたい仕事を話しかけるか、文字で相談してください。",
+            ? "このCodexでは最初の呼びかけを送れませんでした。音声会話は接続中です。このまま任せたい仕事を話しかけるか、文字で続けてください。"
+            : "最初の呼びかけの送信を確認できませんでした。音声会話は接続中です。このまま任せたい仕事を話しかけるか、文字で続けてください。",
       );
     }
     assertSetupOwner();
@@ -1329,6 +1409,7 @@ export class CodexRealtimeClient implements LipSyncSource {
   }
 
   private disposeResources(finalMessage?: string): void {
+    this.autonomyPreparation = null;
     this.stateExpressionController?.cancelAll();
     this.stopRemoteSpeechObservation();
     this.rejectAllPending(new Error("Codex realtime conversation stopped"));
@@ -1373,6 +1454,17 @@ export class CodexRealtimeClient implements LipSyncSource {
     if (!this.isAttemptOwner(attempt) || (peer !== undefined && this.peer !== peer)) {
       throw new StartAttemptCancelledError();
     }
+  }
+
+  private assertAutonomyOwner(attempt: number, threadId: string): void {
+    this.assertAttemptOwner(attempt);
+    const selected = this.getPreferredThreadId();
+    if (
+      this.state.status !== "active" ||
+      this.threadId !== threadId ||
+      (selected !== null && selected !== threadId)
+    )
+      throw new StartAttemptCancelledError();
   }
 
   private invalidateAttempt(attempt?: number): void {

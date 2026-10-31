@@ -606,6 +606,10 @@ describe("live shared setup draft", () => {
     await act(async () => {
       saving = client.saveAutonomyContract({ ...draft("reviewed"), enabled: true }, "reviewed");
     });
+    expect(invoke).toHaveBeenCalledWith("autonomy_save", {
+      contract: { ...draft("reviewed"), enabled: true },
+      reviewedDraftId: "reviewed",
+    });
     act(() => emit({ payload: { revision: 3, draft: draft("newer") } }));
     await act(async () => {
       resolveSave();
