@@ -2,6 +2,7 @@
 //! exact repository roots to isolated local work when full operations are allowed;
 //! narrower scopes use reversible document transactions. Models never grant
 //! authority, expand scope, or authorize external publication.
+mod action_continuation;
 mod action_execution;
 mod action_worker;
 pub(crate) mod actions;
@@ -318,6 +319,7 @@ fn load_status_at(dir: &Path, now: u64) -> Result<(Status, bool), String> {
     }
     validate_daily_state(&status)?;
     let recovered_actions = actions::recover(&mut status)?;
+    let recovered_continuation = action_continuation::recover(&mut status, now)?;
     let interrupted = status.runs.iter().any(|run| run.status == "running")
         || ["thinking", "applying", "stopping", "publishing"].contains(&status.phase.as_str());
     let invalid_contract = status
@@ -376,7 +378,10 @@ fn load_status_at(dir: &Path, now: u64) -> Result<(Status, bool), String> {
         status.next_run_at = None;
     }
     actions::park(&mut status);
-    Ok((status, rolled || repaired_pending || recovered_actions))
+    Ok((
+        status,
+        rolled || repaired_pending || recovered_actions || recovered_continuation,
+    ))
 }
 
 /// A daily approval expires at local midnight; expired proposals cannot leave
@@ -1082,14 +1087,14 @@ async fn execute(
         reviewMode=dailyではgoalは継続的に任された領域です。approvedTodayGoalがなければ状況から今日進めたい具体的な仕事を自分で提案しworkGoalに入れてください。この段階では変更は適用されずユーザーに先に相談します。approvedTodayGoalがあればその仕事の範囲内だけで進め、新しい別の仕事に勝手に広げないでください。状況から見つけた改善案も理由と共に説明してください。\n\
         この実行ではテキスト文書(.txt/.md/.markdown/.rst/.csv/.tsv/.log)の作成・編集・移動・退避のみ可能です。\n\
         相対パスを使い、既存のディレクトリ内で作業してください。隠しファイル、設定、コード、AGENTS.md、CLAUDE.mdは操作不可です。\n\
-        この段階ではshell実行・外部送信・公開・他アプリ操作はできません。目的達成に必要な次の操作で対象と内容が具体的に確定している場合は、自動許可の有無にかかわらずrequestedActionにoperation・target・impact・details・reason・networkAccessを返してください。外部通信が必要な操作のみnetworkAccess=trueとし、送信先と送信内容を具体的に明示してください。ローカル操作ではfalseです。承認が必要な操作は必ずこの構造化されたrequestedActionで返してください。summaryに「承認してください」とだけ書いてrequestedActionをnullにしてはいけません。ホストは返された確認事項をそのままユーザーへ表示します。ユーザーが確認事項の作成操作をする必要はありません。ホストは保存されたautomaticActionApprovalが有効な場合、その目的に必要な操作を自動で実行へ渡し、無効な場合は個別に確認します。自動許可を理由に目的や対象を広げてはいけません。メール等の宛先・本文・送信先や適用する内容を推測せず、不足があればrequestedAction=null、outcome=blockedとして相談してください。確認が不要ならrequestedAction=nullです。\n\
+        この段階ではshell実行・外部送信・公開・他アプリ操作はできません。目的達成に必要な次の操作で対象と内容が具体的に確定している場合は、自動許可の有無にかかわらずrequestedActionにoperation・target・impact・details・reason・networkAccessを返してください。外部通信が必要な操作のみnetworkAccess=trueとし、送信先と送信内容を具体的に明示してください。通信する全ホストのURL（APIの接続先も含む）をtargetに列挙してください。ホストはサービス固有の接続先や認証情報を補完しません。ローカル操作ではfalseです。承認が必要な操作は必ずこの構造化されたrequestedActionで返してください。summaryに「承認してください」とだけ書いてrequestedActionをnullにしてはいけません。ホストは返された確認事項をそのままユーザーへ表示します。ユーザーが確認事項の作成操作をする必要はありません。ホストは保存されたautomaticActionApprovalが有効な場合、その目的に必要な操作を自動で実行へ渡し、無効な場合は個別に確認します。自動許可を理由に目的や対象を広げてはいけません。メール等の宛先・本文・送信先や適用する内容を推測せず、不足があればrequestedAction=null、outcome=blockedとして相談してください。確認が不要ならrequestedAction=nullです。\n\
         完了済み作業を繰り返さず、有用な作業がなければoperationsを空にしてください。outcomeは、目的達成ならcompleted、能力や情報不足で進められない場合はblocked、まだ自力で進められる場合だけcontinueです。completedとblockedは自動実行が停止します。\n\
         ファイル一覧のomittedが0でなければ全体を確認したと主張しないでください。最大8操作。writeのcontentは省略のない全文です。\n\
         reasonは選んだ理由、summaryは変更内容または停止理由を簡潔な日本語で書いてください。実行・検証していない結果は主張しないでください。\n\
         出力は指定JSON schemaだけです。\n{context}"
     )
     };
-    let response = worker::run(prompt, plan_schema(), cancel.clone()).await?;
+    let response = worker::run_in_workspace(&root, prompt, plan_schema(), cancel.clone()).await?;
     let plan: Plan =
         serde_json::from_value(response).map_err(|e| format!("作業案が不正です: {e}"))?;
     if contract.automatic_action_approval {
@@ -1098,7 +1103,7 @@ async fn execute(
                 "継続して任された目的: {}\n今回進める仕事: {}",
                 contract.goal, plan.work_goal
             );
-            actions::assess_necessity(&objective, request, cancel.clone()).await?;
+            actions::assess_necessity(&root, &objective, request, cancel.clone()).await?;
         }
     }
     apply_plan(state, contract, id, revision, cancel, before, plan).await
@@ -1172,7 +1177,9 @@ async fn execute_development(
             "継続して任された目的: {}\n今回進める仕事: {}",
             contract.goal, work_goal
         );
-        match goal_handoff::assess(&storage, &run, &objective, &result, cancel.clone()).await? {
+        match goal_handoff::assess(&root, &storage, &run, &objective, &result, cancel.clone())
+            .await?
+        {
             goal_handoff::Decision::Complete => result.requested_action = None,
             goal_handoff::Decision::Action(request) => result.requested_action = Some(request),
             goal_handoff::Decision::Question(question) => {
@@ -1194,7 +1201,7 @@ async fn execute_development(
                 "継続して任された目的: {}\n今回進める仕事: {}",
                 contract.goal, work_goal
             );
-            actions::assess_necessity(&objective, request, cancel.clone()).await?;
+            actions::assess_necessity(&root, &objective, request, cancel.clone()).await?;
         }
     }
     complete_development_result(state, contract, id, revision, cancel, work_goal, result)

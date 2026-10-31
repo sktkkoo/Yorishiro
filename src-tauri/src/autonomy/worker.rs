@@ -69,6 +69,26 @@ pub async fn run(
     schema: Value,
     cancel: CancellationToken,
 ) -> Result<Value, String> {
+    run_scoped(None, prompt, schema, cancel).await
+}
+
+/// Send project-derived text only while the original project's Claude file
+/// restrictions permit it. Callers also check before reading that text.
+pub(super) async fn run_in_workspace(
+    root: &Path,
+    prompt: String,
+    schema: Value,
+    cancel: CancellationToken,
+) -> Result<Value, String> {
+    run_scoped(Some(root), prompt, schema, cancel).await
+}
+
+async fn run_scoped(
+    root: Option<&Path>,
+    prompt: String,
+    schema: Value,
+    cancel: CancellationToken,
+) -> Result<Value, String> {
     if cancel.is_cancelled() {
         return Err("Autonomous reasoning was cancelled.".into());
     }
@@ -76,17 +96,18 @@ pub async fn run(
     if prompt.len() > MAX_INPUT || schema.len() > MAX_INPUT {
         return Err("Autonomous reasoning input is too large.".into());
     }
+    super::policy::claude_preflight(root)?;
     let binary = checked_binary()?;
     probe(&binary, cancel.clone()).await?;
-    super::policy::claude_preflight(None)?;
-    // Recheck policy after the probe, immediately before starting the model call.
-    check_managed_settings()?;
     let directory = tempfile::Builder::new()
         .prefix("yorishiro-reasoning-")
         .tempdir()
         .map_err(|_| "Could not create an isolated reasoning directory.")?;
     let mut command = base_command(&binary, directory.path());
     command.args(worker_args(&schema));
+    // Include project/ancestor settings again after the probe, immediately
+    // before sending the supplied text to the reasoning transport.
+    super::policy::claude_preflight(root)?;
     match capture(command, Some(prompt), true, RUN_TIMEOUT, cancel).await? {
         Output::Structured(value) => Ok(value),
         Output::Help(_) => Err("Invalid worker output mode.".into()),
@@ -599,6 +620,32 @@ fn unexpected_event(event: &Value) -> String {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[tokio::test]
+    async fn scoped_transport_honors_project_and_ancestor_file_restrictions_before_launch() {
+        let directory = tempfile::tempdir().unwrap();
+        let project = directory.path().canonicalize().unwrap();
+        let root = project.join("nested");
+        std::fs::create_dir(&root).unwrap();
+        std::fs::create_dir(project.join(".claude")).unwrap();
+        let settings = project.join(".claude/settings.local.json");
+        for value in [
+            json!({"permissions":{"deny":["Read(./confidential.md)"]}}),
+            json!({"permissions":{"ask":["Edit"]}}),
+            json!({"sandbox":{"filesystem":{"denyRead":["private"]}}}),
+        ] {
+            std::fs::write(&settings, serde_json::to_vec(&value).unwrap()).unwrap();
+            let error = run_in_workspace(
+                &root,
+                "Synthetic project evidence".into(),
+                json!({"type":"object"}),
+                CancellationToken::new(),
+            )
+            .await
+            .unwrap_err();
+            assert!(error.contains(settings.to_str().unwrap()), "{error}");
+        }
+    }
 
     /// Explicit opt-in only: uses the installed CLI's authenticated model.
     #[cfg(target_os = "macos")]

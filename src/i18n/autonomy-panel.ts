@@ -90,8 +90,8 @@ const english: Readonly<Record<string, string>> = {
   実行時の確認: "Operation approval",
   目的達成に必要な操作を自動で許可する: "Automatically allow operations needed for this goal",
   実行前の確認を省略します: "Operations can run without asking you first",
-  "目的の達成に必要な外部送信・公開も、操作ごとの確認なしで実行します。必要に応じてサービスの保存済みログインを使います。":
-    "This includes sending information and publishing externally without confirmation for each operation. Saved service logins may be used when needed.",
+  "目的の達成に必要な外部送信・公開も、操作ごとの確認なしで実行します。実行方法はAIが選びます。認証を利用できない場合は、未実行として知らせます。":
+    "This includes sending information and publishing externally without confirmation for each operation. AI chooses how to carry out the work. If authentication is unavailable, it reports the operation as not executed.",
   "送信や公開など、取り消せない変更があります。対象・内容・実行結果は履歴に残ります。":
     "Some changes, including sending and publishing, cannot be undone. Targets, contents, and results are recorded in history.",
   "オフにすると、必要な操作をその都度確認します。":

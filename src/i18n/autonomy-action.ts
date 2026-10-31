@@ -18,7 +18,7 @@ export const AUTONOMY_ACTION_COPY = {
     contents: "操作の内容",
     networkTitle: "外部と通信する操作です",
     networkDescription:
-      "表示された対象と通信します。必要に応じて、そのサービスの保存済みログインを使用します。送信・公開する内容は「操作の内容」で確認してください。",
+      "AIが実行方法を選び、表示された通信先を利用します。認証を利用できない場合は、未実行として知らせます。送信・公開する内容は「操作の内容」で確認してください。",
     record: "作業の記録",
     source: "対象フォルダ",
     evidence: "成果物と検証結果",
@@ -57,7 +57,7 @@ export const AUTONOMY_ACTION_COPY = {
     contents: "Exact operation details",
     networkTitle: "This operation communicates externally",
     networkDescription:
-      "It communicates with the target shown above and may use your saved login for that service. Review any content to be sent or published in the operation details.",
+      "AI chooses how to carry out this operation using the displayed destinations. If authentication is unavailable, it reports the operation as not executed. Review what will be sent or published in the operation details.",
     record: "Work record",
     source: "Source folder",
     evidence: "Artifacts and checks",
