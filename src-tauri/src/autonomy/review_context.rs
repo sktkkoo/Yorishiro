@@ -11,6 +11,7 @@ const MAX_METADATA: usize = 64 * 1024;
 const MAX_FILE: usize = 32 * 1024 * 1024;
 const MAX_ARTIFACT: usize = 256 * 1024 * 1024;
 const MAX_TEXT: usize = 256 * 1024;
+const MAX_PREVIEW: usize = 8 * 1024;
 const MAX_ENTRIES: usize = 20_000;
 
 #[derive(Deserialize)]
@@ -56,6 +57,10 @@ pub(super) struct Change {
     after: Option<String>,
     before_mode: Option<u32>,
     after_mode: Option<u32>,
+    before_omitted: bool,
+    after_omitted: bool,
+    before_truncated: bool,
+    after_truncated: bool,
 }
 #[derive(Clone, Copy, PartialEq, Eq)]
 struct Entry {
@@ -87,8 +92,98 @@ pub(super) fn load_for_action(
     run: &super::Run,
     action: &serde_json::Value,
 ) -> Result<ReviewContext, String> {
+    load_action_content(storage, run, action, ReviewContent::FullText)
+}
+
+/// Native delivery consumes verified identities and paths, never model context.
+/// Verify the same artifact and frozen handoff without loading before/after text.
+pub(super) fn load_for_native_delivery(
+    storage: &Path,
+    run: &super::Run,
+    action: &serde_json::Value,
+) -> Result<ReviewContext, String> {
+    load_action_content(storage, run, action, ReviewContent::VerifiedMetadata)
+}
+
+/// Tool-free judgments receive bounded text, while artifact identity is still
+/// verified in full. Missing previews must never be mistaken for empty files.
+pub(super) fn load_for_judgment(storage: &Path, run: &super::Run) -> Result<ReviewContext, String> {
+    load_content(storage, run, ReviewContent::BoundedText)
+}
+
+pub(super) fn load_action_for_judgment(
+    storage: &Path,
+    run: &super::Run,
+    action: &serde_json::Value,
+) -> Result<ReviewContext, String> {
+    load_action_content(storage, run, action, ReviewContent::BoundedText)
+}
+
+#[derive(Clone, Copy)]
+enum ReviewContent {
+    FullText,
+    BoundedText,
+    VerifiedMetadata,
+}
+
+#[derive(Default)]
+struct TextEvidence {
+    text: Option<String>,
+    omitted: bool,
+    truncated: bool,
+}
+
+impl TextEvidence {
+    fn omitted() -> Self {
+        Self {
+            omitted: true,
+            ..Self::default()
+        }
+    }
+
+    fn full(text: String) -> Self {
+        Self {
+            text: Some(text),
+            ..Self::default()
+        }
+    }
+}
+
+fn bounded_text(bytes: Vec<u8>, total: &mut usize) -> TextEvidence {
+    if bytes.contains(&0) {
+        return TextEvidence::omitted();
+    }
+    let Ok(mut text) = String::from_utf8(bytes) else {
+        return TextEvidence::omitted();
+    };
+    let mut length = text
+        .len()
+        .min(MAX_PREVIEW)
+        .min(MAX_TEXT.saturating_sub(*total));
+    while !text.is_char_boundary(length) {
+        length -= 1;
+    }
+    if length == 0 && !text.is_empty() {
+        return TextEvidence::omitted();
+    }
+    let truncated = length < text.len();
+    text.truncate(length);
+    *total += length;
+    TextEvidence {
+        text: Some(text),
+        omitted: false,
+        truncated,
+    }
+}
+
+fn load_action_content(
+    storage: &Path,
+    run: &super::Run,
+    action: &serde_json::Value,
+    content: ReviewContent,
+) -> Result<ReviewContext, String> {
     if run.status == "completed" {
-        return load(storage, run);
+        return load_content(storage, run, content);
     }
     if run.status != "failed"
         || run.finished_at.is_none()
@@ -139,12 +234,13 @@ pub(super) fn load_for_action(
         || action["details"].as_str() != Some(request.details.as_str())
         || action["summary"].as_str() != Some(request.reason.as_str())
         || action["networkAccess"].as_bool() != Some(request.network_access)
+        || action["delivery"] != serde_json::json!(request.delivery)
     {
         return Err("承認した操作と検証済みの引き継ぎ記録が一致しません".into());
     }
     let mut verified_run = run.clone();
     verified_run.status = "completed".into();
-    let review = load(storage, &verified_run)?;
+    let review = load_content(storage, &verified_run, content)?;
     if action["sourceRoot"].as_str() != Some(review.source_root.as_str()) {
         return Err("承認した操作と元の作業フォルダが一致しません".into());
     }
@@ -152,6 +248,14 @@ pub(super) fn load_for_action(
 }
 
 pub(super) fn load(storage: &Path, run: &super::Run) -> Result<ReviewContext, String> {
+    load_content(storage, run, ReviewContent::FullText)
+}
+
+fn load_content(
+    storage: &Path,
+    run: &super::Run,
+    content: ReviewContent,
+) -> Result<ReviewContext, String> {
     if uuid::Uuid::parse_str(&run.id).is_err() || run.status != "completed" {
         return Err(
             "完了した作業の成果物を指定してください。未完了の結果はAIに相談してください".into(),
@@ -243,29 +347,71 @@ pub(super) fn load(storage: &Path, run: &super::Run) -> Result<ReviewContext, St
     for path in changed {
         let old = before.get(&path);
         let new = files.get(&path);
-        let old_text = old
-            .map(|entry| {
-                verified_object(&repo, entry.oid, ObjectType::Blob, MAX_TEXT)
-                    .and_then(|bytes| checked_text(bytes, &mut text_bytes))
-            })
-            .transpose()?;
-        let new_text = new
-            .map(|entry| {
-                let bytes = read_file(&artifact.join(&path), MAX_TEXT)?;
+        let old_text = if let Some(entry) = old {
+            match content {
+                ReviewContent::FullText => TextEvidence::full(checked_text(
+                    verified_object(&repo, entry.oid, ObjectType::Blob, MAX_TEXT)?,
+                    &mut text_bytes,
+                )?),
+                ReviewContent::BoundedText => {
+                    let (size, kind) = repo
+                        .odb()
+                        .map_err(|e| e.to_string())?
+                        .read_header(entry.oid)
+                        .map_err(|_| "比較元のGitオブジェクトが見つかりません")?;
+                    if kind != ObjectType::Blob {
+                        return Err("比較元データの種類が不正です".into());
+                    }
+                    if size > MAX_FILE || text_bytes >= MAX_TEXT {
+                        TextEvidence::omitted()
+                    } else {
+                        bounded_text(
+                            verified_object(&repo, entry.oid, ObjectType::Blob, MAX_FILE)?,
+                            &mut text_bytes,
+                        )
+                    }
+                }
+                ReviewContent::VerifiedMetadata => TextEvidence::omitted(),
+            }
+        } else {
+            TextEvidence::default()
+        };
+        let new_text = if let Some(entry) = new {
+            if matches!(content, ReviewContent::VerifiedMetadata)
+                || (matches!(content, ReviewContent::BoundedText) && text_bytes >= MAX_TEXT)
+            {
+                TextEvidence::omitted()
+            } else {
+                let limit = if matches!(content, ReviewContent::FullText) {
+                    MAX_TEXT
+                } else {
+                    MAX_FILE
+                };
+                let bytes = read_file(&artifact.join(&path), limit)?;
                 if Oid::hash_object(ObjectType::Blob, &bytes).map_err(|e| e.to_string())?
                     != entry.oid
                 {
                     return Err("確認中に成果物が変更されました".into());
                 }
-                checked_text(bytes, &mut text_bytes)
-            })
-            .transpose()?;
+                if matches!(content, ReviewContent::FullText) {
+                    TextEvidence::full(checked_text(bytes, &mut text_bytes)?)
+                } else {
+                    bounded_text(bytes, &mut text_bytes)
+                }
+            }
+        } else {
+            TextEvidence::default()
+        };
         changes.push(Change {
             path,
-            before: old_text,
-            after: new_text,
+            before: old_text.text,
+            after: new_text.text,
             before_mode: old.map(|entry| entry.mode),
             after_mode: new.map(|entry| entry.mode),
+            before_omitted: old_text.omitted,
+            after_omitted: new_text.omitted,
+            before_truncated: old_text.truncated,
+            after_truncated: new_text.truncated,
         });
     }
     Ok(ReviewContext {
@@ -617,6 +763,9 @@ mod tests {
         let artifact = PathBuf::from(run.development_path.as_ref().unwrap());
         fs::write(artifact.join("report.txt"), "Tampered\n").unwrap();
         assert!(load(&storage, &run).unwrap_err().contains("変わっています"));
+        assert!(load_for_judgment(&storage, &run)
+            .unwrap_err()
+            .contains("変わっています"));
         fs::remove_file(
             storage
                 .join("development")
@@ -633,6 +782,90 @@ mod tests {
         let (_directory, storage, run) = fixture(&vec![b'x'; MAX_TEXT + 1]);
         assert!(load(&storage, &run).is_err());
     }
+    #[test]
+    fn judgments_bound_large_utf8_text_and_explicitly_omit_binary_content() {
+        let bytes = "変更内容です。".repeat(MAX_TEXT / 3).into_bytes();
+        let (_directory, storage, run) = fixture(&bytes);
+        assert!(load(&storage, &run).is_err());
+        let context = load_for_judgment(&storage, &run).unwrap();
+        let change = &context.changes[0];
+        assert_eq!(change.before.as_deref(), Some("Before the change\n"));
+        assert!(!change.before_omitted);
+        assert!(!change.before_truncated);
+        let preview = change.after.as_ref().unwrap();
+        assert!(!preview.is_empty() && preview.len() <= MAX_PREVIEW);
+        assert!(bytes.starts_with(preview.as_bytes()));
+        assert!(change.after_truncated);
+        assert!(!change.after_omitted);
+        let serialized = serde_json::to_value(&context).unwrap();
+        assert_eq!(serialized["changes"][0]["afterTruncated"], true);
+
+        for bytes in [b"binary\0payload".to_vec(), vec![0xff, 0xfe, 0xfd]] {
+            let (_directory, storage, run) = fixture(&bytes);
+            assert!(load(&storage, &run).is_err());
+            let context = load_for_judgment(&storage, &run).unwrap();
+            let change = &context.changes[0];
+            assert!(change.after.is_none());
+            assert!(change.after_omitted);
+            assert!(!change.after_truncated);
+            assert_eq!(change.after_mode, Some(0o100644));
+        }
+    }
+    #[test]
+    fn judgment_preview_budget_handles_many_files_and_utf8_boundaries() {
+        let bytes = "資料".repeat(MAX_PREVIEW).into_bytes();
+        let mut total = 0;
+        for _ in 0..100 {
+            let preview = bounded_text(bytes.clone(), &mut total);
+            assert!(total <= MAX_TEXT);
+            if let Some(text) = preview.text {
+                assert!(bytes.starts_with(text.as_bytes()));
+                assert!(preview.truncated);
+                assert!(!preview.omitted);
+            } else {
+                assert!(preview.omitted);
+                assert!(!preview.truncated);
+            }
+        }
+        assert!(total >= MAX_TEXT - 3);
+        let mut almost_full = MAX_TEXT - 1;
+        let preview = bounded_text("資".as_bytes().to_vec(), &mut almost_full);
+        assert!(preview.text.is_none() && preview.omitted);
+        assert_eq!(almost_full, MAX_TEXT - 1);
+        let empty = bounded_text(vec![], &mut almost_full);
+        assert_eq!(empty.text.as_deref(), Some(""));
+        assert!(!empty.omitted && !empty.truncated);
+    }
+    #[test]
+    fn native_delivery_verifies_large_and_binary_artifacts_without_model_text() {
+        for bytes in [vec![b'x'; MAX_TEXT + 1], b"binary\0payload".to_vec()] {
+            let (_directory, storage, run) = fixture(&bytes);
+            assert!(load(&storage, &run).is_err());
+            let context = load_for_native_delivery(&storage, &run, &json!(null)).unwrap();
+            assert_eq!(context.changes.len(), 1);
+            assert_eq!(context.changes[0].path, "report.txt");
+            assert_eq!(context.changes[0].before_mode, Some(0o100644));
+            assert_eq!(context.changes[0].after_mode, Some(0o100644));
+            assert!(context.changes[0].before.is_none());
+            assert!(context.changes[0].after.is_none());
+            let artifact = PathBuf::from(run.development_path.as_ref().unwrap());
+            fs::write(artifact.join("report.txt"), "Changed after verification").unwrap();
+            assert!(load_for_native_delivery(&storage, &run, &json!(null)).is_err());
+        }
+    }
+    #[test]
+    fn metadata_delivery_keeps_source_paths_and_legacy_handoff_binding() {
+        let (_directory, storage, mut run) = fixture(&vec![b'x'; MAX_TEXT + 1]);
+        run.changed_paths = vec!["unreviewed.txt".into()];
+        assert!(load_for_native_delivery(&storage, &run, &json!(null)).is_err());
+        assert!(load_for_judgment(&storage, &run).is_err());
+        let (_directory, storage, run, mut action) = historical_handoff();
+        assert!(load_for_native_delivery(&storage, &run, &action).is_ok());
+        assert!(load_action_for_judgment(&storage, &run, &action).is_ok());
+        action["delivery"] = json!({"repository":"another/repository"});
+        assert!(load_for_native_delivery(&storage, &run, &action).is_err());
+        assert!(load_action_for_judgment(&storage, &run, &action).is_err());
+    }
     #[cfg(unix)]
     #[test]
     fn symlink_artifact_and_metadata_are_rejected() {
@@ -642,6 +875,7 @@ mod tests {
         fs::remove_file(artifact.join("report.txt")).unwrap();
         symlink("/etc/passwd", artifact.join("report.txt")).unwrap();
         assert!(load(&storage, &run).is_err());
+        assert!(load_for_judgment(&storage, &run).is_err());
         let source = storage
             .join("development")
             .join(&run.id)
@@ -655,6 +889,7 @@ mod tests {
         let (_directory, storage, mut run) = fixture(b"After\n");
         run.source_root = Some("/unrelated-project".into());
         assert!(load(&storage, &run).is_err());
+        assert!(load_for_judgment(&storage, &run).is_err());
         run.source_root = None;
         run.changed_paths = vec!["unrelated.txt".into()];
         assert!(load(&storage, &run).is_err());

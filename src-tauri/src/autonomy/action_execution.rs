@@ -7,6 +7,10 @@ use std::path::PathBuf;
 use tauri::Emitter;
 use tokio_util::sync::CancellationToken;
 
+#[cfg(test)]
+#[path = "action_execution/native_delivery_live.rs"]
+mod native_delivery_live;
+
 struct Claim {
     action: Action,
     history: Vec<Action>,

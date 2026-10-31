@@ -146,11 +146,19 @@ fn prepare(
             // was executed; read-only validation still uses its original role.
             initial["status"] = json!("executing");
         }
-        let review = super::review_context::load_for_action(
-            &storage,
-            run,
-            initial.as_ref().unwrap_or(action),
-        )?;
+        let binding = initial.as_ref().unwrap_or(action);
+        let review = if action["delivery"].is_object() {
+            let delivery: super::github_delivery::Delivery =
+                serde_json::from_value(action["delivery"].clone())
+                    .map_err(|_| "公開操作の内容が不正です")?;
+            delivery.validate(
+                action["target"].as_str().unwrap_or(""),
+                action["networkAccess"].as_bool().unwrap_or(false),
+            )?;
+            super::review_context::load_for_native_delivery(&storage, run, binding)?
+        } else {
+            super::review_context::load_for_action(&storage, run, binding)?
+        };
         let value = serde_json::to_value(review).map_err(|e| e.to_string())?;
         let job = storage.join("development").join(&run.id);
         references.push(checked_directory(&job.join("review-artifact"))?);
@@ -468,9 +476,7 @@ pub(super) async fn execute(
     if let Some(delivery) = &action["delivery"].as_object() {
         // A fixed native capability uses the installed CLI's own authentication;
         // tokens and the user's Keychain remain outside all model tools.
-        if !restrictions.trim().is_empty() {
-            return Err("既存のコマンド制限を認証付き公開操作に安全に引き継げないため停止しました。制限は変更していません".into());
-        }
+        let policy = super::policy::NativeCommandPolicy::new(&workspace.root, &restrictions)?;
         let delivery: super::github_delivery::Delivery =
             serde_json::from_value(json!(delivery)).map_err(|_| "公開操作の内容が不正です")?;
         delivery.validate(action["target"].as_str().unwrap_or(""), network)?;
@@ -483,6 +489,7 @@ pub(super) async fn execute(
             &workspace.work,
             review,
             &delivery,
+            &policy,
             cancel,
         )
         .await;

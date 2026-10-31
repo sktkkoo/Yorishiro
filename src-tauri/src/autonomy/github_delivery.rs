@@ -1,12 +1,13 @@
 //! Optional, exact GitHub delivery using the installed CLI's native login.
 //! No service tokens enter a model transport. Model-owned Git configuration is
 //! never used by a native command; only verified objects enter a fresh repository.
-use super::{action_worker::ExecutionResult, development};
+use super::{action_worker::ExecutionResult, development, policy::NativeCommandPolicy};
 use git2::{ObjectType, Oid, Repository, RepositoryInitOptions};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
+use std::ffi::OsString;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Component, Path, PathBuf};
@@ -165,12 +166,22 @@ struct Prepared {
     commit: Oid,
 }
 
-fn prepare_repository(
+struct RepositoryPlan {
+    path: PathBuf,
+    reference: Repository,
+    editable: Option<Repository>,
+    preserved: Option<Oid>,
+    base: Oid,
+    verified: Oid,
+    delivery: Delivery,
+}
+
+fn plan_repository(
     job: &Path,
     work: &Path,
     review: &Value,
     delivery: &Delivery,
-) -> Result<Prepared, String> {
+) -> Result<RepositoryPlan, String> {
     let job = directory(job)?;
     let work = directory(work)?;
     if text(review, "branch")? != delivery.branch
@@ -243,7 +254,27 @@ fn prepare_repository(
         }
         None
     };
-    let path = job.join("native-repository");
+    Ok(RepositoryPlan {
+        path: job.join("native-repository"),
+        reference,
+        editable,
+        preserved,
+        base,
+        verified,
+        delivery: delivery.clone(),
+    })
+}
+
+fn materialize_repository(plan: RepositoryPlan) -> Result<Prepared, String> {
+    let RepositoryPlan {
+        path,
+        reference,
+        editable,
+        preserved,
+        base,
+        verified,
+        delivery,
+    } = plan;
     fs::create_dir(&path).map_err(|_| "この公開操作の開始記録はすでに存在します。再送しません")?;
     let mut options = RepositoryInitOptions::new();
     options
@@ -284,6 +315,38 @@ fn prepare_repository(
     Ok(Prepared { path, commit: oid })
 }
 
+#[cfg(test)]
+fn prepare_repository(
+    job: &Path,
+    work: &Path,
+    review: &Value,
+    delivery: &Delivery,
+) -> Result<Prepared, String> {
+    materialize_repository(plan_repository(job, work, review, delivery)?)
+}
+
+fn authentication_config_dirs(
+    values: impl IntoIterator<Item = (&'static str, Option<OsString>)>,
+) -> Result<Vec<(&'static str, PathBuf)>, String> {
+    let mut directories = Vec::new();
+    for (key, value) in values {
+        let Some(value) = value.filter(|value| !value.is_empty()) else {
+            continue;
+        };
+        // These are host-selected locations, not credentials. Resolve relative
+        // locators before changing cwd so a model-owned directory cannot become
+        // the authentication configuration by accident.
+        let path = PathBuf::from(value).canonicalize().map_err(|_| {
+            format!("GitHub CLIの {key} で指定された認証設定フォルダを確認できません")
+        })?;
+        if !path.is_dir() {
+            return Err(format!("GitHub CLIの {key} には設定フォルダが必要です"));
+        }
+        directories.push((key, path));
+    }
+    Ok(directories)
+}
+
 fn command(binary: &Path, directory: &Path) -> Result<Command, String> {
     let mut command = Command::new(binary);
     command
@@ -300,6 +363,11 @@ fn command(binary: &Path, directory: &Path) -> Result<Command, String> {
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("GIT_ASKPASS", "/usr/bin/false")
         .env("SSH_ASKPASS", "/usr/bin/false");
+    for (key, path) in authentication_config_dirs(
+        ["GH_CONFIG_DIR", "XDG_CONFIG_HOME"].map(|key| (key, std::env::var_os(key))),
+    )? {
+        command.env(key, path);
+    }
     Ok(command)
 }
 
@@ -328,10 +396,12 @@ async fn run(
     command: Command,
     mutation: bool,
     cancel: CancellationToken,
+    policy: &NativeCommandPolicy,
 ) -> Result<development::Captured, String> {
     if cancel.is_cancelled() {
         return Err("公開操作を停止しました。次の通信は実行していません".into());
     }
+    policy.check(&command, None, step, cancel.clone()).await?;
     receipt(job, step, "started", None)?;
     let result = development::capture(command, None, Duration::from_secs(5 * 60), cancel).await
         .map_err(|error| if mutation { format!("{step}の結果を確認できません。途中まで実行された可能性があるため再送しません: {error}") } else { error })?;
@@ -378,11 +448,79 @@ fn verified_pr(
     Ok(pr.url.clone())
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RepositoryAccess {
+    repository: String,
+    can_push: bool,
+    archived: bool,
+}
+
+/// Check the exact installed CLI account and repository before creating a
+/// commit or sending a mutation. These commands only return bounded public
+/// account identifiers and repository access flags; they never retrieve tokens.
+async fn preflight(
+    job: &Path,
+    delivery: &Delivery,
+    cancel: CancellationToken,
+    gh: &Path,
+    policy: &NativeCommandPolicy,
+) -> Result<(), String> {
+    let mut account = command(gh, job)?;
+    account.args(["api", "user", "--jq", ".login"]);
+    let account = run(
+        job,
+        "GitHubログインの確認",
+        account,
+        false,
+        cancel.clone(),
+        policy,
+    )
+    .await?;
+    let login = std::str::from_utf8(&account.stdout)
+        .map_err(|_| "GitHubのログインアカウントを確認できません")?
+        .trim();
+    if login.is_empty()
+        || login.len() > 100
+        || !login
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+    {
+        return Err("GitHubのログインアカウントを確認できません".into());
+    }
+    let mut access = command(gh, job)?;
+    access.args([
+        "api",
+        &format!("repos/{}", delivery.repository),
+        "--jq",
+        "{repository: .full_name, canPush: .permissions.push, archived: .archived}",
+    ]);
+    let access = run(
+        job,
+        "GitHub公開先へのアクセス確認",
+        access,
+        false,
+        cancel,
+        policy,
+    )
+    .await?;
+    let access: RepositoryAccess = serde_json::from_slice(&access.stdout)
+        .map_err(|_| "GitHub公開先への書き込み権限を確認できません")?;
+    if access.repository != delivery.repository || access.archived || !access.can_push {
+        return Err(format!(
+            "GitHubアカウント {login} では {} に公開できません。公開先と書き込み権限を確認してください。コミット・push・PR作成は実行していません",
+            delivery.repository
+        ));
+    }
+    Ok(())
+}
+
 pub(super) async fn execute(
     job: &Path,
     work: &Path,
     review: &Value,
     delivery: &Delivery,
+    policy: &NativeCommandPolicy,
     cancel: CancellationToken,
 ) -> Result<ExecutionResult, String> {
     if cancel.is_cancelled() {
@@ -394,7 +532,7 @@ pub(super) async fn execute(
     let gh = crate::resolve_command_path_impl("gh")
         .map(PathBuf::from)
         .ok_or("GitHubへの公開にはログイン済みGitHub CLIが必要です")?;
-    execute_with_tools(job, work, review, delivery, cancel, &git, &gh).await
+    execute_with_tools(job, work, review, delivery, cancel, (&git, &gh), policy).await
 }
 
 async fn execute_with_tools(
@@ -403,57 +541,59 @@ async fn execute_with_tools(
     review: &Value,
     delivery: &Delivery,
     cancel: CancellationToken,
-    git: &Path,
-    gh: &Path,
+    tools: (&Path, &Path),
+    policy: &NativeCommandPolicy,
 ) -> Result<ExecutionResult, String> {
+    let (git, gh) = tools;
     if cancel.is_cancelled() {
         return Err("公開操作を停止しました".into());
     }
-    let prepared = {
+    let plan = {
         let job = job.to_path_buf();
         let work = work.to_path_buf();
         let review = review.clone();
         let delivery = delivery.clone();
         tauri::async_runtime::spawn_blocking(move || {
-            prepare_repository(&job, &work, &review, &delivery)
+            plan_repository(&job, &work, &review, &delivery)
         })
         .await
-        .map_err(|_| "公開用Git履歴の準備を確認できません")??
+        .map_err(|_| "公開用Git履歴の確認を完了できません")??
     };
-    if cancel.is_cancelled() {
-        return Err("公開操作を停止しました。外部への通信は実行していません".into());
-    }
     let fields = "url,headRefName,baseRefName,headRefOid,title,body";
-    let mut list = command(gh, &prepared.path)?;
-    list.args([
-        "pr",
-        "list",
-        "--repo",
-        &delivery.repository,
-        "--head",
-        &delivery.branch,
-        "--base",
-        &delivery.base_branch,
-        "--state",
-        "open",
-        "--json",
-        fields,
-    ]);
-    let listed = run(job, "既存PRの確認", list, false, cancel.clone()).await?;
-    let existing: Vec<PullRequest> =
-        serde_json::from_slice(&listed.stdout).map_err(|_| "既存PRの確認結果を読み取れません")?;
-    if existing.len() > 1 {
-        return Err("同じブランチに複数のPRがあります。追加作成せず確認してください".into());
+    let native_path = plan.path.clone();
+    let body_path = job.join("approved-pr-body.txt");
+    // Prepare every native argv before any commit or external operation. The
+    // policy checks executable paths, their command names, and semantic Git
+    // operations hidden behind implementation-only -c options or libgit2.
+    let mut initialize = command(git, job)?;
+    initialize
+        .args(["init", "--initial-branch", &delivery.branch])
+        .arg(&native_path);
+    policy
+        .check(&initialize, None, "公開用Gitコピーの作成", cancel.clone())
+        .await?;
+    let mut reference = command(git, &native_path)?;
+    reference.args(["update-ref", &format!("refs/heads/{}", delivery.branch)]);
+    policy
+        .check(&reference, None, "公開用Git参照の作成", cancel.clone())
+        .await?;
+    if plan.preserved.is_none() {
+        let mut commit = command(git, &native_path)?;
+        commit.args(["commit", "-m", &delivery.title]);
+        policy
+            .check(&commit, None, "検証済み変更のコミット", cancel.clone())
+            .await?;
     }
-    let existing_url = existing
-        .first()
-        .map(|pr| verified_pr(pr, delivery, None))
-        .transpose()?;
+    let mut credential = command(gh, &native_path)?;
+    credential.args(["auth", "git-credential", "get"]);
+    policy
+        .check(&credential, None, "GitHub認証の利用", cancel.clone())
+        .await?;
     let helper = format!(
         "!'{}' auth git-credential",
         gh.to_string_lossy().replace('\'', "'\\''")
     );
-    let mut push = command(git, &prepared.path)?;
+    let mut push = command(git, &native_path)?;
     push.args([
         "-c",
         "core.hooksPath=/dev/null",
@@ -477,11 +617,101 @@ async fn execute_with_tools(
         &delivery.remote_url,
         &format!("HEAD:refs/heads/{}", delivery.branch),
     ]);
-    run(job, "検証済みコミットのpush", push, true, cancel.clone()).await?;
+    let semantic_push = [
+        "git".to_owned(),
+        "push".to_owned(),
+        "--porcelain".to_owned(),
+        "--no-verify".to_owned(),
+        delivery.remote_url.clone(),
+        format!("HEAD:refs/heads/{}", delivery.branch),
+    ];
+    policy
+        .check(
+            &push,
+            Some(&semantic_push),
+            "検証済みコミットのpush",
+            cancel.clone(),
+        )
+        .await?;
+    let mut list = command(gh, &native_path)?;
+    list.args([
+        "pr",
+        "list",
+        "--repo",
+        &delivery.repository,
+        "--head",
+        &delivery.branch,
+        "--base",
+        &delivery.base_branch,
+        "--state",
+        "open",
+        "--json",
+        fields,
+    ]);
+    policy
+        .check(&list, None, "既存PRの確認", cancel.clone())
+        .await?;
+    let mut create = command(gh, &native_path)?;
+    create
+        .args([
+            "pr",
+            "create",
+            "--repo",
+            &delivery.repository,
+            "--head",
+            &delivery.branch,
+            "--base",
+            &delivery.base_branch,
+            "--title",
+            &delivery.title,
+            "--body-file",
+        ])
+        .arg(&body_path);
+    policy
+        .check(&create, None, "PR作成", cancel.clone())
+        .await?;
+    let mut view = command(gh, &native_path)?;
+    view.args([
+        "pr",
+        "view",
+        &delivery.branch,
+        "--repo",
+        &delivery.repository,
+        "--json",
+        fields,
+    ]);
+    policy
+        .check(&view, None, "公開済みPRの検証", cancel.clone())
+        .await?;
+    preflight(job, delivery, cancel.clone(), gh, policy).await?;
+    let prepared = tauri::async_runtime::spawn_blocking(move || materialize_repository(plan))
+        .await
+        .map_err(|_| "公開用Git履歴の準備を確認できません")??;
+    if cancel.is_cancelled() {
+        return Err("公開操作を停止しました。push・PR作成は実行していません".into());
+    }
+    let listed = run(job, "既存PRの確認", list, false, cancel.clone(), policy).await?;
+    let existing: Vec<PullRequest> =
+        serde_json::from_slice(&listed.stdout).map_err(|_| "既存PRの確認結果を読み取れません")?;
+    if existing.len() > 1 {
+        return Err("同じブランチに複数のPRがあります。追加作成せず確認してください".into());
+    }
+    let existing_url = existing
+        .first()
+        .map(|pr| verified_pr(pr, delivery, None))
+        .transpose()?;
+    run(
+        job,
+        "検証済みコミットのpush",
+        push,
+        true,
+        cancel.clone(),
+        policy,
+    )
+    .await?;
     let url = if let Some(url) = existing_url {
         url
     } else {
-        let body_path = job.join("approved-pr-body.txt");
         let mut file = OpenOptions::new()
             .write(true)
             .create_new(true)
@@ -490,23 +720,7 @@ async fn execute_with_tools(
         file.write_all(delivery.body.as_bytes())
             .and_then(|_| file.sync_all())
             .map_err(|_| "承認済みPR本文を保存できません")?;
-        let mut create = command(gh, &prepared.path)?;
-        create
-            .args([
-                "pr",
-                "create",
-                "--repo",
-                &delivery.repository,
-                "--head",
-                &delivery.branch,
-                "--base",
-                &delivery.base_branch,
-                "--title",
-                &delivery.title,
-                "--body-file",
-            ])
-            .arg(&body_path);
-        let created = run(job, "PR作成", create, true, cancel.clone()).await?;
+        let created = run(job, "PR作成", create, true, cancel.clone(), policy).await?;
         let output = String::from_utf8(created.stdout)
             .map_err(|_| "作成済みPRのURLを読み取れません。再作成せず実行記録を確認してください")?;
         let prefix = format!("https://github.com/{}/pull/", delivery.repository);
@@ -521,21 +735,14 @@ async fn execute_with_tools(
             .ok_or("PR作成後のURLを確認できません。再作成せず実行記録を確認してください")?
             .to_owned()
     };
-    let mut view = command(gh, &prepared.path)?;
-    view.args([
-        "pr",
-        "view",
-        &url,
-        "--repo",
-        &delivery.repository,
-        "--json",
-        fields,
-    ]);
-    let observed = run(job, "公開済みPRの検証", view, false, cancel).await?;
+    let observed = run(job, "公開済みPRの検証", view, false, cancel, policy).await?;
     let pr: PullRequest = serde_json::from_slice(&observed.stdout).map_err(|_| {
         "作成済みPRの検証結果を読み取れません。再作成せず実行記録を確認してください"
     })?;
-    let url = verified_pr(&pr, delivery, Some(prepared.commit))?;
+    let observed_url = verified_pr(&pr, delivery, Some(prepared.commit))?;
+    if observed_url != url {
+        return Err("作成したPRと検証結果のURLが一致しません。追加作成せず確認してください".into());
+    }
     let summary = format!(
         "検証済み変更をpushし、PRを確認しました: {url}\nコミット: {}\n公開用コピー: {}",
         prepared.commit,
@@ -560,6 +767,46 @@ async fn execute_with_tools(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn native_authentication_retains_only_host_selected_configuration_locations() {
+        let root = tempfile::tempdir().unwrap();
+        let gh = root.path().join("GitHub CLI");
+        let xdg = root.path().join("config");
+        fs::create_dir(&gh).unwrap();
+        fs::create_dir(&xdg).unwrap();
+        let values = authentication_config_dirs([
+            ("GH_CONFIG_DIR", Some(gh.as_os_str().to_owned())),
+            ("XDG_CONFIG_HOME", Some(xdg.as_os_str().to_owned())),
+        ])
+        .unwrap();
+        assert_eq!(
+            values,
+            vec![
+                ("GH_CONFIG_DIR", gh.canonicalize().unwrap()),
+                ("XDG_CONFIG_HOME", xdg.canonicalize().unwrap())
+            ]
+        );
+        assert!(authentication_config_dirs([("GH_CONFIG_DIR", None)])
+            .unwrap()
+            .is_empty());
+        let not_a_directory = root.path().join("file");
+        fs::write(&not_a_directory, "not a config directory").unwrap();
+        assert!(authentication_config_dirs([(
+            "GH_CONFIG_DIR",
+            Some(not_a_directory.into_os_string())
+        )])
+        .is_err());
+        let command = command(Path::new("/usr/bin/true"), root.path()).unwrap();
+        let forwarded: Vec<_> = command
+            .as_std()
+            .get_envs()
+            .map(|(key, _)| key.to_string_lossy().to_string())
+            .collect();
+        assert!(!forwarded
+            .iter()
+            .any(|key| ["GH_TOKEN", "GITHUB_TOKEN", "SSH_AUTH_SOCK"].contains(&key.as_str())));
+    }
 
     fn delivery() -> Delivery {
         Delivery {
@@ -692,7 +939,12 @@ mod tests {
             .unwrap()
             .set_str("credential.helper", "!malicious-helper")
             .unwrap();
-        let prepared = prepare_repository(&job, &work, &review, &delivery).unwrap();
+        let plan = plan_repository(&job, &work, &review, &delivery).unwrap();
+        assert_eq!(plan.preserved, Some(oid));
+        // A later reference change cannot turn a checked reuse into a fresh
+        // commit after the commit policy check was deliberately skipped.
+        editable.set_head_detached(base.id()).unwrap();
+        let prepared = materialize_repository(plan).unwrap();
         assert_eq!(prepared.commit, oid);
         let fresh = Repository::open(prepared.path).unwrap();
         let config = fs::read_to_string(fresh.path().join("config")).unwrap();
@@ -732,12 +984,11 @@ mod tests {
         let (_temp, job, work, review, delivery, _base) = fixture();
         let log = job.join("calls.txt");
         let git_args = job.join("git-args.txt");
-        let gh = job.join("fixture-gh");
-        let git = job.join("fixture-git");
+        let gh = job.join("gh");
+        let git = job.join("git");
         let quote =
             |path: &Path| format!("'{}'", path.display().to_string().replace('\'', "'\\''"));
-        let guard =
-            "if [ -n \"$GH_TOKEN$GITHUB_TOKEN$GH_CONFIG_DIR$SSH_AUTH_SOCK\" ]; then exit 77; fi";
+        let guard = "if [ -n \"$GH_TOKEN$GITHUB_TOKEN$SSH_AUTH_SOCK\" ]; then exit 77; fi";
         executable(&git, &format!("#!/bin/sh\n{guard}\nprintf 'git push\\n' >> {}\nprintf '%s\\n' \"$@\" > {}\nprintf 'Pushed verified branch\\n'\n", quote(&log), quote(&git_args)));
         // The only real Git command in this fixture is local rev-parse. Both
         // external mutations are test scripts and cannot contact a service.
@@ -755,6 +1006,8 @@ mod tests {
 {guard}
 printf 'gh %s %s\n' "$1" "$2" >> {log}
 case "$1 $2" in
+'api user') printf 'fixture-user\n';;
+'api repos/example/project') printf '{{"repository":"example/project","canPush":true,"archived":false}}\n';;
 'pr list') printf '[]\n';;
 'pr create') {create};;
 'pr view')
@@ -772,8 +1025,8 @@ esac
             &review,
             &delivery,
             CancellationToken::new(),
-            &git,
-            &gh,
+            (&git, &gh),
+            &NativeCommandPolicy::new(&job, "").unwrap(),
         )
         .await;
         let calls = fs::read_to_string(log).unwrap();
@@ -791,7 +1044,7 @@ esac
             Some("https://github.com/example/project/pull/42")
         );
         assert!(!result.goal_complete);
-        assert_eq!(calls, "gh pr list\ngit push\ngh pr create\ngh pr view\n");
+        assert_eq!(calls, "gh api user\ngh api repos/example/project\ngh pr list\ngit push\ngh pr create\ngh pr view\n");
         assert!(args.contains("core.hooksPath=/dev/null\n"));
         assert!(args.contains("credential.helper=\n"));
         assert!(args.contains("http.followRedirects=false\n"));
@@ -806,6 +1059,64 @@ esac
     async fn ambiguous_pr_creation_is_never_retried_or_reported_complete() {
         let (result, calls, _args) = mock_delivery(true).await;
         assert!(result.err().unwrap().contains("再送しません"));
-        assert_eq!(calls, "gh pr list\ngit push\ngh pr create\n");
+        assert_eq!(
+            calls,
+            "gh api user\ngh api repos/example/project\ngh pr list\ngit push\ngh pr create\n"
+        );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[tokio::test]
+    async fn missing_login_stops_before_creating_a_commit_or_sending_mutations() {
+        let (_temp, job, work, review, delivery, _base) = fixture();
+        let git = job.join("git");
+        let gh = job.join("gh");
+        executable(&git, "#!/bin/sh\nexit 77\n");
+        executable(&gh, "#!/bin/sh\nexit 31\n");
+        let result = execute_with_tools(
+            &job,
+            &work,
+            &review,
+            &delivery,
+            CancellationToken::new(),
+            (&git, &gh),
+            &NativeCommandPolicy::new(&job, "").unwrap(),
+        )
+        .await;
+        assert!(result.err().unwrap().contains("GitHubログインの確認"));
+        assert!(!job.join("native-repository").exists());
+        let events = fs::read_to_string(job.join("native-events.jsonl")).unwrap();
+        assert!(!events.contains("push"));
+        assert!(!events.contains("PR作成"));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[tokio::test]
+    async fn inaccessible_repository_stops_before_creating_a_commit_or_sending_mutations() {
+        for response in [
+            json!({"repository":"example/project", "canPush":false, "archived":false}),
+            json!({"repository":"example/project", "canPush":true, "archived":true}),
+            json!({"repository":"other/project", "canPush":true, "archived":false}),
+        ] {
+            let (_temp, job, work, review, delivery, _base) = fixture();
+            let gh = job.join("gh");
+            let git = job.join("git");
+            executable(&git, "#!/bin/sh\nexit 77\n");
+            executable(&gh, &format!("#!/bin/sh\nif [ \"$2\" = user ]; then printf 'fixture-user\\n'; else printf '%s\\n' '{}'; fi\n", response));
+            let result = execute_with_tools(
+                &job,
+                &work,
+                &review,
+                &delivery,
+                CancellationToken::new(),
+                (&git, &gh),
+                &NativeCommandPolicy::new(&job, "").unwrap(),
+            )
+            .await;
+            assert!(result.err().unwrap().contains("公開できません"));
+            assert!(!job.join("native-repository").exists());
+            let events = fs::read_to_string(job.join("native-events.jsonl")).unwrap();
+            assert!(!events.contains("PR作成"));
+        }
     }
 }

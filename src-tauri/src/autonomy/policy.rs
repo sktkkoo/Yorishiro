@@ -6,6 +6,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
+mod native_commands;
+pub(super) use native_commands::NativeCommandPolicy;
+
 const MAX_POLICY: u64 = 1024 * 1024;
 
 fn error(path: &Path) -> String {
