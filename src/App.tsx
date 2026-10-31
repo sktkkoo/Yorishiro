@@ -6014,6 +6014,8 @@ function App() {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.code === "Escape" && quickChatOpen) {
+        // This capture listener runs before QuickChatInput's own IME guard.
+        if (event.isComposing || event.keyCode === 229) return;
         event.preventDefault();
         event.stopPropagation();
         setQuickChatOpen(false);

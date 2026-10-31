@@ -30,9 +30,16 @@ export function VoiceEntryDialog({
   const titleId = useId();
   const bodyId = useId();
   const cancelRef = useRef<HTMLButtonElement | null>(null);
+  const confirmRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
+    const previousFocus = document.activeElement;
     cancelRef.current?.focus();
+    return () => {
+      if (previousFocus instanceof HTMLElement && previousFocus.isConnected) {
+        previousFocus.focus();
+      }
+    };
   }, []);
 
   if (typeof document === "undefined") return null;
@@ -59,6 +66,14 @@ export function VoiceEntryDialog({
           if (event.key === "Escape") {
             event.preventDefault();
             onCancel();
+          } else if (event.key === "Tab") {
+            if (event.shiftKey && document.activeElement === cancelRef.current) {
+              event.preventDefault();
+              confirmRef.current?.focus();
+            } else if (!event.shiftKey && document.activeElement === confirmRef.current) {
+              event.preventDefault();
+              cancelRef.current?.focus();
+            }
           }
         }}
         role="dialog"
@@ -81,6 +96,7 @@ export function VoiceEntryDialog({
           <button
             className="restore-confirm-button restore-confirm-button-primary"
             onClick={mode === "switch" ? onConfirmSwitch : onOpenSettings}
+            ref={confirmRef}
             type="button"
           >
             {mode === "switch" ? strings.confirmSwitch : strings.openSettings}

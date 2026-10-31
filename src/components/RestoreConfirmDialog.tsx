@@ -81,8 +81,17 @@ export function RestoreConfirmDialog({
   const bodyText = formatBody(strings.body, changeText, timeText);
 
   useEffect(() => {
+    const previousFocus = document.activeElement;
+    return () => {
+      if (previousFocus instanceof HTMLElement && previousFocus.isConnected) previousFocus.focus();
+    };
+  }, []);
+
+  useEffect(() => {
     if (phase === "confirm" || phase === "error") {
       cancelRef.current?.focus();
+    } else {
+      dialogRef.current?.focus();
     }
   }, [phase]);
 
@@ -116,13 +125,19 @@ export function RestoreConfirmDialog({
       }
       if (event.key !== "Tab" || dialogRef.current === null) return;
       const focusable = focusableElements(dialogRef.current);
-      if (focusable.length === 0) return;
+      if (focusable.length === 0) {
+        event.preventDefault();
+        dialogRef.current.focus();
+        return;
+      }
       const first = focusable[0];
       const last = focusable[focusable.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
+      const active = document.activeElement;
+      const outsideButtons = !focusable.includes(active as HTMLElement);
+      if (event.shiftKey && (active === first || outsideButtons)) {
         event.preventDefault();
         last?.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
+      } else if (!event.shiftKey && (active === last || outsideButtons)) {
         event.preventDefault();
         first?.focus();
       }
@@ -154,6 +169,7 @@ export function RestoreConfirmDialog({
         onKeyDown={handleKeyDown}
         ref={dialogRef}
         role="dialog"
+        tabIndex={-1}
       >
         <h2 className="restore-confirm-title" id={titleId}>
           {strings.title}

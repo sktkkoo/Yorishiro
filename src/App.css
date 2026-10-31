@@ -96,7 +96,7 @@ html[data-rounded-view] body {
   min-width: 0;
   min-height: 28px;
   padding: 2px 4px 2px 8px;
-  border: 1px solid color-mix(in srgb, var(--yorishiro-accent) 32%, transparent);
+  border: 1px solid var(--yorishiro-border);
   border-radius: 9px;
   background: color-mix(in srgb, var(--yorishiro-panel-bg) 88%, transparent);
   box-shadow:
@@ -110,10 +110,9 @@ html[data-rounded-view] body {
 }
 
 .quick-chat-palette:focus-within {
-  border-color: color-mix(in srgb, var(--yorishiro-accent) 58%, transparent);
+  border-color: color-mix(in srgb, var(--yorishiro-fg) 32%, transparent);
   box-shadow:
     0 20px 54px rgba(0, 0, 0, 0.42),
-    0 0 0 3px var(--yorishiro-accent-soft),
     inset 0 1px 0 rgba(255, 255, 255, 0.09);
 }
 
@@ -245,13 +244,29 @@ html[data-rounded-view] body {
   cursor: default;
 }
 
-.quick-chat-shortcut {
+.quick-chat-close {
+  display: inline-flex;
   flex: 0 0 auto;
-  padding-right: 3px;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
   color: var(--yorishiro-fg-dim);
-  font-size: 10px;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.quick-chat-close:hover {
+  color: var(--yorishiro-fg);
+}
+
+.quick-chat-close:focus-visible,
+.quick-chat-send:focus-visible {
+  outline: 2px solid var(--yorishiro-fg);
+  outline-offset: 1px;
 }
 
 @keyframes quick-chat-appear {
@@ -285,10 +300,6 @@ html[data-rounded-view] body {
 
   .quick-chat-input {
     font-size: 13px;
-  }
-
-  .quick-chat-shortcut {
-    display: none;
   }
 
   .quick-voice-palette {

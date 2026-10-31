@@ -28,6 +28,87 @@ const baseStatus = (sessionId: string, overrides: Partial<SessionStatus> = {}): 
 });
 
 describe("TabIndicator", () => {
+  it.each([
+    ["ArrowRight", 0, 1],
+    ["ArrowRight", 2, 0],
+    ["ArrowLeft", 0, 2],
+    ["ArrowLeft", 2, 1],
+    ["Home", 1, 0],
+    ["End", 0, 2],
+  ])("navigates with %s from tab %i to tab %i", (key, from, to) => {
+    const sessions = ["default-session", "shell-1", "shell-2"];
+    const onSelectSession = vi.fn();
+    const { rerender } = render(
+      <TabIndicator
+        state={{ ...state(sessions[from]), sessions }}
+        labels={new Map()}
+        onSelectSession={onSelectSession}
+      />,
+    );
+    const tabs = screen.getAllByRole("tab");
+    expect(tabs[from].tabIndex).toBe(0);
+    expect(tabs.filter((tab) => tab.tabIndex === 0)).toHaveLength(1);
+    tabs[from].focus();
+
+    expect(fireEvent.keyDown(tabs[from], { key })).toBe(false);
+    expect(document.activeElement).toBe(tabs[to]);
+    expect(onSelectSession).toHaveBeenCalledExactlyOnceWith(sessions[to]);
+
+    rerender(
+      <TabIndicator
+        state={{ ...state(sessions[to]), sessions }}
+        labels={new Map()}
+        onSelectSession={onSelectSession}
+      />,
+    );
+    expect(tabs[to].getAttribute("aria-selected")).toBe("true");
+    expect(tabs[to].tabIndex).toBe(0);
+    expect(tabs.filter((tab) => tab.tabIndex === 0)).toHaveLength(1);
+  });
+
+  it.each([
+    { key: "ArrowRight", metaKey: true },
+    { key: "ArrowLeft", ctrlKey: true },
+    { key: "Home", altKey: true },
+    { key: "Tab" },
+  ])("leaves modified shortcuts and unrelated keys alone: %j", (keyEvent) => {
+    const onSelectSession = vi.fn();
+    render(<TabIndicator state={state()} labels={new Map()} onSelectSession={onSelectSession} />);
+    const tab = screen.getAllByRole("tab")[0];
+    tab.focus();
+
+    expect(fireEvent.keyDown(tab, keyEvent)).toBe(true);
+    expect(onSelectSession).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(tab);
+  });
+
+  it("does not make display-only tabs unreachable with the keyboard", () => {
+    render(<TabIndicator state={state()} labels={new Map()} />);
+    const tabs = screen.getAllByRole("tab");
+    expect(tabs.every((tab) => tab.tabIndex === 0)).toBe(true);
+    tabs[0].focus();
+    expect(fireEvent.keyDown(tabs[0], { key: "ArrowRight" })).toBe(true);
+    expect(document.activeElement).toBe(tabs[0]);
+  });
+
+  it("does not reselect the only session for navigation keys", () => {
+    const onSelectSession = vi.fn();
+    render(
+      <TabIndicator
+        state={{ ...state(), sessions: ["default-session"] }}
+        labels={new Map()}
+        onSelectSession={onSelectSession}
+      />,
+    );
+    const tab = screen.getByRole("tab");
+    tab.focus();
+    for (const key of ["ArrowLeft", "ArrowRight", "Home", "End"]) {
+      fireEvent.keyDown(tab, { key });
+      expect(document.activeElement).toBe(tab);
+    }
+    expect(onSelectSession).not.toHaveBeenCalled();
+  });
+
   it("renders the main tab with a single session", () => {
     render(
       <TabIndicator

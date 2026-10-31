@@ -57,6 +57,12 @@ export function QuickChatInput({
       <form
         aria-label={strings.inputLabel}
         className="quick-chat-palette"
+        onKeyDown={(event) => {
+          if (event.key !== "Escape" || event.nativeEvent.isComposing || event.keyCode === 229)
+            return;
+          event.preventDefault();
+          onClose();
+        }}
         onSubmit={(event) => {
           event.preventDefault();
           submit();
@@ -70,12 +76,9 @@ export function QuickChatInput({
           enterKeyHint="send"
           onChange={(event) => onChange(event.currentTarget.value)}
           onKeyDown={(event) => {
-            if (event.key === "Escape") {
-              event.preventDefault();
-              onClose();
-              return;
-            }
-            if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+            // Safari は変換確定時に isComposing が false でも keyCode 229 を返す。
+            if (event.nativeEvent.isComposing || event.keyCode === 229) return;
+            if (event.key === "Enter") {
               event.preventDefault();
               submit();
             }
@@ -95,9 +98,16 @@ export function QuickChatInput({
         >
           <ArrowUp aria-hidden="true" size={17} strokeWidth={2.25} />
         </button>
-        <span className="quick-chat-shortcut" aria-hidden="true" title={strings.close}>
-          esc
-        </span>
+        <button
+          aria-keyshortcuts="Escape"
+          aria-label={strings.close}
+          className="quick-chat-close"
+          onClick={onClose}
+          title={strings.close}
+          type="button"
+        >
+          <X aria-hidden="true" size={15} strokeWidth={2.2} />
+        </button>
       </form>
     </div>,
     document.body,
