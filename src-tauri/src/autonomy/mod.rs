@@ -1996,7 +1996,7 @@ pub async fn autonomy_consult(
         }
         // Keep the cancellation/revision check and inactive draft publication in
         // one host critical section. No contract or operation grant is edited.
-        draft::publish_consultation(&base, proposal)?
+        draft::publish_consultation(&base, proposal, context.current_contract.as_ref())?
     };
     if !result.conflict {
         let _ = window.emit("autonomy:draft-changed", &result.snapshot);
