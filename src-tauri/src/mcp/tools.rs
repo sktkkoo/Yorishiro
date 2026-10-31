@@ -574,7 +574,11 @@ impl Yorishiro {
         &self,
         Parameters(proposal): Parameters<crate::autonomy::draft::AutonomyProposal>,
     ) -> Result<CallToolResult, McpError> {
-        let receipt = crate::autonomy::draft::propose(proposal)
+        let state = self
+            .app_handle
+            .try_state::<crate::autonomy::AutonomyState>()
+            .ok_or_else(|| McpError::internal_error("Autonomy state is unavailable", None))?;
+        let receipt = crate::autonomy::draft::propose(&state, proposal)
             .map_err(|e| McpError::invalid_params(e, None))?;
         let _ = self
             .app_handle

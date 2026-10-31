@@ -338,15 +338,31 @@ fn validate_bounds(draft: &Draft) -> Result<(), String> {
     super::validate_run_budget(draft.max_runs_per_day)
 }
 
-pub fn propose(proposal: AutonomyProposal) -> Result<ProposalReceipt, String> {
+fn preserve_saved_permission(proposal: &mut AutonomyProposal, contract: Option<&Contract>) {
+    // With no process-local draft, the saved scope is the setup baseline.
+    // Omission preserves that choice; it must not silently become a revocation.
+    // An existing shared draft and an explicit conversational change take priority.
+    if proposal.base_draft_id.is_none() && proposal.automatic_action_approval.is_none() {
+        proposal.automatic_action_approval = contract.map(|scope| scope.automatic_action_approval);
+    }
+}
+
+pub fn propose(
+    state: &AutonomyState,
+    mut proposal: AutonomyProposal,
+) -> Result<ProposalReceipt, String> {
+    let runtime = super::lock(state)?;
+    preserve_saved_permission(&mut proposal, runtime.status.contract.as_ref());
     DRAFT.propose(proposal)
 }
 
 pub(super) fn publish_consultation(
     base: &DraftSnapshot,
     mut proposal: AutonomyProposal,
+    current_contract: Option<&Contract>,
 ) -> Result<DraftEditResult, String> {
     proposal.base_draft_id = base.draft.as_ref().map(|draft| draft.id.clone());
+    preserve_saved_permission(&mut proposal, current_contract);
     DRAFT.replace(proposal, Some(base.revision))
 }
 
@@ -513,6 +529,58 @@ mod tests {
                 .unwrap()
                 .automatic_action_approval
         );
+    }
+
+    fn saved_contract(automatic: bool) -> Contract {
+        serde_json::from_value(json!({
+            "goal": "Improve the selected project",
+            "root": "/chosen/project",
+            "allowedOperations": ["write", "move", "trash"],
+            "intervalMinutes": 30,
+            "maxRunsPerDay": 4,
+            "enabled": true,
+            "reviewMode": "automatic",
+            "automaticActionApproval": automatic
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn first_conversation_draft_preserves_saved_permission_unless_explicitly_changed() {
+        for saved in [false, true] {
+            for change in [None, Some(false), Some(true)] {
+                let store = DraftStore::default();
+                let mut proposed = proposal();
+                proposed.automatic_action_approval = change;
+                preserve_saved_permission(&mut proposed, Some(&saved_contract(saved)));
+                let receipt = store.propose(proposed).unwrap();
+                assert_eq!(
+                    receipt.snapshot.draft.unwrap().automatic_action_approval,
+                    change.unwrap_or(saved)
+                );
+                assert!(!receipt.applied);
+                assert!(receipt.requires_review);
+            }
+        }
+    }
+
+    #[test]
+    fn existing_draft_choice_overrides_saved_contract_when_proposal_omits_permission() {
+        for saved in [false, true] {
+            let store = DraftStore::default();
+            let mut initial = proposal();
+            initial.automatic_action_approval = Some(!saved);
+            let first = store.propose(initial).unwrap();
+            let mut unrelated = proposal();
+            unrelated.base_draft_id = Some(first.draft_id);
+            unrelated.interval_minutes = 60;
+            preserve_saved_permission(&mut unrelated, Some(&saved_contract(saved)));
+            let receipt = store.propose(unrelated).unwrap();
+            assert_eq!(
+                receipt.snapshot.draft.unwrap().automatic_action_approval,
+                !saved
+            );
+        }
     }
 
     #[test]
@@ -830,20 +898,23 @@ mod tests {
                 "intervalMinutes": 60,
                 "maxRunsPerDay": 2,
                 "enabled": true,
-                "reviewMode": "automatic"
+                "reviewMode": "automatic",
+                "automaticActionApproval": true
             }))
             .unwrap(),
         );
         runtime.status.phase = "thinking".into();
         let before = serde_json::to_value(&runtime.status).unwrap();
         let state = AutonomyState(Arc::new(Mutex::new(runtime)));
-        let receipt = propose(proposal()).unwrap();
+        let receipt = propose(&state, proposal()).unwrap();
         let context = setup_context(&state).unwrap();
         assert_eq!(
             context.current_contract.unwrap().goal,
             "Existing user-approved scope"
         );
-        assert_eq!(context.draft.unwrap().id, receipt.draft_id);
+        let proposed = context.draft.unwrap();
+        assert_eq!(proposed.id, receipt.draft_id);
+        assert!(proposed.automatic_action_approval);
         let edited = DRAFT
             .edit(
                 Some(&receipt.draft_id),
