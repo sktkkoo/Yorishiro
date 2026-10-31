@@ -762,6 +762,56 @@ describe("AutoWorkspace", () => {
     expect(screen.queryByText("復元済み")).toBeNull();
   });
   it.each([
+    ["ja", "作業の記録", "作業ブランチ", "成果物の保存先"],
+    ["en", "Work record", "Work branch", "Result location"],
+  ] as const)("keeps saved details available without a reason in %s", (language, record, branch, location) => {
+    setStatus({
+      runs: [
+        {
+          id: "result",
+          startedAt: 1,
+          finishedAt: 2,
+          status: "completed",
+          summary: "Prepared result",
+          reason: "",
+          changedPaths: [],
+          canUndo: false,
+          branch: "work/prepared-result",
+          developmentPath: "/work/prepared-result",
+        },
+      ],
+    });
+    render(<AutoWorkspace {...props({ language })} />);
+    const disclosure = screen.getByText(record).closest("details");
+    expect(disclosure).toBeTruthy();
+    expect(disclosure?.open).toBe(false);
+    fireEvent.click(screen.getByText(record));
+    expect(screen.getByText(`${branch}: work/prepared-result`)).toBeTruthy();
+    expect(screen.getByText(`${location}: /work/prepared-result`)).toBeTruthy();
+    expect(openPath).not.toHaveBeenCalled();
+    expect(openUrl).not.toHaveBeenCalled();
+  });
+
+  it("omits an empty work record", () => {
+    setStatus({
+      runs: [
+        {
+          id: "result",
+          startedAt: 1,
+          finishedAt: 2,
+          status: "completed",
+          summary: "Prepared result",
+          reason: "",
+          changedPaths: [],
+          canUndo: false,
+        },
+      ],
+    });
+    render(<AutoWorkspace {...props()} />);
+    expect(screen.queryByText("作業の記録")).toBeNull();
+  });
+
+  it.each([
     ["ja", "PRを開く", "作業履歴"],
     ["en", "Open pull request", "Work history"],
   ] as const)("opens the saved PR from current results and history in %s", async (language, label, history) => {

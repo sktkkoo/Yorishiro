@@ -398,11 +398,20 @@ export function AutoWorkspace({
             <p>{run.validationSummary}</p>
           </section>
         )}
-        {run.reason && (
+        {(run.reason || run.branch || run.developmentPath) && (
           <details>
             <summary>{copy.evidence}</summary>
-            <p>{run.reason}</p>
-            {run.branch && <p className="auto-path">{run.branch}</p>}
+            {run.reason && <p>{run.reason}</p>}
+            {run.branch && (
+              <p className="auto-path">
+                {copy.branch}: {run.branch}
+              </p>
+            )}
+            {run.developmentPath && (
+              <p className="auto-path">
+                {copy.resultLocation}: {run.developmentPath}
+              </p>
+            )}
           </details>
         )}
         <div className="auto-actions">
