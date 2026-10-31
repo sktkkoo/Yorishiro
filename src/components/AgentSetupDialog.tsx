@@ -379,6 +379,14 @@ export function AgentSetupDialog({
         </p>
         <footer className="agent-setup-footer">
           <button
+            className="agent-setup-button agent-setup-button-secondary"
+            disabled={!canLeave}
+            onClick={onRefresh}
+            type="button"
+          >
+            {busy ? strings.checking : strings.refresh}
+          </button>
+          <button
             className="agent-setup-button agent-setup-button-quiet"
             disabled={!canLeave}
             onClick={onSkip}
