@@ -42,7 +42,7 @@
 }
 .auto-workspace button:hover,
 .auto-conversation-rail button:hover {
-  background: var(--yorishiro-accent-soft);
+  background: color-mix(in srgb, var(--yorishiro-fg) 7%, transparent);
 }
 .auto-workspace button:disabled,
 .auto-conversation-rail button:disabled {
@@ -51,8 +51,11 @@
 }
 .auto-workspace :focus-visible,
 .auto-conversation-rail :focus-visible {
-  outline: 2px solid var(--yorishiro-accent);
+  outline: 2px solid var(--yorishiro-fg-dim);
   outline-offset: 3px;
+}
+.auto-workspace textarea:focus-visible {
+  outline: none;
 }
 .auto-workspace h1,
 .auto-workspace h2,
@@ -143,7 +146,7 @@
   align-items: center;
   margin-top: 25px;
   padding-block: 13px;
-  border-block: 1px solid var(--auto-line);
+  border-top: 1px solid var(--auto-line);
 }
 .auto-work-state > span {
   font-size: 12px;
@@ -158,11 +161,11 @@
 .auto-workspace .auto-primary {
   background: var(--yorishiro-button-bg);
   color: var(--yorishiro-fg);
-  border-color: var(--yorishiro-accent-border);
+  border-color: var(--auto-line);
   white-space: nowrap;
 }
 .auto-workspace .auto-primary:hover {
-  background: var(--yorishiro-accent-soft);
+  background: color-mix(in srgb, var(--yorishiro-fg) 10%, transparent);
 }
 .auto-folder {
   font-size: 11px !important;
@@ -188,7 +191,6 @@
 }
 .auto-draft {
   padding: 23px;
-  border: 1px solid var(--auto-line);
   border-radius: 9px;
   background: var(--auto-surface);
 }
@@ -205,6 +207,10 @@
   color: inherit;
   font: inherit;
   line-height: 1.8;
+  border-bottom: 1px solid var(--auto-line);
+}
+.auto-draft > textarea:focus {
+  border-bottom-color: var(--yorishiro-fg-dim);
 }
 .auto-draft > textarea::placeholder,
 .auto-composer textarea::placeholder {
@@ -212,6 +218,7 @@
 }
 .auto-delegate-row {
   align-items: flex-end;
+  margin-top: 20px;
 }
 .auto-delegate-row .auto-scope-note {
   margin: 0;
@@ -239,11 +246,14 @@
   padding-inline: 5px;
   font-size: 11px;
 }
-.auto-request-card,
-.auto-result {
+.auto-request-card {
   padding: 23px;
   border: 1px solid var(--auto-line);
   border-radius: 9px;
+}
+.auto-result {
+  padding-block: 23px;
+  border-top: 1px solid var(--auto-line);
 }
 .auto-request-card > p:not(.auto-eyebrow) {
   margin: 13px 0 20px;
@@ -298,9 +308,13 @@
   align-items: flex-end;
   gap: 12px;
   padding: 14px;
-  border: 1px solid var(--auto-line);
-  border-radius: 8px;
+  border: 0;
+  border-bottom: 1px solid var(--auto-line);
+  border-radius: 10px 10px 0 0;
   background: var(--yorishiro-input-bg);
+}
+.auto-composer:focus-within {
+  border-bottom-color: var(--yorishiro-fg-dim);
 }
 .auto-composer textarea {
   flex: 1;
@@ -313,6 +327,91 @@
   line-height: 1.8;
   min-height: 58px;
   max-height: 220px;
+}
+.auto-workspace .auto-send {
+  flex: 0 0 34px;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--yorishiro-fg);
+  color: var(--yorishiro-bg);
+}
+.auto-workspace .auto-send:hover:not(:disabled) {
+  opacity: 0.8;
+}
+.auto-workspace .auto-send:disabled {
+  background: var(--auto-surface);
+  color: var(--yorishiro-fg-dim);
+  opacity: 1;
+}
+.auto-spinner {
+  animation: auto-spin 1s linear infinite;
+}
+@keyframes auto-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .auto-spinner {
+    animation: none;
+  }
+}
+.auto-workspace .auto-cadence-toggle {
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 5px 0;
+  border: 0;
+  border-radius: 0;
+  color: var(--yorishiro-fg-dim);
+  font-size: 11px;
+  text-align: left;
+}
+.auto-workspace .auto-cadence-toggle:hover {
+  background: transparent;
+  color: var(--yorishiro-fg);
+}
+.auto-cadence-toggle[aria-expanded="true"] svg {
+  transform: rotate(180deg);
+}
+.auto-cadence-toggle svg {
+  flex-shrink: 0;
+}
+.auto-cadence-editor {
+  min-width: 0;
+  border: 0;
+  padding-block: 12px;
+}
+.auto-cadence-fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px 18px;
+}
+.auto-cadence-fields label {
+  display: grid;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--yorishiro-fg-dim);
+}
+.auto-cadence-fields input,
+.auto-cadence-fields select {
+  width: 140px;
+  min-height: 32px;
+  padding: 5px 8px;
+  border: 1px solid var(--auto-line);
+  border-radius: 5px;
+  background: var(--yorishiro-bg);
+  color: var(--yorishiro-fg);
+  font: inherit;
+  font-size: 12px;
+}
+.auto-cadence-error {
+  margin-top: 10px;
+  font-size: 12px;
+  color: color-mix(in srgb, var(--yorishiro-fg) 75%, #f66);
 }
 .auto-conversation-log {
   margin-top: 18px;

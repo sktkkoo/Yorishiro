@@ -6,6 +6,7 @@ import {
   Check,
   Clock3,
   Folder,
+  LoaderCircle,
   Mic,
   MicOff,
   Pause,
@@ -24,11 +25,13 @@ import {
   saveAutonomyContract,
   setAutonomyEnabled,
   undoAutonomyRun,
+  updateAutonomyCadence,
   useAutonomyDraftSnapshot,
   useAutonomyStatus,
 } from "../runtime/autonomy/client";
 import { type DraftField, useAutonomyDraftEditor } from "../runtime/autonomy/draft-editor";
 import type { AutonomyContract, AutonomyRun, SetupMessage } from "../runtime/autonomy/types";
+import { AutoCadence } from "./AutoCadence";
 import { AutonomyActionReview } from "./AutonomyActionReview";
 import "./AutoWorkspace.css";
 
@@ -60,8 +63,6 @@ const PRESET = {
   automaticActionApproval: false,
   publishPullRequest: false,
   reviewMode: "automatic",
-  intervalMinutes: 30,
-  maxRunsPerDay: 4,
 } as const;
 const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
 const folderName = (path: string) =>
@@ -91,6 +92,7 @@ export function AutoWorkspace({
   const [busy, setBusy] = useState<ReadonlySet<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
+  const [editingDraftCadence, setEditingDraftCadence] = useState(false);
   const [history, setHistory] = useState(false);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const inFlight = useRef(new Set<string>());
@@ -131,6 +133,9 @@ export function AutoWorkspace({
   useEffect(() => {
     if (!open) composing.current = false;
   }, [open]);
+  useEffect(() => {
+    if (!open || !showDraft || history || selectedRunId) setEditingDraftCadence(false);
+  }, [open, showDraft, history, selectedRunId]);
   useEffect(() => {
     // Cancel a delayed entry if the view closes or another entry starts a call.
     if (!open || callInProgress) voiceIntent.current += 1;
@@ -189,6 +194,8 @@ export function AutoWorkspace({
       if (
         current.values.goal !== displayed.goal ||
         current.values.root !== displayed.root ||
+        current.values.intervalMinutes !== displayed.intervalMinutes ||
+        current.values.maxRunsPerDay !== displayed.maxRunsPerDay ||
         current.conflicts.length
       )
         throw new Error(copy.latestDraft);
@@ -203,8 +210,6 @@ export function AutoWorkspace({
       editor.edit("automaticActionApproval", false);
       editor.edit("publishPullRequest", false);
       editor.edit("reviewMode", PRESET.reviewMode);
-      editor.edit("intervalMinutes", PRESET.intervalMinutes);
-      editor.edit("maxRunsPerDay", PRESET.maxRunsPerDay);
       await editor.flush();
       assertReviewedGoal();
       const reviewed = editor.getSnapshot();
@@ -258,7 +263,13 @@ export function AutoWorkspace({
   }
   function conflict(field: DraftField) {
     const name =
-      field === "goal" ? copy.goalField : field === "root" ? copy.rootField : copy.scopeField;
+      field === "goal"
+        ? copy.goalField
+        : field === "root"
+          ? copy.rootField
+          : field === "intervalMinutes" || field === "maxRunsPerDay"
+            ? copy.frequency
+            : copy.scopeField;
     const value = draftState.remoteValues[field];
     return (
       <fieldset className="auto-conflict" key={field}>
@@ -280,11 +291,28 @@ export function AutoWorkspace({
   function phaseLabel() {
     if (stopping) return copy.stopping;
     if (working) return copy.working;
-    if (pendingActions.length) return copy.pending;
+    if (
+      pendingActions.length ||
+      status?.pendingWork ||
+      status?.phase === "awaitingReview" ||
+      status?.phase === "awaitingAction"
+    )
+      return copy.pending;
     if (status?.phase === "failed") return copy.failed;
     if (status?.phase === "blocked") return copy.blocked;
-    if (status?.phase === "completed") return copy.completed;
+    if (status?.phase === "completed" && !status.contract?.enabled) return copy.completed;
     if (!status?.contract?.enabled) return copy.paused;
+    if (status.nextRunAt !== null && ["idle", "completed"].includes(status.phase)) {
+      if (status.nextRunAt <= Date.now()) return copy.startingSoon;
+      const next = new Date(status.nextRunAt);
+      const today = next.toDateString() === new Date().toDateString();
+      const formatted = next.toLocaleString(language === "ja" ? "ja-JP" : "en-US", {
+        ...(today ? {} : { month: "short", day: "numeric" }),
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+      return `${status.contract.reviewMode === "daily" ? copy.nextReview : copy.nextRun} ${formatted}`;
+    }
     return copy.idle;
   }
   function runLabel(run: AutonomyRun) {
@@ -535,6 +563,19 @@ export function AutoWorkspace({
                           )}
                         </div>
                       </div>
+                      <AutoCadence
+                        value={status.contract}
+                        revisionKey={JSON.stringify(status.contract)}
+                        language={language}
+                        onSave={async ({ intervalMinutes, maxRunsPerDay }) => {
+                          if (status.contract)
+                            await updateAutonomyCadence(
+                              status.contract,
+                              intervalMinutes,
+                              maxRunsPerDay,
+                            );
+                        }}
+                      />
                     </section>
                   )}
                   {pendingActions.map((action) => (
@@ -604,7 +645,24 @@ export function AutoWorkspace({
                         disabled={busy.has("delegate")}
                       />
                       {draftState.conflicts.map(conflict)}
-                      {draftState.error && (
+                      <AutoCadence
+                        value={draftState.values}
+                        revisionKey={JSON.stringify({
+                          ...draftState.values,
+                          intervalMinutes: undefined,
+                          maxRunsPerDay: undefined,
+                        })}
+                        optimistic
+                        language={language}
+                        disabled={busy.has("delegate")}
+                        onExpandedChange={setEditingDraftCadence}
+                        onSave={async ({ intervalMinutes, maxRunsPerDay }) => {
+                          editor.edit("intervalMinutes", intervalMinutes);
+                          editor.edit("maxRunsPerDay", maxRunsPerDay);
+                          await editor.flush();
+                        }}
+                      />
+                      {draftState.error && !editingDraftCadence && (
                         <div className="auto-error" role="alert">
                           <p>{draftState.error}</p>
                           <button type="button" onClick={() => editor.retry()}>
@@ -624,6 +682,7 @@ export function AutoWorkspace({
                           aria-describedby={scopeId}
                           disabled={
                             executionBusy ||
+                            editingDraftCadence ||
                             busy.size > 0 ||
                             draftState.conflicts.length > 0 ||
                             !draftState.values.goal.trim() ||
@@ -632,7 +691,6 @@ export function AutoWorkspace({
                           onClick={() => void delegate()}
                         >
                           {status.contract ? copy.replace : copy.delegate}
-                          <ArrowUp size={16} aria-hidden="true" />
                         </button>
                       </div>
                     </section>
@@ -677,12 +735,17 @@ export function AutoWorkspace({
                   />
                   <button
                     type="submit"
-                    className="auto-primary"
+                    className="auto-send"
                     disabled={callConnecting || busy.has("consult") || !message.trim()}
                     aria-label={busy.has("consult") ? copy.sending : copy.send}
+                    title={copy.send}
+                    aria-busy={busy.has("consult")}
                   >
-                    {busy.has("consult") ? copy.sending : copy.send}
-                    <ArrowUp size={16} aria-hidden="true" />
+                    {busy.has("consult") ? (
+                      <LoaderCircle size={17} className="auto-spinner" aria-hidden="true" />
+                    ) : (
+                      <ArrowUp size={18} aria-hidden="true" />
+                    )}
                   </button>
                 </form>
               )}

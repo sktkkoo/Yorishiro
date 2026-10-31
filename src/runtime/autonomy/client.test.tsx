@@ -25,6 +25,36 @@ describe("autonomous host polling", () => {
   });
   afterEach(() => vi.useRealTimers());
 
+  it("sends the exact saved contract as the cadence precondition and refreshes on conflict", async () => {
+    const current = {
+      goal: "notes",
+      root: "/notes",
+      allowedOperations: ["write"] as const,
+      enabled: true,
+      intervalMinutes: 30,
+      maxRunsPerDay: 4,
+      developmentRepository: { preserved: "legacy metadata" },
+    };
+    invoke.mockImplementation(async (command: string) => {
+      if (command === "autonomy_update_cadence") throw new Error("changed");
+      if (command === "autonomy_status") return { ...idle, contract: current };
+      if (command === "autonomy_draft_snapshot") return { revision: 0, draft: null };
+    });
+    const { updateAutonomyCadence } = await import("./client");
+    await expect(updateAutonomyCadence(current, 60, 2)).rejects.toThrow("changed");
+    expect(invoke).toHaveBeenCalledWith("autonomy_update_cadence", {
+      expectedContract: current,
+      intervalMinutes: 60,
+      maxRunsPerDay: 2,
+    });
+    expect(invoke).toHaveBeenCalledWith("autonomy_status");
+    expect(
+      invoke.mock.calls.some(([name]) =>
+        ["autonomy_save", "autonomy_pause", "autonomy_set_enabled"].includes(name),
+      ),
+    ).toBe(false);
+  });
+
   it("checks for due work without user input and stops polling after unmount", async () => {
     vi.useFakeTimers();
     const { useAutonomyStatus } = await import("./client");

@@ -277,16 +277,11 @@ fn finish(
         let now = super::clock_ms();
         match result {
             Ok(goal_handoff::Decision::Complete) => {
-                next.phase = if claim.contract.enabled {
-                    "idle"
-                } else {
-                    "paused"
-                }
-                .into();
-                next.next_run_at = claim
-                    .contract
+                let contract = next.contract.as_ref().unwrap();
+                next.phase = if contract.enabled { "idle" } else { "paused" }.into();
+                next.next_run_at = contract
                     .enabled
-                    .then_some(now.saturating_add(claim.contract.interval_minutes * 60_000));
+                    .then_some(now.saturating_add(contract.interval_minutes * 60_000));
                 super::action_execution::complete_goal(&mut next, now);
             }
             Ok(goal_handoff::Decision::Action(_)) => {

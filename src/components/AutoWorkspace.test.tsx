@@ -15,6 +15,7 @@ import {
   saveAutonomyContract,
   setAutonomyEnabled,
   undoAutonomyRun,
+  updateAutonomyCadence,
   useAutonomyDraftSnapshot,
   useAutonomyStatus,
 } from "../runtime/autonomy/client";
@@ -39,6 +40,7 @@ vi.mock("../runtime/autonomy/client", () => ({
   saveAutonomyContract: vi.fn(),
   setAutonomyEnabled: vi.fn(),
   undoAutonomyRun: vi.fn(),
+  updateAutonomyCadence: vi.fn(),
   approveAutonomyAction: vi.fn(),
   declineAutonomyAction: vi.fn(),
 }));
@@ -127,6 +129,7 @@ beforeEach(() => {
     saveAutonomyContract,
     setAutonomyEnabled,
     undoAutonomyRun,
+    updateAutonomyCadence,
     approveAutonomyAction,
     declineAutonomyAction,
     openPath,
@@ -290,8 +293,8 @@ describe("AutoWorkspace", () => {
         goal: "新しい依頼",
         root: "/work/notes",
         allowedOperations: ["write", "move", "trash"],
-        intervalMinutes: 30,
-        maxRunsPerDay: 4,
+        intervalMinutes: 60,
+        maxRunsPerDay: 2,
         reviewMode: "automatic",
         workMode: "auto",
         automaticActionApproval: false,
@@ -302,6 +305,150 @@ describe("AutoWorkspace", () => {
     );
     expect(contract.automaticActionApproval).toBe(true);
     expect(contract.allowedOperations).toEqual(["write"]);
+  });
+  it("changes a running contract's cadence without stopping it or replacing its grant", async () => {
+    const current = { ...contract, intervalMinutes: 37, maxRunsPerDay: 6 };
+    setStatus({ contract: current, phase: "thinking", nextRunAt: Date.now() + 60_000 });
+    render(<AutoWorkspace {...props()} />);
+    fireEvent.click(screen.getByRole("button", { name: /作業の頻度/ }));
+    expect((screen.getByRole("combobox", { name: "実行間隔" }) as HTMLSelectElement).value).toBe(
+      "37",
+    );
+    fireEvent.change(screen.getByRole("combobox", { name: "実行間隔" }), {
+      target: { value: "120" },
+    });
+    fireEvent.change(screen.getByRole("spinbutton", { name: "24時間の上限（回）" }), {
+      target: { value: "8" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "変更する" }));
+    await waitFor(() =>
+      expect(updateAutonomyCadence).toHaveBeenCalledExactlyOnceWith(current, 120, 8),
+    );
+    expect(pauseAutonomy).not.toHaveBeenCalled();
+    expect(saveAutonomyContract).not.toHaveBeenCalled();
+    expect(setAutonomyEnabled).not.toHaveBeenCalled();
+    expect(screen.getByRole("status").textContent).toBe("作業中");
+  });
+  it("keeps selected draft cadence when delegating and requires applying the visible edit first", async () => {
+    setDraft({ revision: 1, draft: { ...draftDefaults } });
+    render(<AutoWorkspace {...props()} />);
+    fireEvent.click(screen.getByRole("button", { name: /作業の頻度/ }));
+    fireEvent.change(screen.getByRole("combobox", { name: "実行間隔" }), {
+      target: { value: "120" },
+    });
+    fireEvent.change(screen.getByRole("spinbutton", { name: "24時間の上限（回）" }), {
+      target: { value: "8" },
+    });
+    expect((screen.getByRole("button", { name: "任せる" }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "変更する" }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "変更する" })).toBeNull());
+    expect(screen.getByRole("button", { name: /2時間間隔 · 24時間で8回まで/ })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "任せる" }));
+    await waitFor(() => expect(saveAutonomyContract).toHaveBeenCalledOnce());
+    expect(saveAutonomyContract).toHaveBeenCalledWith(
+      expect.objectContaining({ intervalMinutes: 120, maxRunsPerDay: 8, enabled: true }),
+      expect.any(String),
+    );
+    expect(updateAutonomyCadence).not.toHaveBeenCalled();
+  });
+  it("preserves a rejected cadence edit and rejects invalid or stale values", async () => {
+    setStatus({ contract, phase: "idle" });
+    const p = props();
+    const view = render(<AutoWorkspace {...p} />);
+    fireEvent.click(screen.getByRole("button", { name: /作業の頻度/ }));
+    const limit = screen.getByRole("spinbutton", { name: "24時間の上限（回）" });
+    fireEvent.change(limit, { target: { value: "0" } });
+    fireEvent.click(screen.getByRole("button", { name: "変更する" }));
+    expect(screen.getByRole("alert").textContent).toMatch(/1回以上/);
+    expect(updateAutonomyCadence).not.toHaveBeenCalled();
+    fireEvent.change(limit, { target: { value: "8" } });
+    vi.mocked(updateAutonomyCadence).mockRejectedValueOnce(new Error("保存できませんでした"));
+    fireEvent.click(screen.getByRole("button", { name: "変更する" }));
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toBe("保存できませんでした"));
+    expect((limit as HTMLInputElement).value).toBe("8");
+    setStatus({ contract: { ...contract, goal: "別の依頼" } });
+    view.rerender(<AutoWorkspace {...p} />);
+    expect((screen.getByRole("button", { name: "変更する" }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+    expect(screen.getByRole("alert").textContent).toMatch(/設定が変わりました/);
+    fireEvent.keyDown(limit, { key: "Escape" });
+    expect(screen.queryByRole("spinbutton")).toBeNull();
+    expect(p.onClose).not.toHaveBeenCalled();
+  });
+  it("lets a failed optimistic draft cadence save retry without reporting its own edit as a conflict", async () => {
+    setDraft({ revision: 1, draft: { ...draftDefaults } });
+    render(<AutoWorkspace {...props()} />);
+    fireEvent.click(screen.getByRole("button", { name: /作業の頻度/ }));
+    fireEvent.change(screen.getByRole("combobox", { name: "実行間隔" }), {
+      target: { value: "120" },
+    });
+    vi.mocked(editAutonomyDraft).mockRejectedValueOnce(new Error("保存できませんでした"));
+    fireEvent.click(screen.getByRole("button", { name: "変更する" }));
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toBe("保存できませんでした"));
+    expect((screen.getByRole("button", { name: "変更する" }) as HTMLButtonElement).disabled).toBe(
+      false,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "変更する" }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "変更する" })).toBeNull());
+    expect(screen.getByRole("button", { name: /2時間間隔/ })).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+  it("does not leave delegation disabled after leaving a draft cadence edit for history", () => {
+    setDraft({ revision: 1, draft: { ...draftDefaults } });
+    render(<AutoWorkspace {...props()} />);
+    fireEvent.click(screen.getByRole("button", { name: /作業の頻度/ }));
+    expect((screen.getByRole("button", { name: "任せる" }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "作業履歴" }));
+    fireEvent.click(screen.getByRole("button", { name: "作業履歴" }));
+    expect(screen.queryByRole("combobox")).toBeNull();
+    expect((screen.getByRole("button", { name: "任せる" }) as HTMLButtonElement).disabled).toBe(
+      false,
+    );
+  });
+  it("shows the next eligible time only when work can resume automatically", () => {
+    const future = new Date(Date.now() + 25 * 60 * 60 * 1000);
+    setStatus({ contract: { ...contract, reviewMode: "automatic" }, nextRunAt: future.getTime() });
+    const p = props();
+    const view = render(<AutoWorkspace {...p} />);
+    expect(screen.getByRole("status").textContent).toBe(
+      `次回 ${future.toLocaleString("ja-JP", {
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      })}`,
+    );
+    for (const phase of ["thinking", "paused", "failed", "blocked", "completed"] as const) {
+      setStatus({
+        contract: { ...contract, enabled: phase === "thinking" },
+        phase,
+        nextRunAt: future.getTime(),
+      });
+      view.rerender(<AutoWorkspace {...p} />);
+      expect(screen.getByRole("status").textContent).not.toMatch(/次回|次の仕事の確認/);
+    }
+    setStatus({
+      contract,
+      phase: "awaitingReview",
+      nextRunAt: future.getTime(),
+      pendingWork: {
+        id: "review",
+        goal: "確認する仕事",
+        reason: "",
+        summary: "進め方の確認",
+        changedPaths: [],
+      },
+    });
+    view.rerender(<AutoWorkspace {...p} />);
+    expect(screen.getByRole("status").textContent).toBe("確認待ち");
+    setStatus({ contract, phase: "completed", nextRunAt: future.getTime() });
+    view.rerender(<AutoWorkspace {...p} />);
+    expect(screen.getByRole("status").textContent).toMatch(/^次の仕事の確認 /);
   });
   it("refuses to save a goal that changes while the displayed draft is being flushed", async () => {
     setDraft({ revision: 1, draft: { ...draftDefaults, id: "shown" } });
@@ -356,7 +503,11 @@ describe("AutoWorkspace", () => {
     await act(async () => response.resolve("相談を受け取りました"));
   });
 
-  it("does not commit a new clean voice goal received during preset normalization", async () => {
+  it.each([
+    { goal: "まだ確認していない目的" },
+    { intervalMinutes: 120 },
+    { maxRunsPerDay: 20 },
+  ])("does not commit an unreviewed voice change %j during preset normalization", async (change) => {
     setDraft({ revision: 1, draft: { ...draftDefaults, id: "displayed" } });
     const response = deferred<Awaited<ReturnType<typeof editAutonomyDraft>>>();
     vi.mocked(editAutonomyDraft).mockReturnValueOnce(response.promise);
@@ -373,7 +524,7 @@ describe("AutoWorkspace", () => {
             ...draftDefaults,
             ...patch,
             id: "changed-in-voice",
-            goal: "まだ確認していない目的",
+            ...change,
           },
         },
       }),
