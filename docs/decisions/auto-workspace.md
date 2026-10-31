@@ -60,3 +60,5 @@ Codexを Main Agent にしている場合、音声も文字も現在の Main thr
 GPT Liveへの実マイク入力から委任・作業完了までの通し確認を、このUI変更の検証済み事項としては扱わない。音声の品質と実機での会話確認は別途必要である。アプリ終了中の実行、正確な時刻の予約、複数目的の並行実行もこの変更には含まない。
 
 参照: [AutoWorkspace](../../src/components/AutoWorkspace.tsx)、[共有ドラフト](../../src/runtime/autonomy/draft-editor.ts)、[実行client](../../src/runtime/autonomy/client.ts)、[設定Packの権限境界](system-settings-privileged-boundary.md)。
+
+現在の仕事には「任せている範囲」を折りたたんで置き、保存されたフォルダのフルパスと実際の編集・移動・退避の許可だけを表示する。自動許可は目的・対象に必要な操作に限られること、実行環境のアクセス権やログインを追加しないことを日英で示す。自動許可がなければ送信・公開は都度確認と示す。この表示操作は契約や権限を変更しない。
