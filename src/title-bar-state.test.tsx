@@ -18,6 +18,7 @@ import {
   useActiveUiId,
   useSettingsActive,
   useSidebarOpen,
+  viewModeOwnsChrome,
 } from "./title-bar-state";
 
 const SETTINGS_PACK_ID = "yorishiro-settings";
@@ -93,9 +94,10 @@ describe("title bar state hooks", () => {
     ).toBe(true);
   });
 
-  it("keeps the finalized built-in order ahead of deterministic user modes", () => {
+  it("appends Chat after the existing built-in shortcut slots and before user modes", () => {
     const ordered = sortViewModeEntries([
       uiEntry("user-z"),
+      uiEntry("chat"),
       uiEntry("immersive"),
       uiEntry("portrait"),
       uiEntry("theater"),
@@ -107,6 +109,7 @@ describe("title bar state hooks", () => {
       "portrait",
       "theater",
       "immersive",
+      "chat",
       "user-a",
       "user-z",
     ]);
@@ -116,15 +119,40 @@ describe("title bar state hooks", () => {
       ["portrait", "⌥⌘2"],
       ["theater", "⌥⌘3"],
       ["immersive", "⌥⌘4"],
-      ["user-a", "⌥⌘5"],
-      ["user-z", "⌥⌘6"],
+      ["chat", "⌥⌘5"],
+      ["user-a", "⌥⌘6"],
+      ["user-z", "⌥⌘7"],
+    ]);
+    expect(buildViewModeShortcuts(ordered, false).map(({ id, hint }) => [id, hint])).toEqual([
+      [null, "Ctrl+Alt+0"],
+      ["companion", "Ctrl+Alt+1"],
+      ["portrait", "Ctrl+Alt+2"],
+      ["theater", "Ctrl+Alt+3"],
+      ["immersive", "Ctrl+Alt+4"],
+      ["chat", "Ctrl+Alt+5"],
+      ["user-a", "Ctrl+Alt+6"],
+      ["user-z", "Ctrl+Alt+7"],
     ]);
   });
 
-  it("shows native window controls only for Terminal", () => {
-    expect(nativeWindowControlsVisibleForViewMode(null)).toBe(true);
-    expect(nativeWindowControlsVisibleForViewMode("theater")).toBe(false);
-    expect(nativeWindowControlsVisibleForViewMode("user-view-mode")).toBe(false);
+  it.each([null, "chat"])("keeps normal window chrome and the project selector in %s", (mode) => {
+    expect(viewModeOwnsChrome(mode)).toBe(false);
+    expect(nativeWindowControlsVisibleForViewMode(mode)).toBe(true);
+    expect(roundedWindowForViewMode(mode)).toBe(false);
+    expect(shouldShowProjectSelector(true, mode)).toBe(true);
+    expect(shouldShowProjectSelector(false, mode)).toBe(false);
+  });
+
+  it.each([
+    "companion",
+    "portrait",
+    "theater",
+    "immersive",
+    "user-view-mode",
+  ])("keeps presentation chrome ownership and hidden native controls in %s", (mode) => {
+    expect(viewModeOwnsChrome(mode)).toBe(true);
+    expect(nativeWindowControlsVisibleForViewMode(mode)).toBe(false);
+    expect(shouldShowProjectSelector(true, mode)).toBe(false);
   });
 
   it("rounds only windowed compact presentation modes", () => {
@@ -222,6 +250,25 @@ describe("title bar state hooks", () => {
     expect(nativeWindowControlsVisibleForViewMode(settingsPresentationId)).toBe(true);
     expect(roundedWindowForViewMode(settingsPresentationId)).toBe(false);
     expect(activePresentationViewModeId(false, pickerId)).toBe("portrait");
+  });
+
+  it("preserves Chat selection and normal chrome across Settings and restoration", () => {
+    const pickerWhileOpen = resolvePickerActiveViewModeId(true, "chat", SETTINGS_PACK_ID);
+    const presentationWhileOpen = activePresentationViewModeId(true, pickerWhileOpen);
+    expect(pickerWhileOpen).toBe("chat");
+    expect(presentationWhileOpen).toBeNull();
+    expect(viewModeOwnsChrome(presentationWhileOpen)).toBe(false);
+    expect(nativeWindowControlsVisibleForViewMode(presentationWhileOpen)).toBe(true);
+    expect(shouldShowProjectSelector(true, pickerWhileOpen)).toBe(true);
+
+    const pickerAfterClose = resolvePickerActiveViewModeId(false, null, "chat");
+    const presentationAfterClose = activePresentationViewModeId(false, pickerAfterClose);
+    expect(pickerAfterClose).toBe("chat");
+    expect(presentationAfterClose).toBe("chat");
+    expect(viewModeOwnsChrome(presentationAfterClose)).toBe(false);
+    expect(nativeWindowControlsVisibleForViewMode(presentationAfterClose)).toBe(true);
+    expect(shouldShowProjectSelector(true, pickerAfterClose)).toBe(true);
+    expect(roundedWindowForViewMode(presentationAfterClose)).toBe(false);
   });
 
   it("does not flash the project selector before persisted View Mode bootstrap resolves", () => {

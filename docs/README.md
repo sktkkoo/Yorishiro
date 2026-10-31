@@ -96,6 +96,7 @@ Source code 内で参照するときは：
 | Module | 責務 | 詳細 |
 |---|---|---|
 | `lib.rs` / `main.rs` | Tauri app entry / command 登録 / setup hook | [../src-tauri/README.md](../src-tauri/README.md) |
+| `chat_approvals.rs` | Chat の承認 lease / 要求単位の回答 / 失効 | 同上 |
 | `agent_setup.rs` | ユーザーが選んだ公式 CLI installer の取得・実行・進捗 IO | [decisions/agent-onboarding.md](decisions/agent-onboarding.md) |
 | `claude_screen_sharing.rs` | Claudeの起動・会話に紐づく最新画像のメモリ保持、hook通知、MCP取得 | [decisions/claude-screen-sharing.md](decisions/claude-screen-sharing.md) |
 | `pty.rs` | Legacy PTY facade / per-instance dynamic-port hook server | 同上 |

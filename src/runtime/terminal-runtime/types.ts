@@ -345,6 +345,16 @@ export interface TerminalRuntime {
    */
   submitUserText(text: string): void;
 
+  /**
+   * Host の Chat 入力欄で人間が確定したテキストを通常の入力 queue から送信する。
+   * 改行・タブは bracketed paste 有効時だけ許可し、本文の送信後に Enter を送る。
+   * PTY 未起動・終了・置換・書込失敗は reject し、呼び出し元が下書きを保持できる。
+   * ネイティブ入力が残る、または attach・送信失敗で状態不明なら ChatInputError を返す。
+   * 端末側で明示的に Enter を送るまで再送せず、確認用の端末を表示すること。
+   * SDK / MCP / pack には公開しない。
+   */
+  submitChatText(text: string): Promise<void>;
+
   /** xterm にキーボードフォーカスを移す。タブ切り替え時に使う。 */
   focus(): void;
 

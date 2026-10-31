@@ -142,6 +142,10 @@ if [ -z "$body" ]; then
 fi
 url="http://127.0.0.1:${{port}}{endpoint}?sessionId=${{session}}&agent=${{agent}}&token=${{token}}&launch=${{launch}}"
 if command -v curl >/dev/null 2>&1; then
+  if [ "{endpoint}" = "/hook/permission-request" ] && [ "$agent" = "claude" ]; then
+    printf '%s' "$body" | curl -sf --connect-timeout 1 -m 310 -X POST -H 'Content-Type: application/json' --data-binary @- "${{url}}&approval=1" 2>/dev/null || printf '{{}}'
+    exit 0
+  fi
   printf '%s' "$body" | curl -s -m 1 -X POST --data-binary @- "$url" >/dev/null 2>&1 || true
 fi
 printf '{{}}'
@@ -209,7 +213,7 @@ fn claude_hooks_json(hooks_dir: &HookScripts) -> String {
             }],
             "PermissionRequest": [{
                 "matcher": "",
-                "hooks": [{ "type": "command", "command": command_path_for_hook(&hooks_dir.permission_request) }]
+                "hooks": [{ "type": "command", "command": command_path_for_hook(&hooks_dir.permission_request), "timeout": 320 }]
             }],
             "PermissionDenied": [{
                 "matcher": "",
@@ -865,6 +869,10 @@ mod tests {
                 .unwrap()
                 .contains("hook-permission-request.sh")
         );
+        assert_eq!(
+            parsed["hooks"]["PermissionRequest"][0]["hooks"][0]["timeout"],
+            320
+        );
         assert!(parsed["hooks"]["TaskCompleted"][0]["hooks"][0]["command"]
             .as_str()
             .unwrap()
@@ -886,6 +894,61 @@ mod tests {
         assert!(notification_hook.contains("&token=${token}&launch=${launch}"));
 
         let _ = fs::remove_dir_all(&root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn permission_wrapper_forwards_claude_decision_but_keeps_codex_notification_only() {
+        let root = tempfile::tempdir().unwrap();
+        let hook = hook_script(root.path(), "permission.sh", "/hook/permission-request").unwrap();
+        let bin = root.path().join("bin");
+        fs::create_dir_all(&bin).unwrap();
+        write_executable_if_different(
+            &bin.join("curl"),
+            "#!/bin/sh\ncat > \"$HOOK_BODY_RECORD\"\nprintf '%s' \"$*\" > \"$HOOK_ARGUMENT_RECORD\"\nprintf '%s' \"$HOOK_FAKE_RESPONSE\"\n",
+        )
+        .unwrap();
+        let body_record = root.path().join("body.json");
+        let args_record = root.path().join("args.txt");
+        let payload = "{\n  \"tool_input\": {\"command\": \"printf 'a\\\\nb'\"}\n}";
+        let response = r#"{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"deny"}}}"#;
+        for agent in ["claude", "codex"] {
+            let mut child = Command::new("/bin/sh")
+                .arg(&hook)
+                .env("PATH", format!("{}:/usr/bin:/bin", bin.display()))
+                .env("YORISHIRO_HOOK_PORT", "19001")
+                .env("YORISHIRO_HOOK_TOKEN", "instance-token")
+                .env("YORISHIRO_HOOK_LAUNCH_ID", "launch-a")
+                .env("YORISHIRO_SESSION_ID", "main")
+                .env("YORISHIRO_AGENT_KIND", agent)
+                .env("HOOK_BODY_RECORD", &body_record)
+                .env("HOOK_ARGUMENT_RECORD", &args_record)
+                .env("HOOK_FAKE_RESPONSE", response)
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .spawn()
+                .unwrap();
+            child
+                .stdin
+                .take()
+                .unwrap()
+                .write_all(payload.as_bytes())
+                .unwrap();
+            let result = child.wait_with_output().unwrap();
+            assert!(result.status.success());
+            assert_eq!(fs::read_to_string(&body_record).unwrap(), payload);
+            let stdout = String::from_utf8(result.stdout).unwrap();
+            let args = fs::read_to_string(&args_record).unwrap();
+            if agent == "claude" {
+                assert_eq!(stdout, response);
+                assert!(args.contains("&approval=1"));
+                assert!(args.contains("-m 310"));
+            } else {
+                assert_eq!(stdout, "{}");
+                assert!(!args.contains("&approval=1"));
+                assert!(args.contains("-m 1"));
+            }
+        }
     }
 
     #[test]

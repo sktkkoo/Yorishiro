@@ -37,6 +37,7 @@ bundled-packs/
 │   ├── text-physics/        — collapse / restore of terminal glyphs
 │   └── abandoned-monitor/   — abandoned-surveillance-terminal-style ARG overlay
 ├── ui/
+│   ├── chat/                — host-owned conversation and inline terminal controls
 │   ├── yorishiro-settings/  — settings screen (opens with F1)
 │   ├── immersive/           — transparent terminal UI
 │   └── theater/             — fullscreen character view

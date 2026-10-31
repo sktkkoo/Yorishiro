@@ -13,6 +13,7 @@ Yorishiro の **IO 境界層**。PTY / file system / hooks / MCP server。**設�
 src-tauri/src/
 ├── main.rs        — minimal entry, calls yorishiro_lib::run()
 ├── lib.rs         — Tauri app builder + #[tauri::command] 登録 + setup hook
+├── chat_approvals.rs — Host-owned approval leases and exact pending request decisions
 ├── agent_setup.rs — 明示操作による公式 CLI installer の取得・実行・進捗 IO
 ├── autonomy/     — 委任契約と作業台帳、tool-free CLI worker、復元付き文書操作
 ├── claude_screen_sharing.rs — 会話・起動に紐づく最新共有画像のメモリ保持とMCP取得
@@ -42,6 +43,7 @@ src-tauri/src/
 
 | Module | 責務 | TS 側との関係 |
 |---|---|---|
+| `chat_approvals.rs` | Chat 承認の表示 lease / 要求単位の回答 / 失効 | Claude hook と Codex TUI proxy の host-only 承認型。pack / MCP へは公開しない |
 | `agent_setup.rs` | Claude Code / Codex の固定された公式 installer を一般ユーザー権限で実行。出力制限・timeout・process group cleanup・agent ごとの重複防止 | `runtime/agent-install.ts` から明示操作で呼び、進捗は main window 宛ての `agent-install-output` event。初回選択の判断は TS が所有 |
 | `claude_screen_sharing.rs` | main windowのbegin / publish / end、認証済みhookへのcapability通知、`shared_screen_get`による画像取得。native owner・TTL・document lifecycleを検証 | TSが開始・停止・撮影を所有。保存は最新1枚のメモリのみ。[設計](../docs/decisions/claude-screen-sharing.md) |
 | `pty.rs` | Legacy Tauri command facade / hook server / default-session delegation | TS 側 perception primitive が PTY output を **read のみ** で受け取る。terminal agent launch 引数差分は `sessions/agent_adapter/` で吸収 |
@@ -64,6 +66,7 @@ Agent setup:
 
 Session / PTY:
 - `session_spawn(session_id?, spec, cols, rows, cwd?, on_output)` / `session_write(session_id, data)` / `session_resize(session_id, cols, rows)` / `session_refresh_theme(session_id)` / `session_attach(session_id, cwd?, on_output) → AttachResult { attached, replay }` / `session_detach(session_id)` / `session_realtime_connect(session_id, on_message)` / `session_realtime_send(connection_id, message)` / `session_realtime_disconnect(connection_id, final_message?)` / `session_destroy(session_id)` / `session_list()`
+- Chat approval commands: `session_chat_approvals(session_id, owner_id, enabled)` / `session_chat_approval_respond(session_id, owner_id, id, decision)`
 - Legacy default-session shim: `pty_write(data)` / `pty_resize(cols, rows)` / `pty_kill()` / `pty_attach(cwd?, on_output) → AttachResult { attached, replay }` / `pty_detach()` / `poll_hook_signals() → Vec<String>`
 
 User layer:

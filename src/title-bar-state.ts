@@ -58,7 +58,12 @@ export function matchesViewModeShortcut(
 }
 
 export function nativeWindowControlsVisibleForViewMode(activeViewModeId: string | null): boolean {
-  return activeViewModeId === null;
+  return !viewModeOwnsChrome(activeViewModeId);
+}
+
+/** Chat は通常の shell を保ち、会話領域だけを差し替える。 */
+export function viewModeOwnsChrome(activeViewModeId: string | null): boolean {
+  return activeViewModeId !== null && activeViewModeId !== "chat";
 }
 
 export function roundedWindowForViewMode(activeViewModeId: string | null): boolean {
@@ -76,7 +81,7 @@ export function shouldShowProjectSelector(
   userLayerReady: boolean,
   activeUiId: string | null,
 ): boolean {
-  return userLayerReady && activeUiId === null;
+  return userLayerReady && (activeUiId === null || activeUiId === "chat");
 }
 
 function isPresenceLevel(value: unknown): value is PresenceLevel {
@@ -160,6 +165,7 @@ const BUILT_IN_VIEW_MODE_ORDER = new Map([
   ["portrait", 1],
   ["theater", 2],
   ["immersive", 3],
+  ["chat", 4],
 ]);
 
 export function sortViewModeEntries(

@@ -4,6 +4,7 @@ import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { LipSyncSource } from "../../core/body";
 import type { MouthValues } from "../../core/voice/mouth-values";
+import type { ChatTranscript } from "../chat-transcript";
 import type {
   CodexRealtimePersonaApplication,
   CodexRealtimePersonaSnapshot,
@@ -588,6 +589,7 @@ function setup(
       | Promise<CodexRealtimePersonaSnapshot>;
     readonly onPersonaApplication?: (application: CodexRealtimePersonaApplication) => void;
     readonly includeStartupContext?: boolean;
+    readonly readChatTranscript?: () => Promise<ChatTranscript>;
     onUserSpeechStarted?: () => void | Promise<void>;
     readonly onQuickChatResponse?: (response: {
       requestId: string;
@@ -659,6 +661,7 @@ function setup(
     return {
       getCurrentThreadId: () => trackedThreadId,
       trackQuickChatPrompt,
+      readChatTranscript: options.readChatTranscript,
       sendAutonomyMessage,
       shareScreenObservation,
       notifyScreenPointersEnabled: notifyPointerSetting,
@@ -718,6 +721,38 @@ function setup(
 }
 
 describe("useCodexRealtime", () => {
+  it("exposes a stable transcript reader for the current tracker", async () => {
+    const transcript: ChatTranscript = {
+      conversationId: "thread-1",
+      messages: [{ id: "message", role: "assistant", text: "hello" }],
+      working: false,
+    };
+    const readChatTranscript = vi.fn(async () => transcript);
+    const { result, rerender } = setup([], undefined, undefined, { readChatTranscript });
+    const read = result.current.readChatTranscript;
+    await expect(read()).resolves.toBe(transcript);
+    rerender({ sessionId: "main", available: true });
+    expect(result.current.readChatTranscript).toBe(read);
+    expect(readChatTranscript).toHaveBeenCalledOnce();
+  });
+
+  it("rejects unsupported transcript readers and snapshots from a replaced main session", async () => {
+    const unsupported = setup([]);
+    await expect(unsupported.result.current.readChatTranscript()).rejects.toThrow("not ready");
+    unsupported.unmount();
+    let resolve!: (value: ChatTranscript) => void;
+    const readChatTranscript = () =>
+      new Promise<ChatTranscript>((onResolve) => {
+        resolve = onResolve;
+      });
+    const { result, rerender } = setup([], undefined, undefined, { readChatTranscript });
+    const read = result.current.readChatTranscript();
+    const rejected = expect(read).rejects.toThrow("main session changed");
+    rerender({ sessionId: "replacement", available: true });
+    resolve({ conversationId: "old", messages: [], working: false });
+    await rejected;
+  });
+
   const sharedFrame: ScreenObservationFrame = {
     frameId: "shared-frame",
     width: 1280,

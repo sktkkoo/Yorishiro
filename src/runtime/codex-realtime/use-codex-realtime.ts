@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { LipSyncSource } from "../../core/body";
 import type { StateExpressionSchedulerCallbacks } from "../agent-state-expression";
 import type { AutonomyWorkReviewNotice } from "../autonomy/voice-setup";
+import type { ChatTranscript } from "../chat-transcript";
 import {
   CodexRealtimeClient,
   type CodexRealtimePersonaApplication,
@@ -49,6 +50,7 @@ export type CodexRealtimeClientFactory = (
 
 export interface CodexThreadTrackerLike {
   getCurrentThreadId(): string | null;
+  readChatTranscript?(): Promise<ChatTranscript>;
   sendAutonomyMessage?(text: string, language?: "ja" | "en"): Promise<string>;
   trackQuickChatPrompt(prompt: string): Promise<string | null>;
   start(): Promise<void>;
@@ -139,6 +141,7 @@ interface UseCodexRealtimeResult {
   ) => Promise<void>;
   readonly setMicrophoneMuted: (muted: boolean) => void;
   readonly trackQuickChatPrompt: (prompt: string) => Promise<string | null>;
+  readonly readChatTranscript: () => Promise<ChatTranscript>;
   readonly getLipSyncSource: () => LipSyncSource;
 }
 
@@ -971,6 +974,18 @@ export function useCodexRealtime({
     [],
   );
 
+  const readChatTranscript = useCallback(async (): Promise<ChatTranscript> => {
+    const tracker = threadTrackerRef.current;
+    if (!tracker?.readChatTranscript) {
+      throw new Error("Main agent is not ready for chat");
+    }
+    const transcript = await tracker.readChatTranscript();
+    if (threadTrackerRef.current !== tracker) {
+      throw new Error("The main session changed while reading chat");
+    }
+    return transcript;
+  }, []);
+
   const shareScreenObservation = useCallback(
     async (
       frame: ScreenObservationFrame,
@@ -1051,6 +1066,7 @@ export function useCodexRealtime({
     notifyAutonomyWorkReview,
     setMicrophoneMuted,
     trackQuickChatPrompt,
+    readChatTranscript,
     getLipSyncSource,
   };
 }
