@@ -910,6 +910,16 @@ fn decide(
     Ok(())
 }
 
+#[cfg(test)]
+pub(super) fn approve_for_live_test(
+    runtime: &mut super::Runtime,
+    id: &str,
+    expected_digest: &str,
+    save: impl Fn(&Status) -> Result<(), String>,
+) -> Result<(), String> {
+    decide(runtime, id, Some(expected_digest), true, save)
+}
+
 #[tauri::command]
 pub fn autonomy_approve_action(
     window: tauri::WebviewWindow,
