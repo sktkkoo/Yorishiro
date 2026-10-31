@@ -199,8 +199,15 @@ describe("AutonomyPanel", () => {
       language === "en" ? "without confirmation for each operation" : "操作ごとの確認なし",
     );
     expect(notice.textContent).toContain(
-      language === "en" ? "Saved service logins" : "保存済みログイン",
+      language === "en" ? "AI chooses how" : "実行方法はAIが選びます",
     );
+    expect(notice.textContent).toContain(
+      language === "en" ? "authentication is unavailable" : "認証を利用できない場合",
+    );
+    expect(notice.textContent).toContain(
+      language === "en" ? "not executed" : "未実行として知らせます",
+    );
+    expect(notice.textContent).not.toMatch(/Saved service logins|保存済みログイン/);
     expect(notice.textContent).toContain(language === "en" ? "cannot be undone" : "取り消せない");
     expect(notice.textContent).toContain(language === "en" ? "Turn this off" : "オフにすると");
     expect(screen.getAllByRole("dialog")).toHaveLength(1);

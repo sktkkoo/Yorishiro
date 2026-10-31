@@ -190,7 +190,9 @@ describe("post-work operation confirmation", () => {
     render(<AutonomyActionReview action={{ ...action, networkAccess: true }} disabled={false} />);
     const notice = screen.getByRole("note");
     expect(notice.textContent).toContain("外部と通信する操作です");
-    expect(notice.textContent).toContain("保存済みログインを使用します");
+    expect(notice.textContent).toContain("AIが実行方法を選び");
+    expect(notice.textContent).toContain("認証を利用できない場合は、未実行として知らせます");
+    expect(notice.textContent).not.toContain("保存済みログイン");
     expect(notice.querySelector('[aria-hidden="true"]')?.textContent).toContain("↗");
     expect(notice.closest("details")).toBeNull();
     expect(approveAutonomyAction).not.toHaveBeenCalled();
@@ -235,7 +237,10 @@ describe("post-work operation confirmation", () => {
     expect(screen.getByText("Work record").closest("details")?.textContent).toContain(
       action.sourceRoot,
     );
-    expect(screen.getByRole("note").textContent).toContain("saved login");
+    expect(screen.getByRole("note").textContent).toContain("AI chooses how");
+    expect(screen.getByRole("note").textContent).toContain("authentication is unavailable");
+    expect(screen.getByRole("note").textContent).toContain("not executed");
+    expect(screen.getByRole("note").textContent).not.toContain("saved login");
     expect(screen.getByRole("heading", { name: action.operation })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "承認する" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Approve" }));
