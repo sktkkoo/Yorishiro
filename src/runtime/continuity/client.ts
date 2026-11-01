@@ -116,53 +116,101 @@ export function useContinuity(context: ContinuityContext | null, open: boolean):
       language,
       cwd: cwd ?? null,
     };
+    const target = entry(continuityIdentity(personaId));
     let cancelled = false;
     let requestInFlight = false;
+    let entered = false;
+    let attemptedAdvanceRevision: number | null = null;
+    let timer: number | null = null;
+    let timerKey: string | null = null;
+    let quietDeadline: { key: string; at: number } | null = null;
     const canRefresh = () => !cancelled && document.visibilityState !== "hidden";
-    const refresh = async (periodic = false) => {
+    const clearTimer = () => {
+      if (timer !== null) window.clearTimeout(timer);
+      timer = null;
+      timerKey = null;
+    };
+    const scheduleNext = () => {
+      if (!open || !canRefresh()) {
+        clearTimer();
+        quietDeadline = null;
+        return;
+      }
+      if (requestInFlight) return;
+      const snapshot = target.snapshot;
+      if (snapshot?.phase === "thinking" || snapshot?.phase === "drafting") {
+        clearTimer();
+        quietDeadline = null;
+        return;
+      }
+      const revision =
+        !target.error &&
+        snapshot?.phase === "idle" &&
+        snapshot.nextStep?.trim() &&
+        snapshot.revision !== attemptedAdvanceRevision
+          ? snapshot.revision
+          : null;
+      const key = `${revision === null ? "wait" : "advance"}:${snapshot?.revision ?? "unknown"}`;
+      if (timer !== null && timerKey === key) return;
+      clearTimer();
+      timerKey = key;
+      if (revision !== null) quietDeadline = null;
+      else if (quietDeadline?.key !== key) {
+        quietDeadline = { key, at: Date.now() + 5 * 60 * 1000 };
+      }
+      timer = window.setTimeout(
+        () => {
+          timer = null;
+          timerKey = null;
+          if (!canRefresh()) return;
+          if (revision !== null) {
+            attemptedAdvanceRevision = revision;
+            void run("continuity_advance", { revision });
+          } else {
+            void run("continuity_tick");
+          }
+        },
+        revision === null ? Math.max(0, (quietDeadline?.at ?? Date.now()) - Date.now()) : 0,
+      );
+    };
+    const run = async (name: string, args: Record<string, unknown> = {}) => {
       if (!canRefresh() || requestInFlight) return;
       requestInFlight = true;
+      clearTimer();
+      // Focus sync may take time but must not postpone an existing quiet recheck.
+      if (name !== "continuity_sync_context") quietDeadline = null;
       try {
         await ensureBridge();
         if (!canRefresh()) return;
-        if (open) {
-          await command(periodic ? "continuity_tick" : "continuity_enter", current);
-        } else {
-          await command("continuity_sync_context", current);
-        }
+        await command(name, current, args);
+        if (name === "continuity_enter") entered = true;
       } catch (error: unknown) {
         if (cancelled) return;
-        const target = entry(continuityIdentity(personaId));
         target.error = error instanceof Error ? error.message : String(error);
         notify(target);
       } finally {
         requestInFlight = false;
+        scheduleNext();
       }
     };
-    void refresh();
-    // Start a fresh interval when this screen opens. Closing it, changing the
-    // persona/context or unmounting discards the timer and any unsent tick.
-    // Focus changes refresh state but never trigger an extra periodic run.
-    // Count the next period after native acknowledges this tick, so transport
-    // latency cannot make a valid tick arrive just inside the native dedup gap.
-    let timer: number | null = null;
-    const schedule = () => {
-      timer = window.setTimeout(
-        () => {
-          void refresh(true).finally(() => {
-            if (!cancelled) schedule();
-          });
-        },
-        30 * 60 * 1000,
-      );
+    const refreshOnReturn = () => {
+      if (!canRefresh()) {
+        clearTimer();
+        quietDeadline = null;
+        return;
+      }
+      void run(open && !entered ? "continuity_enter" : "continuity_sync_context");
     };
-    if (open) schedule();
-    const refreshOnReturn = () => void refresh();
+    // A successful completion drives the next step immediately. A quiet result
+    // or error gets a five-minute recheck; busy workers have no wake-up timer.
+    target.listeners.add(scheduleNext);
+    refreshOnReturn();
     window.addEventListener("focus", refreshOnReturn);
     document.addEventListener("visibilitychange", refreshOnReturn);
     return () => {
       cancelled = true;
-      if (timer !== null) window.clearTimeout(timer);
+      clearTimer();
+      target.listeners.delete(scheduleNext);
       window.removeEventListener("focus", refreshOnReturn);
       document.removeEventListener("visibilitychange", refreshOnReturn);
     };

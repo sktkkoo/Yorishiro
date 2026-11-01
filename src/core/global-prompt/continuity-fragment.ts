@@ -25,6 +25,7 @@ export function continuityPrompt(context: ContinuitySnapshot): string {
         sourceIds,
       })),
       conversation: context.messages.filter((message) => message.source !== "legacy"),
+      nextStep: context.nextStep ?? null,
       drafts: context.drafts.map((draft) =>
         draft.status === "dismissed"
           ? { id: draft.id, title: draft.title, status: draft.status }

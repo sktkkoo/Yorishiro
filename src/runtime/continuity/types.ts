@@ -54,4 +54,6 @@ export interface ContinuitySnapshot {
   readonly reflections: readonly ContinuityReflection[];
   readonly error: string | null;
   readonly lastObservedAt: number | null;
+  /** Absent in older saved snapshots; null means quietly wait. */
+  readonly nextStep?: string | null;
 }
