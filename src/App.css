@@ -1767,22 +1767,8 @@ html[data-rounded-view] body {
   }
 }
 
-/* Auto is a workspace selection, independent of its background work state. */
-.title-bar-auto-button {
-  width: auto;
-  min-width: 42px;
-  padding-inline: 9px;
-  gap: 5px;
-  font-size: 11px;
-  font-weight: 600;
-}
-.title-bar-auto-button[aria-pressed="true"] {
+/* The companion screen remains independent of microphone and work state. */
+.title-bar-continuity-button[aria-pressed="true"] {
   color: var(--yorishiro-accent);
-  background: var(--yorishiro-accent-soft);
-}
-.title-bar-auto-count {
-  font-size: 9px;
-  min-width: 13px;
-  border-radius: 3px;
   background: var(--yorishiro-accent-soft);
 }

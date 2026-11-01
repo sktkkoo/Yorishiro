@@ -1,6 +1,7 @@
 import {
   ChevronDown,
   LoaderCircle,
+  MessageCircle,
   Mic,
   Monitor,
   PanelLeftClose,
@@ -45,9 +46,8 @@ export interface TitleBarProps {
   readonly language?: string;
   readonly onToggleVoice?: () => void;
   readonly screenSharingControl?: ReactNode;
-  readonly autoModeActive?: boolean;
-  readonly autoModePendingCount?: number;
-  readonly onToggleAutoMode?: () => void;
+  readonly continuityActive?: boolean;
+  readonly onToggleContinuity?: () => void;
   readonly tabs?: ReactNode;
   readonly viewModes?: ReadonlyArray<UiPackEntry>;
   readonly activeViewModeId?: string | null;
@@ -76,9 +76,8 @@ export default function TitleBar({
   language,
   onToggleVoice,
   screenSharingControl,
-  autoModeActive = false,
-  autoModePendingCount = 0,
-  onToggleAutoMode,
+  continuityActive = false,
+  onToggleContinuity,
   tabs,
   viewModes = [],
   activeViewModeId = null,
@@ -269,18 +268,16 @@ export default function TitleBar({
           </button>
         ) : null}
         {screenSharingControl}
-        {onToggleAutoMode ? (
+        {onToggleContinuity ? (
           <button
             type="button"
-            className="title-bar-button title-bar-auto-button"
-            aria-label="Auto"
-            aria-pressed={autoModeActive}
-            onClick={onToggleAutoMode}
+            className="title-bar-button title-bar-continuity-button"
+            aria-label={language === "en" ? "Talk with Yori" : "Yoriと話す"}
+            title={language === "en" ? "Talk with Yori" : "Yoriと話す"}
+            aria-pressed={continuityActive}
+            onClick={onToggleContinuity}
           >
-            Auto
-            {autoModePendingCount > 0 ? (
-              <span className="title-bar-auto-count">{autoModePendingCount}</span>
-            ) : null}
+            <MessageCircle size={15} strokeWidth={1.8} aria-hidden="true" />
           </button>
         ) : null}
       </div>

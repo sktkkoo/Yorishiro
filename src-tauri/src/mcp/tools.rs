@@ -15,24 +15,27 @@ use rmcp::{
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Manager};
 
 use crate::mcp::server::emit_tool_event;
 use crate::mcp::types::{ListLoadErrorsResponse, LoadError};
 use crate::read_last_startup_report_impl;
 
-/// Prepare a confirmation request; this never records user approval.
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct AutonomyActionRequest {
-    pub run_id: String,
-    pub request: crate::autonomy::actions::RequestedAction,
-}
-
-/// Read-only decision context for the current autonomous-work store.
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct AutonomyActionContextRequest {}
+pub struct ContinuityContextRequest {}
+
+/// Record an actual conversation, not a task grant or a model-written memory.
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ContinuityObserveRequest {
+    /// Stable identifier for the source exchange, to avoid recording it twice.
+    pub source_key: String,
+    /// Exact user-authored text from this exchange.
+    pub user_text: String,
+    /// The assistant's actual reply; empty when no reply was made.
+    pub assistant_text: String,
+}
 
 /// `disable_pack` / `enable_pack` の引数。MCP client から `{"id": "..."}` で渡る。
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -515,75 +518,40 @@ impl Yorishiro {
 
 #[tool_router]
 impl Yorishiro {
-    /// Conversation setup reads only the current scope and inactive proposal.
     #[tool(
-        description = "Read Yorishiro's current autonomous-work scope and latest shared inactive setup draft, including manual user edits, before discussing setup with the user in the current voice/text conversation. Discuss the enduring purpose, selected folder, permitted local operations, schedule, and whether to discuss today's concrete work before execution. Enduring permission and daily task approval are separate. This tool does not read document contents or start work."
+        description = "Read the active Yorishiro persona's current understanding, its supporting conversation and revisions, and actual saved drafts. Refresh this before relying on remembered preferences or reporting a draft's status. Distinguish tentative interpretations from explicit user statements. This does not start work or grant permissions."
     )]
-    async fn autonomy_setup_context(
+    async fn continuity_context(
         &self,
-        _params: Parameters<crate::autonomy::draft::AutonomySetupContextRequest>,
+        _params: Parameters<ContinuityContextRequest>,
     ) -> Result<CallToolResult, McpError> {
         let state = self
             .app_handle
-            .try_state::<crate::autonomy::AutonomyState>()
-            .ok_or_else(|| McpError::internal_error("Autonomy state is unavailable", None))?;
-        let context = crate::autonomy::draft::setup_context(&state)
+            .state::<crate::continuity::ContinuityState>();
+        let context = crate::continuity::context_for_active(&state)
             .map_err(|e| McpError::internal_error(e, None))?;
         Ok(CallToolResult::success(vec![Content::json(context)?]))
     }
 
     #[tool(
-        description = "Read saved autonomous-work confirmation requests, exact user decisions, and execution results. The host automatically claims approved operations for execution; approved is queued, executing is active, completed has finished, and failed/interrupted require inspecting the result. Do not independently execute or resend queued, active, completed, or uncertain operations. A decision alone is not evidence of completion. Match request ID, source folder, target, details and content digest before using a decision. Artifact paths are references, not hashes of current file contents; revalidate the actual payload and obtain a new confirmation if it differs from the displayed details. Pending, declined and migrated requests are not approval. Do not resend an operation whose external result is uncertain. Existing provider/tool deny and approval policies still apply. This tool never executes, resumes or changes work."
+        description = "Record a real user/assistant exchange in the active Yorishiro persona's ongoing understanding. Use when preferences, background, corrections, or feedback matter for later decisions. Supply exact user-authored text, the actual assistant reply, and a stable sourceKey for deduplication. Do not invent speech, history or completion, or submit a third-party document as user speech. The host may reflect on this evidence; this receipt only proves that the exchange was recorded, not that understanding or work has completed. This does not grant permissions, execute project edits, or activate the retired Auto feature."
     )]
-    async fn autonomy_action_context(
+    async fn continuity_observe(
         &self,
-        _params: Parameters<AutonomyActionContextRequest>,
+        Parameters(exchange): Parameters<ContinuityObserveRequest>,
     ) -> Result<CallToolResult, McpError> {
         let state = self
             .app_handle
-            .try_state::<crate::autonomy::AutonomyState>()
-            .ok_or_else(|| McpError::internal_error("Autonomy state is unavailable", None))?;
-        let actions = crate::autonomy::actions::action_context(&state)
-            .map_err(|e| McpError::internal_error(e, None))?;
-        Ok(CallToolResult::success(vec![Content::json(actions)?]))
-    }
-
-    #[tool(
-        description = "Prepare an operation-independent confirmation card for an existing finished autonomous-work run. Provide the concrete operation, exact target, impact, complete details and reason for confirmation; do not invent recipients or missing parameters. Use this for any operation requiring the user's decision, including non-Git projects. This proposes only: it never approves, executes, publishes or grants tool privileges. The user approves or declines in the app; read autonomy_action_context for their decision. Set networkAccess=true only when the exact operation needs communication to its explicit external target; this capability is shown before approval. The host automatically executes approved operations within the saved folder and capabilities, records completed/failed/interrupted results and resumes scheduling after a terminal result. Never execute the same request independently. Unsupported capabilities are reported as failures, never as completed work."
-    )]
-    async fn autonomy_request_action(
-        &self,
-        Parameters(proposal): Parameters<AutonomyActionRequest>,
-    ) -> Result<CallToolResult, McpError> {
-        let state = self
-            .app_handle
-            .try_state::<crate::autonomy::AutonomyState>()
-            .ok_or_else(|| McpError::internal_error("Autonomy state is unavailable", None))?;
-        let action =
-            crate::autonomy::actions::propose_action(&state, &proposal.run_id, proposal.request)
-                .map_err(|e| McpError::invalid_params(e, None))?;
-        let _ = self.app_handle.emit("autonomy:status-changed", ());
-        Ok(CallToolResult::success(vec![Content::json(action)?]))
-    }
-
-    /// A proposal can update the review card, never the execution contract.
-    #[tool(
-        description = "Prepare an INACTIVE work request from the user's conversation and show it in Auto. Focus on the result the user wants and the selected folder; ask one question only when the outcome or scope is unclear. Do not turn setup into a questionnaire about intervals, run budgets, per-operation permissions, daily review, or document/development modes. Preserve the selected cadence unless the user explicitly requests a change; frequency can also be changed in the app. Refresh autonomy_setup_context before every update, preserve unrelated manual edits, and send its current draft id as baseDraftId (null only when no draft exists). A stale or omitted baseDraftId cannot replace an existing draft: reread and reconcile before retrying. Preserve the latest selected scheduling values and permissions except for explicit change requests; for a new request use intervalMinutes=30, maxRunsPerDay=4, reviewMode=automatic. Leave unknown goal/root empty and preserve unfinished paths. Never expand a selected subfolder to its parent repository. The host selects its work route after the user explicitly delegates the visible local-edit scope. An exact Git root with write/move/trash permissions permits isolated document/code work; narrower grants retain their scope. New requests do not grant automatic external sending or publication. Keep automaticActionApproval unchanged unless the user explicitly changes it; an inactive proposal never grants authority. The user reviews the result, target folder and local-edit scope in Auto before work starts. Concrete operations needing approval use autonomy_request_action. This tool cannot activate work, approve pending work or actions, send data, or execute file changes. Never claim a proposal is already running."
-    )]
-    async fn autonomy_propose(
-        &self,
-        Parameters(proposal): Parameters<crate::autonomy::draft::AutonomyProposal>,
-    ) -> Result<CallToolResult, McpError> {
-        let state = self
-            .app_handle
-            .try_state::<crate::autonomy::AutonomyState>()
-            .ok_or_else(|| McpError::internal_error("Autonomy state is unavailable", None))?;
-        let receipt = crate::autonomy::draft::propose(&state, proposal)
-            .map_err(|e| McpError::invalid_params(e, None))?;
-        let _ = self
-            .app_handle
-            .emit("autonomy:draft-changed", &receipt.snapshot);
-        Ok(CallToolResult::success(vec![Content::json(receipt)?]))
+            .state::<crate::continuity::ContinuityState>();
+        let context = crate::continuity::observe_active(
+            self.app_handle.clone(),
+            state.inner().clone(),
+            exchange.user_text,
+            exchange.assistant_text,
+            exchange.source_key,
+        )
+        .map_err(|e| McpError::invalid_params(e, None))?;
+        Ok(CallToolResult::success(vec![Content::json(context)?]))
     }
 
     /// list_load_errors: Rust 側完結。~/.yorishiro/last-startup.json を読んで
@@ -1381,8 +1349,8 @@ const SERVER_INSTRUCTIONS: &str = concat!(
                 "## ツール選択ガイド\n",
                 "- 声に出す → voice_say。発話するかどうかは system prompt の Voice セクションに従う\n",
                 "- 現在の状態確認 → state_get\n",
-                "- おまかせ作業の結果に確認が必要 → autonomy_request_action で操作・対象・影響・具体的内容・理由を確認カードにする（提案のみ）。autonomy_action_context で画面上の承認・見送りを確認する。承認後は本体が対象操作を実行し結果を記録する。実行中や完了した操作を別に再実行しない。外部通信が必要な場合はnetworkAccess=trueとし送信先・内容を明示する。本体側の禁止設定は解除しない\n",
-                "- Autoで仕事を相談する → autonomy_setup_context で現在の依頼と権限を確認し、欲しい成果と対象を具体化する。最初から間隔・上限・操作別設定を質問しない。頻度は明示的な変更希望がある場合だけ案で変更し、それ以外は最新の選択を保持する。アプリでも頻度を変更できる。依頼案は autonomy_propose で画面へ渡す（提案のみ。委任・開始・具体操作の承認はユーザーが画面で行う）。実行中の仕事は依頼案だけでは変わらない。古いdaily契約の当日の承認はユーザーが画面で行う\n",
+                "- 相手への理解や過去の訂正を確かめる → continuity_context。現在の理解・出典・草案を読む。記録は実行権限ではない\n",
+                "- 好み・背景・訂正・結果への反応を次に引き継ぐ → continuity_observe。実際の発言と返答、同じ会話を重複記録しないsourceKeyを渡す。記録の受領は理解更新や作業の完了とは別\n",
                 "- ユーザーが terminal 上で指し示したテキストを読む → terminal_context_get（Cmd+Shift+click で行、Option+Shift+drag で矩形。メッセージに [#TermN] マーカーがあればここで解決する）\n",
                 "- 直近の terminal command run metadata を読む → terminal_runs_recent（output text は返らない。referenceIds がある場合だけ terminal_context_get で user gesture 済み context を解決できる）\n",
                 "- 照明・カメラ等のパラメータ確認 → controls_get（scene pack 依存のパスを確認）\n",
@@ -1526,29 +1494,14 @@ mod tests {
     }
 
     #[test]
-    fn autonomy_mcp_surface_can_propose_but_cannot_activate_or_approve() {
+    fn continuity_replaces_the_retired_goal_based_tools() {
         let tools = Yorishiro::tool_router().list_all();
         let names: Vec<_> = tools.iter().map(|tool| tool.name.as_ref()).collect();
-        assert!(names.contains(&"autonomy_setup_context"));
-        assert!(names.contains(&"autonomy_propose"));
-        assert!(names.contains(&"autonomy_action_context"));
-        assert!(names.contains(&"autonomy_request_action"));
-        for forbidden in [
-            "autonomy_approve_action",
-            "autonomy_decline_action",
-            "autonomy_prepare_publication",
-            "autonomy_save",
-            "autonomy_run",
-            "autonomy_tick",
-            "autonomy_approve_day",
-            "autonomy_resume",
-            "autonomy_apply",
-        ] {
-            assert!(!names.contains(&forbidden));
-        }
-        assert!(SERVER_INSTRUCTIONS.contains("autonomy_setup_context"));
-        assert!(SERVER_INSTRUCTIONS.contains("autonomy_propose"));
-        assert!(SERVER_INSTRUCTIONS.contains("当日の承認はユーザーが画面で行う"));
+        assert!(names.contains(&"continuity_context"));
+        assert!(names.contains(&"continuity_observe"));
+        assert!(!names.iter().any(|name| name.starts_with("autonomy_")));
+        assert!(SERVER_INSTRUCTIONS.contains("continuity_context"));
+        assert!(SERVER_INSTRUCTIONS.contains("continuity_observe"));
     }
 
     /// 住人 AI は instructions のツール選択ガイドを頼りに tool を探すため、

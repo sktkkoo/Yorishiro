@@ -11,7 +11,7 @@ Pack 管理、event dispatch、module registry、singleton service。core primit
 | Module | 責務 | Entry | 備考 |
 |---|---|---|---|
 | `agent-setup.ts` | 登録済み terminal agent の実行ファイル検出、利用可能な agent の自動選択、公式導入リンク | `detectInstalledAgents` / `resolveAgentStartup` | [agent-onboarding.md](../../docs/decisions/agent-onboarding.md) |
-| `autonomy/` | Auto workspace の共有依頼案、明示委任、状態照会、起動、停止・復元、操作の確認を扱う host bridge | `client.ts` / `draft-editor.ts` | [実行境界](../../docs/decisions/autonomous-document-work.md)、[Auto workspace](../../docs/decisions/auto-workspace.md)。状態購読は画面を閉じても維持する |
+| `continuity/` | 会話、現在の理解と経緯、草案をpersona単位で保存するhost bridge | `client.ts` / `types.ts` | [継続する会話](../../docs/decisions/continuous-companion.md)。画面を閉じても会話と処理を保持する |
 | `agent-setup-controller.ts` | 初回 health check の選択待ち、独立した導入進捗、ウィンドウ復帰時の再検出・選択保存・shell での続行 | `AgentSetupController` | host-owned store。導入完了だけでは agent を起動しない |
 | `agent-install.ts` | 公式 installer を実行する Tauri command と main window 宛ての進捗 event の bridge | `installTerminalAgent` / `listenAgentInstallOutput` | 明示的な install 操作からのみ呼ぶ |
 | `ambient-audio/` | Scene Pack の `ambient` 宣言を Howler.js で再生する engine と ScenePackRegistry への配線 | `index.ts` | [README](./ambient-audio/README.md) |
