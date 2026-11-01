@@ -42,7 +42,96 @@ fn session() -> Session {
         queued: false,
         epoch: 0,
         cancel: None,
+        last_periodic_at: None,
     }
+}
+
+#[test]
+fn passive_context_sync_keeps_persona_and_project_without_starting_or_cancelling_work() {
+    let mut value = session();
+    value.context = None;
+    let mut selected = context();
+    selected.persona_prompt = "The selected character's perspective".into();
+    selected.cwd = Some("/workspace/project".into());
+    let snapshot = sync_context(&mut value, selected.clone());
+    assert!(!value.running);
+    assert!(!value.queued);
+    assert!(snapshot.last_observed_at.is_none());
+    assert_eq!(value.epoch, 0);
+    let remembered = value.context.as_ref().unwrap();
+    assert_eq!(remembered.persona_prompt, selected.persona_prompt);
+    assert_eq!(remembered.cwd, selected.cwd);
+
+    let token = CancellationToken::new();
+    value.cancel = Some(token.clone());
+    value.running = true;
+    sync_context(&mut value, selected);
+    assert!(value.running);
+    assert!(!token.is_cancelled());
+    assert_eq!(value.epoch, 0);
+}
+
+#[test]
+fn periodic_ticks_enforce_the_exact_interval_after_a_completed_turn() {
+    let mut value = session();
+    assert!(queue_periodic(&mut value, context(), 10_000));
+    assert_eq!(value.saved.pending_trigger.as_deref(), Some("return"));
+    let first_epoch = value.epoch;
+    // Simulate completion before duplicate callbacks arrive.
+    value.queued = false;
+    value.saved.snapshot.phase = "idle".into();
+    value.saved.pending_trigger = None;
+    assert!(!queue_periodic(&mut value, context(), 10_000));
+    assert!(!queue_periodic(
+        &mut value,
+        context(),
+        10_000 + PERIODIC_INTERVAL_MS - 1
+    ));
+    assert_eq!(value.epoch, first_epoch);
+    assert!(queue_periodic(
+        &mut value,
+        context(),
+        10_000 + PERIODIC_INTERVAL_MS
+    ));
+    assert_eq!(value.epoch, first_epoch + 1);
+}
+
+#[test]
+fn periodic_ticks_leave_running_and_queued_user_work_intact() {
+    for (running, queued) in [(true, false), (false, true)] {
+        let mut value = session();
+        queue(&mut value, context(), "message");
+        value.saved.pending_correction_ids.push("preference".into());
+        value.running = running;
+        value.queued = queued;
+        let token = CancellationToken::new();
+        value.cancel = Some(token.clone());
+        let epoch = value.epoch;
+        assert!(!queue_periodic(&mut value, context(), PERIODIC_INTERVAL_MS));
+        assert!(!token.is_cancelled());
+        assert_eq!(value.epoch, epoch);
+        assert_eq!(value.last_periodic_at, None);
+        assert_eq!(value.saved.pending_trigger.as_deref(), Some("message"));
+        assert_eq!(value.saved.pending_correction_ids, vec!["preference"]);
+    }
+}
+
+#[test]
+fn periodic_retry_preserves_the_failed_foreground_trigger_and_corrections() {
+    let mut value = session();
+    value.saved.snapshot.phase = "error".into();
+    value.saved.snapshot.error = Some("Temporary transport failure".into());
+    value.saved.pending_trigger = Some("continue".into());
+    value.saved.pending_correction_ids = vec!["preference".into(), "background".into()];
+    assert!(queue_periodic(&mut value, context(), PERIODIC_INTERVAL_MS));
+    assert_eq!(value.saved.pending_trigger.as_deref(), Some("continue"));
+    assert_eq!(
+        value.saved.pending_correction_ids,
+        vec!["preference", "background"]
+    );
+    assert_eq!(value.saved.snapshot.phase, "drafting");
+    assert_eq!(value.saved.snapshot.error, None);
+    assert!(value.queued);
 }
 
 #[test]

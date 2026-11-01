@@ -3914,7 +3914,9 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             continuity::continuity_status,
+            continuity::continuity_sync_context,
             continuity::continuity_enter,
+            continuity::continuity_tick,
             continuity::continuity_send,
             continuity::continuity_draft_action,
             continuity::continuity_retry,

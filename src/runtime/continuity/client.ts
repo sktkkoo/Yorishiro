@@ -89,7 +89,7 @@ export function observeContinuityExchange(
 export function retryContinuity(context: ContinuityContext): Promise<void> {
   return ensureBridge().then(() => command("continuity_retry", context));
 }
-export function useContinuity(context: ContinuityContext | null): Entry["value"] {
+export function useContinuity(context: ContinuityContext | null, open: boolean): Entry["value"] {
   const id = context ? continuityIdentity(context.personaId) : null;
   const value = useSyncExternalStore(
     (listener) => {
@@ -117,27 +117,55 @@ export function useContinuity(context: ContinuityContext | null): Entry["value"]
       cwd: cwd ?? null,
     };
     let cancelled = false;
-    const refresh = () => {
-      if (cancelled || document.visibilityState === "hidden") return;
-      void (async () => {
+    let requestInFlight = false;
+    const canRefresh = () => !cancelled && document.visibilityState !== "hidden";
+    const refresh = async (periodic = false) => {
+      if (!canRefresh() || requestInFlight) return;
+      requestInFlight = true;
+      try {
         await ensureBridge();
-        if (cancelled) return;
-        await command("continuity_enter", current);
-      })().catch((error: unknown) => {
+        if (!canRefresh()) return;
+        if (open) {
+          await command(periodic ? "continuity_tick" : "continuity_enter", current);
+        } else {
+          await command("continuity_sync_context", current);
+        }
+      } catch (error: unknown) {
         if (cancelled) return;
         const target = entry(continuityIdentity(personaId));
         target.error = error instanceof Error ? error.message : String(error);
         notify(target);
-      });
+      } finally {
+        requestInFlight = false;
+      }
     };
-    refresh();
-    window.addEventListener("focus", refresh);
-    document.addEventListener("visibilitychange", refresh);
+    void refresh();
+    // Start a fresh interval when this screen opens. Closing it, changing the
+    // persona/context or unmounting discards the timer and any unsent tick.
+    // Focus changes refresh state but never trigger an extra periodic run.
+    // Count the next period after native acknowledges this tick, so transport
+    // latency cannot make a valid tick arrive just inside the native dedup gap.
+    let timer: number | null = null;
+    const schedule = () => {
+      timer = window.setTimeout(
+        () => {
+          void refresh(true).finally(() => {
+            if (!cancelled) schedule();
+          });
+        },
+        30 * 60 * 1000,
+      );
+    };
+    if (open) schedule();
+    const refreshOnReturn = () => void refresh();
+    window.addEventListener("focus", refreshOnReturn);
+    document.addEventListener("visibilitychange", refreshOnReturn);
     return () => {
       cancelled = true;
-      window.removeEventListener("focus", refresh);
-      document.removeEventListener("visibilitychange", refresh);
+      if (timer !== null) window.clearTimeout(timer);
+      window.removeEventListener("focus", refreshOnReturn);
+      document.removeEventListener("visibilitychange", refreshOnReturn);
     };
-  }, [personaId, personaName, personaPrompt, language, cwd]);
+  }, [personaId, personaName, personaPrompt, language, cwd, open]);
   return value;
 }

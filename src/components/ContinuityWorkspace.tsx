@@ -97,7 +97,7 @@ function ResidentWorkspace({
     }),
     [personaId, name, personaInstructions, language, cwd],
   );
-  const { snapshot, error: syncError } = useContinuity(context);
+  const { snapshot, error: syncError } = useContinuity(context, open);
   const [draft, setDraft] = useState<InputDraft>(() => readInput(personaId));
   const [understandingOpen, setUnderstandingOpen] = useState(false);
   const [detail, setDetail] = useState<

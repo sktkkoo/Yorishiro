@@ -162,6 +162,7 @@ describe("ContinuityWorkspace", () => {
         cwd: "/workspace",
         personaPrompt: "気になることを少し掘り下げる。",
       }),
+      true,
     );
     fireEvent.click(screen.getByRole("button", { name: "いまの理解" }));
     const aside = screen.getByRole("complementary", { name: "いまの理解" });
@@ -184,6 +185,7 @@ describe("ContinuityWorkspace", () => {
     expect(screen.queryByRole("textbox")).toBeNull();
     expect(native.useContinuity).toHaveBeenLastCalledWith(
       expect.objectContaining({ personaId: "yori-ja" }),
+      false,
     );
     view.rerender(<ContinuityWorkspace {...initial} open />);
     expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe("書きかけ");

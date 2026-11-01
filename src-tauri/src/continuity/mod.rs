@@ -14,6 +14,7 @@ use types::*;
 
 #[derive(Clone, Default)]
 pub struct ContinuityState(Arc<Mutex<BTreeMap<String, Session>>>);
+const PERIODIC_INTERVAL_MS: u64 = 30 * 60 * 1000;
 struct Session {
     // A second process must not overwrite this process's cached understanding.
     _storage_lock: std::fs::File,
@@ -24,6 +25,7 @@ struct Session {
     epoch: u64,
     cancel: Option<CancellationToken>,
     committed: Saved,
+    last_periodic_at: Option<u64>,
 }
 fn now() -> u64 {
     SystemTime::now()
@@ -63,6 +65,7 @@ fn ensure<'a>(
                 queued: false,
                 epoch: 0,
                 cancel: None,
+                last_periodic_at: None,
             },
         );
     }
@@ -141,6 +144,29 @@ fn queue(session: &mut Session, context: Context, trigger: &str) {
     .into();
     session.saved.snapshot.error = None;
 }
+
+fn queue_periodic(session: &mut Session, context: Context, at: u64) -> bool {
+    // A timer never replaces a conversation or a draft already in flight.
+    // Duplicate ticks can arrive after a fast worker finishes, so also enforce
+    // the interval in the native owner rather than relying only on the view.
+    if session.running
+        || session.queued
+        || session
+            .last_periodic_at
+            .is_some_and(|last| at.saturating_sub(last) < PERIODIC_INTERVAL_MS)
+    {
+        return false;
+    }
+    let trigger = if session.saved.snapshot.phase == "error" {
+        "retry"
+    } else {
+        "return"
+    };
+    queue(session, context, trigger);
+    session.last_periodic_at = Some(at);
+    true
+}
+
 fn check_window(window: &Window) -> Result<(), String> {
     if window.label() != "main" {
         return Err("Open the companion screen in the main window".into());
@@ -158,6 +184,27 @@ pub fn continuity_status(
         .snapshot
         .clone())
 }
+
+fn sync_context(session: &mut Session, context: Context) -> Snapshot {
+    // Terminal conversations still need the selected persona and project policy
+    // context. Merely sharing it must neither start nor cancel model work.
+    session.context = Some(context);
+    session.saved.snapshot.clone()
+}
+
+#[tauri::command]
+pub fn continuity_sync_context(
+    window: Window,
+    state: State<'_, ContinuityState>,
+    context: Context,
+) -> Result<Snapshot, String> {
+    check_window(&window)?;
+    validate_context(&context)?;
+    let mut sessions = lock(&state)?;
+    let session = ensure(&mut sessions, &context.persona_id)?;
+    Ok(sync_context(session, context))
+}
+
 #[tauri::command]
 pub fn continuity_enter(
     app: AppHandle,
@@ -176,13 +223,9 @@ pub fn continuity_enter(
                 || old.cwd != context.cwd
         });
         session.context = Some(context.clone());
-        // A view remount or refresh does not repeatedly create a model turn.
-        // A genuine return after a day can reconsider new experience and wait.
-        let due = session
-            .saved
-            .snapshot
-            .last_observed_at
-            .is_none_or(|at| now().saturating_sub(at) >= 86_400_000);
+        // Opening the screen can introduce the character once. Subsequent
+        // automatic turns come only from the screen's 30-minute timer.
+        let due = session.saved.snapshot.last_observed_at.is_none();
         if (changed && session.running)
             || (!session.running && session.saved.snapshot.phase != "error" && due)
         {
@@ -197,6 +240,36 @@ pub fn continuity_enter(
     start(app, state.inner().clone(), context.persona_id);
     Ok(snapshot)
 }
+
+#[tauri::command]
+pub fn continuity_tick(
+    app: AppHandle,
+    window: Window,
+    state: State<'_, ContinuityState>,
+    context: Context,
+) -> Result<Snapshot, String> {
+    check_window(&window)?;
+    validate_context(&context)?;
+    let snapshot = {
+        let mut sessions = lock(&state)?;
+        let session = ensure(&mut sessions, &context.persona_id)?;
+        let previous_tick = session.last_periodic_at;
+        if !queue_periodic(session, context.clone(), now()) {
+            return Ok(session.saved.snapshot.clone());
+        }
+        match persist(session) {
+            Ok(snapshot) => snapshot,
+            Err(error) => {
+                session.last_periodic_at = previous_tick;
+                return Err(error);
+            }
+        }
+    };
+    emit(&app, &snapshot);
+    start(app, state.inner().clone(), context.persona_id);
+    Ok(snapshot)
+}
+
 #[tauri::command]
 pub fn continuity_send(
     app: AppHandle,
