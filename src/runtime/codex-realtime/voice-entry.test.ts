@@ -3,10 +3,10 @@
 import { describe, expect, it, vi } from "vitest";
 import type { AgentDescriptor } from "../../bindings/tauri-commands";
 import {
-  consumePendingAutoConversation,
+  consumePendingContinuityConversation,
   consumePendingRealtimeStart,
   isVoiceEntryAvailable,
-  markPendingAutoConversation,
+  markPendingContinuityConversation,
   markPendingRealtimeStart,
   PENDING_REALTIME_START_KEY,
   resolveVoiceEntryAction,
@@ -78,16 +78,16 @@ describe("isVoiceEntryAvailable", () => {
 });
 
 describe("pending realtime start", () => {
-  it("restores Auto context once without changing the ordinary voice entry", () => {
+  it("restores companion context once without changing the ordinary voice entry", () => {
     const storage = window.sessionStorage;
-    expect(consumePendingAutoConversation(storage)).toBe(false);
-    markPendingAutoConversation(storage);
-    expect(consumePendingAutoConversation(storage)).toBe(true);
-    expect(consumePendingAutoConversation(storage)).toBe(false);
+    expect(consumePendingContinuityConversation(storage)).toBe(false);
+    markPendingContinuityConversation(storage);
+    expect(consumePendingContinuityConversation(storage)).toBe(true);
+    expect(consumePendingContinuityConversation(storage)).toBe(false);
     expect(consumePendingRealtimeStart(storage)).toBe(true);
     expect(consumePendingRealtimeStart(storage)).toBe(false);
     markPendingRealtimeStart(storage);
-    expect(consumePendingAutoConversation(storage)).toBe(false);
+    expect(consumePendingContinuityConversation(storage)).toBe(false);
     expect(consumePendingRealtimeStart(storage)).toBe(true);
   });
   it("is a one-shot marker across the agent-switch reload", () => {

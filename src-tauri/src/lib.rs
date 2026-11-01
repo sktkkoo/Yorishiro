@@ -1,10 +1,10 @@
 mod agent_setup;
 pub mod attach;
-mod autonomy;
 mod auxiliary_windows;
 mod bundled_examples_gen;
 mod camera_preview;
 mod claude_screen_sharing;
+mod continuity;
 mod history;
 mod journal;
 mod mcp;
@@ -3879,7 +3879,7 @@ pub fn run() {
         .manage(Arc::clone(&registry))
         .manage(hook_server_endpoint)
         .manage(RealtimeBridgeState::default())
-        .manage(autonomy::AutonomyState::default())
+        .manage(continuity::ContinuityState::default())
         .manage(WatcherState::new())
         .manage(tts::TtsState::new())
         .manage(mcp::McpServerStatus::default())
@@ -3913,27 +3913,16 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            continuity::continuity_status,
+            continuity::continuity_enter,
+            continuity::continuity_send,
+            continuity::continuity_draft_action,
+            continuity::continuity_retry,
+            continuity::continuity_observe_native,
             claude_screen_sharing::claude_screen_sharing_begin,
             claude_screen_sharing::claude_screen_sharing_publish,
             claude_screen_sharing::claude_screen_sharing_end,
             agent_setup::install_terminal_agent,
-            autonomy::autonomy_status,
-            autonomy::autonomy_save,
-            autonomy::cadence::autonomy_update_cadence,
-            autonomy::autonomy_set_enabled,
-            autonomy::autonomy_pause,
-            autonomy::autonomy_tick,
-            autonomy::autonomy_run_now,
-            autonomy::autonomy_undo,
-            autonomy::actions::autonomy_prepare_action,
-            autonomy::actions::autonomy_approve_action,
-            autonomy::actions::autonomy_decline_action,
-            autonomy::autonomy_consult,
-            autonomy::autonomy_review,
-            autonomy::draft::autonomy_draft_get,
-            autonomy::draft::autonomy_draft_snapshot,
-            autonomy::draft::autonomy_draft_edit,
-            autonomy::draft::autonomy_draft_dismiss,
             media_permissions::open_media_permission_settings,
             screen_preview::screen_preview_begin,
             screen_preview::screen_preview_open,

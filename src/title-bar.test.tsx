@@ -41,20 +41,21 @@ function renderTitleBar(overrides: Partial<Parameters<typeof TitleBar>[0]> = {})
 }
 
 describe("TitleBar View Mode picker", () => {
-  it("opens the unified Auto workspace and exposes its selected state", () => {
+  it("opens the companion screen from its icon and exposes its selected state", () => {
     const toggle = vi.fn();
     renderTitleBar({
       screenSharingControl: <button type="button">Screen sharing</button>,
-      onToggleAutoMode: toggle,
-      autoModeActive: true,
-      autoModePendingCount: 2,
+      onToggleContinuity: toggle,
+      continuityActive: true,
     });
     const sharing = screen.getByRole("button", { name: "Screen sharing" });
-    const auto = screen.getByRole("button", { name: "Auto" });
-    expect(sharing.nextElementSibling).toBe(auto);
-    expect(auto.getAttribute("aria-pressed")).toBe("true");
-    expect(auto.textContent).toContain("2");
-    fireEvent.click(auto);
+    const companion = screen.getByRole("button", { name: "Yoriと話す" });
+    expect(sharing.nextElementSibling).toBe(companion);
+    expect(companion.getAttribute("aria-pressed")).toBe("true");
+    expect(companion.textContent).toBe("");
+    expect(companion.querySelector("svg")).not.toBeNull();
+    expect(companion.title).toBe("Yoriと話す");
+    fireEvent.click(companion);
     expect(toggle).toHaveBeenCalledOnce();
   });
 
