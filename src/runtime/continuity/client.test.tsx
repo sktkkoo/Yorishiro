@@ -49,7 +49,157 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 describe("shared continuity bridge", () => {
-  it("runs every 30 minutes only while open and starts a fresh interval on reopening", async () => {
+  it("advances each completed useful step immediately, then quietly waits when there is no next step", async () => {
+    const client = await import("./client");
+    vi.useFakeTimers();
+    let latest = snapshot();
+    native.invoke.mockImplementation(async (name) => {
+      if (name === "continuity_advance") {
+        latest = { ...latest, revision: latest.revision + 1, phase: "thinking" };
+      }
+      return latest;
+    });
+    const view = renderHook(() => client.useContinuity(context, true));
+    await act(async () => {});
+    const advances = () =>
+      native.invoke.mock.calls.filter(([name]) => name === "continuity_advance");
+    const ticks = () => native.invoke.mock.calls.filter(([name]) => name === "continuity_tick");
+    latest = { ...latest, revision: 2, nextStep: "Draft the complete opening experience" };
+    act(() => native.callback?.({ payload: latest }));
+    await act(async () => vi.advanceTimersByTimeAsync(0));
+    expect(advances()).toEqual([["continuity_advance", { context, revision: 2 }]]);
+    expect(view.result.current.snapshot?.phase).toBe("thinking");
+    await act(async () => vi.advanceTimersByTimeAsync(30 * 60 * 1000));
+    expect(advances()).toHaveLength(1);
+    expect(ticks()).toHaveLength(0);
+
+    latest = {
+      ...latest,
+      revision: 4,
+      phase: "idle",
+      nextStep: "Review the draft against the feedback",
+    };
+    act(() => native.callback?.({ payload: latest }));
+    await act(async () => vi.advanceTimersByTimeAsync(0));
+    expect(advances()).toHaveLength(2);
+    expect(advances()[1]).toEqual(["continuity_advance", { context, revision: 4 }]);
+    latest = { ...latest, revision: 6, phase: "idle", nextStep: null };
+    act(() => native.callback?.({ payload: latest }));
+    await act(async () => vi.advanceTimersByTimeAsync(5 * 60 * 1000 - 1));
+    expect(ticks()).toHaveLength(0);
+    expect(advances()).toHaveLength(2);
+    expect(view.result.current.snapshot?.messages).toEqual([]);
+    await act(async () => vi.advanceTimersByTimeAsync(1));
+    expect(ticks()).toHaveLength(1);
+    view.unmount();
+  });
+
+  it("does not spin on a duplicate completion or advance an unchanged revision again", async () => {
+    const client = await import("./client");
+    vi.useFakeTimers();
+    const ready = { ...snapshot(), nextStep: "Review the actual draft" };
+    native.invoke.mockResolvedValue(ready);
+    const view = renderHook(() => client.useContinuity(context, true));
+    await act(async () => {});
+    await act(async () => vi.advanceTimersByTimeAsync(0));
+    act(() => {
+      native.callback?.({ payload: ready });
+      native.callback?.({ payload: ready });
+    });
+    await act(async () => vi.advanceTimersByTimeAsync(60 * 1000));
+    expect(native.invoke.mock.calls.filter(([name]) => name === "continuity_advance")).toHaveLength(
+      1,
+    );
+    view.unmount();
+  });
+
+  it("keeps completed steps pending while closed and resumes them when reopened", async () => {
+    const client = await import("./client");
+    vi.useFakeTimers();
+    let latest: ContinuitySnapshot = { ...snapshot(), phase: "thinking" };
+    native.invoke.mockImplementation(async (name) => {
+      if (name === "continuity_advance") {
+        latest = { ...latest, phase: "thinking", revision: latest.revision + 1 };
+      }
+      return latest;
+    });
+    const view = renderHook(({ open }) => client.useContinuity(context, open), {
+      initialProps: { open: true },
+    });
+    await act(async () => {});
+    await act(async () => view.rerender({ open: false }));
+    latest = { ...latest, phase: "idle", revision: 2, nextStep: "Continue the saved draft" };
+    act(() => native.callback?.({ payload: latest }));
+    await act(async () => vi.advanceTimersByTimeAsync(30 * 60 * 1000));
+    expect(
+      native.invoke.mock.calls.some(
+        ([name]) => name === "continuity_advance" || name === "continuity_tick",
+      ),
+    ).toBe(false);
+    await act(async () => view.rerender({ open: true }));
+    await act(async () => vi.advanceTimersByTimeAsync(0));
+    expect(native.invoke).toHaveBeenCalledWith("continuity_advance", { context, revision: 2 });
+    view.unmount();
+  });
+
+  it("drops an unsent advance on close and clears an old step when newer foreground work begins", async () => {
+    const client = await import("./client");
+    vi.useFakeTimers();
+    let latest = snapshot();
+    native.invoke.mockImplementation(async () => latest);
+    const view = renderHook(({ open }) => client.useContinuity(context, open), {
+      initialProps: { open: true },
+    });
+    await act(async () => {});
+    latest = { ...latest, revision: 2, nextStep: "An obsolete next step" };
+    act(() => native.callback?.({ payload: latest }));
+    act(() => {
+      vi.advanceTimersByTime(0);
+      view.rerender({ open: false });
+    });
+    await act(async () => {});
+    expect(native.invoke.mock.calls.some(([name]) => name === "continuity_advance")).toBe(false);
+    await act(async () => view.rerender({ open: true }));
+    latest = { ...latest, revision: 3, phase: "thinking", nextStep: null };
+    act(() => native.callback?.({ payload: latest }));
+    await act(async () => vi.advanceTimersByTimeAsync(0));
+    expect(native.invoke.mock.calls.some(([name]) => name === "continuity_advance")).toBe(false);
+    view.unmount();
+  });
+
+  it("pauses immediate followups while hidden and resumes pending work when visible", async () => {
+    const client = await import("./client");
+    vi.useFakeTimers();
+    const visibility = vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+    let latest = snapshot();
+    native.invoke.mockImplementation(async (name) => {
+      if (name === "continuity_advance")
+        latest = { ...latest, revision: latest.revision + 1, phase: "thinking" };
+      return latest;
+    });
+    const view = renderHook(() => client.useContinuity(context, true));
+    await act(async () => {});
+    visibility.mockReturnValue("hidden");
+    act(() => document.dispatchEvent(new Event("visibilitychange")));
+    latest = { ...latest, revision: 2, nextStep: "Continue without announcing routine progress" };
+    act(() => native.callback?.({ payload: latest }));
+    await act(async () => vi.advanceTimersByTimeAsync(30 * 60 * 1000));
+    expect(
+      native.invoke.mock.calls.some(
+        ([name]) => name === "continuity_advance" || name === "continuity_tick",
+      ),
+    ).toBe(false);
+    visibility.mockReturnValue("visible");
+    await act(async () => document.dispatchEvent(new Event("visibilitychange")));
+    await act(async () => vi.advanceTimersByTimeAsync(0));
+    expect(native.invoke).toHaveBeenCalledWith("continuity_advance", { context, revision: 2 });
+    expect(native.invoke.mock.calls.filter(([name]) => name === "continuity_enter")).toHaveLength(
+      1,
+    );
+    view.unmount();
+  });
+
+  it("rechecks quiet results after five minutes only while open", async () => {
     const client = await import("./client");
     vi.useFakeTimers();
     const view = renderHook(({ open }) => client.useContinuity(context, open), {
@@ -63,12 +213,12 @@ describe("shared continuity bridge", () => {
     expect(native.invoke.mock.calls.some(([name]) => name === "continuity_enter")).toBe(false);
 
     await act(async () => view.rerender({ open: true }));
-    await act(async () => vi.advanceTimersByTimeAsync(30 * 60 * 1000 - 1));
+    await act(async () => vi.advanceTimersByTimeAsync(5 * 60 * 1000 - 1));
     expect(ticks()).toHaveLength(0);
     await act(async () => vi.advanceTimersByTimeAsync(1));
     expect(ticks()).toHaveLength(1);
     expect(ticks()[0]).toEqual(["continuity_tick", { context }]);
-    await act(async () => vi.advanceTimersByTimeAsync(30 * 60 * 1000));
+    await act(async () => vi.advanceTimersByTimeAsync(5 * 60 * 1000));
     expect(ticks()).toHaveLength(2);
 
     await act(async () => view.rerender({ open: false }));
@@ -76,11 +226,39 @@ describe("shared continuity bridge", () => {
     expect(ticks()).toHaveLength(2);
     await act(async () => view.rerender({ open: true }));
     expect(ticks()).toHaveLength(2);
-    await act(async () => vi.advanceTimersByTimeAsync(30 * 60 * 1000));
+    await act(async () => vi.advanceTimersByTimeAsync(5 * 60 * 1000));
     expect(ticks()).toHaveLength(3);
     view.unmount();
     await act(async () => vi.advanceTimersByTimeAsync(60 * 60 * 1000));
     expect(ticks()).toHaveLength(3);
+  });
+
+  it("keeps the quiet deadline across focus sync, including a sync that finishes after it", async () => {
+    const client = await import("./client");
+    vi.useFakeTimers();
+    const view = renderHook(() => client.useContinuity(context, true));
+    await act(async () => {});
+    const ticks = () => native.invoke.mock.calls.filter(([name]) => name === "continuity_tick");
+    await act(async () => vi.advanceTimersByTimeAsync(4 * 60 * 1000));
+    await act(async () => window.dispatchEvent(new Event("focus")));
+    await act(async () => vi.advanceTimersByTimeAsync(60 * 1000));
+    expect(ticks()).toHaveLength(1);
+
+    await act(async () => vi.advanceTimersByTimeAsync(4 * 60 * 1000));
+    let finishSync: ((value: ContinuitySnapshot) => void) | undefined;
+    native.invoke.mockImplementationOnce(
+      () =>
+        new Promise<ContinuitySnapshot>((resolve) => {
+          finishSync = resolve;
+        }),
+    );
+    await act(async () => window.dispatchEvent(new Event("focus")));
+    await act(async () => vi.advanceTimersByTimeAsync(2 * 60 * 1000));
+    expect(ticks()).toHaveLength(1);
+    await act(async () => finishSync?.(snapshot()));
+    await act(async () => vi.advanceTimersByTimeAsync(0));
+    expect(ticks()).toHaveLength(2);
+    view.unmount();
   });
 
   it("discards an unsent tick when the screen closes and never catches up on focus", async () => {
@@ -92,7 +270,7 @@ describe("shared continuity bridge", () => {
     await act(async () => {});
     // The timer fired, but ensureBridge has not yielded back to its continuation.
     act(() => {
-      vi.advanceTimersByTime(30 * 60 * 1000);
+      vi.advanceTimersByTime(5 * 60 * 1000);
       view.rerender({ open: false });
     });
     await act(async () => {});
@@ -118,7 +296,7 @@ describe("shared continuity bridge", () => {
     expect(native.invoke.mock.calls.some(([name]) => name === "continuity_tick")).toBe(false);
     const another = { ...context, personaId: "another" };
     await act(async () => view.rerender({ current: another }));
-    await act(async () => vi.advanceTimersByTimeAsync(30 * 60 * 1000));
+    await act(async () => vi.advanceTimersByTimeAsync(5 * 60 * 1000));
     expect(native.invoke.mock.calls.filter(([name]) => name === "continuity_tick")).toEqual([
       ["continuity_tick", { context: another }],
     ]);

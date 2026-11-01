@@ -370,6 +370,8 @@ import {
   type TerminalAgent,
   type VoiceFrequency,
   withActiveAmbientUiSet,
+  withActiveUiSet,
+  withContinuityOpenSet,
   withLanguageSet,
   withPrimaryPersonaSet,
   type YorishiroConfig,
@@ -1208,6 +1210,15 @@ function App() {
       }),
     [],
   );
+  const selectContinuityWorkspace = useCallback(
+    (open: boolean) => {
+      setContinuityWorkspaceOpen(open);
+      void updateYorishiroConfig((config) => withContinuityOpenSet(config, open)).catch((error) => {
+        console.warn("[App] failed to persist companion workspace", error);
+      });
+    },
+    [updateYorishiroConfig],
+  );
   const updateConfig = useCallback(
     (
       patch: Partial<{
@@ -1912,7 +1923,10 @@ function App() {
         scenePackRegistry.setActiveScene(
           resolveSceneForProject(config, projectRootValue(projectRoot)),
         );
-        uiPackRegistry.setActiveUi(resolvePersistedUiId(config.activeUi));
+        uiPackRegistry.setActiveUi(
+          config.continuityOpen ? null : resolvePersistedUiId(config.activeUi),
+        );
+        setContinuityWorkspaceOpen(config.continuityOpen);
         syncAmbientUiActiveSet(config.activeAmbientUi);
         // ─ Persona resume gate ─
         // per (agent, place) で最後に spawn した persona を記録し、変わっていたら
@@ -4338,7 +4352,7 @@ function App() {
       pendingContinuityVoiceStartRef.current = false;
       getUiRegistry().setActiveUi(null);
       applyPresenceLevelFromApp("default", "settings");
-      setContinuityWorkspaceOpen(true);
+      selectContinuityWorkspace(true);
       void toggleCodexRealtime().catch((error: unknown) => {
         setContinuityAudioError(error instanceof Error ? error.message : String(error));
       });
@@ -4348,6 +4362,7 @@ function App() {
     codexVoiceAvailable,
     toggleCodexRealtime,
     applyPresenceLevelFromApp,
+    selectContinuityWorkspace,
   ]);
 
   useEffect(() => {
@@ -4434,8 +4449,8 @@ function App() {
       pendingContinuityVoiceStartRef.current = false;
       pendingRealtimeStartRef.current = false;
     }
-    setContinuityWorkspaceOpen(false);
-  }, []);
+    if (continuityOpen) selectContinuityWorkspace(false);
+  }, [continuityOpen, selectContinuityWorkspace]);
 
   const handleEndContinuityConversation = useCallback(() => {
     pendingContinuityVoiceStartRef.current = false;
@@ -4820,7 +4835,7 @@ function App() {
       handleCloseContinuityWorkspace();
       setViewModeHudVisible(false);
       getUiRegistry().setActiveUi(id);
-      void updateYorishiroConfig((config) => ({ ...config, activeUi: id })).catch((error) => {
+      void updateYorishiroConfig((config) => withActiveUiSet(config, id)).catch((error) => {
         console.warn("[App] failed to persist View Mode", error);
       });
     },
@@ -4860,12 +4875,17 @@ function App() {
     setViewModeHudVisible(false);
     setQuickChatOpen(false);
     applyPresenceLevelFromApp("default", "settings");
-    setContinuityWorkspaceOpen(true);
-  }, [continuityOpen, applyPresenceLevelFromApp, handleCloseContinuityWorkspace]);
+    selectContinuityWorkspace(true);
+  }, [
+    continuityOpen,
+    applyPresenceLevelFromApp,
+    handleCloseContinuityWorkspace,
+    selectContinuityWorkspace,
+  ]);
 
   useEffect(() => {
-    if (activeUiId !== null) setContinuityWorkspaceOpen(false);
-  }, [activeUiId]);
+    if (activeUiId !== null && continuityOpen) handleCloseContinuityWorkspace();
+  }, [activeUiId, continuityOpen, handleCloseContinuityWorkspace]);
 
   const [vrmUrl, setVrmUrl] = useState<string | null>(null);
 

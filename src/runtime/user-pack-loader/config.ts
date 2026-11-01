@@ -13,6 +13,7 @@
  * - `activeScene: string | null`（optional）: user が explicit に picks した scene pack の id
  * - `sceneByProject: Record<string, string>`（optional）: 正規化済み project root ごとの scene pack id
  * - `activeUi: string | null`（optional）: user が explicit に picks した UI pack の id
+ * - `continuityOpen: boolean`（optional）: お任せ作業画面を次回起動時にも復元する
  * - `activeAmbientUi: string[]`（optional）: 同時有効化される ambient-ui pack の id 一覧
  * - `tabMetadataBadges: boolean`（optional）: legacy debug tab metadata badge flag
  * - `language: "auto" | "en" | "ja"`（optional）: UI / persona fallback / command prompt の言語
@@ -57,6 +58,8 @@ export interface YorishiroConfig {
   readonly sceneByProject: Readonly<Record<string, string>>;
   /** User が explicit に picks した UI pack の id。null なら UI pack なし。 */
   readonly activeUi: string | null;
+  /** Restore the companion workspace, including after an unexpected exit. */
+  readonly continuityOpen: boolean;
   /** 同時有効化される ambient-ui pack の id 一覧。複数 active 可。 */
   readonly activeAmbientUi: ReadonlyArray<string>;
   /** Legacy debug flag. Practical allowlisted tab metadata badges are shown independently. */
@@ -122,6 +125,7 @@ export const EMPTY_CONFIG: YorishiroConfig = {
   activeScene: null,
   sceneByProject: {},
   activeUi: null,
+  continuityOpen: false,
   activeAmbientUi: ["attention-aura", "pomodoro-ui"],
   tabMetadataBadges: false,
   language: DEFAULT_LANGUAGE,
@@ -346,6 +350,7 @@ export function parseConfig(text: string): YorishiroConfig {
     activeScene: toNullableString(obj.activeScene),
     sceneByProject: toStringRecord(obj.sceneByProject, { omitEmpty: true }),
     activeUi: toNullableString(obj.activeUi),
+    continuityOpen: toBoolean(obj.continuityOpen),
     activeAmbientUi:
       "activeAmbientUi" in obj ? toStringArray(obj.activeAmbientUi) : EMPTY_CONFIG.activeAmbientUi,
     tabMetadataBadges: toBoolean(obj.tabMetadataBadges),
@@ -383,6 +388,7 @@ export function serializeConfig(cfg: YorishiroConfig): string {
     out.sceneByProject = { ...cfg.sceneByProject };
   }
   if (cfg.activeUi !== null) out.activeUi = cfg.activeUi;
+  if (cfg.continuityOpen) out.continuityOpen = true;
   if (!stringArraysEqual(cfg.activeAmbientUi, EMPTY_CONFIG.activeAmbientUi)) {
     out.activeAmbientUi = [...cfg.activeAmbientUi];
   }
@@ -548,7 +554,12 @@ export function resolveCodexRealtimeVoiceForPersona(
  * withActiveSceneSet と対称。
  */
 export function withActiveUiSet(cfg: YorishiroConfig, id: string | null): YorishiroConfig {
-  return { ...cfg, activeUi: id };
+  return { ...cfg, activeUi: id, continuityOpen: false };
+}
+
+/** Save the selected workspace immediately, rather than waiting for app shutdown. */
+export function withContinuityOpenSet(cfg: YorishiroConfig, open: boolean): YorishiroConfig {
+  return { ...cfg, continuityOpen: open, activeUi: open ? null : cfg.activeUi };
 }
 
 /**

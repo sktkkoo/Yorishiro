@@ -43,6 +43,7 @@ fn session() -> Session {
         epoch: 0,
         cancel: None,
         last_periodic_at: None,
+        followup_steps: BTreeSet::new(),
     }
 }
 
@@ -73,6 +74,7 @@ fn passive_context_sync_keeps_persona_and_project_without_starting_or_cancelling
 
 #[test]
 fn periodic_ticks_enforce_the_exact_interval_after_a_completed_turn() {
+    assert_eq!(PERIODIC_INTERVAL_MS, 300_000);
     let mut value = session();
     assert!(queue_periodic(&mut value, context(), 10_000));
     assert_eq!(value.saved.pending_trigger.as_deref(), Some("return"));
@@ -132,6 +134,289 @@ fn periodic_retry_preserves_the_failed_foreground_trigger_and_corrections() {
     assert_eq!(value.saved.snapshot.phase, "drafting");
     assert_eq!(value.saved.snapshot.error, None);
     assert!(value.queued);
+}
+
+#[test]
+fn a_new_reply_can_start_work_but_rephrased_proposals_cannot_sustain_a_followup_chain() {
+    let mut snapshot = Snapshot::new("yori-ja");
+    for (trigger, reply, next) in [
+        (
+            "return",
+            "I can prepare the opening flow",
+            "Draft the opening flow",
+        ),
+        (
+            "followup",
+            "I could also consider the navigation",
+            "Consider navigation",
+        ),
+    ] {
+        apply(
+            &mut snapshot,
+            response(json!({"reply":reply,"understandings":[],"drafts":[],"reflection":"","nextStep":next})),
+            trigger,
+            &[],
+        )
+        .unwrap();
+        assert_eq!(
+            snapshot.next_step.as_deref(),
+            (trigger == "return").then_some(next)
+        );
+    }
+}
+
+#[test]
+fn silent_grounded_draft_progress_continues_but_title_and_timestamp_churn_do_not() {
+    let mut snapshot = Snapshot::new("yori-ja");
+    user(
+        &mut snapshot,
+        "u1",
+        "Draft the opening experience and then review the navigation",
+    );
+    let make = |id: Option<&str>, title: &str, content: &str, next: &str| {
+        response(json!({"reply":"","understandings":[],"drafts":[{
+            "id":id,"title":title,"content":content,"reason":"From the request","sourceIds":["u1"]
+        }],"reflection":"","nextStep":next}))
+    };
+    apply(
+        &mut snapshot,
+        make(None, "Opening", "Opening experience", "Review navigation"),
+        "message",
+        &[],
+    )
+    .unwrap();
+    assert_eq!(snapshot.next_step.as_deref(), Some("Review navigation"));
+    let id = snapshot.drafts[0].id.clone();
+    apply(
+        &mut snapshot,
+        make(
+            Some(&id),
+            "Opening",
+            "Opening experience with navigation",
+            "Review accessibility",
+        ),
+        "followup",
+        &[],
+    )
+    .unwrap();
+    assert_eq!(snapshot.next_step.as_deref(), Some("Review accessibility"));
+    assert_eq!(
+        snapshot.messages.len(),
+        1,
+        "silent work need not announce progress"
+    );
+    apply(
+        &mut snapshot,
+        make(
+            Some(&id),
+            "Revised opening",
+            "Opening experience with navigation",
+            "Polish the opening",
+        ),
+        "followup",
+        &[],
+    )
+    .unwrap();
+    assert!(snapshot.next_step.is_none());
+    assert_eq!(snapshot.drafts.len(), 1);
+}
+
+#[test]
+fn noop_understanding_and_reflection_updates_do_not_count_as_progress() {
+    let mut snapshot = Snapshot::new("yori-ja");
+    user(&mut snapshot, "u1", "Consider the whole experience");
+    apply(&mut snapshot, response(json!({"reply":"","understandings":[update("preference","Whole experience","u1")],"drafts":[],"reflection":"Learned","nextStep":"Review the experience"})), "message", &[]).unwrap();
+    assert!(snapshot.next_step.is_some());
+    let mut unchanged = update("preference", "Whole experience", "u1");
+    unchanged["title"] = json!("Renamed preference");
+    apply(&mut snapshot, response(json!({"reply":"","understandings":[unchanged],"drafts":[],"reflection":"I reflected on it again","nextStep":"Keep reflecting"})), "followup", &[]).unwrap();
+    assert!(snapshot.next_step.is_none());
+    assert_eq!(snapshot.reflections.len(), 2);
+    assert!(snapshot.understandings[0].revisions.is_empty());
+    apply(&mut snapshot, response(json!({"reply":"","understandings":[],"drafts":[],"reflection":"","nextStep":"Invent another task"})), "return", &[]).unwrap();
+    assert!(snapshot.next_step.is_none());
+}
+
+#[test]
+fn self_authored_and_legacy_evidence_cannot_sustain_automatic_work() {
+    for (role, source) in [("assistant", "conversation"), ("user", "legacy")] {
+        let mut snapshot = Snapshot::new("yori-ja");
+        snapshot.messages.push(Message {
+            id: "unverified".into(),
+            role: role.into(),
+            content: "A possible preference".into(),
+            created_at: 1,
+            source: source.into(),
+        });
+        apply(&mut snapshot, response(json!({"reply":"","understandings":[update("preference","New inference","unverified")],"drafts":[{
+            "id":null,"title":"Draft","content":"New text","reason":"Inferred","sourceIds":["unverified"]
+        }],"reflection":"","nextStep":"Continue inventing tasks"})), "followup", &[]).unwrap();
+        assert!(snapshot.next_step.is_none());
+        assert_eq!(snapshot.understandings[0].certainty, Certainty::Unverified);
+    }
+}
+
+#[test]
+fn automatic_duplicate_replies_are_silent_but_direct_replies_are_preserved() {
+    let mut snapshot = Snapshot::new("yori-ja");
+    let reply = |text: &str| {
+        response(
+            json!({"reply":text,"understandings":[],"drafts":[],"reflection":"","nextStep":"Another suggestion"}),
+        )
+    };
+    apply(&mut snapshot, reply("Draft ready"), "message", &[]).unwrap();
+    for trigger in ["return", "followup"] {
+        apply(&mut snapshot, reply("  DRAFT   ready  "), trigger, &[]).unwrap();
+        assert_eq!(snapshot.messages.len(), 1);
+        assert!(snapshot.next_step.is_none());
+    }
+    apply(&mut snapshot, reply("Draft ready"), "message", &[]).unwrap();
+    assert_eq!(snapshot.messages.len(), 2);
+}
+
+#[test]
+fn a_repeated_next_step_is_rejected_even_when_the_draft_advanced() {
+    let mut snapshot = Snapshot::new("yori-ja");
+    snapshot.next_step = Some("Review   the draft".into());
+    user(&mut snapshot, "u1", "Prepare a draft");
+    apply(&mut snapshot, response(json!({"reply":"","understandings":[],"drafts":[{
+        "id":null,"title":"Draft","content":"Actual new work","reason":"Requested","sourceIds":["u1"]
+    }],"reflection":"","nextStep":"  REVIEW the DRAFT  "})), "followup", &[]).unwrap();
+    assert_eq!(snapshot.drafts.len(), 1);
+    assert!(snapshot.next_step.is_none());
+}
+
+#[test]
+fn followup_queue_checks_revision_context_and_phase_before_replacing_work() {
+    for case in ["revision", "context", "phase", "queued", "no-step"] {
+        let mut value = session();
+        value.saved.snapshot.revision = 4;
+        value.saved.snapshot.next_step = Some("Review the draft".into());
+        let mut request = context();
+        let mut revision = 4;
+        match case {
+            "revision" => revision = 3,
+            "context" => request.cwd = Some("/other/project".into()),
+            "phase" => value.saved.snapshot.phase = "thinking".into(),
+            "queued" => value.queued = true,
+            "no-step" => value.saved.snapshot.next_step = None,
+            _ => unreachable!(),
+        }
+        let before = serde_json::to_value(&value.saved).unwrap();
+        assert_eq!(
+            queue_followup(&mut value, request, revision),
+            Advance::Unchanged,
+            "{case}"
+        );
+        assert_eq!(
+            serde_json::to_value(&value.saved).unwrap(),
+            before,
+            "{case}"
+        );
+        assert_eq!(value.epoch, 0);
+    }
+    // Completion publishes idle just before the native worker leaves its loop.
+    let mut value = session();
+    value.running = true;
+    value.saved.snapshot.next_step = Some("Review the draft".into());
+    assert_eq!(queue_followup(&mut value, context(), 0), Advance::Queued);
+    assert!(value.queued);
+    assert_eq!(value.saved.pending_trigger.as_deref(), Some("followup"));
+    assert_eq!(queue_followup(&mut value, context(), 0), Advance::Unchanged);
+    assert_eq!(value.epoch, 1);
+}
+
+#[test]
+fn followup_chain_cannot_cycle_back_to_a_previously_executed_step() {
+    let mut value = session();
+    for (revision, step, expected) in [
+        (1, "Review opening", Advance::Queued),
+        (2, "Review navigation", Advance::Queued),
+        (3, "  REVIEW   opening ", Advance::Waiting),
+    ] {
+        // Simulate successful completion publishing a new pending step.
+        value.queued = false;
+        value.saved.snapshot.phase = "idle".into();
+        value.saved.snapshot.revision = revision;
+        value.saved.snapshot.next_step = Some(step.into());
+        assert_eq!(queue_followup(&mut value, context(), revision), expected);
+    }
+    assert!(!value.queued);
+    assert!(value.saved.snapshot.next_step.is_none());
+    assert_eq!(value.epoch, 2);
+}
+
+#[test]
+fn context_changes_discard_pending_plans_and_old_completions_cannot_restart_them() {
+    let mut value = session();
+    value.saved.snapshot.next_step = Some("Draft the opening".into());
+    value.saved.pending_trigger = Some("followup".into());
+    sync_context(&mut value, context());
+    assert!(
+        value.saved.snapshot.next_step.is_some(),
+        "same context keeps pending work"
+    );
+    let mut selected = context();
+    selected.cwd = Some("/new/project".into());
+    sync_context(&mut value, selected);
+    assert!(value.saved.snapshot.next_step.is_none());
+    assert_eq!(value.saved.pending_trigger.as_deref(), Some("return"));
+    assert!(!value.queued);
+    user(&mut value.saved.snapshot, "u1", "Draft an opening");
+    apply_completed(&mut value, response(json!({"reply":"","understandings":[update("preference","A new grounded understanding","u1")],"drafts":[],"reflection":"","nextStep":"Continue old project"})), &context(), "followup", &[]).unwrap();
+    assert_eq!(
+        value.saved.snapshot.understandings.len(),
+        1,
+        "accepted work may finish"
+    );
+    assert!(value.saved.snapshot.next_step.is_none());
+}
+
+#[test]
+fn reopening_reconsiders_quiet_work_without_overlapping_busy_or_pending_work() {
+    let mut quiet = session();
+    assert!(queue_on_open(&mut quiet, context()));
+    assert_eq!(quiet.saved.pending_trigger.as_deref(), Some("return"));
+    assert!(!queue_on_open(&mut quiet, context()));
+    let mut pending = session();
+    pending.saved.snapshot.next_step = Some("Review draft".into());
+    assert!(!queue_on_open(&mut pending, context()));
+    assert_eq!(
+        pending.saved.snapshot.next_step.as_deref(),
+        Some("Review draft")
+    );
+    pending.saved.snapshot.phase = "error".into();
+    let mut other = context();
+    other.cwd = Some("/new/project".into());
+    assert!(!queue_on_open(&mut pending, other));
+    assert!(pending.saved.snapshot.next_step.is_none());
+}
+
+#[test]
+fn old_saved_snapshots_load_without_a_next_step_and_new_plans_round_trip() {
+    let home = tempfile::tempdir().unwrap();
+    let mut saved = storage::load(home.path(), "yori-ja").unwrap();
+    saved.snapshot.next_step = Some("Review the saved draft".into());
+    storage::save(home.path(), &saved).unwrap();
+    assert_eq!(
+        storage::load(home.path(), "yori-en")
+            .unwrap()
+            .snapshot
+            .next_step,
+        saved.snapshot.next_step
+    );
+    let path = home.path().join("continuity/builtin/yori/state.json");
+    let mut legacy = serde_json::to_value(&saved).unwrap();
+    legacy["snapshot"]
+        .as_object_mut()
+        .unwrap()
+        .remove("nextStep");
+    std::fs::write(path, serde_json::to_vec(&legacy).unwrap()).unwrap();
+    assert!(storage::load(home.path(), "yori-ja")
+        .unwrap()
+        .snapshot
+        .next_step
+        .is_none());
 }
 
 #[test]

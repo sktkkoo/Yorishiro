@@ -1,7 +1,7 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Context {
     pub persona_id: String,
@@ -78,6 +78,8 @@ pub struct Snapshot {
     pub reflections: Vec<Reflection>,
     pub error: Option<String>,
     pub last_observed_at: Option<u64>,
+    #[serde(default)]
+    pub next_step: Option<String>,
 }
 impl Snapshot {
     pub fn new(persona_id: &str) -> Self {
@@ -91,6 +93,7 @@ impl Snapshot {
             reflections: vec![],
             error: None,
             last_observed_at: None,
+            next_step: None,
         }
     }
 }
@@ -132,4 +135,6 @@ pub struct ModelResult {
     pub understandings: Vec<UnderstandingUpdate>,
     pub drafts: Vec<DraftUpdate>,
     pub reflection: String,
+    #[serde(default)]
+    pub next_step: Option<String>,
 }

@@ -21,6 +21,7 @@ import {
   withActiveAmbientUiSet,
   withActiveSceneSet,
   withActiveUiSet,
+  withContinuityOpenSet,
   withDisabledPackAdded,
   withDisabledPackRemoved,
   withLanguageSet,
@@ -48,6 +49,7 @@ describe("parseConfig", () => {
       activeScene: null,
       sceneByProject: {},
       activeUi: null,
+      continuityOpen: false,
       activeAmbientUi: ["attention-aura", "pomodoro-ui"],
       tabMetadataBadges: false,
       language: "auto",
@@ -78,6 +80,7 @@ describe("parseConfig", () => {
       activeScene: null,
       sceneByProject: {},
       activeUi: null,
+      continuityOpen: false,
       activeAmbientUi: ["attention-aura", "pomodoro-ui"],
       tabMetadataBadges: false,
       language: "auto",
@@ -108,6 +111,7 @@ describe("parseConfig", () => {
       activeScene: null,
       sceneByProject: {},
       activeUi: null,
+      continuityOpen: false,
       activeAmbientUi: ["attention-aura", "pomodoro-ui"],
       tabMetadataBadges: false,
       language: "auto",
@@ -138,6 +142,7 @@ describe("parseConfig", () => {
       activeScene: null,
       sceneByProject: {},
       activeUi: null,
+      continuityOpen: false,
       activeAmbientUi: ["attention-aura", "pomodoro-ui"],
       tabMetadataBadges: false,
       language: "auto",
@@ -168,6 +173,7 @@ describe("parseConfig", () => {
       activeScene: null,
       sceneByProject: {},
       activeUi: null,
+      continuityOpen: false,
       activeAmbientUi: ["attention-aura", "pomodoro-ui"],
       tabMetadataBadges: false,
       language: "auto",
@@ -198,6 +204,7 @@ describe("parseConfig", () => {
       activeScene: null,
       sceneByProject: {},
       activeUi: null,
+      continuityOpen: false,
       activeAmbientUi: ["attention-aura", "pomodoro-ui"],
       tabMetadataBadges: false,
       language: "auto",
@@ -233,6 +240,7 @@ describe("parseConfig", () => {
       activeScene: null,
       sceneByProject: {},
       activeUi: null,
+      continuityOpen: false,
       activeAmbientUi: ["attention-aura", "pomodoro-ui"],
       tabMetadataBadges: false,
       language: "auto",
@@ -292,6 +300,7 @@ describe("serializeConfig", () => {
       activeScene: null,
       sceneByProject: {},
       activeUi: null,
+      continuityOpen: false,
       activeAmbientUi: ["attention-aura", "pomodoro-ui"],
       tabMetadataBadges: false,
       language: "auto",
@@ -322,6 +331,7 @@ describe("serializeConfig", () => {
       activeScene: null,
       sceneByProject: {},
       activeUi: null,
+      continuityOpen: false,
       activeAmbientUi: ["attention-aura", "pomodoro-ui"],
       tabMetadataBadges: false,
       language: "auto",
@@ -365,6 +375,7 @@ describe("serializeConfig", () => {
       activeScene: null,
       sceneByProject: {},
       activeUi: null,
+      continuityOpen: false,
       activeAmbientUi: ["attention-aura", "pomodoro-ui"],
       tabMetadataBadges: false,
       language: "auto",
@@ -780,6 +791,7 @@ describe("withDisabledPackAdded / withDisabledPackRemoved", () => {
       activeScene: null,
       sceneByProject: {},
       activeUi: null,
+      continuityOpen: false,
       activeAmbientUi: ["attention-aura", "pomodoro-ui"],
       tabMetadataBadges: false,
       language: "auto",
@@ -811,6 +823,7 @@ describe("withDisabledPackAdded / withDisabledPackRemoved", () => {
       activeScene: null,
       sceneByProject: {},
       activeUi: null,
+      continuityOpen: false,
       activeAmbientUi: ["attention-aura", "pomodoro-ui"],
       tabMetadataBadges: false,
       language: "auto",
@@ -997,6 +1010,34 @@ describe("activeUi", () => {
   it("withActiveUiSet updates the field", () => {
     const updated = withActiveUiSet(EMPTY_CONFIG, "camera-lighting-panel");
     expect(updated.activeUi).toBe("camera-lighting-panel");
+  });
+});
+
+describe("companion workspace restoration", () => {
+  it("keeps first launch and older configs on their existing surface", () => {
+    expect(parseConfig("").continuityOpen).toBe(false);
+    expect(parseConfig('{"activeUi":"portrait"}')).toMatchObject({
+      continuityOpen: false,
+      activeUi: "portrait",
+    });
+    expect(parseConfig('{"continuityOpen":"true"}').continuityOpen).toBe(false);
+  });
+
+  it("saves an open companion immediately and restores it without a shutdown write", () => {
+    const previousView = withActiveUiSet(EMPTY_CONFIG, "portrait");
+    const saved = serializeConfig(withContinuityOpenSet(previousView, true));
+    expect(parseConfig(saved)).toMatchObject({ continuityOpen: true, activeUi: null });
+    expect(JSON.parse(saved)).toEqual({ continuityOpen: true });
+  });
+
+  it("restores terminal or View Mode after leaving the companion", () => {
+    const companion = withContinuityOpenSet(EMPTY_CONFIG, true);
+    const terminal = parseConfig(serializeConfig(withContinuityOpenSet(companion, false)));
+    expect(terminal).toMatchObject({ continuityOpen: false, activeUi: null });
+    for (const id of ["portrait", null]) {
+      const selected = parseConfig(serializeConfig(withActiveUiSet(companion, id)));
+      expect(selected).toMatchObject({ continuityOpen: false, activeUi: id });
+    }
   });
 });
 

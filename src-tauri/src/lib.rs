@@ -3917,6 +3917,7 @@ pub fn run() {
             continuity::continuity_sync_context,
             continuity::continuity_enter,
             continuity::continuity_tick,
+            continuity::continuity_advance,
             continuity::continuity_send,
             continuity::continuity_draft_action,
             continuity::continuity_retry,
