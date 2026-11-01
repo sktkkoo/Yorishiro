@@ -1052,7 +1052,7 @@ function App() {
 
   const [cwd, setCwd] = useState<string | null>(() => localStorage.getItem(CWD_STORAGE_KEY));
   const [pendingContinuityConversation] = useState(() => consumePendingContinuityConversation());
-  const [continuityOpen, setContinuityWorkspaceOpen] = useState(true);
+  const [continuityOpen, setContinuityWorkspaceOpen] = useState(false);
   const [continuityAudioError, setContinuityAudioError] = useState<string | null>(null);
   const [continuityConversationPhase, setContinuityConversationPhase] =
     useState<StateExpressionConversationPhase>("disconnected");
