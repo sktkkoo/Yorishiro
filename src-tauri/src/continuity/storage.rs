@@ -126,6 +126,7 @@ pub fn load(home: &Path, id: &str) -> Result<Saved, String> {
                     content: format!("[{persona}/memories.md] {line}"),
                     created_at: 0,
                     source: "legacy".into(),
+                    reply_kind: None,
                 });
                 saved.snapshot.understandings.push(Understanding {
                     id: format!("understanding-{}", uuid::Uuid::new_v4()),
@@ -161,6 +162,7 @@ pub fn load(home: &Path, id: &str) -> Result<Saved, String> {
                                 content: format!("[{persona}/daily/{name}]\n{content}"),
                                 created_at: 0,
                                 source: "legacy".into(),
+                                reply_kind: None,
                             });
                         }
                     }
