@@ -314,7 +314,6 @@ function ResidentWorkspace({
     >
       <header className="continuity-header">
         <h1 id={titleId}>
-          {name}
           <span className="continuity-sr-only">{copy.conversation}</span>
         </h1>
         <button
@@ -327,15 +326,6 @@ function ResidentWorkspace({
         >
           <BookOpen size={15} aria-hidden="true" />
           {copy.understanding}
-        </button>
-        <button
-          type="button"
-          className="continuity-icon"
-          aria-label={copy.close}
-          title={copy.close}
-          onClick={onClose}
-        >
-          <X size={17} aria-hidden="true" />
         </button>
       </header>
       <div className="continuity-layout" data-understanding={understandingOpen}>
