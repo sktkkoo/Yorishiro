@@ -314,7 +314,10 @@ function ResidentWorkspace({
     >
       <header className="continuity-header">
         <h1 id={titleId}>
-          <span className="continuity-sr-only">{copy.conversation}</span>
+          <span className="continuity-sr-only">
+            {name}
+            {copy.conversation}
+          </span>
         </h1>
         <button
           type="button"
