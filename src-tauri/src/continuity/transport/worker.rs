@@ -531,7 +531,7 @@ impl Protocol {
                 if event.get("subtype").and_then(Value::as_str) != Some("success")
                     || event.get("is_error").and_then(Value::as_bool) != Some(false)
                 {
-                    return Err("Claude could not produce a structured proposal.".into());
+                    return Err(result_failure(event));
                 }
                 if !self.structured_tools.is_empty() {
                     return Err("Worker ended with an unfinished structured-output call.".into());
@@ -551,6 +551,61 @@ impl Protocol {
         self.result
             .ok_or_else(|| "Worker ended without a verified structured result.".into())
     }
+}
+
+fn result_failure(event: &Value) -> String {
+    // Claude can report provider failures as subtype=success, is_error=true,
+    // with an error sentence instead of structured_output. Classify known
+    // failures without exposing raw diagnostics (which may contain user text,
+    // paths or credentials). In particular, a billing failure is not a schema
+    // failure and cannot be fixed by repeatedly generating another proposal.
+    let diagnostics = event
+        .get("result")
+        .and_then(Value::as_str)
+        .into_iter()
+        .chain(
+            event
+                .get("errors")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str),
+        )
+        .map(str::to_ascii_lowercase)
+        .collect::<Vec<_>>();
+    let contains = |phrases: &[&str]| {
+        diagnostics
+            .iter()
+            .any(|text| phrases.iter().any(|phrase| text.contains(phrase)))
+    };
+    let message = if contains(&[
+        "credit balance is too low",
+        "insufficient credits",
+        "billing_error",
+    ]) {
+        "Claude's credit balance is too low. Check billing for the account used by Claude Code, then retry."
+    } else if contains(&[
+        "authentication_error",
+        "invalid api key",
+        "invalid_api_key",
+        "not logged in",
+    ]) {
+        "Claude authentication failed. Sign in to Claude Code again, then retry."
+    } else if contains(&["rate_limit_error", "rate limit", "usage limit"]) {
+        "Claude's usage limit was reached. Retry after the limit resets."
+    } else if contains(&["overloaded_error", "overloaded"]) {
+        "Claude is temporarily overloaded. Please retry later."
+    } else {
+        match event.get("subtype").and_then(Value::as_str) {
+            Some("error_max_structured_output_retries") => {
+                "Claude could not match the response format after repeated attempts. Please retry."
+            }
+            Some("error_max_turns") => "Claude reached its turn limit before completing the proposal.",
+            Some("error_max_budget_usd") => "Claude reached the configured spending limit.",
+            _ => "Claude could not produce a structured proposal. Check Claude Code's account and service status, then retry.",
+        }
+    };
+    message.into()
 }
 
 // These shapes come from the published Claude Agent SDK and captured local
@@ -731,6 +786,43 @@ mod tests {
     }
 
     #[test]
+    fn provider_failures_are_not_reported_as_schema_failures_or_leaked() {
+        for (event, expected) in [
+            (
+                json!({"type":"result","subtype":"success","is_error":true,"result":"Credit balance is too low"}),
+                "credit balance is too low",
+            ),
+            (
+                json!({"type":"result","subtype":"error_during_execution","is_error":true,"errors":["authentication_error: private credential"]}),
+                "authentication failed",
+            ),
+            (
+                json!({"type":"result","subtype":"error_during_execution","is_error":true,"errors":["rate_limit_error: private account"]}),
+                "usage limit was reached",
+            ),
+            (
+                json!({"type":"result","subtype":"error_during_execution","is_error":true,"result":"overloaded_error: private request"}),
+                "temporarily overloaded",
+            ),
+            (
+                json!({"type":"result","subtype":"error_max_structured_output_retries","is_error":true,"errors":["private model output"]}),
+                "response format",
+            ),
+            (
+                json!({"type":"result","subtype":"private identifier","is_error":true,"result":"private unknown error"}),
+                "account and service status",
+            ),
+        ] {
+            let mut protocol = Protocol::default();
+            protocol.event(&init()).unwrap();
+            let error = protocol.event(&event).unwrap_err();
+            assert!(error.contains(expected), "{error}");
+            assert!(!error.contains("private"), "{error}");
+            assert!(protocol.finish().is_err());
+        }
+    }
+
+    #[test]
     fn rejects_tools_customizations_and_unexpected_calls() {
         for field in ["tools", "mcp_servers", "plugins", "skills"] {
             let mut event = init();
@@ -889,6 +981,32 @@ mod tests {
             .unwrap();
             assert_eq!(error, expected);
         }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[tokio::test]
+    async fn billing_error_survives_a_nonzero_cli_exit() {
+        // Captured Claude 2.1.310 shape: success subtype + is_error=true,
+        // no structured_output, no stderr, and process exit code 1.
+        let mut command = Command::new("/bin/sh");
+        command.args([
+            "-c",
+            "printf '%s\\n' \"$1\" \"$2\"; exit 1",
+            "fixture",
+            &init().to_string(),
+            &json!({"type":"result","subtype":"success","is_error":true,"result":"Credit balance is too low"}).to_string(),
+        ]);
+        let error = capture(
+            command,
+            None,
+            true,
+            Duration::from_secs(10),
+            CancellationToken::new(),
+        )
+        .await
+        .err()
+        .unwrap();
+        assert!(error.contains("credit balance is too low"), "{error}");
     }
 
     #[cfg(target_os = "macos")]

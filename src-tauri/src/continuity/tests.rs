@@ -23,6 +23,7 @@ fn context() -> Context {
         persona_prompt: "Curious".into(),
         language: "ja".into(),
         cwd: None,
+        execution_session_id: None,
     }
 }
 fn session() -> Session {
@@ -32,6 +33,7 @@ fn session() -> Session {
         observed_keys: std::collections::BTreeMap::new(),
         pending_correction_ids: vec![],
         pending_trigger: None,
+        pending_execution: None,
     };
     Session {
         _storage_lock: tempfile::tempfile().unwrap(),
@@ -162,6 +164,7 @@ fn a_new_reply_can_start_work_but_rephrased_proposals_cannot_sustain_a_followup_
             snapshot.next_step.as_deref(),
             (trigger == "return").then_some(next)
         );
+        assert_eq!(snapshot.messages.len(), 1);
     }
 }
 
@@ -271,6 +274,131 @@ fn automatic_duplicate_replies_are_silent_but_direct_replies_are_preserved() {
         assert!(snapshot.next_step.is_none());
     }
     apply(&mut snapshot, reply("Draft ready"), "message", &[]).unwrap();
+    assert_eq!(snapshot.messages.len(), 2);
+}
+
+#[test]
+fn unanswered_proposals_cannot_restart_conversation_or_work_with_new_wording() {
+    let mut snapshot = Snapshot::new("yori-ja");
+    user(&mut snapshot, "u1", "Improve the opening experience");
+    let reply = |text: &str| {
+        response(json!({
+            "reply":text,"understandings":[],"drafts":[],"reflection":"",
+            "nextStep":"Decide where to start"
+        }))
+    };
+    apply(
+        &mut snapshot,
+        reply("どこから手をつけるか決めようか。コードはまだ触らない"),
+        "message",
+        &[],
+    )
+    .unwrap();
+    // The guard is derived from persisted conversation, so reopening the app
+    // does not grant another turn to the same unanswered proposal.
+    snapshot = serde_json::from_value(serde_json::to_value(snapshot).unwrap()).unwrap();
+    for (trigger, text) in [
+        ("followup", "まず取り組む場所を一緒に決めようか。"),
+        ("return", "どこから始めたい？"),
+        ("return", "準備はできているから、方針を聞かせて。"),
+    ] {
+        apply(&mut snapshot, reply(text), trigger, &[]).unwrap();
+        assert_eq!(snapshot.messages.len(), 2);
+        assert!(snapshot.next_step.is_none());
+    }
+    user(&mut snapshot, "u2", "Start with the opening screen");
+    apply(
+        &mut snapshot,
+        reply("I will draft the opening screen"),
+        "return",
+        &[],
+    )
+    .unwrap();
+    assert_eq!(snapshot.messages.len(), 4);
+    assert!(snapshot.next_step.is_some());
+}
+
+#[test]
+fn unanswered_messages_do_not_block_concrete_autonomous_results() {
+    let mut snapshot = Snapshot::new("yori-ja");
+    user(
+        &mut snapshot,
+        "u1",
+        "Prepare the opening and navigation drafts",
+    );
+    apply(
+        &mut snapshot,
+        response(
+            json!({"reply":"I will prepare the opening", "understandings":[],
+            "drafts":[],"reflection":"","nextStep":"Draft the opening"}),
+        ),
+        "message",
+        &[],
+    )
+    .unwrap();
+    for (trigger, content, next) in [
+        ("followup", "Opening flow", "Review navigation"),
+        ("return", "Navigation flow", "Review accessibility"),
+    ] {
+        apply(
+            &mut snapshot,
+            response(
+                json!({"reply":format!("Prepared {content}"),"understandings":[],
+                "drafts":[{"id":null,"title":content,"content":content,
+                    "reason":"Requested work","sourceIds":["u1"]}],
+                "reflection":"","nextStep":next}),
+            ),
+            trigger,
+            &[],
+        )
+        .unwrap();
+        assert_eq!(snapshot.next_step.as_deref(), Some(next));
+    }
+    assert_eq!(snapshot.drafts.len(), 2);
+    assert_eq!(snapshot.messages.len(), 4);
+    assert_eq!(snapshot.messages[3].content, "Prepared Navigation flow");
+
+    let id = snapshot.drafts[1].id.clone();
+    apply(
+        &mut snapshot,
+        response(
+            json!({"reply":"What would you like me to do next?","understandings":[],
+            "drafts":[{"id":id,"title":"Renamed navigation","content":"Navigation flow",
+                "reason":"Updated title only","sourceIds":["u1"]}],
+            "reflection":"","nextStep":"Ask about the next step"}),
+        ),
+        "return",
+        &[],
+    )
+    .unwrap();
+    assert_eq!(snapshot.messages.len(), 4);
+    assert!(snapshot.next_step.is_none());
+}
+
+#[test]
+fn memory_reinterpretation_does_not_repeat_an_unanswered_question() {
+    let mut snapshot = Snapshot::new("yori-ja");
+    user(&mut snapshot, "u1", "I care about the whole experience");
+    apply(
+        &mut snapshot,
+        response(
+            json!({"reply":"What part matters most?","understandings":[],
+            "drafts":[],"reflection":"","nextStep":null}),
+        ),
+        "message",
+        &[],
+    )
+    .unwrap();
+    apply(
+        &mut snapshot,
+        response(json!({"reply":"Which part shall we discuss first?",
+            "understandings":[update("preference","Whole experience first","u1")],
+            "drafts":[],"reflection":"Remembered the preference","nextStep":null})),
+        "return",
+        &[],
+    )
+    .unwrap();
+    assert_eq!(snapshot.understandings.len(), 1);
     assert_eq!(snapshot.messages.len(), 2);
 }
 
@@ -646,4 +774,111 @@ fn corrupted_store_is_reported_without_overwriting_it() {
     std::fs::write(&path, "broken").unwrap();
     assert!(storage::load(home.path(), "yori-ja").is_err());
     assert_eq!(std::fs::read_to_string(path).unwrap(), "broken");
+}
+
+fn pending_work(value: &Session) -> PendingExecution {
+    PendingExecution {
+        request_id: "work-1".into(),
+        target: executor::Target {
+            session_id: "main".into(),
+            thread_id: "thread".into(),
+            cwd: "/workspace".into(),
+            launch_id: "launch".into(),
+        },
+        context: value.context.clone().unwrap(),
+        prompt: "Complete the entrusted work".into(),
+        trigger: "followup".into(),
+        correction_ids: vec![],
+        previous_step: Some("Implement the fix".into()),
+        message_count: value.saved.snapshot.messages.len(),
+        dispatch_attempted: false,
+    }
+}
+
+#[test]
+fn execution_schema_requires_nullable_fields_without_changing_claude_schema() {
+    let schema = execution_schema();
+    assert!(schema.get("$schema").is_none());
+    assert!(schema["required"]
+        .as_array()
+        .unwrap()
+        .contains(&json!("nextStep")));
+    assert!(schema["definitions"]["DraftUpdate"]["required"]
+        .as_array()
+        .unwrap()
+        .contains(&json!("id")));
+    assert_eq!(
+        schema["properties"]["nextStep"]["type"],
+        json!(["string", "null"])
+    );
+    assert!(response_schema().get("$schema").is_some());
+}
+
+#[test]
+fn durable_dispatch_claim_prevents_resend_and_new_input_does_not_cancel_accepted_work() {
+    let mut value = session();
+    let work = pending_work(&value);
+    value.saved.pending_execution = Some(work.clone());
+    mark_execution_dispatched(&mut value, &work.request_id).unwrap();
+    let reloaded: Saved =
+        serde_json::from_value(serde_json::to_value(&value.saved).unwrap()).unwrap();
+    assert!(
+        reloaded
+            .pending_execution
+            .as_ref()
+            .unwrap()
+            .dispatch_attempted
+    );
+    assert!(mark_execution_dispatched(&mut value, &work.request_id).is_err());
+    let token = CancellationToken::new();
+    value.cancel = Some(token.clone());
+    queue(&mut value, context(), "message");
+    assert!(!token.is_cancelled());
+    assert_eq!(value.saved.pending_trigger.as_deref(), Some("message"));
+    assert!(value.queued);
+    assert_eq!(value.saved.snapshot.phase, "working");
+    assert_eq!(
+        value.saved.pending_execution.unwrap().request_id,
+        work.request_id
+    );
+}
+
+#[test]
+fn real_work_can_continue_without_a_user_reply_but_new_input_prevents_a_stale_followup() {
+    let mut value = session();
+    user(
+        &mut value.saved.snapshot,
+        "request",
+        "Fix the issue and verify it",
+    );
+    value.saved.snapshot.messages.push(Message {
+        id: "question".into(),
+        role: "assistant".into(),
+        content: "Where should I start?".into(),
+        created_at: 2,
+        source: "conversation".into(),
+    });
+    let work = pending_work(&value);
+    let result = || {
+        response(
+            json!({"reply":"Fixed the issue and verified the behavior.","understandings":[],"drafts":[],"reflection":"","nextStep":"Review the remaining regression case"}),
+        )
+    };
+    apply_execution(&mut value, result(), &work, true).unwrap();
+    assert_eq!(
+        value.saved.snapshot.messages.last().unwrap().content,
+        "Fixed the issue and verified the behavior."
+    );
+    assert_eq!(
+        value.saved.snapshot.next_step.as_deref(),
+        Some("Review the remaining regression case")
+    );
+
+    user(
+        &mut value.saved.snapshot,
+        "new",
+        "Focus on a different issue now",
+    );
+    apply_execution(&mut value, result(), &work, true).unwrap();
+    assert!(value.saved.snapshot.next_step.is_none());
 }

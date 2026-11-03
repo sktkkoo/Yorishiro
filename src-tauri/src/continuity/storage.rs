@@ -91,7 +91,7 @@ pub fn load(home: &Path, id: &str) -> Result<Saved, String> {
         if saved.version != 1 || identity(&saved.snapshot.persona_id) != key {
             return Err("Unsupported continuity data".into());
         }
-        if ["thinking", "drafting"].contains(&saved.snapshot.phase.as_str()) {
+        if ["thinking", "drafting", "working"].contains(&saved.snapshot.phase.as_str()) {
             saved.snapshot.phase = "error".into();
             saved.snapshot.error = Some("前回の返答は中断しました。再試行できます。 / The previous reply was interrupted. You can retry.".into());
             saved.snapshot.revision += 1;
@@ -104,6 +104,7 @@ pub fn load(home: &Path, id: &str) -> Result<Saved, String> {
         observed_keys: std::collections::BTreeMap::new(),
         pending_correction_ids: vec![],
         pending_trigger: None,
+        pending_execution: None,
     };
     let personas = if key == "builtin:yori" {
         vec!["yori-ja", "yori-en"]

@@ -744,6 +744,10 @@ describe("CodexRealtimeClient", () => {
     expect(handoff?.text).toContain("must create a delegation to the backing Codex agent");
     expect(handoff?.text).toContain("Do not say that you are checking");
     expect(handoff?.text).toContain("report completion only after delegated Codex output");
+    expect(handoff?.text).toContain("choose and delegate a useful next step within that scope");
+    expect(handoff?.text).toContain("Continue authorized work while the user is silent");
+    expect(handoff?.text).toContain("If the user does not answer, do not repeat or rephrase it");
+    expect(handoff?.text).toContain("not new user turns");
     expect(start?.params).not.toHaveProperty("prompt");
     expect(start?.params).not.toHaveProperty("realtimeStartInstructions");
     expect(start?.params).not.toHaveProperty("realtimeEndInstructions");

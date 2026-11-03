@@ -36,6 +36,7 @@ export interface ContinuityWorkspaceProps {
   readonly personaId: string;
   readonly personaName: string;
   readonly personaInstructions: string;
+  readonly executionSessionId?: string | null;
   readonly onClose: () => void;
   readonly conversation?: ContinuityConversation;
 }
@@ -82,6 +83,7 @@ function ResidentWorkspace({
   personaId,
   personaName,
   personaInstructions,
+  executionSessionId,
   onClose,
   conversation,
 }: ContinuityWorkspaceProps) {
@@ -94,8 +96,9 @@ function ResidentWorkspace({
       personaPrompt: personaInstructions,
       language,
       cwd,
+      ...(executionSessionId !== undefined ? { executionSessionId } : {}),
     }),
-    [personaId, name, personaInstructions, language, cwd],
+    [personaId, name, personaInstructions, language, cwd, executionSessionId],
   );
   const { snapshot, error: syncError } = useContinuity(context, open);
   const [draft, setDraft] = useState<InputDraft>(() => readInput(personaId));
@@ -130,7 +133,10 @@ function ResidentWorkspace({
   const selectedDraft =
     detail?.kind === "draft" ? snapshot?.drafts.find((item) => item.id === detail.id) : null;
   const error = localError ?? syncError ?? snapshot?.error ?? conversation?.state.error;
-  const busy = snapshot?.phase === "thinking" || snapshot?.phase === "drafting";
+  const busy =
+    snapshot?.phase === "thinking" ||
+    snapshot?.phase === "drafting" ||
+    snapshot?.phase === "working";
   const callActive = conversation?.state.status === "active";
   const callConnecting = conversation?.state.status === "connecting";
   const correction = draft.correctionId
@@ -377,7 +383,11 @@ function ResidentWorkspace({
             {busy ? (
               <p className="continuity-state" role="status">
                 <LoaderCircle size={13} aria-hidden="true" />
-                {snapshot.phase === "drafting" ? copy.drafting : copy.thinking}
+                {snapshot.phase === "working"
+                  ? copy.working
+                  : snapshot.phase === "drafting"
+                    ? copy.drafting
+                    : copy.thinking}
               </p>
             ) : null}
           </div>

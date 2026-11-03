@@ -3202,6 +3202,10 @@ function App() {
     () => personaRegistry.getActivePersona(),
   );
   const continuityPersonaId = personaRegistry.getActivePersonaId();
+  const continuityExecutionSessionId =
+    mainAgentAvailable && terminalAgent === "codex" && !mainSessionReplacing
+      ? tabState.mainSessionId
+      : null;
   const continuityContext = useMemo<ContinuityContext | null>(
     () =>
       isUserLayerReady && continuityPersona && continuityPersonaId
@@ -3211,9 +3215,17 @@ function App() {
             personaPrompt: continuityPersona.thinking?.systemPromptAddition ?? "",
             language: appLanguage.resolved,
             cwd,
+            executionSessionId: continuityExecutionSessionId,
           }
         : null,
-    [isUserLayerReady, continuityPersona, continuityPersonaId, appLanguage.resolved, cwd],
+    [
+      isUserLayerReady,
+      continuityPersona,
+      continuityPersonaId,
+      appLanguage.resolved,
+      cwd,
+      continuityExecutionSessionId,
+    ],
   );
 
   /**
@@ -6365,6 +6377,7 @@ function App() {
           personaId={personaRegistry.getActivePersonaId() ?? continuityPersona.id}
           personaName={continuityPersona.name}
           personaInstructions={continuityPersona.thinking?.systemPromptAddition ?? ""}
+          executionSessionId={continuityExecutionSessionId}
           language={appLanguage.resolved}
           cwd={cwd}
           onClose={handleCloseContinuityWorkspace}

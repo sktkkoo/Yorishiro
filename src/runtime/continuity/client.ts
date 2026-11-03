@@ -107,6 +107,7 @@ export function useContinuity(context: ContinuityContext | null, open: boolean):
   const personaPrompt = context?.personaPrompt;
   const language = context?.language;
   const cwd = context?.cwd;
+  const executionSessionId = context?.executionSessionId;
   useEffect(() => {
     if (!personaId || !personaName || !language) return;
     const current: ContinuityContext = {
@@ -115,6 +116,7 @@ export function useContinuity(context: ContinuityContext | null, open: boolean):
       personaPrompt: personaPrompt ?? "",
       language,
       cwd: cwd ?? null,
+      ...(executionSessionId !== undefined ? { executionSessionId } : {}),
     };
     const target = entry(continuityIdentity(personaId));
     let cancelled = false;
@@ -138,7 +140,11 @@ export function useContinuity(context: ContinuityContext | null, open: boolean):
       }
       if (requestInFlight) return;
       const snapshot = target.snapshot;
-      if (snapshot?.phase === "thinking" || snapshot?.phase === "drafting") {
+      if (
+        snapshot?.phase === "thinking" ||
+        snapshot?.phase === "drafting" ||
+        snapshot?.phase === "working"
+      ) {
         clearTimer();
         quietDeadline = null;
         return;
@@ -214,6 +220,6 @@ export function useContinuity(context: ContinuityContext | null, open: boolean):
       window.removeEventListener("focus", refreshOnReturn);
       document.removeEventListener("visibilitychange", refreshOnReturn);
     };
-  }, [personaId, personaName, personaPrompt, language, cwd, open]);
+  }, [personaId, personaName, personaPrompt, language, cwd, executionSessionId, open]);
   return value;
 }

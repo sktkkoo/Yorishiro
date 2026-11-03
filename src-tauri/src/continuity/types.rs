@@ -9,6 +9,8 @@ pub struct Context {
     pub persona_prompt: String,
     pub language: String,
     pub cwd: Option<String>,
+    #[serde(default)]
+    pub execution_session_id: Option<String>,
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -108,6 +110,25 @@ pub struct Saved {
     pub pending_correction_ids: Vec<String>,
     #[serde(default)]
     pub pending_trigger: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) pending_execution: Option<PendingExecution>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct PendingExecution {
+    pub request_id: String,
+    pub target: super::executor::Target,
+    pub context: Context,
+    pub prompt: String,
+    pub trigger: String,
+    pub correction_ids: Vec<String>,
+    #[serde(default)]
+    pub previous_step: Option<String>,
+    #[serde(default)]
+    pub message_count: usize,
+    #[serde(default)]
+    pub dispatch_attempted: bool,
 }
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
