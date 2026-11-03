@@ -2,7 +2,7 @@
 //!
 //! This client never changes model, permissions, sandbox, working directory, or
 //! approval routing. The terminal remains the owner of approval requests.
-use super::types::Context;
+use super::types::{Context, TerminalStatus};
 use crate::sessions::{PtySession, SessionKind, SessionRegistry};
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
@@ -29,6 +29,17 @@ pub(super) struct Target {
 pub(super) struct Report {
     pub value: Value,
     pub progressed: bool,
+}
+
+pub(super) struct TerminalTurn {
+    pub id: String,
+    pub status: TerminalStatus,
+    pub evidence: Vec<Value>,
+}
+
+pub(super) enum Outcome {
+    Completed(Report),
+    Terminal(TerminalTurn),
 }
 
 pub(super) struct Request {
@@ -117,7 +128,7 @@ pub(super) async fn run(
     request: Request,
     cancel: CancellationToken,
     on_dispatch: impl Fn() -> Result<(), String>,
-) -> Result<Report, String> {
+) -> Result<Outcome, String> {
     if cancel.is_cancelled() {
         return Err("Autonomous work was cancelled before starting.".into());
     }
@@ -143,7 +154,7 @@ async fn run_connected(
     request: Request,
     cancel: CancellationToken,
     before_start: impl Fn() -> Result<(), String>,
-) -> Result<Report, String> {
+) -> Result<Outcome, String> {
     let marker = format!("[Yorishiro work request: {}]", request.id);
     let metadata = client
         .request(
@@ -255,11 +266,35 @@ fn start_params(
     })
 }
 
-fn report(turn: &Value, marker: &str) -> Result<Report, String> {
+fn report(turn: &Value, marker: &str) -> Result<Outcome, String> {
     match turn.get("status").and_then(Value::as_str) {
         Some("completed") => {},
-        Some("interrupted") => return Err("Autonomous work was interrupted in Main Agent. It will not be started again automatically.".into()),
-        _ => return Err("Autonomous work failed in Main Agent. Inspect the terminal for details; the accepted work will not be repeated.".into()),
+        Some(status @ ("interrupted" | "failed")) => {
+            let id = turn.get("id").and_then(Value::as_str).filter(|id| !id.is_empty())
+                .ok_or("The terminal work receipt has no turn ID.")?;
+            let items = turn.get("items").and_then(Value::as_array)
+                .ok_or("The terminal work receipt has no observed items.")?;
+            if !items.iter().any(|item| user_item_has_marker(item, marker)) {
+                return Err("The terminal work receipt does not identify this request.".into());
+            }
+            // Retain compact references to observed tool items, not arbitrary
+            // command output or a model's account of whether work succeeded.
+            let evidence = items.iter().filter(|item| {
+                matches!(item.get("type").and_then(Value::as_str),
+                    Some("commandExecution" | "fileChange" | "mcpToolCall"))
+            }).take(16).map(|item| json!({
+                "id": item.get("id").and_then(Value::as_str).map(|value| value.chars().take(256).collect::<String>()),
+                "type": item.get("type").and_then(Value::as_str),
+                "status": item.get("status").and_then(Value::as_str).map(|value| value.chars().take(64).collect::<String>()),
+                "exitCode": item.get("exitCode").and_then(Value::as_i64),
+            })).collect();
+            return Ok(Outcome::Terminal(TerminalTurn {
+                id: id.into(),
+                status: if status == "interrupted" { TerminalStatus::Interrupted } else { TerminalStatus::Failed },
+                evidence,
+            }));
+        }
+        _ => return Err("The Main Agent work status is unconfirmed. Recover its original receipt before starting more work.".into()),
     }
     let items = turn
         .get("items")
@@ -272,20 +307,20 @@ fn report(turn: &Value, marker: &str) -> Result<Report, String> {
         .filter(|item| item.get("type").and_then(Value::as_str) == Some("userMessage"))
         .collect::<Vec<_>>();
     if user_items.len() != 1 || !user_item_has_marker(user_items[0], marker) {
-        return Ok(Report {
+        return Ok(Outcome::Completed(Report {
             value: json!({"reply":"","understandings":[],"drafts":[],"reflection":"","nextStep":null}),
             progressed: false,
-        });
+        }));
     }
     let value = items.iter().rev().find(|item| item.get("type").and_then(Value::as_str) == Some("agentMessage")
             && item.get("phase").and_then(Value::as_str) != Some("commentary"))
         .and_then(|item| item.get("text").and_then(Value::as_str))
         .and_then(|text| serde_json::from_str::<Value>(text).ok().filter(Value::is_object))
         .ok_or("The Main Agent completed work without a structured result. Its work will not be repeated.")?;
-    Ok(Report {
+    Ok(Outcome::Completed(Report {
         value,
         progressed: items.iter().any(item_progressed),
-    })
+    }))
 }
 
 fn item_progressed(item: &Value) -> bool {
@@ -536,21 +571,42 @@ mod tests {
     #[test]
     fn only_completed_owned_work_can_supply_progress_and_followups() {
         let mut turn = completed_turn();
-        let result = report(&turn, MARKER).unwrap();
+        let Outcome::Completed(result) = report(&turn, MARKER).unwrap() else {
+            panic!("expected completed work");
+        };
         assert!(result.progressed);
         assert_eq!(result.value["reply"], "Verified result");
         turn["items"][1]["exitCode"] = json!(1);
-        assert!(!report(&turn, MARKER).unwrap().progressed);
+        let Outcome::Completed(result) = report(&turn, MARKER).unwrap() else {
+            panic!("expected completed work");
+        };
+        assert!(!result.progressed);
         turn["status"] = json!("interrupted");
-        assert!(report(&turn, MARKER).is_err());
+        assert!(matches!(
+            report(&turn, MARKER).unwrap(),
+            Outcome::Terminal(TerminalTurn {
+                status: TerminalStatus::Interrupted,
+                ..
+            })
+        ));
         turn["status"] = json!("failed");
+        assert!(matches!(
+            report(&turn, MARKER).unwrap(),
+            Outcome::Terminal(TerminalTurn {
+                status: TerminalStatus::Failed,
+                ..
+            })
+        ));
+        turn["status"] = json!("unknown");
         assert!(report(&turn, MARKER).is_err());
         let mut mixed = completed_turn();
         mixed["items"].as_array_mut().unwrap().insert(
             0,
             json!({"type":"userMessage","content":[{"type":"text","text":"A newer manual task"}]}),
         );
-        let result = report(&mixed, MARKER).unwrap();
+        let Outcome::Completed(result) = report(&mixed, MARKER).unwrap() else {
+            panic!("expected completed work");
+        };
         assert!(!result.progressed);
         assert_eq!(result.value["reply"], "");
         assert!(result.value["nextStep"].is_null());
@@ -583,6 +639,7 @@ mod tests {
     async fn fixture(
         busy: bool,
         completed: bool,
+        turn_status: &'static str,
     ) -> (
         String,
         Target,
@@ -621,7 +678,9 @@ mod tests {
                         }
                         "thread/turns/list" => {
                             if done.load(Ordering::SeqCst) {
-                                json!({"id":id,"result":{"data":[completed_turn()],"nextCursor":null}})
+                                let mut turn = completed_turn();
+                                turn["status"] = json!(turn_status);
+                                json!({"id":id,"result":{"data":[turn],"nextCursor":null}})
                             } else {
                                 json!({"id":id,"error":{"code":-32600,"message":"thread thread is not materialized yet; thread/turns/list is unavailable before first user message"}})
                             }
@@ -649,7 +708,7 @@ mod tests {
 
     #[tokio::test]
     async fn starts_a_fresh_thread_and_recovers_the_same_completed_request_without_resending() {
-        let (endpoint, target, starts, server, _dir) = fixture(false, false).await;
+        let (endpoint, target, starts, server, _dir) = fixture(false, false, "completed").await;
         let claimed = AtomicBool::new(false);
         let mut client = Client::connect(&endpoint).await.unwrap();
         let result = run_connected(
@@ -665,7 +724,13 @@ mod tests {
         .await
         .unwrap();
         assert!(claimed.load(Ordering::SeqCst));
-        assert!(result.progressed);
+        assert!(matches!(
+            result,
+            Outcome::Completed(Report {
+                progressed: true,
+                ..
+            })
+        ));
         client.socket.close(None).await.unwrap();
         let mut client = Client::connect(&endpoint).await.unwrap();
         let result = run_connected(
@@ -677,7 +742,13 @@ mod tests {
         )
         .await
         .unwrap();
-        assert!(result.progressed);
+        assert!(matches!(
+            result,
+            Outcome::Completed(Report {
+                progressed: true,
+                ..
+            })
+        ));
         assert_eq!(starts.load(Ordering::SeqCst), 1);
         server.abort();
     }
@@ -685,7 +756,7 @@ mod tests {
     #[tokio::test]
     async fn busy_and_unacknowledged_requests_never_dispatch_another_turn() {
         for (busy, allow_dispatch) in [(true, true), (false, false)] {
-            let (endpoint, target, starts, server, _dir) = fixture(busy, false).await;
+            let (endpoint, target, starts, server, _dir) = fixture(busy, false, "completed").await;
             let mut client = Client::connect(&endpoint).await.unwrap();
             let error = run_connected(
                 &mut client,
@@ -704,5 +775,46 @@ mod tests {
             assert_eq!(starts.load(Ordering::SeqCst), 0);
             server.abort();
         }
+    }
+
+    #[tokio::test]
+    async fn terminal_receipts_are_recovered_without_dispatching_or_claiming_progress() {
+        for status in ["interrupted", "failed"] {
+            let (endpoint, target, starts, server, _dir) = fixture(false, true, status).await;
+            let mut client = Client::connect(&endpoint).await.unwrap();
+            let outcome = run_connected(
+                &mut client,
+                &target,
+                request(false),
+                CancellationToken::new(),
+                || panic!("a terminal request must never be dispatched again"),
+            )
+            .await
+            .unwrap();
+            let Outcome::Terminal(receipt) = outcome else {
+                panic!("expected confirmed terminal receipt");
+            };
+            assert_eq!(receipt.id, "turn-1");
+            assert_eq!(
+                receipt.status,
+                if status == "failed" {
+                    TerminalStatus::Failed
+                } else {
+                    TerminalStatus::Interrupted
+                }
+            );
+            assert!(!receipt.evidence.is_empty());
+            assert_eq!(starts.load(Ordering::SeqCst), 0);
+            server.abort();
+        }
+    }
+
+    #[test]
+    fn terminal_status_without_a_matching_request_is_not_retired() {
+        let mut turn = completed_turn();
+        turn["status"] = json!("interrupted");
+        assert!(report(&turn, "[Yorishiro work request: another-request]").is_err());
+        turn.as_object_mut().unwrap().remove("id");
+        assert!(report(&turn, MARKER).is_err());
     }
 }

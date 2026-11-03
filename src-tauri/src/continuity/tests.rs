@@ -34,6 +34,9 @@ fn session() -> Session {
         pending_correction_ids: vec![],
         pending_trigger: None,
         pending_execution: None,
+        terminal_receipts: vec![],
+        execution_blocked: false,
+        resume_after_recovery: false,
     };
     Session {
         _storage_lock: tempfile::tempfile().unwrap(),
@@ -841,6 +844,255 @@ fn durable_dispatch_claim_prevents_resend_and_new_input_does_not_cancel_accepted
         value.saved.pending_execution.unwrap().request_id,
         work.request_id
     );
+}
+
+fn terminal_turn(status: TerminalStatus) -> executor::TerminalTurn {
+    executor::TerminalTurn {
+        id: "stopped-main-turn".into(),
+        status,
+        evidence: vec![
+            json!({"id":"partial-command","type":"commandExecution","status":"completed","exitCode":0}),
+        ],
+    }
+}
+
+#[test]
+fn confirmed_terminal_receipts_survive_reload_without_retaining_an_active_request() {
+    for status in [TerminalStatus::Interrupted, TerminalStatus::Failed] {
+        let directory = tempfile::tempdir().unwrap();
+        let mut value = session();
+        let mut work = pending_work(&value);
+        work.dispatch_attempted = true;
+        value.saved.pending_execution = Some(work.clone());
+        value.saved.snapshot.next_step = Some("Repeat the old operation".into());
+        retire_terminal_execution(&mut value, &work, terminal_turn(status.clone())).unwrap();
+        storage::save(directory.path(), &value.saved).unwrap();
+        let saved = storage::load(directory.path(), "yori-ja").unwrap();
+        assert!(saved.pending_execution.is_none());
+        assert!(saved.execution_blocked);
+        assert!(saved.snapshot.next_step.is_none());
+        assert_eq!(saved.snapshot.phase, "error");
+        assert_eq!(saved.terminal_receipts.len(), 1);
+        let receipt = &saved.terminal_receipts[0];
+        assert_eq!(receipt.request_id, work.request_id);
+        assert_eq!(receipt.target, work.target);
+        assert_eq!(receipt.turn_id, "stopped-main-turn");
+        assert_eq!(receipt.status, status);
+        assert_eq!(receipt.evidence[0]["id"], "partial-command");
+        assert!(!value.queued);
+        // Processing a stale copy again cannot append another receipt or lose
+        // the archived evidence after the active request has been consumed.
+        assert!(retire_terminal_execution(&mut value, &work, terminal_turn(status)).is_err());
+        assert_eq!(value.saved.terminal_receipts.len(), 1);
+    }
+}
+
+#[test]
+fn explicit_input_after_a_terminal_receipt_claims_a_fresh_request_with_prior_evidence() {
+    for trigger in ["message", "continue", "retry"] {
+        let mut value = session();
+        user(
+            &mut value.saved.snapshot,
+            "original-request",
+            "Fix the issue and verify it",
+        );
+        let work = pending_work(&value);
+        value.saved.pending_execution = Some(work.clone());
+        retire_terminal_execution(
+            &mut value,
+            &work,
+            terminal_turn(TerminalStatus::Interrupted),
+        )
+        .unwrap();
+        if trigger == "message" {
+            user(
+                &mut value.saved.snapshot,
+                "new-request",
+                "Inspect the existing changes first",
+            );
+        }
+        if trigger == "retry" {
+            queue_explicit_retry(&mut value, context());
+        } else {
+            queue(&mut value, context(), trigger);
+        }
+        assert!(!value.saved.execution_blocked);
+        assert!(value.queued);
+        let fresh = new_execution(&mut value, &context(), work.target.clone()).unwrap();
+        assert_ne!(fresh.request_id, work.request_id);
+        assert!(!fresh.dispatch_attempted);
+        assert!(uuid::Uuid::parse_str(&fresh.request_id).is_ok());
+        assert!(fresh.prompt.contains(&work.request_id));
+        assert!(fresh.prompt.contains("stopped-main-turn"));
+        assert!(fresh
+            .prompt
+            .contains("Inspect the referenced Main Agent turns and current workspace state"));
+        assert!(fresh.prompt.contains("Do not blindly repeat"));
+        if trigger == "message" {
+            assert!(fresh.prompt.contains("Inspect the existing changes first"));
+        }
+        assert_eq!(value.saved.terminal_receipts.len(), 1);
+    }
+}
+
+#[test]
+fn automatic_triggers_cannot_restart_work_after_a_confirmed_terminal_receipt() {
+    let mut value = session();
+    let work = pending_work(&value);
+    value.saved.pending_execution = Some(work.clone());
+    retire_terminal_execution(&mut value, &work, terminal_turn(TerminalStatus::Failed)).unwrap();
+    assert!(!queue_periodic(&mut value, context(), now()));
+    assert!(!queue_on_open(&mut value, context()));
+    // A stale UI or saved followup must not bypass the durable guard merely
+    // because its phase/revision appears suitable for another background step.
+    value.saved.snapshot.phase = "idle".into();
+    value.saved.snapshot.next_step = Some("Retry the failed operation".into());
+    let revision = value.saved.snapshot.revision;
+    assert_eq!(
+        queue_followup(&mut value, context(), revision),
+        Advance::Unchanged
+    );
+    assert!(!queue_periodic(
+        &mut value,
+        context(),
+        now() + PERIODIC_INTERVAL_MS
+    ));
+    assert!(!queue_on_open(&mut value, context()));
+    queue(&mut value, context(), "external");
+    assert!(!value.queued);
+    assert!(value.saved.execution_blocked);
+    assert!(new_execution(&mut value, &context(), work.target).is_err());
+    assert!(value.saved.pending_execution.is_none());
+}
+
+#[test]
+fn transport_failure_preserves_the_dispatched_request_for_read_only_recovery() {
+    let mut value = session();
+    let mut work = pending_work(&value);
+    work.dispatch_attempted = true;
+    value.saved.pending_execution = Some(work.clone());
+    let original = serde_json::to_value(&value.saved.pending_execution).unwrap();
+    record_execution_error(&mut value, "Main Agent connection unavailable".into());
+    assert_eq!(
+        serde_json::to_value(&value.saved.pending_execution).unwrap(),
+        original
+    );
+    assert!(value.saved.terminal_receipts.is_empty());
+    assert!(!value.saved.execution_blocked);
+    queue(&mut value, context(), "retry");
+    assert_eq!(
+        serde_json::to_value(&value.saved.pending_execution).unwrap(),
+        original
+    );
+    assert!(new_execution(&mut value, &context(), work.target).is_err());
+    assert!(
+        value
+            .saved
+            .pending_execution
+            .as_ref()
+            .unwrap()
+            .dispatch_attempted
+    );
+}
+
+#[test]
+fn a_new_message_received_during_terminal_recovery_is_not_discarded() {
+    let mut value = session();
+    let work = pending_work(&value);
+    value.saved.pending_execution = Some(work.clone());
+    user(
+        &mut value.saved.snapshot,
+        "new-input",
+        "Inspect the partial result and explain it",
+    );
+    queue(&mut value, context(), "message");
+    // The worker consumes the queued job before it reads the saved terminal
+    // receipt. The newer user message must remain the authority for fresh work.
+    value.queued = false;
+    retire_terminal_execution(
+        &mut value,
+        &work,
+        terminal_turn(TerminalStatus::Interrupted),
+    )
+    .unwrap();
+    assert!(value.queued);
+    assert!(!value.saved.execution_blocked);
+    assert_eq!(value.saved.pending_trigger.as_deref(), Some("message"));
+    let fresh = new_execution(&mut value, &context(), work.target).unwrap();
+    assert_ne!(fresh.request_id, work.request_id);
+    assert!(fresh
+        .prompt
+        .contains("Inspect the partial result and explain it"));
+    assert!(fresh.prompt.contains("stopped-main-turn"));
+    assert!(fresh.previous_step.is_none());
+}
+
+#[test]
+fn one_explicit_retry_recovers_the_old_receipt_then_resumes_with_a_fresh_id() {
+    let directory = tempfile::tempdir().unwrap();
+    let mut value = session();
+    let mut work = pending_work(&value);
+    let interrupted_step = work.previous_step.clone().unwrap();
+    work.dispatch_attempted = true;
+    value.saved.pending_execution = Some(work.clone());
+    record_execution_error(&mut value, "Interrupted in Main Agent".into());
+    queue_explicit_retry(&mut value, context());
+    assert!(value.saved.resume_after_recovery);
+    // Preserve the explicit click across interruption/reload while confirmation
+    // is pending; it must never authorize replay of the original request ID.
+    storage::save(directory.path(), &value.saved).unwrap();
+    value.saved = storage::load(directory.path(), "yori-ja").unwrap();
+    assert!(value.saved.resume_after_recovery);
+    assert_eq!(
+        value.saved.pending_execution.as_ref().unwrap().request_id,
+        work.request_id
+    );
+    value.queued = false;
+    retire_terminal_execution(
+        &mut value,
+        &work,
+        terminal_turn(TerminalStatus::Interrupted),
+    )
+    .unwrap();
+    assert!(value.queued);
+    assert!(!value.saved.execution_blocked);
+    assert!(!value.saved.resume_after_recovery);
+    let fresh = new_execution(&mut value, &context(), work.target).unwrap();
+    assert_ne!(fresh.request_id, work.request_id);
+    assert!(fresh.prompt.contains("stopped-main-turn"));
+    assert!(fresh.previous_step.is_none());
+    assert!(fresh.prompt.contains(&interrupted_step));
+    assert_eq!(
+        value.saved.terminal_receipts[0].previous_step.as_deref(),
+        Some(interrupted_step.as_str())
+    );
+}
+
+#[test]
+fn timer_recovery_of_an_old_interruption_does_not_authorize_a_fresh_request() {
+    let mut value = session();
+    let mut work = pending_work(&value);
+    work.dispatch_attempted = true;
+    value.saved.pending_execution = Some(work.clone());
+    record_execution_error(&mut value, "Interrupted in Main Agent".into());
+    assert!(queue_periodic(&mut value, context(), now()));
+    assert!(!value.saved.resume_after_recovery);
+    value.queued = false;
+    retire_terminal_execution(
+        &mut value,
+        &work,
+        terminal_turn(TerminalStatus::Interrupted),
+    )
+    .unwrap();
+    assert!(!value.queued);
+    assert!(value.saved.execution_blocked);
+    assert!(value.saved.pending_execution.is_none());
+    assert!(!queue_periodic(
+        &mut value,
+        context(),
+        now() + PERIODIC_INTERVAL_MS
+    ));
+    assert!(new_execution(&mut value, &context(), work.target).is_err());
 }
 
 #[test]
