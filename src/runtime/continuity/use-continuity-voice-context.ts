@@ -23,6 +23,7 @@ export function useContinuityVoiceContext({
     let unlisten: UnlistenFn | undefined;
     let revision = -1;
     let lastPrompt: string | undefined;
+    let initialVoiceIds: ReadonlySet<string> | undefined;
     const accept = (snapshot: ContinuitySnapshot) => {
       if (
         disposed ||
@@ -31,7 +32,21 @@ export function useContinuityVoiceContext({
       )
         return;
       revision = snapshot.revision;
-      const prompt = continuityPrompt(snapshot);
+      initialVoiceIds ??= new Set(
+        snapshot.messages.filter((message) => message.source === "voice").map(({ id }) => id),
+      );
+      const historicalVoiceIds = initialVoiceIds;
+      // Live already heard these utterances. Feeding each new transcript back as
+      // remembered conversation creates a second input stream of the same speech.
+      // Keep history from before the connection and still deliver workspace text,
+      // Main Agent observations, learned understanding and drafts independently
+      // of continued background work.
+      const prompt = continuityPrompt({
+        ...snapshot,
+        messages: snapshot.messages.filter(
+          (message) => message.source !== "voice" || historicalVoiceIds.has(message.id),
+        ),
+      });
       if (prompt === lastPrompt) return;
       lastPrompt = prompt;
       void prepareContext(prompt).catch((error: unknown) => {

@@ -4,13 +4,15 @@ export interface ContinuityContext {
   readonly personaPrompt: string;
   readonly language: "ja" | "en";
   readonly cwd: string | null;
+  /** Exact current Main Agent session; absent for text-only companions. */
+  readonly executionSessionId?: string | null;
 }
 export interface ContinuityMessage {
   readonly id: string;
   readonly role: "user" | "assistant";
   readonly content: string;
   readonly createdAt: number;
-  readonly source: "conversation" | "external" | "legacy";
+  readonly source: "conversation" | "external" | "voice" | "legacy";
 }
 export interface UnderstandingRevision {
   readonly value: string;
@@ -47,7 +49,7 @@ export interface ContinuityDraft {
 export interface ContinuitySnapshot {
   readonly personaId: string;
   readonly revision: number;
-  readonly phase: "idle" | "thinking" | "drafting" | "error";
+  readonly phase: "idle" | "thinking" | "drafting" | "working" | "error";
   readonly messages: readonly ContinuityMessage[];
   readonly understandings: readonly ContinuityUnderstanding[];
   readonly drafts: readonly ContinuityDraft[];

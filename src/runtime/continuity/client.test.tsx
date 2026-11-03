@@ -49,13 +49,40 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 describe("shared continuity bridge", () => {
-  it("advances each completed useful step immediately, then quietly waits when there is no next step", async () => {
+  it("binds automatic work to the current Main session and updates it on replacement", async () => {
+    const client = await import("./client");
+    vi.useFakeTimers();
+    const view = renderHook(
+      ({ executionSessionId }: { executionSessionId: string | null }) =>
+        client.useContinuity({ ...context, executionSessionId }, true),
+      { initialProps: { executionSessionId: "main-original" as string | null } },
+    );
+    await act(async () => {});
+    expect(native.invoke).toHaveBeenCalledWith("continuity_enter", {
+      context: { ...context, executionSessionId: "main-original" },
+    });
+    await act(async () => view.rerender({ executionSessionId: "main-replacement" }));
+    await act(async () => vi.advanceTimersByTimeAsync(5 * 60 * 1000));
+    expect(native.invoke).toHaveBeenLastCalledWith("continuity_tick", {
+      context: { ...context, executionSessionId: "main-replacement" },
+    });
+    await act(async () => view.rerender({ executionSessionId: null }));
+    expect(native.invoke).toHaveBeenLastCalledWith("continuity_enter", {
+      context: { ...context, executionSessionId: null },
+    });
+    view.unmount();
+  });
+
+  it.each([
+    "thinking",
+    "working",
+  ] as const)("waits during %s, advances completed work immediately, then quietly waits", async (phase) => {
     const client = await import("./client");
     vi.useFakeTimers();
     let latest = snapshot();
     native.invoke.mockImplementation(async (name) => {
       if (name === "continuity_advance") {
-        latest = { ...latest, revision: latest.revision + 1, phase: "thinking" };
+        latest = { ...latest, revision: latest.revision + 1, phase };
       }
       return latest;
     });
@@ -68,7 +95,7 @@ describe("shared continuity bridge", () => {
     act(() => native.callback?.({ payload: latest }));
     await act(async () => vi.advanceTimersByTimeAsync(0));
     expect(advances()).toEqual([["continuity_advance", { context, revision: 2 }]]);
-    expect(view.result.current.snapshot?.phase).toBe("thinking");
+    expect(view.result.current.snapshot?.phase).toBe(phase);
     await act(async () => vi.advanceTimersByTimeAsync(30 * 60 * 1000));
     expect(advances()).toHaveLength(1);
     expect(ticks()).toHaveLength(0);

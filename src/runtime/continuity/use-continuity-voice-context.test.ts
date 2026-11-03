@@ -13,7 +13,13 @@ const native = vi.hoisted(() => ({
 vi.mock("@tauri-apps/api/core", () => ({ invoke: native.invoke }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: native.listen }));
 vi.mock("../../core/global-prompt/continuity-fragment", () => ({
-  continuityPrompt: (snapshot: ContinuitySnapshot) => JSON.stringify(snapshot.messages),
+  continuityPrompt: (snapshot: ContinuitySnapshot) =>
+    JSON.stringify({
+      messages: snapshot.messages,
+      understandings: snapshot.understandings,
+      drafts: snapshot.drafts,
+      nextStep: snapshot.nextStep,
+    }),
 }));
 
 function snapshot(personaId: string, revision: number, text: string): ContinuitySnapshot {
@@ -115,5 +121,99 @@ describe("continuity updates in an active voice session", () => {
     view.unmount();
     await act(() => delivery.resolve());
     expect(onError).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not feed new voice transcripts back into Live while still delivering work progress", async () => {
+    const saved = snapshot("yori-ja", 1, "Earlier voice conversation");
+    const initial: ContinuitySnapshot = {
+      ...saved,
+      messages: [{ ...saved.messages[0], source: "voice" }],
+    };
+    native.invoke.mockResolvedValue(initial);
+    const prepareContext = vi.fn(async (_text: string) => {});
+    const onError = vi.fn();
+    const view = renderHook(() =>
+      useContinuityVoiceContext({
+        personaId: "yori-ja",
+        active: true,
+        prepareContext,
+        onError,
+      }),
+    );
+    await waitFor(() => expect(prepareContext).toHaveBeenCalledOnce());
+    const observed = {
+      ...initial,
+      revision: 2,
+      messages: [
+        ...initial.messages,
+        { ...initial.messages[0], id: "live-1", content: "Do the next step" },
+      ],
+    };
+    act(() => native.callbacks[0]({ payload: observed }));
+    act(() => native.callbacks[0]({ payload: { ...observed, revision: 3, phase: "thinking" } }));
+    expect(prepareContext).toHaveBeenCalledTimes(1);
+
+    const progressed = {
+      ...observed,
+      revision: 4,
+      drafts: [
+        {
+          id: "draft-1",
+          title: "Work result",
+          content: "The actual completed draft",
+          status: "ready" as const,
+          reason: "Requested work",
+          sourceIds: ["live-1"],
+          createdAt: 4,
+          updatedAt: 4,
+        },
+      ],
+    };
+    act(() => native.callbacks[0]({ payload: progressed }));
+    expect(prepareContext).toHaveBeenCalledTimes(2);
+    expect(prepareContext.mock.calls[1][0]).toContain("The actual completed draft");
+    expect(prepareContext.mock.calls[1][0]).toContain("Earlier voice conversation");
+    expect(prepareContext.mock.calls[1][0]).not.toContain("Do the next step");
+
+    act(() =>
+      native.callbacks[0]({
+        payload: {
+          ...progressed,
+          revision: 5,
+          messages: [
+            ...progressed.messages,
+            {
+              ...initial.messages[0],
+              id: "typed-1",
+              content: "Written clarification",
+              source: "conversation",
+            },
+          ],
+        },
+      }),
+    );
+    expect(prepareContext).toHaveBeenCalledTimes(3);
+    expect(prepareContext.mock.calls[2][0]).toContain("Written clarification");
+    act(() =>
+      native.callbacks[0]({
+        payload: {
+          ...progressed,
+          revision: 6,
+          messages: [
+            ...progressed.messages,
+            {
+              ...initial.messages[0],
+              id: "main-1",
+              role: "assistant",
+              content: "Main Agent completed the requested investigation",
+              source: "external",
+            },
+          ],
+        },
+      }),
+    );
+    expect(prepareContext).toHaveBeenCalledTimes(4);
+    expect(prepareContext.mock.calls[3][0]).toContain("completed the requested investigation");
+    view.unmount();
   });
 });
