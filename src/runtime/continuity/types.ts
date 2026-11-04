@@ -13,6 +13,7 @@ export interface ContinuityMessage {
   readonly content: string;
   readonly createdAt: number;
   readonly source: "conversation" | "external" | "voice" | "legacy";
+  readonly replyKind?: "report" | "awaitingReply" | null;
 }
 export interface UnderstandingRevision {
   readonly value: string;

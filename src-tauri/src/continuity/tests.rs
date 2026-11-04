@@ -8,6 +8,7 @@ fn user(snapshot: &mut Snapshot, id: &str, content: &str) {
         content: content.into(),
         created_at: 1,
         source: "conversation".into(),
+        reply_kind: None,
     });
 }
 fn response(value: serde_json::Value) -> ModelResult {
@@ -250,6 +251,7 @@ fn self_authored_and_legacy_evidence_cannot_sustain_automatic_work() {
             content: "A possible preference".into(),
             created_at: 1,
             source: source.into(),
+            reply_kind: None,
         });
         apply(&mut snapshot, response(json!({"reply":"","understandings":[update("preference","New inference","unverified")],"drafts":[{
             "id":null,"title":"Draft","content":"New text","reason":"Inferred","sourceIds":["unverified"]
@@ -649,6 +651,7 @@ fn unverified_legacy_is_not_user_confirmation_and_external_turn_does_not_duplica
         content: "Old journal".into(),
         created_at: 0,
         source: "legacy".into(),
+        reply_kind: None,
     });
     apply(&mut snapshot,response(json!({"reply":"Do not repeat this voice reply","understandings":[update("preference","Something","old")],"drafts":[],"reflection":"Legacy only"})),"external",&[]).unwrap();
     assert_eq!(snapshot.messages.len(), 1);
@@ -857,6 +860,7 @@ fn real_work_can_continue_without_a_user_reply_but_new_input_prevents_a_stale_fo
         content: "Where should I start?".into(),
         created_at: 2,
         source: "conversation".into(),
+        reply_kind: None,
     });
     let work = pending_work(&value);
     let result = || {
@@ -880,5 +884,142 @@ fn real_work_can_continue_without_a_user_reply_but_new_input_prevents_a_stale_fo
         "Focus on a different issue now",
     );
     apply_execution(&mut value, result(), &work, true).unwrap();
+    assert!(value.saved.snapshot.next_step.is_none());
+}
+
+#[test]
+fn completed_reports_allow_one_new_proposal_after_reload() {
+    let mut snapshot = Snapshot::new("yori-ja");
+    user(
+        &mut snapshot,
+        "u1",
+        "Suggest useful next work after completing tasks",
+    );
+    let result = |text: &str, kind: &str| {
+        response(json!({
+            "reply":text,"replyKind":kind,"understandings":[],"drafts":[],
+            "reflection":"","nextStep":"Do not execute an unapproved proposal"
+        }))
+    };
+    apply(
+        &mut snapshot,
+        result("The requested fix is complete", "report"),
+        "message",
+        &[],
+    )
+    .unwrap();
+    snapshot = serde_json::from_value(serde_json::to_value(snapshot).unwrap()).unwrap();
+    apply(
+        &mut snapshot,
+        result(
+            "Next, improve recovery because receipts are ambiguous",
+            "awaitingReply",
+        ),
+        "return",
+        &[],
+    )
+    .unwrap();
+    assert_eq!(snapshot.messages.len(), 3);
+    assert!(snapshot.next_step.is_none());
+    // Rewording must not trigger another proposal, including after reopening.
+    snapshot = serde_json::from_value(serde_json::to_value(snapshot).unwrap()).unwrap();
+    apply(
+        &mut snapshot,
+        result("Another way to improve recovery", "awaitingReply"),
+        "return",
+        &[],
+    )
+    .unwrap();
+    assert_eq!(snapshot.messages.len(), 3);
+}
+
+#[test]
+fn a_later_report_does_not_hide_an_unanswered_proposal() {
+    let mut snapshot = Snapshot::new("yori-ja");
+    user(&mut snapshot, "u1", "Improve the app");
+    for (text, kind) in [
+        ("Review the navigation?", "awaitingReply"),
+        ("The previous fix is complete", "report"),
+    ] {
+        apply(&mut snapshot, response(json!({"reply":text,"replyKind":kind,"understandings":[],"drafts":[],"reflection":"","nextStep":null})), "message", &[]).unwrap();
+    }
+    apply(&mut snapshot, response(json!({"reply":"Try reviewing navigation next?","replyKind":"awaitingReply","understandings":[],"drafts":[],"reflection":"","nextStep":null})), "return", &[]).unwrap();
+    assert_eq!(snapshot.messages.len(), 3);
+}
+
+#[test]
+fn observed_voice_reports_can_allow_suggestions_but_questions_keep_waiting() {
+    for (kind, expected_messages) in [("report", 3), ("awaitingReply", 2)] {
+        let mut snapshot = Snapshot::new("yori-ja");
+        user(&mut snapshot, "u1", "Suggest the next useful task");
+        snapshot.messages.push(Message {
+            id: "voice-reply".into(),
+            role: "assistant".into(),
+            content: "Observed voice reply".into(),
+            created_at: 2,
+            source: "voice".into(),
+            reply_kind: None,
+        });
+        apply(&mut snapshot, response(json!({
+            "reply":"Review recovery because receipts can be ambiguous", "replyKind":"awaitingReply",
+            "observedReply":{"messageId":"voice-reply","kind":kind},
+            "understandings":[],"drafts":[],"reflection":"","nextStep":null
+        })), "return", &[]).unwrap();
+        assert_eq!(snapshot.messages.len(), expected_messages);
+    }
+}
+
+#[test]
+fn observed_reply_classification_rejects_old_ids_without_partial_updates() {
+    let mut snapshot = Snapshot::new("yori-ja");
+    user(&mut snapshot, "u1", "An actual request");
+    let before = serde_json::to_value(&snapshot).unwrap();
+    assert!(apply(
+        &mut snapshot,
+        response(json!({
+            "reply":"", "observedReply":{"messageId":"u1","kind":"report"},
+            "understandings":[],"drafts":[],"reflection":"","nextStep":null
+        })),
+        "external",
+        &[]
+    )
+    .is_err());
+    assert_eq!(serde_json::to_value(&snapshot).unwrap(), before);
+}
+
+#[test]
+fn new_input_during_work_does_not_reject_a_completed_report_with_old_voice_classification() {
+    let mut value = session();
+    user(&mut value.saved.snapshot, "u1", "Fix the problem");
+    value.saved.snapshot.messages.push(Message {
+        id: "voice".into(),
+        role: "assistant".into(),
+        content: "Earlier report".into(),
+        source: "voice".into(),
+        created_at: 2,
+        reply_kind: None,
+    });
+    let work = pending_work(&value);
+    user(
+        &mut value.saved.snapshot,
+        "u2",
+        "Also consider this correction",
+    );
+    apply_execution(
+        &mut value,
+        response(json!({
+            "reply":"The fix is complete", "replyKind":"report",
+            "observedReply":{"messageId":"voice","kind":"report"},
+            "understandings":[],"drafts":[],"reflection":"","nextStep":"Continue"
+        })),
+        &work,
+        true,
+    )
+    .unwrap();
+    assert_eq!(
+        value.saved.snapshot.messages.last().unwrap().content,
+        "The fix is complete"
+    );
+    assert!(value.saved.snapshot.messages[1].reply_kind.is_none());
     assert!(value.saved.snapshot.next_step.is_none());
 }

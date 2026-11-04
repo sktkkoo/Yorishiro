@@ -12,6 +12,12 @@ pub struct Context {
     #[serde(default)]
     pub execution_session_id: Option<String>,
 }
+#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum ReplyKind {
+    Report,
+    AwaitingReply,
+}
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Message {
@@ -20,6 +26,8 @@ pub struct Message {
     pub content: String,
     pub created_at: u64,
     pub source: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reply_kind: Option<ReplyKind>,
 }
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -151,8 +159,18 @@ pub struct DraftUpdate {
 }
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ObservedReply {
+    pub message_id: String,
+    pub kind: ReplyKind,
+}
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ModelResult {
+    #[serde(default)]
+    pub observed_reply: Option<ObservedReply>,
     pub reply: String,
+    #[serde(default)]
+    pub reply_kind: Option<ReplyKind>,
     pub understandings: Vec<UnderstandingUpdate>,
     pub drafts: Vec<DraftUpdate>,
     pub reflection: String,
