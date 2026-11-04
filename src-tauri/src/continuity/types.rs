@@ -120,6 +120,40 @@ pub struct Saved {
     pub pending_trigger: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(super) pending_execution: Option<PendingExecution>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(super) terminal_receipts: Vec<ExecutionReceipt>,
+    #[serde(default)]
+    pub(super) execution_blocked: bool,
+    #[serde(default)]
+    pub(super) resume_after_recovery: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(super) enum TerminalStatus {
+    Interrupted,
+    Failed,
+}
+impl TerminalStatus {
+    pub(super) fn message(&self) -> &'static str {
+        match self {
+            Self::Interrupted => "Autonomous work was interrupted in Main Agent. Inspect its result before continuing; it will not be repeated automatically.",
+            Self::Failed => "Autonomous work failed in Main Agent. Inspect its result before continuing; it will not be repeated automatically.",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct ExecutionReceipt {
+    pub request_id: String,
+    pub target: super::executor::Target,
+    pub turn_id: String,
+    pub status: TerminalStatus,
+    pub observed_at: u64,
+    #[serde(default)]
+    pub previous_step: Option<String>,
+    pub evidence: Vec<serde_json::Value>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

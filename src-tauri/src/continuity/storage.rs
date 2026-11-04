@@ -105,6 +105,9 @@ pub fn load(home: &Path, id: &str) -> Result<Saved, String> {
         pending_correction_ids: vec![],
         pending_trigger: None,
         pending_execution: None,
+        terminal_receipts: vec![],
+        execution_blocked: false,
+        resume_after_recovery: false,
     };
     let personas = if key == "builtin:yori" {
         vec!["yori-ja", "yori-en"]

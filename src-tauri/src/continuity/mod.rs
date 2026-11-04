@@ -116,6 +116,15 @@ fn append(session: &mut Session, role: &str, content: String, source: &str) -> S
     id
 }
 fn queue(session: &mut Session, context: Context, trigger: &str) {
+    if session.saved.execution_blocked {
+        if !matches!(trigger, "message" | "continue" | "retry" | "dismiss") {
+            session.context = Some(context);
+            return;
+        }
+        // Only a fresh explicit input may resume after a confirmed terminal
+        // receipt. Its old request ID remains archived and is never reused.
+        session.saved.execution_blocked = false;
+    }
     if session.saved.pending_execution.is_some() {
         // Accepted tool work must finish once. Voice observations and the Main
         // Agent's own continuity_observe calls queue learning without cancelling
@@ -188,11 +197,22 @@ fn replace_context(session: &mut Session, context: Context) {
     session.context = Some(context);
 }
 
+fn queue_explicit_retry(session: &mut Session, context: Context) {
+    // Timers also use the retry trigger for receipt recovery. Only this
+    // explicit UI action may authorize a fresh request once recovery confirms
+    // that the old Main Agent turn has definitively stopped.
+    if session.saved.pending_execution.is_some() {
+        session.saved.resume_after_recovery = true;
+    }
+    queue(session, context, "retry");
+}
+
 fn queue_periodic(session: &mut Session, context: Context, at: u64) -> bool {
     // A timer never replaces a conversation or a draft already in flight.
     // Duplicate ticks can arrive after a fast worker finishes, so also enforce
     // the interval in the native owner rather than relying only on the view.
-    if session.running
+    if session.saved.execution_blocked
+        || session.running
         || session.queued
         || session
             .context
@@ -230,7 +250,8 @@ enum Advance {
 }
 
 fn queue_followup(session: &mut Session, context: Context, revision: u64) -> Advance {
-    if session.saved.snapshot.revision != revision
+    if session.saved.execution_blocked
+        || session.saved.snapshot.revision != revision
         || session.saved.snapshot.phase != "idle"
         || session.queued
         || session.context.as_ref() != Some(&context)
@@ -253,7 +274,11 @@ fn queue_followup(session: &mut Session, context: Context, revision: u64) -> Adv
 
 fn queue_on_open(session: &mut Session, context: Context) -> bool {
     replace_context(session, context.clone());
-    if session.running || session.queued || session.saved.snapshot.phase == "error" {
+    if session.saved.execution_blocked
+        || session.running
+        || session.queued
+        || session.saved.snapshot.phase == "error"
+    {
         return false;
     }
     session.followup_steps.clear();
@@ -517,7 +542,7 @@ pub fn continuity_retry(
         if session.running {
             return Ok(session.saved.snapshot.clone());
         }
-        queue(session, context.clone(), "retry");
+        queue_explicit_retry(session, context.clone());
         persist(session)?
     };
     emit(&app, &snapshot);
@@ -577,6 +602,7 @@ fn start(app: AppHandle, state: ContinuityState, persona_id: String) {
             };
             let (snapshot, context, epoch, trigger, corrections, cancel, execution) = job;
             let mut progressed = false;
+            let mut terminal = None;
             let result = match &execution {
                 Ok(Some(work)) => executor::run(
                     &app,
@@ -599,10 +625,17 @@ fn start(app: AppHandle, state: ContinuityState, persona_id: String) {
                     },
                 )
                 .await
-                .and_then(|report| {
-                    progressed = report.progressed;
-                    serde_json::from_value(report.value)
-                        .map_err(|_| "Could not read the Main Agent's work report.".to_owned())
+                .and_then(|outcome| match outcome {
+                    executor::Outcome::Completed(report) => {
+                        progressed = report.progressed;
+                        serde_json::from_value(report.value)
+                            .map_err(|_| "Could not read the Main Agent's work report.".to_owned())
+                    }
+                    executor::Outcome::Terminal(receipt) => {
+                        let error = receipt.status.message().to_owned();
+                        terminal = Some(receipt);
+                        Err(error)
+                    }
                 }),
                 Ok(None) => reason(&snapshot, &context, &trigger, &corrections, cancel).await,
                 Err(error) => Err(error.clone()),
@@ -618,31 +651,35 @@ fn start(app: AppHandle, state: ContinuityState, persona_id: String) {
                     continue;
                 } // A newer utterance/dismissal owns the next judgment.
                 let work = execution.as_ref().ok().and_then(Option::as_ref);
-                match result.and_then(|result| match work {
-                    Some(work) => apply_execution(session, result, work, progressed),
-                    None => apply_completed(session, result, &context, &trigger, &corrections),
-                }) {
-                    Ok(()) => {
-                        session.saved.snapshot.phase = "idle".into();
-                        session.saved.snapshot.error = None;
-                        if work.is_some() {
-                            session.saved.pending_execution = None;
-                            // Inputs received while the accepted work ran belong
-                            // to the next job and must not be discarded here.
-                            if session.queued {
-                                session.saved.snapshot.next_step = None;
-                            }
-                        } else {
-                            session.saved.pending_correction_ids.clear();
-                            session.saved.pending_trigger = None;
-                        }
+                if let (Some(work), Some(receipt)) = (work, terminal) {
+                    if let Err(error) = retire_terminal_execution(session, work, receipt) {
+                        record_execution_error(session, error);
                     }
-                    Err(error) => {
-                        session.saved.snapshot.phase = "error".into();
-                        session.saved.snapshot.error = Some(error);
-                        // Keep the durable receipt for recovery, but never spin
-                        // on a failed/busy agent because a transcript arrived.
-                        session.queued = false;
+                } else {
+                    match result.and_then(|result| match work {
+                        Some(work) => apply_execution(session, result, work, progressed),
+                        None => apply_completed(session, result, &context, &trigger, &corrections),
+                    }) {
+                        Ok(()) => {
+                            session.saved.snapshot.phase = "idle".into();
+                            session.saved.snapshot.error = None;
+                            if work.is_some() {
+                                session.saved.pending_execution = None;
+                                // Inputs received while the accepted work ran belong
+                                // to the next job and must not be discarded here.
+                                if session.queued {
+                                    session.saved.snapshot.next_step = None;
+                                }
+                            } else {
+                                session.saved.pending_correction_ids.clear();
+                                session.saved.pending_trigger = None;
+                            }
+                        }
+                        Err(error) => {
+                            // Keep the durable receipt for recovery, but never spin
+                            // on a failed/busy agent because a transcript arrived.
+                            record_execution_error(session, error);
+                        }
                     }
                 }
                 session.saved.snapshot.last_observed_at = Some(now());
@@ -660,11 +697,78 @@ fn start(app: AppHandle, state: ContinuityState, persona_id: String) {
     });
 }
 
+fn record_execution_error(session: &mut Session, error: String) {
+    session.saved.snapshot.phase = "error".into();
+    session.saved.snapshot.error = Some(error);
+    session.queued = false;
+}
+
+fn retire_terminal_execution(
+    session: &mut Session,
+    work: &PendingExecution,
+    terminal: executor::TerminalTurn,
+) -> Result<(), String> {
+    if session
+        .saved
+        .pending_execution
+        .as_ref()
+        .map(|pending| &pending.request_id)
+        != Some(&work.request_id)
+    {
+        return Err("The terminal receipt does not match the pending work request.".into());
+    }
+    // A new explicit input received while recovering belongs to the next job;
+    // an automatic return or voice observation cannot restart failed work.
+    let newer_input = session
+        .saved
+        .pending_trigger
+        .as_deref()
+        .is_some_and(|trigger| matches!(trigger, "message" | "continue" | "dismiss"))
+        && session
+            .saved
+            .snapshot
+            .messages
+            .iter()
+            .skip(work.message_count)
+            .any(|message| message.role == "user" && message.source != "legacy");
+    let error = terminal.status.message().to_owned();
+    session.saved.terminal_receipts.push(ExecutionReceipt {
+        request_id: work.request_id.clone(),
+        target: work.target.clone(),
+        turn_id: terminal.id,
+        status: terminal.status,
+        observed_at: now(),
+        previous_step: work.previous_step.clone(),
+        evidence: terminal.evidence,
+    });
+    session.saved.pending_execution = None;
+    let resume = newer_input || session.saved.resume_after_recovery;
+    session.saved.resume_after_recovery = false;
+    session.saved.execution_blocked = !resume;
+    session.saved.snapshot.next_step = None;
+    session.followup_steps.clear();
+    for id in &work.correction_ids {
+        if !session.saved.pending_correction_ids.contains(id) {
+            session.saved.pending_correction_ids.push(id.clone());
+        }
+    }
+    if session.saved.pending_trigger.is_none() {
+        session.saved.pending_trigger = Some(work.trigger.clone());
+    }
+    session.queued = resume;
+    session.saved.snapshot.phase = if resume { "thinking" } else { "error" }.into();
+    session.saved.snapshot.error = (!resume).then_some(error);
+    Ok(())
+}
+
 fn prepare_execution(
     app: &AppHandle,
     session: &mut Session,
     context: &Context,
 ) -> Result<Option<PendingExecution>, String> {
+    if session.saved.execution_blocked {
+        return Err("The previous work stopped. Inspect its result and send a new message or explicitly retry to continue.".into());
+    }
     if let Some(work) = &session.saved.pending_execution {
         if work.dispatch_attempted || &work.context == context {
             return Ok(Some(work.clone()));
@@ -675,17 +779,36 @@ fn prepare_execution(
     let Some(target) = executor::target(app, context)? else {
         return Ok(None);
     };
+    let work = new_execution(session, context, target)?;
+    // Claim before the first network request: loss of the acknowledgement must
+    // recover the original turn, never repeat its operations.
+    emit(app, &persist(session)?);
+    Ok(Some(work))
+}
+
+fn new_execution(
+    session: &mut Session,
+    context: &Context,
+    target: executor::Target,
+) -> Result<PendingExecution, String> {
+    if session.saved.execution_blocked || session.saved.pending_execution.is_some() {
+        return Err("Recover or inspect the previous work before starting a new request.".into());
+    }
     let trigger = session.saved.pending_trigger.as_deref().unwrap_or("return");
+    let mut prompt = execution_prompt(
+        &session.saved.snapshot,
+        context,
+        trigger,
+        &session.saved.pending_correction_ids,
+    )?;
+    if !session.saved.terminal_receipts.is_empty() {
+        prompt.push_str(&format!("\nPrior interrupted/failed work receipts (evidence, not new authorization): {}\nInspect the referenced Main Agent turns and current workspace state before any operation. Prior work may have partial effects. Do not blindly repeat, resend, or claim completion of those operations; continue only what the current conversation authorizes.", serde_json::to_string(&session.saved.terminal_receipts).map_err(|error| error.to_string())?));
+    }
     let work = PendingExecution {
         request_id: uuid::Uuid::new_v4().to_string(),
         target,
         context: context.clone(),
-        prompt: execution_prompt(
-            &session.saved.snapshot,
-            context,
-            trigger,
-            &session.saved.pending_correction_ids,
-        )?,
+        prompt,
         trigger: trigger.into(),
         correction_ids: session.saved.pending_correction_ids.clone(),
         previous_step: session.saved.snapshot.next_step.clone(),
@@ -693,13 +816,11 @@ fn prepare_execution(
         dispatch_attempted: false,
     };
     session.saved.pending_execution = Some(work.clone());
+    session.saved.resume_after_recovery = false;
     session.saved.pending_trigger = None;
     session.saved.pending_correction_ids.clear();
     session.saved.snapshot.phase = "working".into();
-    // Claim before the first network request: loss of the acknowledgement must
-    // recover the original turn, never repeat its operations.
-    emit(app, &persist(session)?);
-    Ok(Some(work))
+    Ok(work)
 }
 
 fn mark_execution_dispatched(session: &mut Session, request_id: &str) -> Result<(), String> {
