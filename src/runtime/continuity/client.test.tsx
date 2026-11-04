@@ -374,6 +374,42 @@ describe("shared continuity bridge", () => {
     );
     reopened.unmount();
   });
+
+  it("receives native background progress while closed and hidden without a frontend wakeup", async () => {
+    const client = await import("./client");
+    vi.useFakeTimers();
+    const visibility = vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+    let latest = snapshot();
+    native.invoke.mockImplementation(async () => latest);
+    const view = renderHook(({ open }) => client.useContinuity(context, open), {
+      initialProps: { open: true },
+    });
+    await act(async () => {});
+    await act(async () => view.rerender({ open: false }));
+    visibility.mockReturnValue("hidden");
+    act(() => document.dispatchEvent(new Event("visibilitychange")));
+    // Native owns continuation now: it can finish one step and start another
+    // without a visible React surface invoking advance or tick.
+    for (const [revision, phase] of [
+      [2, "working"],
+      [3, "idle"],
+      [4, "working"],
+    ] as const) {
+      latest = { ...latest, revision, phase };
+      act(() => native.callback?.({ payload: latest }));
+      expect(view.result.current.snapshot?.revision).toBe(revision);
+      expect(view.result.current.snapshot?.phase).toBe(phase);
+    }
+    await act(async () => vi.advanceTimersByTimeAsync(15 * 60 * 1000));
+    expect(
+      native.invoke.mock.calls.some(([name]) => /advance|tick|cancel|pause|stop/.test(name)),
+    ).toBe(false);
+    visibility.mockReturnValue("visible");
+    await act(async () => view.rerender({ open: true }));
+    expect(view.result.current.snapshot?.revision).toBe(4);
+    view.unmount();
+  });
+
   it("recovers a failed event subscription through retry and forwards real exchanges", async () => {
     native.listen.mockRejectedValueOnce(new Error("Event bridge unavailable"));
     const client = await import("./client");

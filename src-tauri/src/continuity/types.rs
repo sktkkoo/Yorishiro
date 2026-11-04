@@ -113,6 +113,10 @@ pub struct Saved {
     pub version: u32,
     pub snapshot: Snapshot,
     #[serde(default)]
+    pub auto_enabled: bool,
+    #[serde(default)]
+    pub auto_context: Option<Context>,
+    #[serde(default)]
     pub observed_keys: std::collections::BTreeMap<String, String>,
     #[serde(default)]
     pub pending_correction_ids: Vec<String>,
