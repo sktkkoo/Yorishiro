@@ -3913,9 +3913,12 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            continuity::continuity_execution_backend,
+            continuity::continuity_pi_diagnostics,
             continuity::continuity_status,
             continuity::continuity_sync_context,
             continuity::continuity_enter,
+            continuity::continuity_set_auto_enabled,
             continuity::continuity_tick,
             continuity::continuity_advance,
             continuity::continuity_send,
@@ -4075,6 +4078,7 @@ pub fn run() {
             if let tauri::RunEvent::Exit = event {
                 screen_annotation::shutdown(app);
                 claude_screen_sharing::reset(app);
+                continuity::shutdown_workers();
                 // 全 PTY session と codex app-server sidecar を明示的に teardown する。
                 // managed state の Drop は process exit では走らない（issue #109）。
                 let registry: State<'_, Arc<SessionRegistry>> = app.state();

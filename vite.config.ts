@@ -78,7 +78,13 @@ export default defineConfig(async () => ({
     watch: {
       // Build artifacts and private captures are not application inputs. In
       // particular each post-commit TypeDoc page used to trigger a WebView reload.
-      ignored: ["**/src-tauri/**", "**/docs/api/**", "**/.motion-review/**"],
+      ignored: [
+        "**/src-tauri/**",
+        "**/docs/api/**",
+        "**/.motion-review/**",
+        "**/experiments/pi-harness/artifacts/**",
+        "**/runtime/pi-worker/**",
+      ],
     },
   },
 }));

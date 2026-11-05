@@ -29,6 +29,7 @@ pub(super) struct Target {
 pub(super) struct Report {
     pub value: Value,
     pub progressed: bool,
+    pub completion_receipt: Option<TerminalTurn>,
 }
 
 pub(super) struct TerminalTurn {
@@ -46,6 +47,7 @@ pub(super) struct Request {
     pub id: String,
     pub prompt: String,
     pub schema: Value,
+    pub persisted_payload: Option<String>,
     pub allow_dispatch: bool,
 }
 
@@ -86,18 +88,27 @@ pub(super) fn target(app: &AppHandle, context: &Context) -> Result<Option<Target
     }))
 }
 
-fn current_session(app: &AppHandle, target: &Target) -> Result<Arc<PtySession>, String> {
+fn transport_session(app: &AppHandle, session_id: &str) -> Result<Arc<PtySession>, String> {
     let registry = app.state::<Arc<SessionRegistry>>();
     let descriptor = registry
-        .get(&target.session_id)
+        .get(session_id)
         .ok_or("The Main Agent is unavailable.")?;
     if descriptor.profile_id != "codex" || descriptor.kind != SessionKind::Agent {
         return Err("The Main Agent changed; the previous work was not sent again.".into());
     }
     let session = registry
-        .get_pty_session(&target.session_id)
+        .get_pty_session(session_id)
         .filter(|session| session.is_alive())
         .ok_or("The Main Agent is not running.")?;
+    Ok(session)
+}
+
+fn current_session(app: &AppHandle, target: &Target) -> Result<Arc<PtySession>, String> {
+    let session = transport_session(app, &target.session_id)?;
+    let registry = app.state::<Arc<SessionRegistry>>();
+    let descriptor = registry
+        .get(&target.session_id)
+        .ok_or("The Main Agent is unavailable.")?;
     let selected = session
         .realtime_selected_thread()
         .ok_or("The Main Agent conversation is not ready.")?;
@@ -132,7 +143,14 @@ pub(super) async fn run(
     if cancel.is_cancelled() {
         return Err("Autonomous work was cancelled before starting.".into());
     }
-    let session = current_session(app, &target)?;
+    // Receipt recovery only reads the original durable thread. A restarted
+    // terminal may select another conversation; that must not strand accepted
+    // work, nor permit a request to be dispatched into that conversation.
+    let session = if request.allow_dispatch {
+        current_session(app, &target)?
+    } else {
+        transport_session(app, &target.session_id)?
+    };
     let endpoint = session
         .realtime_endpoint()
         .ok_or("The Main Agent connection is unavailable.")?;
@@ -270,29 +288,7 @@ fn report(turn: &Value, marker: &str) -> Result<Outcome, String> {
     match turn.get("status").and_then(Value::as_str) {
         Some("completed") => {},
         Some(status @ ("interrupted" | "failed")) => {
-            let id = turn.get("id").and_then(Value::as_str).filter(|id| !id.is_empty())
-                .ok_or("The terminal work receipt has no turn ID.")?;
-            let items = turn.get("items").and_then(Value::as_array)
-                .ok_or("The terminal work receipt has no observed items.")?;
-            if !items.iter().any(|item| user_item_has_marker(item, marker)) {
-                return Err("The terminal work receipt does not identify this request.".into());
-            }
-            // Retain compact references to observed tool items, not arbitrary
-            // command output or a model's account of whether work succeeded.
-            let evidence = items.iter().filter(|item| {
-                matches!(item.get("type").and_then(Value::as_str),
-                    Some("commandExecution" | "fileChange" | "mcpToolCall"))
-            }).take(16).map(|item| json!({
-                "id": item.get("id").and_then(Value::as_str).map(|value| value.chars().take(256).collect::<String>()),
-                "type": item.get("type").and_then(Value::as_str),
-                "status": item.get("status").and_then(Value::as_str).map(|value| value.chars().take(64).collect::<String>()),
-                "exitCode": item.get("exitCode").and_then(Value::as_i64),
-            })).collect();
-            return Ok(Outcome::Terminal(TerminalTurn {
-                id: id.into(),
-                status: if status == "interrupted" { TerminalStatus::Interrupted } else { TerminalStatus::Failed },
-                evidence,
-            }));
+            return terminal_receipt(turn, marker, if status == "interrupted" { TerminalStatus::Interrupted } else { TerminalStatus::Failed });
         }
         _ => return Err("The Main Agent work status is unconfirmed. Recover its original receipt before starting more work.".into()),
     }
@@ -310,17 +306,70 @@ fn report(turn: &Value, marker: &str) -> Result<Outcome, String> {
         return Ok(Outcome::Completed(Report {
             value: json!({"reply":"","understandings":[],"drafts":[],"reflection":"","nextStep":null}),
             progressed: false,
+            completion_receipt: None,
         }));
     }
-    let value = items.iter().rev().find(|item| item.get("type").and_then(Value::as_str) == Some("agentMessage")
-            && item.get("phase").and_then(Value::as_str) != Some("commentary"))
+    let value = items
+        .iter()
+        .rev()
+        .find(|item| {
+            item.get("type").and_then(Value::as_str) == Some("agentMessage")
+                && item.get("phase").and_then(Value::as_str) != Some("commentary")
+        })
         .and_then(|item| item.get("text").and_then(Value::as_str))
-        .and_then(|text| serde_json::from_str::<Value>(text).ok().filter(Value::is_object))
-        .ok_or("The Main Agent completed work without a structured result. Its work will not be repeated.")?;
+        .and_then(|text| serde_json::from_str::<Value>(text).ok())
+        .filter(|value| serde_json::from_value::<super::types::ModelResult>(value.clone()).is_ok());
+    let Some(value) = value else {
+        return terminal_receipt(turn, marker, TerminalStatus::CompletedWithoutReport);
+    };
     Ok(Outcome::Completed(Report {
         value,
         progressed: items.iter().any(item_progressed),
+        completion_receipt: Some(observed_terminal_turn(
+            turn,
+            marker,
+            TerminalStatus::CompletedWithoutReport,
+        )?),
     }))
+}
+
+fn terminal_receipt(turn: &Value, marker: &str, status: TerminalStatus) -> Result<Outcome, String> {
+    observed_terminal_turn(turn, marker, status).map(Outcome::Terminal)
+}
+
+fn observed_terminal_turn(
+    turn: &Value,
+    marker: &str,
+    status: TerminalStatus,
+) -> Result<TerminalTurn, String> {
+    let id = turn
+        .get("id")
+        .and_then(Value::as_str)
+        .filter(|id| !id.is_empty())
+        .ok_or("The terminal work receipt has no turn ID.")?;
+    let items = turn
+        .get("items")
+        .and_then(Value::as_array)
+        .ok_or("The terminal work receipt has no observed items.")?;
+    if !items.iter().any(|item| user_item_has_marker(item, marker)) {
+        return Err("The terminal work receipt does not identify this request.".into());
+    }
+    // Retain compact references to observed tool items, not arbitrary
+    // command output or a model's account of whether work succeeded.
+    let evidence = items.iter().filter(|item| {
+                matches!(item.get("type").and_then(Value::as_str),
+                    Some("commandExecution" | "fileChange" | "mcpToolCall"))
+            }).take(16).map(|item| json!({
+                "id": item.get("id").and_then(Value::as_str).map(|value| value.chars().take(256).collect::<String>()),
+                "type": item.get("type").and_then(Value::as_str),
+                "status": item.get("status").and_then(Value::as_str).map(|value| value.chars().take(64).collect::<String>()),
+                "exitCode": item.get("exitCode").and_then(Value::as_i64),
+            })).collect();
+    Ok(TerminalTurn {
+        id: id.into(),
+        status,
+        evidence,
+    })
 }
 
 fn item_progressed(item: &Value) -> bool {
@@ -536,6 +585,7 @@ mod tests {
             id: "test-request".into(),
             prompt: "Do the entrusted work".into(),
             schema: json!({"type":"object"}),
+            persisted_payload: None,
             allow_dispatch,
         }
     }
@@ -576,6 +626,10 @@ mod tests {
         };
         assert!(result.progressed);
         assert_eq!(result.value["reply"], "Verified result");
+        let receipt = result.completion_receipt.as_ref().unwrap();
+        assert_eq!(receipt.id, "turn-1");
+        assert_eq!(receipt.status, TerminalStatus::CompletedWithoutReport);
+        assert!(!receipt.evidence.is_empty());
         turn["items"][1]["exitCode"] = json!(1);
         let Outcome::Completed(result) = report(&turn, MARKER).unwrap() else {
             panic!("expected completed work");
@@ -631,9 +685,21 @@ mod tests {
             json!({"type":"agentMessage","phase":"final_answer","text":"No structured report"}),
         );
         assert!(
-            report(&unfinished_report, MARKER).is_err(),
-            "an earlier JSON message cannot replace the final report"
+            matches!(report(&unfinished_report, MARKER).unwrap(), Outcome::Terminal(TerminalTurn {status: TerminalStatus::CompletedWithoutReport, ..})),
+            "an earlier JSON message cannot replace the final report; recover its effects with a new inspection"
         );
+        unfinished_report["items"]
+            .as_array_mut()
+            .unwrap()
+            .last_mut()
+            .unwrap()["text"] = json!("{\"reply\":42}");
+        assert!(matches!(
+            report(&unfinished_report, MARKER).unwrap(),
+            Outcome::Terminal(TerminalTurn {
+                status: TerminalStatus::CompletedWithoutReport,
+                ..
+            })
+        ));
     }
 
     async fn fixture(

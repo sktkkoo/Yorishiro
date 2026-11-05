@@ -20,6 +20,7 @@ const context: ContinuityContext = {
 function snapshot(personaId = "yori-ja", revision = 1): ContinuitySnapshot {
   return {
     personaId,
+    autoEnabled: true,
     revision,
     phase: "idle",
     messages: [],
@@ -49,6 +50,64 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 describe("shared continuity bridge", () => {
+  it("stops automatic timers while Off, keeps context sync, and explicitly enables through native", async () => {
+    const client = await import("./client");
+    vi.useFakeTimers();
+    let latest: ContinuitySnapshot = { ...snapshot(), autoEnabled: false, nextStep: "Old work" };
+    native.invoke.mockImplementation(async (name, args) => {
+      if (name === "continuity_set_auto_enabled") {
+        latest = { ...latest, revision: 3, autoEnabled: args.enabled, nextStep: null };
+      }
+      return latest;
+    });
+    const view = renderHook(({ open }) => client.useContinuity(context, open), {
+      initialProps: { open: true },
+    });
+    await act(async () => {});
+    await act(async () => vi.advanceTimersByTimeAsync(30 * 60 * 1000));
+    expect(native.invoke.mock.calls.some(([name]) => /advance|tick/.test(name))).toBe(false);
+    await act(async () => view.rerender({ open: false }));
+    await act(async () => view.rerender({ open: true }));
+    expect(view.result.current.snapshot?.autoEnabled).toBe(false);
+    await act(() => client.setContinuityAutoEnabled(context, true));
+    expect(native.invoke).toHaveBeenLastCalledWith("continuity_set_auto_enabled", {
+      context,
+      enabled: true,
+    });
+    await act(async () => vi.advanceTimersByTimeAsync(5 * 60 * 1000));
+    expect(native.invoke).toHaveBeenLastCalledWith("continuity_tick", { context });
+    act(() => native.callback?.({ payload: { ...latest, revision: 4, autoEnabled: false } }));
+    const count = native.invoke.mock.calls.length;
+    await act(async () => vi.advanceTimersByTimeAsync(30 * 60 * 1000));
+    expect(native.invoke).toHaveBeenCalledTimes(count);
+    view.unmount();
+  });
+
+  it("keeps the selected execution backend while its session is not ready", async () => {
+    const client = await import("./client");
+    const view = renderHook(
+      ({ backend, session }: { backend: "codex" | "text"; session: string | null }) =>
+        client.useContinuity(
+          { ...context, executionBackend: backend, executionSessionId: session },
+          false,
+        ),
+      { initialProps: { backend: "codex" as "codex" | "text", session: null as string | null } },
+    );
+    await act(async () => {});
+    expect(native.invoke).toHaveBeenLastCalledWith("continuity_sync_context", {
+      context: { ...context, executionBackend: "codex", executionSessionId: null },
+    });
+    await act(async () => view.rerender({ backend: "codex", session: "main-ready" }));
+    expect(native.invoke).toHaveBeenLastCalledWith("continuity_sync_context", {
+      context: { ...context, executionBackend: "codex", executionSessionId: "main-ready" },
+    });
+    await act(async () => view.rerender({ backend: "text", session: null }));
+    expect(native.invoke).toHaveBeenLastCalledWith("continuity_sync_context", {
+      context: { ...context, executionBackend: "text", executionSessionId: null },
+    });
+    view.unmount();
+  });
+
   it("binds automatic work to the current Main session and updates it on replacement", async () => {
     const client = await import("./client");
     vi.useFakeTimers();

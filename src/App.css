@@ -1768,7 +1768,7 @@ html[data-rounded-view] body {
 }
 
 /* The companion screen remains independent of microphone and work state. */
-.title-bar-continuity-button[aria-pressed="true"] {
+.title-bar-continuity-button[aria-expanded="true"] {
   color: var(--yorishiro-accent);
   background: var(--yorishiro-accent-soft);
 }

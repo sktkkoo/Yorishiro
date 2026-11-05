@@ -94,17 +94,14 @@ pub fn load(home: &Path, id: &str) -> Result<Saved, String> {
         if saved.version != 1 || identity(&saved.snapshot.persona_id) != key {
             return Err("Unsupported continuity data".into());
         }
-        // Before persisted activation existed, a real workspace user message
-        // is evidence that this persona's companion workspace was already used.
-        // Fresh/legacy-only histories and an explicit false remain disabled.
+        // Test rollout defaults to On. A persisted user choice always wins,
+        // including false; opening the workspace must never re-enable it.
         if migrate_auto {
-            saved.auto_enabled = saved
-                .snapshot
-                .messages
-                .iter()
-                .any(|message| message.role == "user" && message.source == "conversation");
+            saved.auto_enabled = true;
+            saved.snapshot.auto_enabled = true;
             save(home, &saved)?;
         }
+        saved.snapshot.auto_enabled = saved.auto_enabled;
         if ["thinking", "drafting", "working"].contains(&saved.snapshot.phase.as_str()) {
             saved.snapshot.phase = "error".into();
             saved.snapshot.error = Some("前回の返答は中断しました。再試行できます。 / The previous reply was interrupted. You can retry.".into());
@@ -115,8 +112,9 @@ pub fn load(home: &Path, id: &str) -> Result<Saved, String> {
     let mut saved = Saved {
         version: 1,
         snapshot: Snapshot::new(id),
-        auto_enabled: false,
+        auto_enabled: true,
         auto_context: None,
+        work_runs: vec![],
         observed_keys: std::collections::BTreeMap::new(),
         pending_correction_ids: vec![],
         pending_trigger: None,

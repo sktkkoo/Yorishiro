@@ -89,6 +89,12 @@ export function observeContinuityExchange(
 export function retryContinuity(context: ContinuityContext): Promise<void> {
   return ensureBridge().then(() => command("continuity_retry", context));
 }
+export function setContinuityAutoEnabled(
+  context: ContinuityContext,
+  enabled: boolean,
+): Promise<void> {
+  return ensureBridge().then(() => command("continuity_set_auto_enabled", context, { enabled }));
+}
 export function useContinuity(context: ContinuityContext | null, open: boolean): Entry["value"] {
   const id = context ? continuityIdentity(context.personaId) : null;
   const value = useSyncExternalStore(
@@ -107,6 +113,7 @@ export function useContinuity(context: ContinuityContext | null, open: boolean):
   const personaPrompt = context?.personaPrompt;
   const language = context?.language;
   const cwd = context?.cwd;
+  const executionBackend = context?.executionBackend;
   const executionSessionId = context?.executionSessionId;
   useEffect(() => {
     if (!personaId || !personaName || !language) return;
@@ -116,6 +123,7 @@ export function useContinuity(context: ContinuityContext | null, open: boolean):
       personaPrompt: personaPrompt ?? "",
       language,
       cwd: cwd ?? null,
+      ...(executionBackend !== undefined ? { executionBackend } : {}),
       ...(executionSessionId !== undefined ? { executionSessionId } : {}),
     };
     const target = entry(continuityIdentity(personaId));
@@ -140,6 +148,11 @@ export function useContinuity(context: ContinuityContext | null, open: boolean):
       }
       if (requestInFlight) return;
       const snapshot = target.snapshot;
+      if (snapshot?.autoEnabled !== true) {
+        clearTimer();
+        quietDeadline = null;
+        return;
+      }
       if (
         snapshot?.phase === "thinking" ||
         snapshot?.phase === "drafting" ||
@@ -220,6 +233,15 @@ export function useContinuity(context: ContinuityContext | null, open: boolean):
       window.removeEventListener("focus", refreshOnReturn);
       document.removeEventListener("visibilitychange", refreshOnReturn);
     };
-  }, [personaId, personaName, personaPrompt, language, cwd, executionSessionId, open]);
+  }, [
+    personaId,
+    personaName,
+    personaPrompt,
+    language,
+    cwd,
+    executionBackend,
+    executionSessionId,
+    open,
+  ]);
   return value;
 }

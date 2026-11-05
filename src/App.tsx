@@ -192,6 +192,10 @@ import {
   resolveVoiceEntryAction,
 } from "./runtime/codex-realtime/voice-entry";
 import { observeContinuityExchange } from "./runtime/continuity/client";
+import {
+  continuityExecutionRoute,
+  useContinuityExecutionPreference,
+} from "./runtime/continuity/execution-routing";
 import type { ContinuityContext } from "./runtime/continuity/types";
 import { useContinuityVoiceContext } from "./runtime/continuity/use-continuity-voice-context";
 import { EventBus, type EventBusLogger } from "./runtime/event-bus";
@@ -3202,13 +3206,18 @@ function App() {
     () => personaRegistry.getActivePersona(),
   );
   const continuityPersonaId = personaRegistry.getActivePersonaId();
-  const continuityExecutionSessionId =
-    mainAgentAvailable && terminalAgent === "codex" && !mainSessionReplacing
-      ? tabState.mainSessionId
-      : null;
+  const continuityExecutionPreference = useContinuityExecutionPreference();
+  const continuityRoute = continuityExecutionRoute(
+    continuityExecutionPreference,
+    terminalAgent,
+    mainAgentAvailable && !mainSessionReplacing ? tabState.mainSessionId : null,
+    canMountTerminals,
+  );
+  const continuityExecutionBackend = continuityRoute?.backend;
+  const continuityExecutionSessionId = continuityRoute?.sessionId ?? null;
   const continuityContext = useMemo<ContinuityContext | null>(
     () =>
-      isUserLayerReady && continuityPersona && continuityPersonaId
+      isUserLayerReady && continuityPersona && continuityPersonaId && continuityExecutionBackend
         ? {
             personaId: continuityPersonaId,
             personaName: continuityPersona.name,
@@ -3216,6 +3225,7 @@ function App() {
             language: appLanguage.resolved,
             cwd,
             executionSessionId: continuityExecutionSessionId,
+            executionBackend: continuityExecutionBackend,
           }
         : null,
     [
@@ -3225,6 +3235,7 @@ function App() {
       appLanguage.resolved,
       cwd,
       continuityExecutionSessionId,
+      continuityExecutionBackend,
     ],
   );
 
@@ -6371,13 +6382,14 @@ function App() {
           />
         )}
       </div>
-      {isUserLayerReady && continuityPersona ? (
+      {isUserLayerReady && continuityPersona && continuityExecutionBackend ? (
         <ContinuityWorkspace
           open={continuityOpen}
           personaId={personaRegistry.getActivePersonaId() ?? continuityPersona.id}
           personaName={continuityPersona.name}
           personaInstructions={continuityPersona.thinking?.systemPromptAddition ?? ""}
           executionSessionId={continuityExecutionSessionId}
+          executionBackend={continuityExecutionBackend}
           language={appLanguage.resolved}
           cwd={cwd}
           onClose={handleCloseContinuityWorkspace}

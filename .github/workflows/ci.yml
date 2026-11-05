@@ -68,8 +68,12 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            runtime/pi-worker/package-lock.json
+            experiments/pi-harness/package-lock.json
 
       - uses: dtolnay/rust-toolchain@stable
 
@@ -78,6 +82,20 @@ jobs:
           workspaces: src-tauri
 
       - run: npm ci
+
+      - name: Install pinned Pi worker and integration fixture dependencies
+        run: |
+          npm ci --prefix runtime/pi-worker --ignore-scripts
+          npm ci --prefix experiments/pi-harness --ignore-scripts
+
+      - name: Test Pi worker and durable recovery without provider calls
+        run: |
+          npm --prefix runtime/pi-worker test
+          npm --prefix experiments/pi-harness test
+          npm --prefix experiments/pi-provider test
+
+      - name: Test read-only autonomous-run observation
+        run: python3 -B -m unittest discover -s scripts -p 'test_observe_continuity_soak.py'
 
       - run: npm run test:run
 

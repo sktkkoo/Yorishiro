@@ -1,0 +1,30 @@
+{
+  "name": "yorishiro-pi-worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test admission-identity.node-test.mjs diagnose.node-test.mjs config.node-test.mjs protocol.node-test.mjs workspace-tools.node-test.mjs credential-store.node-test.mjs"
+  },
+  "dependencies": {
+    "@earendil-works/chord": "1.5.0",
+    "@earendil-works/pi-ai": "1.5.0",
+    "@earendil-works/pi-durable": "1.5.0",
+    "@earendil-works/pi-schema": "1.5.0"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "files": [
+    "main.mjs",
+    "diagnose.mjs",
+    "admission-identity.mjs",
+    "config.mjs",
+    "protocol.mjs",
+    "workspace-tools.mjs",
+    "owner-lock.mjs",
+    "submission-evidence.mjs",
+    "README.md",
+    "credential-store.mjs"
+  ],
+  "version": "0.1.0"
+}

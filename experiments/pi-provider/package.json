@@ -1,0 +1,11 @@
+{
+  "name": "yorishiro-pi-provider-readiness",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test provider.node-test.mjs"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  }
+}

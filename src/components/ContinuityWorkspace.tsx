@@ -6,8 +6,10 @@ import {
   actOnContinuityDraft,
   retryContinuity,
   sendContinuityMessage,
+  setContinuityAutoEnabled,
   useContinuity,
 } from "../runtime/continuity/client";
+import { piDiagnosticMessages, usePiDiagnostics } from "../runtime/continuity/pi-diagnostics";
 import type {
   ContinuityContext,
   ContinuityDraft,
@@ -36,6 +38,7 @@ export interface ContinuityWorkspaceProps {
   readonly personaId: string;
   readonly personaName: string;
   readonly personaInstructions: string;
+  readonly executionBackend?: ContinuityContext["executionBackend"];
   readonly executionSessionId?: string | null;
   readonly onClose: () => void;
   readonly conversation?: ContinuityConversation;
@@ -83,6 +86,7 @@ function ResidentWorkspace({
   personaId,
   personaName,
   personaInstructions,
+  executionBackend,
   executionSessionId,
   onClose,
   conversation,
@@ -97,10 +101,12 @@ function ResidentWorkspace({
       language,
       cwd,
       ...(executionSessionId !== undefined ? { executionSessionId } : {}),
+      ...(executionBackend !== undefined ? { executionBackend } : {}),
     }),
-    [personaId, name, personaInstructions, language, cwd, executionSessionId],
+    [personaId, name, personaInstructions, language, cwd, executionBackend, executionSessionId],
   );
   const { snapshot, error: syncError } = useContinuity(context, open);
+  const piDiagnostics = usePiDiagnostics(cwd, open, executionBackend);
   const [draft, setDraft] = useState<InputDraft>(() => readInput(personaId));
   const [understandingOpen, setUnderstandingOpen] = useState(false);
   const [detail, setDetail] = useState<
@@ -110,6 +116,8 @@ function ResidentWorkspace({
   const [sending, setSending] = useState(false);
   const [actionPending, setActionPending] = useState(false);
   const [voicePending, setVoicePending] = useState(false);
+  const [autoPending, setAutoPending] = useState(false);
+  const autoInFlight = useRef(false);
   const [unread, setUnread] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const panelRef = useRef<HTMLElement>(null);
@@ -130,6 +138,7 @@ function ResidentWorkspace({
   const bookId = `${id}-understanding`;
   const dialogTitleId = `${id}-detail`;
   const inputId = `${id}-input`;
+  const autoDescriptionId = `${id}-autonomy-description`;
   const selectedDraft =
     detail?.kind === "draft" ? snapshot?.drafts.find((item) => item.id === detail.id) : null;
   const error = localError ?? syncError ?? snapshot?.error ?? conversation?.state.error;
@@ -227,6 +236,20 @@ function ResidentWorkspace({
       if (mounted.current) setLocalError(errorText(cause));
     }
   }
+  async function toggleAutonomy() {
+    if (autoInFlight.current || typeof snapshot?.autoEnabled !== "boolean") return;
+    autoInFlight.current = true;
+    setAutoPending(true);
+    setLocalError(null);
+    try {
+      await setContinuityAutoEnabled(context, !snapshot.autoEnabled);
+    } catch (cause) {
+      if (mounted.current) setLocalError(errorText(cause));
+    } finally {
+      autoInFlight.current = false;
+      if (mounted.current) setAutoPending(false);
+    }
+  }
   async function startVoice() {
     if (!conversation || voicePending || callConnecting) return;
     setVoicePending(true);
@@ -313,12 +336,40 @@ function ResidentWorkspace({
       }}
     >
       <header className="continuity-header">
-        <h1 id={titleId}>
-          <span className="continuity-sr-only">
-            {name}
-            {copy.conversation}
-          </span>
-        </h1>
+        <div className="continuity-autonomy">
+          <div className="continuity-autonomy-control">
+            <h1 id={titleId}>{copy.autonomy}</h1>
+            <button
+              type="button"
+              role="switch"
+              className="continuity-autonomy-switch"
+              aria-label={copy.autonomy}
+              aria-checked={snapshot?.autoEnabled === true}
+              aria-describedby={autoDescriptionId}
+              aria-busy={autoPending || undefined}
+              disabled={autoPending || typeof snapshot?.autoEnabled !== "boolean"}
+              onClick={() => void toggleAutonomy()}
+            >
+              <span className="continuity-switch-track" aria-hidden="true">
+                <span />
+              </span>
+              {typeof snapshot?.autoEnabled === "boolean"
+                ? snapshot.autoEnabled
+                  ? "On"
+                  : "Off"
+                : copy.loading}
+            </button>
+          </div>
+          <p id={autoDescriptionId}>
+            {snapshot?.autoEnabled === true
+              ? copy.autonomyOn
+              : snapshot?.autoEnabled === false
+                ? busy
+                  ? copy.autonomyFinishing
+                  : copy.autonomyOff
+                : copy.loading}
+          </p>
+        </div>
         <button
           type="button"
           ref={bookButtonRef}
@@ -386,12 +437,34 @@ function ResidentWorkspace({
           </div>
           <div className="continuity-compose-area">
             {error && !detail ? (
-              <div className="continuity-error" role="alert">
-                <p>{error}</p>
-                <button type="button" disabled={busy || sending} onClick={() => void retry()}>
-                  {copy.retry}
-                </button>
-              </div>
+              <>
+                <div className="continuity-error" role="alert">
+                  <p>{error}</p>
+                  <button type="button" disabled={busy || sending} onClick={() => void retry()}>
+                    {copy.retry}
+                  </button>
+                  {executionBackend === "pi" ? (
+                    <button
+                      type="button"
+                      disabled={piDiagnostics.checking}
+                      onClick={() => void piDiagnostics.check()}
+                    >
+                      {piDiagnostics.checking
+                        ? copy.piDiagnostics.checking
+                        : copy.piDiagnostics.check}
+                    </button>
+                  ) : null}
+                </div>
+                {executionBackend === "pi" && piDiagnostics.result ? (
+                  <div className="continuity-error" role="status" aria-live="polite">
+                    <p>
+                      {piDiagnosticMessages(piDiagnostics.result)
+                        .map((message) => copy.piDiagnostics[message])
+                        .join("\n")}
+                    </p>
+                  </div>
+                ) : null}
+              </>
             ) : null}
             {unread ? (
               <button
