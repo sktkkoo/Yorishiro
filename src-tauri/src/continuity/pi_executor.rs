@@ -264,6 +264,11 @@ struct Worker {
     ready: watch::Receiver<Option<Reply>>,
     connected: Arc<AtomicBool>,
     framing_dirty: AtomicBool,
+    // A dropped observation never establishes idleness. Only a request-scoped
+    // terminal receipt can make this owner eligible for generation retirement.
+    terminal_known: AtomicBool,
+    retiring: AtomicBool,
+    run_lease: AsyncMutex<()>,
 }
 static WORKERS: OnceLock<AsyncMutex<BTreeMap<String, Arc<Worker>>>> = OnceLock::new();
 
@@ -322,6 +327,9 @@ impl Worker {
             ready,
             connected: connected.clone(),
             framing_dirty: AtomicBool::new(false),
+            terminal_known: AtomicBool::new(false),
+            retiring: AtomicBool::new(false),
+            run_lease: AsyncMutex::new(()),
         });
         tokio::spawn(async move {
             // Drain diagnostics without retaining arbitrary output/credentials.
@@ -667,6 +675,77 @@ async fn owned_worker(target: &Target, fixture: bool) -> Result<Arc<Worker>, Str
     Ok(worker)
 }
 
+/// A new numbered generation can retire only known settled owners in this
+/// exact persona/workspace family. Legacy roots and accepted recovery do not
+/// trigger retirement. Canonical paths prevent alias-based cross-family use.
+fn generation_family(directory: &Path) -> Option<&Path> {
+    let generation = directory.file_name()?.to_str()?;
+    if generation.is_empty()
+        || !generation.bytes().all(|byte| byte.is_ascii_digit())
+        || generation.parse::<u64>().ok()? == 0
+    {
+        return None;
+    }
+    let generations = directory.parent()?;
+    (generations.file_name()?.to_str()? == "generations")
+        .then(|| generations.parent())
+        .flatten()
+}
+
+async fn retire_idle_generations(target: &Target, fixture: bool) -> Result<(), String> {
+    let target = canonical_worker_target(target)?;
+    let Some(family) = generation_family(Path::new(&target.session_dir)) else {
+        return Ok(());
+    };
+    let Some(registry) = WORKERS.get() else {
+        return Ok(());
+    };
+    // Holding the map prevents another lookup from racing retirement. A caller
+    // that already obtained an Arc must acquire run_lease and check retiring.
+    let mut workers = registry.lock().await;
+    let candidates: Vec<_> = workers
+        .iter()
+        .filter(|(key, worker)| {
+            key.as_str() != target.session_dir
+                && worker.fixture == fixture
+                && worker.target.cwd == target.cwd
+                && (Path::new(key.as_str()) == family
+                    || generation_family(Path::new(key.as_str())) == Some(family))
+        })
+        .map(|(key, worker)| (key.clone(), worker.clone()))
+        .collect();
+    for (key, worker) in candidates {
+        let Ok(_lease) = worker.run_lease.try_lock() else {
+            continue;
+        };
+        if !worker.terminal_known.load(Ordering::Acquire) {
+            continue;
+        }
+        if !worker.retiring.swap(true, Ordering::AcqRel) {
+            // Shutdown has no model-work side effect. If its observation is
+            // lost, retain this exact owner and never kill/restart it here.
+            let _ = worker
+                .request_before("shutdown", json!({}), Duration::from_secs(1), || Ok(()))
+                .await;
+        }
+        let stopped = {
+            let mut child = worker.child.lock().await;
+            if child.try_wait().ok().flatten().is_some() {
+                true
+            } else {
+                matches!(
+                    tokio::time::timeout(Duration::from_secs(1), child.wait()).await,
+                    Ok(Ok(_))
+                )
+            }
+        };
+        if stopped {
+            workers.remove(&key);
+        }
+    }
+    Ok(())
+}
+
 /// App teardown only. Normal request completion and observation timeouts do
 /// not close the worker; accepted Pi tasks remain owned between judgments.
 pub(super) async fn shutdown_all() {
@@ -710,7 +789,15 @@ async fn run_owned(
     if cancel.is_cancelled() {
         return Err("Pi work was cancelled before dispatch.".into());
     }
+    if request.allow_dispatch {
+        retire_idle_generations(&target, fixture).await?;
+    }
     let worker = owned_worker(&target, fixture).await?;
+    let _lease = worker.run_lease.lock().await;
+    if worker.retiring.load(Ordering::Acquire) {
+        return Err("The settled Pi generation is closing; no work was sent.".into());
+    }
+    worker.terminal_known.store(false, Ordering::Release);
     let managed = worker.idempotent_submit();
     let admission = {
         let ready = worker.ready.borrow();
@@ -813,6 +900,7 @@ async fn run_owned(
         validate_request_status(&status, &request.id, &digest, managed)?;
     }
     if let Some(outcome) = interpret_status(&status, &request.id)? {
+        worker.terminal_known.store(true, Ordering::Release);
         return Ok(outcome);
     }
     worker.request("resume", lookup()).await?;
@@ -824,7 +912,10 @@ async fn run_owned(
             }
             status = worker.request("status", lookup()).await?;
             validate_request_status(&status, &request.id, &digest, managed)?;
-            if let Some(outcome) = interpret_status(&status, &request.id)? { return Ok(outcome); }
+            if let Some(outcome) = interpret_status(&status, &request.id)? {
+                worker.terminal_known.store(true, Ordering::Release);
+                return Ok(outcome);
+            }
         }
     }).await.map_err(|_| "Pi work is still unconfirmed; its owned worker was retained for recovery.".to_owned())?
 }
@@ -959,6 +1050,164 @@ fn interpret_status(status: &Value, request_id: &str) -> Result<Option<Outcome>,
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn generation_retirement_requires_an_explicit_numbered_family() {
+        assert_eq!(
+            generation_family(Path::new("/state/persona/generations/2")),
+            Some(Path::new("/state/persona"))
+        );
+        for path in [
+            "/state/persona",
+            "/state/persona/generations/0",
+            "/state/persona/generations/current",
+            "/state/persona/generations/-1",
+        ] {
+            assert!(generation_family(Path::new(path)).is_none());
+        }
+    }
+
+    #[tokio::test]
+    async fn generation_handoff_closes_only_settled_unleased_owners_in_its_family() {
+        let root = tempfile::tempdir().unwrap();
+        let workspace = root.path().join("workspace");
+        std::fs::create_dir(&workspace).unwrap();
+        std::fs::write(workspace.join("input.txt"), "generation evidence").unwrap();
+        let permissions = Permissions {
+            read: true,
+            write: false,
+            commands: vec![],
+        };
+        std::fs::write(
+            workspace.join("fixture-policy.json"),
+            serde_json::to_vec(&permissions).unwrap(),
+        )
+        .unwrap();
+        let node = std::process::Command::new("node")
+            .args(["-p", "process.execPath"])
+            .output()
+            .unwrap();
+        assert!(node.status.success());
+        let target = Target {
+            cwd: workspace.to_str().unwrap().into(),
+            session_dir: root.path().join("family").to_str().unwrap().into(),
+            node_path: String::from_utf8(node.stdout).unwrap().trim().into(),
+            worker_entry: Path::new(env!("CARGO_MANIFEST_DIR"))
+                .parent()
+                .unwrap()
+                .join("runtime/pi-worker/tests/fixture-entry.mjs")
+                .to_str()
+                .unwrap()
+                .into(),
+            provider: "faux".into(),
+            model: "faux-1".into(),
+            auth_mode: AuthMode::ApiKey,
+            auth_path: None,
+            permissions: Some(permissions),
+        };
+        let request = |id: &str| Request {
+            id: id.into(),
+            prompt: "Read input.txt and report".into(),
+            schema: json!({"type":"object"}),
+            persisted_payload: None,
+            allow_dispatch: true,
+        };
+        let completed = run_owned(
+            target.clone(),
+            request("settled-original"),
+            CancellationToken::new(),
+            || Ok(()),
+            true,
+        )
+        .await
+        .unwrap();
+        assert!(matches!(completed, Outcome::Completed(_)));
+        let old = owned_worker(&target, true).await.unwrap();
+        assert!(old.terminal_known.load(Ordering::Acquire));
+
+        let mut unrelated_target = target.clone();
+        unrelated_target.session_dir = root.path().join("another-persona").to_str().unwrap().into();
+        run_owned(
+            unrelated_target.clone(),
+            request("unrelated-settled"),
+            CancellationToken::new(),
+            || Ok(()),
+            true,
+        )
+        .await
+        .unwrap();
+        let unrelated = owned_worker(&unrelated_target, true).await.unwrap();
+
+        let mut uncertain_target = target.clone();
+        uncertain_target.session_dir = root
+            .path()
+            .join("family/generations/1")
+            .to_str()
+            .unwrap()
+            .into();
+        let uncertain = owned_worker(&uncertain_target, true).await.unwrap();
+        let accepted = uncertain.request("submit", json!({"requestId":"unobserved-original","message":"Read input.txt and report","outputSchema":{"type":"object"}})).await.unwrap();
+        let uncertain_pid = uncertain.child.lock().await.id();
+        assert!(!uncertain.terminal_known.load(Ordering::Acquire));
+
+        let mut next = target.clone();
+        next.session_dir = root
+            .path()
+            .join("family/generations/2")
+            .to_str()
+            .unwrap()
+            .into();
+        let lease = old.run_lease.lock().await;
+        retire_idle_generations(&next, true).await.unwrap();
+        assert!(
+            old.child.lock().await.try_wait().unwrap().is_none(),
+            "a caller's live lease prevents retirement"
+        );
+        drop(lease);
+        let completed = run_owned(
+            next.clone(),
+            request("new-generation"),
+            CancellationToken::new(),
+            || Ok(()),
+            true,
+        )
+        .await
+        .unwrap();
+        assert!(matches!(completed, Outcome::Completed(_)));
+        assert!(old.child.lock().await.try_wait().unwrap().is_some());
+        assert!(old.retiring.load(Ordering::Acquire));
+        assert!(unrelated.child.lock().await.try_wait().unwrap().is_none());
+        assert!(uncertain.child.lock().await.try_wait().unwrap().is_none());
+        assert_eq!(uncertain.child.lock().await.id(), uncertain_pid);
+        assert!(!uncertain.retiring.load(Ordering::Acquire));
+        let status = uncertain
+            .request("status", json!({"requestId":"unobserved-original"}))
+            .await
+            .unwrap();
+        assert_eq!(
+            status["submissionId"], accepted["submissionId"],
+            "unconfirmed accepted work keeps its durable identity"
+        );
+        assert!(status["found"].as_bool().unwrap());
+
+        let next_owner = owned_worker(&next, true).await.unwrap();
+        let registry = WORKERS.get().unwrap().lock().await;
+        assert!(!registry.contains_key(&old.target.session_dir));
+        drop(registry);
+        for worker in [uncertain, unrelated, next_owner] {
+            worker.request("shutdown", json!({})).await.unwrap();
+            tokio::time::timeout(Duration::from_secs(2), worker.child.lock().await.wait())
+                .await
+                .unwrap()
+                .unwrap();
+            WORKERS
+                .get()
+                .unwrap()
+                .lock()
+                .await
+                .remove(&worker.target.session_dir);
+        }
+    }
 
     #[test]
     fn managed_request_digests_reject_changed_payloads_and_unbound_status() {

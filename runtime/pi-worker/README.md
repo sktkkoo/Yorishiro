@@ -88,6 +88,18 @@ A durable receipt takes precedence: accepted or completed requests recover the o
 
 ## Tool permissions
 
+### Bounded context, compaction and handoff
+
+New native Pi requests use a reversible projection: at most 96 KiB of UTF-8 prompt and 256 KiB of conservatively encoded submit data, including escaping the persisted JSON envelope again. The 1 MiB protocol limit is unchanged. All explicit user messages, required correction sources and the current next step remain intact. Other evidence is selected as whole records; only three bounded recent receipt summaries are sent. If essential context alone cannot fit, execution fails explicitly rather than silently truncating authority.
+
+The full native history is retained. A private `native-context/current.json` contains the original snapshot and receipts for the current request. The internal `read_continuity_context` tool reads exact JSON records in bounded Unicode pages; it accepts a request ID and collection/index, not a file path. It rejects stale IDs, public files and symlink aliases. The archive is replaced atomically only for a new request after prior work has settled. This keeps one current archive per generation rather than copying a growing history for every periodic check. Archives have a 16 MiB limit; the canonical native state is never truncated.
+
+Pi 1.5's built-in model compaction remains enabled with its pinned defaults. Separately, the native host hands new work to a fresh numbered Pi storage generation after every 16 distinct settled requests. This handoff carries native user evidence and scope without requiring another model-generated summary. Accepted or uncertain requests always retain their original request ID, payload, generation and admission epoch. Only known-settled, unleased workers in the same family close gracefully; timeouts retain ownership. Previous databases and outboxes remain available for audit and recovery.
+
+A legacy oversized request may be replaced only while its native dispatch flag is false. Its exact original record is archived immutably as `unsent-<requestId>.json`, then a new request ID receives bounded context. Correction targets and foreground intent survive context changes. A failed replacement restores the original saved request; an accepted request cannot enter this path.
+
+Automatic Pi failures wait 5, 10, 20 and at most 30 minutes between subsequent attempts, with the deadline persisted across restarts. Failed requests no longer immediately create another request. Explicit user input or retry can proceed; valid completion resets the backoff. This handles repeated connection or compaction failures without treating unavailable service as successful work. These bounds and fixture tests do not prove long-duration usefulness, network availability or semantic quality.
+
 All three policy keys are required: `{read, write, commands}`. Model tools are `read_file`, `write_file`, `edit_file` and `run_command`, exposed according to the policy. File operations are confined to the canonical workspace and exclude the worker's state; writes also exclude Git metadata. Existing files require matching expected content, and edits require a unique exact match. Files and command output have bounds. The filesystem/command implementation is in `workspace-tools.mjs`.
 
 Commands choose only a configured `commandId`; the model supplies no shell text, executable, arguments or environment. Executables and argv are fixed by the host's policy, and command children receive a minimal environment without inherited provider credentials. Cancellation and deadlines terminate only the command's owned process/group.

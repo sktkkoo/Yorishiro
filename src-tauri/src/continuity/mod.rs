@@ -1,6 +1,8 @@
 //! Continuous, persona-owned conversation, understanding and entrusted work.
+mod execution_context;
 mod execution_target;
 mod executor;
+mod pi_context_archive;
 mod pi_diagnostics;
 mod pi_executor;
 mod pi_outbox;
@@ -20,6 +22,7 @@ use types::*;
 #[derive(Clone, Default)]
 pub struct ContinuityState(Arc<Mutex<BTreeMap<String, Session>>>);
 const PERIODIC_INTERVAL_MS: u64 = 5 * 60 * 1000;
+const MAX_FAILURE_BACKOFF_MS: u64 = 30 * 60 * 1000;
 struct Session {
     // A second process must not overwrite this process's cached understanding.
     _storage_lock: std::fs::File,
@@ -133,7 +136,9 @@ fn append(session: &mut Session, role: &str, content: String, source: &str) -> S
     id
 }
 fn queue(session: &mut Session, context: Context, trigger: &str) {
-    if !session.saved.auto_enabled && matches!(trigger, "return" | "followup" | "external") {
+    if matches!(trigger, "return" | "followup" | "external")
+        && (!session.saved.auto_enabled || !automatic_retry_ready(session, now()))
+    {
         session.context = Some(context);
         return;
     }
@@ -241,6 +246,7 @@ fn queue_periodic(session: &mut Session, context: Context, at: u64) -> bool {
     // Duplicate ticks can arrive after a fast worker finishes, so also enforce
     // the interval in the native owner rather than relying only on the view.
     if !session.saved.auto_enabled
+        || !automatic_retry_ready(session, at)
         || session.saved.execution_blocked
         || session.running
         || session.queued
@@ -303,6 +309,9 @@ fn resume_enabled_work(session: &mut Session, context: &Context, context_changed
         return false;
     }
     session.auto_driver_active = true;
+    if !automatic_retry_ready(session, now()) {
+        return false;
+    }
     if session.saved.execution_blocked && !session.saved.terminal_receipts.is_empty() {
         // These are confirmed stopped turns. Resume inspection with a new ID,
         // while unknown/dispatched requests retain their recovery anchor.
@@ -342,7 +351,10 @@ fn queue_native_tick(session: &mut Session, at: u64) -> bool {
 }
 
 fn queue_native_followup(session: &mut Session, context: &Context) -> Advance {
-    if !session.saved.auto_enabled || !session.auto_driver_active {
+    if !session.saved.auto_enabled
+        || !session.auto_driver_active
+        || !automatic_retry_ready(session, now())
+    {
         return Advance::Unchanged;
     }
     let revision = session.saved.snapshot.revision;
@@ -598,6 +610,9 @@ fn set_auto_enabled(session: &mut Session, context: Context, enabled: bool) {
     session.saved.auto_context = Some(context.clone());
     session.last_periodic_at = None;
     if enabled {
+        // An explicit On action may request an immediate new attempt; a mere
+        // restart/context sync still respects the persisted retry deadline.
+        session.saved.retry_not_before = None;
         resume_enabled_work(session, &context, true);
         return;
     }
@@ -882,6 +897,9 @@ pub fn continuity_retry(
 }
 
 fn queued_work_allowed(session: &Session) -> bool {
+    if session.queued_automatically && !automatic_retry_ready(session, now()) {
+        return false;
+    }
     if session.saved.auto_enabled {
         return true;
     }
@@ -910,7 +928,12 @@ fn start(app: AppHandle, state: ContinuityState, persona_id: String) {
         let Some(session) = sessions.get_mut(&key) else {
             return;
         };
-        if session.running || !session.queued || !queued_work_allowed(session) {
+        if session.running || !session.queued {
+            return;
+        }
+        if !queued_work_allowed(session) {
+            session.queued = false;
+            session.queued_automatically = false;
             return;
         }
         session.running = true;
@@ -1000,7 +1023,7 @@ fn start(app: AppHandle, state: ContinuityState, persona_id: String) {
                             .map_err(|_| "Could not read the Main Agent's work report.".to_owned())
                     }
                     executor::Outcome::Terminal(receipt) => {
-                        let error = receipt.status.message().to_owned();
+                        let error = terminal_error(&work.target, &receipt.status);
                         terminal = Some(receipt);
                         Err(error)
                     }
@@ -1060,6 +1083,8 @@ fn start(app: AppHandle, state: ContinuityState, persona_id: String) {
                         None => apply_completed(session, result, &context, &trigger, &corrections),
                     }) {
                         Ok(()) => {
+                            session.saved.failure_streak = 0;
+                            session.saved.retry_not_before = None;
                             session.saved.snapshot.phase = "idle".into();
                             session.saved.snapshot.error = None;
                             if work.is_some() {
@@ -1131,6 +1156,34 @@ fn record_execution_error(session: &mut Session, error: String) {
     session.saved.snapshot.phase = "error".into();
     session.saved.snapshot.error = Some(error);
     session.queued = false;
+    if session
+        .saved
+        .pending_execution
+        .as_ref()
+        .is_some_and(|work| matches!(work.target, ExecutionTarget::Pi(_)))
+        || session
+            .context
+            .as_ref()
+            .is_some_and(|context| context.execution_backend == Some(ExecutionBackend::Pi))
+    {
+        defer_automatic_retry(session, now());
+    }
+}
+
+fn automatic_retry_ready(session: &Session, at: u64) -> bool {
+    session
+        .saved
+        .retry_not_before
+        .is_none_or(|deadline| at >= deadline)
+}
+
+fn defer_automatic_retry(session: &mut Session, at: u64) {
+    session.saved.failure_streak = session.saved.failure_streak.saturating_add(1);
+    let multiplier = 1_u64 << session.saved.failure_streak.saturating_sub(1).min(3);
+    let delay = PERIODIC_INTERVAL_MS
+        .saturating_mul(multiplier)
+        .min(MAX_FAILURE_BACKOFF_MS);
+    session.saved.retry_not_before = Some(at.saturating_add(delay));
 }
 
 fn record_pre_dispatch_error(session: &mut Session, job_context: &Context, error: String) {
@@ -1172,6 +1225,14 @@ fn reject_completed_report(
     retire_terminal_execution(session, work, receipt)
 }
 
+fn terminal_error(target: &ExecutionTarget, status: &TerminalStatus) -> String {
+    if matches!(target, ExecutionTarget::Pi(_)) {
+        status.message().replace("Main Agent", "Pi")
+    } else {
+        status.message().to_owned()
+    }
+}
+
 fn retire_terminal_execution(
     session: &mut Session,
     work: &PendingExecution,
@@ -1200,7 +1261,7 @@ fn retire_terminal_execution(
             .iter()
             .skip(work.message_count)
             .any(|message| message.role == "user" && message.source != "legacy");
-    let error = terminal.status.message().to_owned();
+    let error = terminal_error(&work.target, &terminal.status);
     session.saved.terminal_receipts.push(ExecutionReceipt {
         request_id: work.request_id.clone(),
         target: work.target.clone(),
@@ -1212,6 +1273,10 @@ fn retire_terminal_execution(
     });
     session.saved.pending_execution = None;
     let automatic_resume = session.saved.auto_enabled && session.auto_driver_active;
+    let defer_pi = matches!(work.target, ExecutionTarget::Pi(_));
+    if defer_pi {
+        defer_automatic_retry(session, now());
+    }
     let explicit_resume = newer_input || session.saved.resume_after_recovery;
     let resume = explicit_resume || automatic_resume;
     session.saved.resume_after_recovery = false;
@@ -1230,10 +1295,10 @@ fn retire_terminal_execution(
             work.trigger.clone()
         });
     }
-    session.queued = resume;
-    session.queued_automatically = resume && !explicit_resume;
-    session.saved.snapshot.phase = if resume { "thinking" } else { "error" }.into();
-    session.saved.snapshot.error = (!resume).then_some(error);
+    session.queued = explicit_resume || (automatic_resume && !defer_pi);
+    session.queued_automatically = session.queued && !explicit_resume;
+    session.saved.snapshot.phase = if session.queued { "thinking" } else { "error" }.into();
+    session.saved.snapshot.error = (!session.queued).then_some(error);
     Ok(())
 }
 
@@ -1254,10 +1319,11 @@ async fn run_execution(
 
 fn selected_execution_target(
     app: &AppHandle,
+    session: &Session,
     context: &Context,
 ) -> Result<Option<ExecutionTarget>, String> {
     if context.execution_backend == Some(ExecutionBackend::Pi) {
-        return configured_pi_target(context)
+        return configured_pi_target(context, pi_generation(&session.saved))
             .map(ExecutionTarget::Pi)
             .map(Some);
     }
@@ -1265,7 +1331,26 @@ fn selected_execution_target(
         .map(|target| target.map(ExecutionTarget::Codex))
 }
 
-fn configured_pi_target(context: &Context) -> Result<pi_executor::Target, String> {
+// Native state is the authoritative handoff: rotate only between known settled
+// requests. A pending dispatch always retains its original target and epoch.
+const PI_REQUESTS_PER_GENERATION: usize = 16;
+fn pi_generation(saved: &Saved) -> usize {
+    saved
+        .work_runs
+        .iter()
+        .filter(|run| {
+            run.executor == "pi" && matches!(run.outcome.as_str(), "completed" | "terminal")
+        })
+        .map(|run| &run.request_id)
+        .collect::<BTreeSet<_>>()
+        .len()
+        / PI_REQUESTS_PER_GENERATION
+}
+
+fn configured_pi_target(
+    context: &Context,
+    generation: usize,
+) -> Result<pi_executor::Target, String> {
     use sha2::{Digest, Sha256};
     let home = home()?;
     let config = std::fs::read_to_string(home.join("continuity/pi-worker.json")).map_err(|_| {
@@ -1282,7 +1367,10 @@ fn configured_pi_target(context: &Context) -> Result<pi_executor::Target, String
     let cwd = cwd.to_str().ok_or("Invalid Pi workspace path.")?;
     let key = format!("{}\0{cwd}", storage::identity(&context.persona_id));
     let key = format!("{:x}", Sha256::digest(key.as_bytes()));
-    let session_dir = home.join("continuity/pi").join(key);
+    let mut session_dir = home.join("continuity/pi").join(key);
+    if generation > 0 {
+        session_dir = session_dir.join("generations").join(generation.to_string());
+    }
     pi_executor::Target::from_config(&config, cwd, &session_dir)
 }
 
@@ -1314,8 +1402,18 @@ fn prepare_execution(
             }
             return Ok(session.saved.pending_execution.clone());
         }
+        if context.execution_backend == Some(ExecutionBackend::Pi)
+            && requires_context_handoff(work)?
+        {
+            let Some(next_target) = selected_execution_target(app, session, context)? else {
+                return Err("Pi handoff target is unavailable.".into());
+            };
+            let replacement = replace_undispatched_context(session, context, next_target)?;
+            emit(app, &persist(session)?);
+            return Ok(Some(replacement));
+        }
         if &work.context == context {
-            let Some(target) = selected_execution_target(app, context)? else {
+            let Some(target) = selected_execution_target(app, session, context)? else {
                 return Err("The Main Agent is not ready to recover autonomous work.".into());
             };
             if work.target != target {
@@ -1324,10 +1422,23 @@ fn prepare_execution(
             }
             return Ok(session.saved.pending_execution.clone());
         }
-        session.saved.pending_execution = None;
-        session.saved.pending_trigger = Some("return".into());
+        let next_target = selected_execution_target(app, session, context)?;
+        let checkpoint = session.saved.clone();
+        detach_undispatched_intent(session)?;
+        let Some(target) = next_target else {
+            return Ok(None);
+        };
+        let replacement = match new_execution(session, context, target) {
+            Ok(work) => work,
+            Err(error) => {
+                session.saved = checkpoint;
+                return Err(error);
+            }
+        };
+        emit(app, &persist(session)?);
+        return Ok(Some(replacement));
     }
-    let Some(target) = selected_execution_target(app, context)? else {
+    let Some(target) = selected_execution_target(app, session, context)? else {
         return Ok(None);
     };
     let work = new_execution(session, context, target)?;
@@ -1372,6 +1483,150 @@ fn recovery_transport(work: &PendingExecution, context: &Context) -> PendingExec
     recovered
 }
 
+fn requires_context_handoff(work: &PendingExecution) -> Result<bool, String> {
+    if work.dispatch_attempted || !matches!(work.target, ExecutionTarget::Pi(_)) {
+        return Ok(false);
+    }
+    if work.prompt.len() > 96 * 1024 {
+        return Ok(true);
+    }
+    let payload = work.request_payload.clone().unwrap_or(
+        serde_json::to_string(&serde_json::json!({
+            "message":work.prompt,"outputSchema":execution_schema(),
+        }))
+        .map_err(|_| "Could not measure the original Pi request.")?,
+    );
+    // Include escaping the persisted envelope a second time, as the actual
+    // managed submit does. Correlation and admission IDs have fixed lengths.
+    let frame = serde_json::json!({
+        "id":"00000000-0000-0000-0000-000000000000", "type":"submit",
+        "requestId":work.request_id, "requestPayload":payload,
+        "requestDigest":"0".repeat(64),
+        "admission":{"version":1,"epoch":"00000000-0000-0000-0000-000000000000","rootId":9007199254740991_u64},
+    });
+    Ok(serde_json::to_vec(&frame)
+        .map_err(|_| "Could not measure the original Pi frame.")?
+        .len()
+        > 256 * 1024)
+}
+
+fn replace_undispatched_context(
+    session: &mut Session,
+    context: &Context,
+    target: ExecutionTarget,
+) -> Result<PendingExecution, String> {
+    let original = session
+        .saved
+        .pending_execution
+        .clone()
+        .ok_or("There is no pending context to compact.")?;
+    let ExecutionTarget::Pi(ref previous) = original.target else {
+        return Err("Only an undispatched Pi context can be compacted.".into());
+    };
+    if original.dispatch_attempted || !matches!(target, ExecutionTarget::Pi(_)) {
+        return Err("Accepted work must keep its original request and payload.".into());
+    }
+    let checkpoint = session.saved.clone();
+    detach_undispatched_intent(session)?;
+    let replacement = match new_execution(session, context, target) {
+        Ok(work) => work,
+        Err(error) => {
+            session.saved = checkpoint;
+            return Err(error);
+        }
+    };
+    session.saved.context_handoffs.push(ContextHandoff {
+        from_request_id: Some(original.request_id),
+        to_request_id: replacement.request_id.clone(),
+        at: now(),
+        reason: "undispatched_context_compaction".into(),
+        from_session_dir: Some(previous.session_dir.clone()),
+        to_session_dir: match &replacement.target {
+            ExecutionTarget::Pi(value) => value.session_dir.clone(),
+            _ => unreachable!(),
+        },
+    });
+    Ok(replacement)
+}
+
+fn detach_undispatched_intent(session: &mut Session) -> Result<(), String> {
+    let work = session
+        .saved
+        .pending_execution
+        .as_ref()
+        .ok_or("There is no undispatched request to hand off.")?;
+    if work.dispatch_attempted {
+        return Err("Accepted work must retain its original execution context.".into());
+    }
+    if let ExecutionTarget::Pi(target) = &work.target {
+        pi_context_archive::retire_unsent(target, work)?;
+    }
+    for correction in &work.correction_ids {
+        if !session.saved.pending_correction_ids.contains(correction) {
+            session
+                .saved
+                .pending_correction_ids
+                .push(correction.clone());
+        }
+    }
+    let foreground = |trigger: &str| matches!(trigger, "message" | "continue" | "dismiss");
+    if session.saved.pending_trigger.is_none()
+        || (foreground(&work.trigger)
+            && !session
+                .saved
+                .pending_trigger
+                .as_deref()
+                .is_some_and(foreground))
+    {
+        session.saved.pending_trigger = Some(work.trigger.clone());
+    }
+    session.saved.pending_execution = None;
+    Ok(())
+}
+
+fn record_generation_handoff(
+    session: &mut Session,
+    target: &pi_executor::Target,
+    request_id: &str,
+) {
+    let path = std::path::Path::new(&target.session_dir);
+    let Some(generations) = path
+        .parent()
+        .filter(|parent| parent.file_name().is_some_and(|name| name == "generations"))
+    else {
+        return;
+    };
+    let previous = session
+        .saved
+        .context_handoffs
+        .last()
+        .map(|entry| entry.to_session_dir.clone())
+        .or_else(|| {
+            generations
+                .parent()
+                .map(|base| base.to_string_lossy().into_owned())
+        });
+    if previous.as_deref() == Some(target.session_dir.as_str()) {
+        return;
+    }
+    session.saved.context_handoffs.push(ContextHandoff {
+        from_request_id: session
+            .saved
+            .work_runs
+            .iter()
+            .rev()
+            .find(|run| {
+                run.executor == "pi" && matches!(run.outcome.as_str(), "completed" | "terminal")
+            })
+            .map(|run| run.request_id.clone()),
+        to_request_id: request_id.into(),
+        at: now(),
+        reason: "settled_context_rotation".into(),
+        from_session_dir: previous,
+        to_session_dir: target.session_dir.clone(),
+    });
+}
+
 fn new_execution(
     session: &mut Session,
     context: &Context,
@@ -1380,29 +1635,61 @@ fn new_execution(
     if session.saved.execution_blocked || session.saved.pending_execution.is_some() {
         return Err("Recover or inspect the previous work before starting a new request.".into());
     }
-    let trigger = session.saved.pending_trigger.as_deref().unwrap_or("return");
-    let mut prompt = execution_prompt(
-        &session.saved.snapshot,
-        context,
-        trigger,
-        &session.saved.pending_correction_ids,
-    )?;
-    if !session.saved.terminal_receipts.is_empty() {
-        prompt.push_str(&format!("\nPrior interrupted/failed work receipts (evidence, not new authorization): {}\nInspect the referenced Main Agent turns and current workspace state before any operation. Prior work may have partial effects. Do not blindly repeat, resend, or claim completion of those operations; continue only what the current conversation authorizes.", serde_json::to_string(&session.saved.terminal_receipts).map_err(|error| error.to_string())?));
+    let trigger = session
+        .saved
+        .pending_trigger
+        .clone()
+        .unwrap_or_else(|| "return".into());
+    let target = target.into();
+    let request_id = uuid::Uuid::new_v4().to_string();
+    let schema = execution_schema();
+    let (prompt, request_payload, context_budget) = if matches!(target, ExecutionTarget::Pi(_)) {
+        let projection = execution_context::build(
+            &session.saved,
+            context,
+            &trigger,
+            &request_id,
+            &schema,
+            execution_prompt,
+        )?;
+        (
+            projection.prompt,
+            projection.request_payload,
+            Some(projection.budget),
+        )
+    } else {
+        let mut prompt = execution_prompt(
+            &session.saved.snapshot,
+            context,
+            &trigger,
+            &session.saved.pending_correction_ids,
+        )?;
+        if !session.saved.terminal_receipts.is_empty() {
+            prompt.push_str(&format!("\nPrior interrupted/failed work receipts (evidence, not new authorization): {}\nInspect the referenced Main Agent turns and current workspace state before any operation. Prior work may have partial effects. Do not blindly repeat, resend, or claim completion of those operations; continue only what the current conversation authorizes.", serde_json::to_string(&session.saved.terminal_receipts).map_err(|error| error.to_string())?));
+        }
+        let payload =
+            serde_json::to_string(&serde_json::json!({"message":prompt,"outputSchema":schema}))
+                .map_err(|_| "Could not preserve the original execution payload.")?;
+        (prompt, payload, None)
+    };
+    if let ExecutionTarget::Pi(pi) = &target {
+        pi_context_archive::prepare(
+            pi,
+            &request_id,
+            &session.saved.snapshot,
+            &session.saved.terminal_receipts,
+        )?;
+        record_generation_handoff(session, pi, &request_id);
     }
     let work = PendingExecution {
-        request_id: uuid::Uuid::new_v4().to_string(),
+        request_id,
         created_at: Some(now()),
-        target: target.into(),
+        target,
         context: context.clone(),
-        request_payload: Some(
-            serde_json::to_string(&serde_json::json!({
-                "message": &prompt, "outputSchema": execution_schema(),
-            }))
-            .map_err(|_| "Could not preserve the original execution payload.")?,
-        ),
+        request_payload: Some(request_payload),
+        context_budget,
         prompt,
-        trigger: trigger.into(),
+        trigger,
         correction_ids: session.saved.pending_correction_ids.clone(),
         previous_step: session.saved.snapshot.next_step.clone(),
         message_count: session.saved.snapshot.messages.len(),

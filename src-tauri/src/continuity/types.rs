@@ -134,6 +134,13 @@ pub struct Saved {
     /// Quiet model checks and tool progress remain distinguishable.
     #[serde(default)]
     pub work_runs: Vec<WorkRun>,
+    /// Persisted automatic failure backoff survives process restarts.
+    #[serde(default)]
+    pub(super) failure_streak: u32,
+    #[serde(default)]
+    pub(super) retry_not_before: Option<u64>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(super) context_handoffs: Vec<ContextHandoff>,
     #[serde(default)]
     pub observed_keys: std::collections::BTreeMap<String, String>,
     #[serde(default)]
@@ -148,6 +155,17 @@ pub struct Saved {
     pub(super) execution_blocked: bool,
     #[serde(default)]
     pub(super) resume_after_recovery: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct ContextHandoff {
+    pub from_request_id: Option<String>,
+    pub to_request_id: String,
+    pub at: u64,
+    pub reason: String,
+    pub from_session_dir: Option<String>,
+    pub to_session_dir: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -210,6 +228,8 @@ pub(super) struct PendingExecution {
     /// recover receipts but cannot authorize a managed same-ID admission retry.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub request_payload: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_budget: Option<super::execution_context::BudgetReport>,
     pub trigger: String,
     pub correction_ids: Vec<String>,
     #[serde(default)]

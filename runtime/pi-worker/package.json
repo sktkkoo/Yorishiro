@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test admission-identity.node-test.mjs diagnose.node-test.mjs config.node-test.mjs protocol.node-test.mjs workspace-tools.node-test.mjs credential-store.node-test.mjs"
+    "test": "node --test admission-identity.node-test.mjs diagnose.node-test.mjs config.node-test.mjs protocol.node-test.mjs workspace-tools.node-test.mjs credential-store.node-test.mjs context-archive.node-test.mjs"
   },
   "dependencies": {
     "@earendil-works/chord": "1.5.0",
@@ -24,7 +24,8 @@
     "owner-lock.mjs",
     "submission-evidence.mjs",
     "README.md",
-    "credential-store.mjs"
+    "credential-store.mjs",
+    "context-archive.mjs"
   ],
   "version": "0.1.0"
 }

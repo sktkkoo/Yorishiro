@@ -17,6 +17,7 @@ import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { createRegistry, defineDoc, defineExtension, Harness } from "@earendil-works/pi-durable";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { assertAdmission, openAdmissionEpoch } from "./admission-identity.mjs";
+import { createContextArchiveTool } from "./context-archive.mjs";
 import { acquireOwnerLock } from "./owner-lock.mjs";
 import { describeSubmissionTools } from "./submission-evidence.mjs";
 import { createWorkspaceTools, validatePermissions } from "./workspace-tools.mjs";
@@ -168,6 +169,7 @@ export async function runWorker(options, dependencies) {
       sessionDir,
       protectedPaths: options.authPath ? [join(options.authPath, "..")] : [],
     });
+    tools.push(await createContextArchiveTool(sessionDir));
     registry.install(defineExtension({ name: "workspace", tools }));
     harness = await Harness.open(
       await openNodeSqliteStorage(sessionPath),

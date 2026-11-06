@@ -226,6 +226,9 @@ fn session() -> Session {
         auto_enabled: false,
         auto_context: None,
         work_runs: vec![],
+        failure_streak: 0,
+        retry_not_before: None,
+        context_handoffs: vec![],
         observed_keys: std::collections::BTreeMap::new(),
         pending_correction_ids: vec![],
         pending_trigger: None,
@@ -1004,6 +1007,7 @@ fn pending_work(value: &Session) -> PendingExecution {
         context: value.context.clone().unwrap(),
         prompt: "Complete the entrusted work".into(),
         request_payload: None,
+        context_budget: None,
         trigger: "followup".into(),
         correction_ids: vec![],
         previous_step: Some("Implement the fix".into()),
@@ -2503,4 +2507,206 @@ fn visible_entry_readiness_recovers_the_original_accepted_request() {
     assert!(retained.dispatch_attempted);
     assert_eq!(value.saved.pending_trigger.as_deref(), Some("message"));
     assert_eq!(value.saved.snapshot.phase, "working");
+}
+
+fn pi_test_target(directory: &std::path::Path) -> pi_executor::Target {
+    pi_executor::Target {
+        cwd: directory.to_string_lossy().into_owned(),
+        session_dir: directory.join("session").to_string_lossy().into_owned(),
+        node_path: "/runtime/node".into(),
+        worker_entry: "/runtime/worker.mjs".into(),
+        provider: "openai".into(),
+        model: "test-model".into(),
+        auth_mode: pi_executor::AuthMode::ApiKey,
+        auth_path: None,
+        permissions: None,
+    }
+}
+
+#[test]
+fn pi_failure_backoff_is_persisted_bounded_and_does_not_hot_loop() {
+    let mut value = session();
+    value.saved.auto_enabled = true;
+    value.auto_driver_active = true;
+    let mut current = context();
+    current.execution_backend = Some(ExecutionBackend::Pi);
+    value.context = Some(current.clone());
+    let mut work = pending_work(&value);
+    work.target = pi_test_target(std::path::Path::new("/workspace")).into();
+    work.dispatch_attempted = true;
+    value.saved.pending_execution = Some(work.clone());
+    retire_terminal_execution(&mut value, &work, terminal_turn(TerminalStatus::Failed)).unwrap();
+    assert!(!value.queued);
+    assert!(!value.saved.execution_blocked);
+    assert_eq!(value.saved.failure_streak, 1);
+    let first = value.saved.retry_not_before.unwrap();
+    assert!(!queue_periodic(&mut value, current.clone(), first - 1));
+    assert!(queue_periodic(&mut value, current.clone(), first));
+    value.queued = false;
+    let home = tempfile::tempdir().unwrap();
+    storage::save(home.path(), &value.saved).unwrap();
+    let loaded = storage::load(home.path(), "yori-ja").unwrap();
+    assert_eq!(loaded.retry_not_before, Some(first));
+    assert_eq!(loaded.failure_streak, 1);
+    for expected in [10, 20, 30, 30] {
+        defer_automatic_retry(&mut value, 1000);
+        assert_eq!(value.saved.retry_not_before, Some(1000 + expected * 60_000));
+    }
+    value.saved.retry_not_before = Some(now() + 600_000);
+    queue(&mut value, current.clone(), "return");
+    assert!(!value.queued);
+    queue_explicit_retry(&mut value, current);
+    assert!(value.queued);
+    assert!(!value.queued_automatically);
+    assert!(queued_work_allowed(&value));
+}
+
+#[test]
+fn pi_generation_counts_only_distinct_settled_requests() {
+    let mut value = session();
+    for index in 0..16 {
+        value.saved.work_runs.push(WorkRun {
+            request_id: format!("settled-{index}"),
+            request_created_at: Some(1),
+            started_at: 1,
+            finished_at: 2,
+            trigger: "return".into(),
+            executor: "pi".into(),
+            outcome: if index % 2 == 0 {
+                "completed"
+            } else {
+                "terminal"
+            }
+            .into(),
+            progressed: false,
+            error: None,
+        });
+    }
+    assert_eq!(pi_generation(&value.saved), 1);
+    value.saved.work_runs.push(value.saved.work_runs[0].clone());
+    let mut recovery = value.saved.work_runs[0].clone();
+    recovery.request_id = "unconfirmed".into();
+    recovery.outcome = "error".into();
+    value.saved.work_runs.push(recovery);
+    assert_eq!(pi_generation(&value.saved), 1);
+    let mut work = pending_work(&value);
+    work.target = pi_test_target(std::path::Path::new("/workspace")).into();
+    work.dispatch_attempted = true;
+    work.prompt = "x".repeat(2 * 1024 * 1024);
+    assert!(!requires_context_handoff(&work).unwrap());
+    assert_eq!(recovery_transport(&work, &context()).target, work.target);
+}
+
+#[test]
+fn oversized_unsent_pi_payload_handoffs_with_new_id_and_keeps_original_evidence() {
+    let temp = tempfile::tempdir().unwrap();
+    let directory = temp.path().canonicalize().unwrap();
+    let target = pi_test_target(&directory);
+    let mut value = session();
+    let mut current = context();
+    current.execution_backend = Some(ExecutionBackend::Pi);
+    value.context = Some(current.clone());
+    let mut original = pending_work(&value);
+    original.request_id = uuid::Uuid::new_v4().to_string();
+    original.target = target.clone().into();
+    original.trigger = "message".into();
+    original.prompt = "\\\"🦊".repeat(50_000);
+    original.request_payload =
+        Some(json!({"message":original.prompt,"outputSchema":execution_schema()}).to_string());
+    value.saved.pending_execution = Some(original.clone());
+    assert!(requires_context_handoff(&original).unwrap());
+    let replacement =
+        replace_undispatched_context(&mut value, &current, target.clone().into()).unwrap();
+    assert_ne!(replacement.request_id, original.request_id);
+    assert!(!replacement.dispatch_attempted);
+    assert_eq!(replacement.trigger, "message");
+    assert!(replacement.prompt.len() <= 96 * 1024);
+    assert!(
+        replacement
+            .context_budget
+            .as_ref()
+            .unwrap()
+            .managed_submit_utf8_bytes
+            <= 256 * 1024
+    );
+    let path = std::path::Path::new(&target.session_dir)
+        .join("native-context")
+        .join(format!("unsent-{}.json", original.request_id));
+    let archived: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    assert_eq!(
+        archived["requestPayload"].as_str(),
+        original.request_payload.as_deref()
+    );
+    assert_eq!(archived["dispatchAttempted"], false);
+    assert_eq!(
+        value.saved.context_handoffs.last().unwrap().reason,
+        "undispatched_context_compaction"
+    );
+    let before = serde_json::to_value(&value.saved).unwrap();
+    value
+        .saved
+        .pending_execution
+        .as_mut()
+        .unwrap()
+        .dispatch_attempted = true;
+    let guarded = serde_json::to_value(&value.saved).unwrap();
+    assert!(replace_undispatched_context(&mut value, &current, target.into()).is_err());
+    assert_eq!(serde_json::to_value(&value.saved).unwrap(), guarded);
+    assert_ne!(before, guarded);
+}
+
+#[test]
+fn failed_compaction_keeps_the_original_pending_request_and_user_authority() {
+    let temp = tempfile::tempdir().unwrap();
+    let directory = temp.path().canonicalize().unwrap();
+    let target = pi_test_target(&directory);
+    let mut value = session();
+    value.saved.snapshot.messages.push(Message {
+        id: "essential-user".into(),
+        role: "user".into(),
+        content: "a".repeat(200_000),
+        created_at: 1,
+        source: "conversation".into(),
+        reply_kind: None,
+    });
+    let mut current = context();
+    current.execution_backend = Some(ExecutionBackend::Pi);
+    value.context = Some(current.clone());
+    let mut original = pending_work(&value);
+    original.request_id = uuid::Uuid::new_v4().to_string();
+    original.target = target.clone().into();
+    original.prompt = "x".repeat(200_000);
+    value.saved.pending_execution = Some(original);
+    let before = serde_json::to_value(&value.saved).unwrap();
+    assert!(replace_undispatched_context(&mut value, &current, target.into()).is_err());
+    assert_eq!(serde_json::to_value(&value.saved).unwrap(), before);
+}
+
+#[test]
+fn context_change_handoff_restores_corrections_and_preserves_foreground_intent() {
+    let temp = tempfile::tempdir().unwrap();
+    let directory = temp.path().canonicalize().unwrap();
+    let mut value = session();
+    let target = pi_test_target(&directory);
+    let mut work = pending_work(&value);
+    work.request_id = uuid::Uuid::new_v4().to_string();
+    work.target = target.into();
+    work.correction_ids = vec!["old-correction".into()];
+    work.trigger = "message".into();
+    value.saved.pending_execution = Some(work.clone());
+    value.saved.pending_trigger = Some("return".into());
+    value.saved.pending_correction_ids = vec!["new-correction".into()];
+    detach_undispatched_intent(&mut value).unwrap();
+    assert!(value.saved.pending_execution.is_none());
+    assert_eq!(value.saved.pending_trigger.as_deref(), Some("message"));
+    assert_eq!(
+        value.saved.pending_correction_ids,
+        vec!["new-correction", "old-correction"]
+    );
+    value.saved.pending_execution = Some(work);
+    value.saved.pending_trigger = Some("dismiss".into());
+    detach_undispatched_intent(&mut value).unwrap();
+    assert_eq!(value.saved.pending_trigger.as_deref(), Some("dismiss"));
+    assert_eq!(value.saved.pending_correction_ids.len(), 2);
 }
