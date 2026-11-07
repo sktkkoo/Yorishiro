@@ -79,6 +79,77 @@ class ObserverTests(unittest.TestCase):
             state.write_text("invalid")
             self.assertIn("stateReadError", observer.sample(state, os.getpid()))
 
+    def test_malformed_state_structure_is_unknown_and_live_check_continues(self):
+        with tempfile.TemporaryDirectory() as folder:
+            state = Path(folder) / "state.json"
+            for saved in (None, [], {"snapshot": None}, {"snapshot": []},
+                          {"snapshot": {"revision": 1, "phase": "idle"}, "workRuns": None},
+                          {"snapshot": {"revision": 1, "phase": "idle"}, "workRuns": 42},
+                          {"snapshot": {"revision": 1, "phase": "idle"}, "workRuns": [None]},
+                          {"snapshot": {"revision": 1, "phase": "idle"},
+                           "workRuns": [{"requestId": "valid"}, "invalid"]}):
+                with self.subTest(saved=saved):
+                    state.write_text(json.dumps(saved))
+                    calls = []
+                    class Client:
+                        def snapshot(self):
+                            calls.append(True)
+                            return {"personaId": "yori-ja", "revision": 1,
+                                    "phase": "idle", "hasError": False}
+                    result = observer.sample(state, os.getpid(), Client())
+                    self.assertEqual(result["stateReadError"], "ValueError")
+                    self.assertEqual(calls, [True])
+                    self.assertEqual(result["liveVerification"]["status"], "unknown")
+                    evidence = observer.Evidence(0)
+                    evidence.add(result)
+                    self.assertEqual(evidence.summary(1)["stateReadErrorSamples"], 1)
+                    self.assertFalse(evidence.summary(1)["goalAchieved"])
+
+    def test_invalid_operational_metadata_is_not_coerced_to_healthy_state(self):
+        base = {"snapshot": {"revision": 1, "phase": "idle"},
+                "autoEnabled": True, "executionBlocked": False}
+        cases = [
+            {**base, "snapshot": {"revision": value, "phase": "idle"}}
+            for value in (True, -1, "1", None)
+        ]
+        cases += [{**base, "snapshot": {"revision": 1, "phase": value}}
+                  for value in (None, "unknown", {})]
+        cases += [{**base, key: value} for key in ("autoEnabled", "executionBlocked")
+                  for value in ("false", 1, None)]
+        with tempfile.TemporaryDirectory() as folder:
+            state = Path(folder) / "state.json"
+            for saved in cases:
+                with self.subTest(saved=saved):
+                    state.write_text(json.dumps(saved))
+                    result = observer.sample(state, os.getpid())
+                    self.assertEqual(result["stateReadError"], "ValueError")
+                    self.assertNotIn("autoEnabled", result)
+                    self.assertNotIn("phase", result)
+
+    def test_disk_error_presence_matches_live_even_for_empty_error_text(self):
+        with tempfile.TemporaryDirectory() as folder:
+            state = Path(folder) / "state.json"
+            for error in (None, "", "private error"):
+                with self.subTest(error=error):
+                    snapshot = {"personaId": "yori-ja", "revision": 1,
+                                "phase": "idle", "error": error}
+                    state.write_text(json.dumps({"snapshot": snapshot}))
+                    result = observer.sample(state, os.getpid())
+                    self.assertEqual(result["hasError"],
+                                     observer.snapshot_metadata(snapshot)["hasError"])
+                    evidence = observer.Evidence(0)
+                    evidence.add(result)
+                    self.assertEqual(evidence.summary(1)["diskWorkerErrorSamples"],
+                                     int(error is not None))
+                    self.assertNotIn("private error", json.dumps(result))
+            for error in (False, 0, [], {}):
+                with self.subTest(invalid_error=error):
+                    state.write_text(json.dumps({"snapshot": {
+                        "revision": 1, "phase": "idle", "error": error}}))
+                    result = observer.sample(state, os.getpid())
+                    self.assertEqual(result["stateReadError"], "ValueError")
+                    self.assertNotIn("hasError", result)
+
     def test_count_only_new_unique_completed_main_agent_runs(self):
         evidence = observer.Evidence(1000)
         runs = [{"requestId": key, "requestCreatedAt": start, "startedAt": 1400, "finishedAt": 1500,
@@ -260,6 +331,28 @@ class BackendReplayTests(unittest.TestCase):
                         [start, {"kind": "summary"}, sample], [{**start, "schemaVersion": 1}]]:
             with self.assertRaises(ValueError):
                 observer.summarize_capture(self.capture(records))
+
+    def test_replay_rejects_invalid_present_operational_metadata(self):
+        start = {"kind": "start", "schemaVersion": 3, "startedAt": 1000}
+        sample = {"kind": "sample", "observedAt": 2000, "pid": 1, "processAlive": True}
+        cases = [(key, value) for key in ("autoEnabled", "executionBlocked", "hasError")
+                 for value in ("false", 0, None, [], {})]
+        cases += [("revision", value) for value in (True, -1, "1", None)]
+        cases += [("phase", value) for value in ("unknown", None, {})]
+        for key, value in cases:
+            with self.subTest(key=key, value=value), self.assertRaises(ValueError):
+                observer.summarize_capture(self.capture([start, {**sample, key: value}]))
+        # Schema 2/3 disk-only captures without optional fields stay readable.
+        for schema in (2, 3):
+            result = observer.summarize_capture(self.capture([
+                {**start, "schemaVersion": schema}, sample]))
+            self.assertEqual(result["samples"], 1)
+        result = observer.summarize_capture(self.capture([start, {**sample,
+            "autoEnabled": False, "executionBlocked": True, "hasError": True,
+            "revision": 0, "phase": "error"}]))
+        self.assertEqual(result["autoDisabledSamples"], 1)
+        self.assertEqual(result["executionBlockedSamples"], 1)
+        self.assertEqual(result["workerErrorSamples"], 1)
 
     def test_summary_cli_preserves_capture_bytes(self):
         with tempfile.TemporaryDirectory() as folder:

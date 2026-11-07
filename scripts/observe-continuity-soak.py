@@ -307,10 +307,22 @@ def sample(state_path, pid, live_client=None):
                 "pid": pid, "processAlive": probe_process(pid)}
     try:
         saved = json.loads(state_path.read_text())
+        if not isinstance(saved, dict) or not isinstance(saved.get("snapshot"), dict):
+            raise ValueError("Invalid state structure")
         snapshot = saved["snapshot"]
+        if (type(snapshot.get("revision")) is not int or snapshot["revision"] < 0 or
+                snapshot.get("phase") not in ("idle", "thinking", "drafting", "working", "error") or
+                (snapshot.get("error") is not None and
+                 not isinstance(snapshot["error"], str)) or
+                any(type(saved.get(key, False)) is not bool
+                    for key in ("autoEnabled", "executionBlocked"))):
+            raise ValueError("Invalid operational metadata")
+        runs = saved.get("workRuns", [])
+        if not isinstance(runs, list) or not all(isinstance(run, dict) for run in runs):
+            raise ValueError("Invalid work run structure")
         observed.update(revision=snapshot["revision"], phase=snapshot["phase"],
                         personaId=snapshot.get("personaId"),
-                        hasError=bool(snapshot.get("error")),
+                        hasError=snapshot.get("error") is not None,
                         autoEnabled=saved.get("autoEnabled", False),
                         executionBlocked=saved.get("executionBlocked", False))
         # Copy only operational metadata, never text supplied by the model/user.
@@ -318,7 +330,7 @@ def sample(state_path, pid, live_client=None):
             {key: run.get(key) for key in (
                 "requestId", "requestCreatedAt", "startedAt", "finishedAt", "trigger", "executor",
                 "outcome", "progressed")}
-            for run in saved.get("workRuns", []) if isinstance(run, dict)
+            for run in runs
         ]
     except (OSError, ValueError, KeyError, TypeError) as error:
         observed["stateReadError"] = type(error).__name__
@@ -505,6 +517,15 @@ def summarize_capture(path):
                         (alive and pid == 0) or not isinstance(record.get("workRuns", []), list) or
                         not all(isinstance(run, dict) for run in record.get("workRuns", []))):
                     raise ValueError("Invalid or out-of-order captured sample")
+                # Legacy captures may omit metadata, but present values must
+                # not turn strings such as "false" into healthy boolean flags.
+                if (any(key in record and type(record[key]) is not bool
+                        for key in ("autoEnabled", "executionBlocked", "hasError")) or
+                        ("revision" in record and
+                         (type(record["revision"]) is not int or record["revision"] < 0)) or
+                        ("phase" in record and record["phase"] not in
+                         ("idle", "thinking", "drafting", "working", "error"))):
+                    raise ValueError("Invalid captured operational metadata")
                 evidence.add(record)
             elif kind == "summary" and not final_summary:
                 final_summary = True  # Do not use its counts, elapsed time, or success claims.

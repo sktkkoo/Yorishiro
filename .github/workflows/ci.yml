@@ -8,6 +8,19 @@ on:
   workflow_dispatch:
 
 jobs:
+  continuity-observation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Test read-only autonomous-run observation
+        run: python3 -B -m unittest discover -s scripts -p 'test_observe_continuity_soak.py'
+
   check:
     runs-on: ubuntu-latest
     steps:
@@ -93,9 +106,6 @@ jobs:
           npm --prefix runtime/pi-worker test
           npm --prefix experiments/pi-harness test
           npm --prefix experiments/pi-provider test
-
-      - name: Test read-only autonomous-run observation
-        run: python3 -B -m unittest discover -s scripts -p 'test_observe_continuity_soak.py'
 
       - run: npm run test:run
 
