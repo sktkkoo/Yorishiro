@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useEffect } from "react";
-import { continuityPrompt } from "../../core/global-prompt/continuity-fragment";
+import { voiceContinuityPrompt } from "../../core/global-prompt/voice-continuity";
 import { continuityIdentity } from "./client";
 import type { ContinuitySnapshot } from "./types";
 
@@ -41,7 +41,7 @@ export function useContinuityVoiceContext({
       // Keep history from before the connection and still deliver workspace text,
       // Main Agent observations, learned understanding and drafts independently
       // of continued background work.
-      const prompt = continuityPrompt({
+      const prompt = voiceContinuityPrompt({
         ...snapshot,
         messages: snapshot.messages.filter(
           (message) => message.source !== "voice" || historicalVoiceIds.has(message.id),

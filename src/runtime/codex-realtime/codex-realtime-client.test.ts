@@ -10,6 +10,7 @@ import {
   type CodexRealtimeState,
   type CodexRealtimeVoiceFallback,
 } from "./codex-realtime-client";
+import { MAX_REALTIME_TEXT_JSON_BYTES } from "./context-items";
 import { readRealtimeDiagnostics } from "./realtime-diagnostics";
 
 interface FakeChannel<T> {
@@ -27,6 +28,21 @@ const localWorkHandoffItem = () => ({
   role: "developer",
   text: expect.stringContaining("not a standalone chat screen"),
 });
+
+const fragmentHeader = /^Host context fragment (\d+)\/(\d+)\.[^\n]*\n/;
+const passiveHeader = /^Host context refresh only\.[^\n]*\n/;
+const serializedTextBytes = (text: string) => new TextEncoder().encode(JSON.stringify(text)).length;
+
+function reassembleContextFragments(parts: readonly string[]): string {
+  return parts
+    .map((part, index) => {
+      const header = fragmentHeader.exec(part);
+      expect(header?.[1]).toBe(String(index + 1));
+      expect(header?.[2]).toBe(String(parts.length));
+      return part.replace(fragmentHeader, "");
+    })
+    .join("");
+}
 
 const bridge = vi.hoisted(() => ({
   channel: null as FakeChannel<string> | null,
@@ -513,13 +529,68 @@ describe("CodexRealtimeClient", () => {
     bridge.afterResponse = (request) => {
       if (request.method === "thread/realtime/appendText") client.stop();
     };
-    const first = client.prepareContinuityContext("first");
+    const oversized = '先頭から末尾まで保持する文脈😀\\"\n'.repeat(1_200);
+    const first = client.prepareContinuityContext(oversized);
     const next = client.prepareContinuityContext("next");
     const results = await Promise.allSettled([first, next]);
     expect(results.every((result) => result.status === "rejected")).toBe(true);
     expect(
       bridge.sent.filter((request) => request.method === "thread/realtime/appendText"),
     ).toHaveLength(1);
+    await client.prepareContinuityContext(oversized);
+    expect(
+      bridge.sent.filter((request) => request.method === "thread/realtime/appendText"),
+    ).toHaveLength(1);
+  });
+
+  it("losslessly fragments passive Japanese context with passive guidance and no extra turn", async () => {
+    const client = new CodexRealtimeClient("main-session");
+    await client.start();
+    client.setMicrophoneMuted(true);
+    bridge.sent = [];
+    const context = `始まり\n${'漢字かな😀🧑🏽‍💻\\"\n'.repeat(1_100)}終わり`;
+    await Promise.all([
+      client.prepareContinuityContext(context),
+      client.prepareContinuityContext(context),
+    ]);
+    const updates = bridge.sent.filter(
+      (message) => message.method === "thread/realtime/appendText",
+    );
+    expect(updates.length).toBeGreaterThan(1);
+    expect(bridge.sent).toHaveLength(updates.length);
+    const parts = updates.map((message) => {
+      expect(message.params?.role).toBe("developer");
+      const text = message.params?.text as string;
+      expect(serializedTextBytes(text)).toBeLessThanOrEqual(MAX_REALTIME_TEXT_JSON_BYTES);
+      expect(text).toMatch(passiveHeader);
+      expect(text).toContain("Do not greet, speak, or start work because this arrived");
+      return text.replace(passiveHeader, "");
+    });
+    expect(reassembleContextFragments(parts)).toBe(context);
+    expect(client.getStatus()).toBe("active");
+    expect(microphoneTrack.enabled).toBe(false);
+    expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(1);
+    client.stop();
+  });
+
+  it("does not replay an uncertain passive fragment after an append rejection", async () => {
+    const client = new CodexRealtimeClient("main-session");
+    await client.start();
+    bridge.sent = [];
+    bridge.requestErrors["thread/realtime/appendText"] = "temporary append failure";
+    const context = "長い作業文脈😀".repeat(1_200);
+    await expect(client.prepareContinuityContext(context)).rejects.toThrow(
+      "temporary append failure",
+    );
+    delete bridge.requestErrors["thread/realtime/appendText"];
+    await expect(client.prepareContinuityContext(context)).rejects.toThrow(
+      "temporary append failure",
+    );
+    expect(
+      bridge.sent.filter((message) => message.method === "thread/realtime/appendText"),
+    ).toHaveLength(1);
+    expect(client.getStatus()).toBe("active");
+    client.stop();
   });
 
   it("appends a literal user supplement to active Live without requesting speech or a Main turn", async () => {
@@ -802,6 +873,38 @@ describe("CodexRealtimeClient", () => {
     expect(diagnostics[diagnostics.length - 1]).toMatchObject({
       delivery: "initial-items",
       startupContextIncluded: false,
+    });
+    client.stop();
+  });
+
+  it("losslessly bounds long persona initial items without enabling backend startup context", async () => {
+    const instructions = `先頭の人格設定\n${'日本語の人格設定😀🧑🏽‍💻\\"\n'.repeat(1_500)}末尾の人格設定`;
+    const diagnostics: CodexRealtimePersonaApplication[] = [];
+    const client = new CodexRealtimeClient("main-session", undefined, {
+      getPersonaSnapshot: () => ({ personaId: "large-persona", instructions }),
+      includeStartupContext: false,
+      onPersonaApplication: (application) => diagnostics.push(application),
+    });
+    await client.start();
+    const start = bridge.sent.find((message) => message.method === "thread/realtime/start");
+    const items = start?.params?.initialItems as Array<{ role: string; text: string }>;
+    expect(items.length).toBeGreaterThan(2);
+    for (const item of items) {
+      expect(item.role).toBe("developer");
+      expect(serializedTextBytes(item.text)).toBeLessThanOrEqual(MAX_REALTIME_TEXT_JSON_BYTES);
+    }
+    const personaPartCount = Number(fragmentHeader.exec(items[0].text)?.[2]);
+    expect(personaPartCount).toBeGreaterThan(1);
+    expect(
+      reassembleContextFragments(items.slice(0, personaPartCount).map(({ text }) => text)),
+    ).toBe(instructions);
+    expect(items.slice(personaPartCount)).toContainEqual(localWorkHandoffItem());
+    expect(start?.params?.includeStartupContext).toBe(false);
+    expect(start?.params).not.toHaveProperty("prompt");
+    expect(diagnostics[diagnostics.length - 1]).toMatchObject({
+      delivery: "initial-items",
+      startupContextIncluded: false,
+      status: "accepted",
     });
     client.stop();
   });
@@ -1585,6 +1688,20 @@ describe("CodexRealtimeClient", () => {
     expect(bridge.disconnect).toHaveBeenCalledWith({ connectionId: "late-connection" });
     expect(bridge.connect).toHaveBeenCalledTimes(3);
     expect(client.getStatus()).toBe("error");
+  });
+
+  it("stops after one oversized-item rejection instead of retrying an unchanged payload", async () => {
+    const message = "each initial realtime item must not exceed 8192 estimated tokens";
+    bridge.realtimeStartErrors.sol = message;
+    const client = new CodexRealtimeClient("main-session");
+    await expect(client.start()).rejects.toThrow(message);
+    expect(bridge.sent.filter((item) => item.method === "thread/realtime/start")).toHaveLength(1);
+    expect(client.getStatus()).toBe("error");
+    expect(readRealtimeDiagnostics()).toContainEqual(
+      expect.objectContaining({ category: "configuration", retryDecision: "none" }),
+    );
+    expect(microphoneTrack.stop).toHaveBeenCalledOnce();
+    client.stop();
   });
 
   it("cancels a pending transient retry when explicitly stopped", async () => {

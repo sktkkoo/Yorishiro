@@ -90,7 +90,8 @@ export function classifyRealtimeFailure(
     message.includes("invalid voice") ||
     message.includes("invalid loaded thread") ||
     message.includes("did not contain sdp") ||
-    message.includes("not accept any voice")
+    message.includes("not accept any voice") ||
+    /initial realtime item.*(?:exceed|estimated tokens)/.test(message)
   ) {
     return { category: "configuration", retryable: false };
   }
