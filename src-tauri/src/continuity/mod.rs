@@ -12,6 +12,7 @@ mod pi_target;
 mod storage;
 mod transport;
 pub mod types;
+mod workspace_isolation;
 
 use execution_target::ExecutionTarget;
 use std::collections::{BTreeMap, BTreeSet};
@@ -1425,6 +1426,10 @@ fn configured_pi_target(
     {
         return Err("Review permissions for the selected workspace before starting Pi.".into());
     }
+    workspace_isolation::validate_write_scope(
+        std::path::Path::new(cwd),
+        settings.permissions.write,
+    )?;
     // A new namespace prevents adopting a legacy externally configured worker.
     let family = format!(
         "managed-v2\0{}\0{cwd}",
@@ -1794,6 +1799,10 @@ fn mark_execution_dispatched(session: &mut Session, request_id: &str) -> Result<
         .ok_or("Work was superseded before dispatch.")?;
     if let ExecutionTarget::Pi(target) = &work.target {
         if let Some(identity) = &target.managed {
+            workspace_isolation::validate_write_scope(
+                std::path::Path::new(work.context.cwd.as_deref().ok_or("workspace_unavailable")?),
+                identity.permissions.write,
+            )?;
             let pi_installation::ConfigState::Managed(settings) = pi_installation::load(&home()?)?
             else {
                 return Err("Pi setup changed before dispatch; no request was sent.".into());

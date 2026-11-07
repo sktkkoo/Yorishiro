@@ -68,6 +68,7 @@ pub struct SetupStatus {
     models: Vec<CatalogModel>,
     permissions: PortablePermissions,
     workspace_available: bool,
+    workspace_write_allowed: bool,
     login: LoginStatus,
     code: Option<String>,
 }
@@ -96,6 +97,17 @@ fn known_workspace(cwd: Option<&str>) -> bool {
 }
 
 fn configured_for_workspace(settings: &Settings, cwd: Option<&str>) -> bool {
+    bound_to_workspace(settings, cwd)
+        && cwd.is_some_and(|cwd| {
+            super::workspace_isolation::validate_write_scope(
+                Path::new(cwd),
+                settings.permissions.write,
+            )
+            .is_ok()
+        })
+}
+
+fn bound_to_workspace(settings: &Settings, cwd: Option<&str>) -> bool {
     if !known_workspace(cwd) {
         return false;
     }
@@ -216,6 +228,13 @@ pub async fn continuity_pi_setup_status(
         ),
         _ => (Settings::default(), false),
     };
+    let bound = bound_to_workspace(&settings, cwd.as_deref());
+    let workspace_write_allowed = cwd.as_deref().is_some_and(|cwd| {
+        super::workspace_isolation::validate_write_scope(Path::new(cwd), true).is_ok()
+    });
+    if bound && settings.permissions.write && !workspace_write_allowed {
+        code = Some(super::workspace_isolation::WORKTREE_REQUIRED.into());
+    }
     let mut result = SetupStatus {
         runtime_ready: false,
         configured,
@@ -224,12 +243,13 @@ pub async fn continuity_pi_setup_status(
         authentication: "missing".into(),
         model: settings.model,
         models: Vec::new(),
-        permissions: if configured {
+        permissions: if bound {
             settings.permissions
         } else {
             PortablePermissions::default()
         },
         workspace_available: known_workspace(cwd.as_deref()),
+        workspace_write_allowed,
         login: login_snapshot(&state)?,
         code: None,
     };
@@ -522,6 +542,10 @@ pub async fn continuity_pi_setup_save(
         &mut settings,
         cwd.as_deref().ok_or("workspace_unavailable")?,
     )?;
+    super::workspace_isolation::validate_write_scope(
+        Path::new(cwd.as_deref().ok_or("workspace_unavailable")?),
+        settings.permissions.write,
+    )?;
     let home = home()?;
     let runtime =
         pi_installation::runtime_paths(&app).map_err(|_| "runtime_unavailable".to_owned())?;
@@ -739,6 +763,29 @@ mod workspace_permission_tests {
         let text = String::from_utf8(std::fs::read(path).unwrap()).unwrap();
         assert!(!text.contains(first.to_str().unwrap()));
         assert!(!text.contains(second.to_str().unwrap()));
+    }
+
+    #[test]
+    fn primary_repository_write_grant_requires_a_worktree_without_changing_saved_policy() {
+        let temp = tempfile::tempdir().unwrap();
+        let cwd = temp.path().join("Primary");
+        git2::Repository::init(&cwd).unwrap();
+        let mut settings = Settings {
+            enabled: true,
+            permissions: PortablePermissions {
+                read: true,
+                write: true,
+                commands: vec![],
+            },
+            ..Settings::default()
+        };
+        bind_workspace(&mut settings, cwd.to_str().unwrap()).unwrap();
+        let original = settings.clone();
+        assert!(bound_to_workspace(&settings, cwd.to_str()));
+        assert!(!configured_for_workspace(&settings, cwd.to_str()));
+        assert_eq!(settings, original);
+        settings.permissions.write = false;
+        assert!(configured_for_workspace(&settings, cwd.to_str()));
     }
 
     #[test]

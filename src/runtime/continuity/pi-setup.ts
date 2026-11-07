@@ -22,6 +22,7 @@ const CODES = [
   "node_invalid",
   "configuration_invalid",
   "workspace_unavailable",
+  "worktree_required",
   "authentication_required",
   "model_unavailable",
   "login_busy",
@@ -55,6 +56,7 @@ export interface PiSetupStatus {
   readonly models: readonly { readonly id: string; readonly name: string }[];
   readonly permissions: PiPermissions;
   readonly workspaceAvailable: boolean;
+  readonly workspaceWriteAllowed: boolean;
   readonly login: PiLoginStatus;
   readonly code: PiSetupCode | null;
 }
@@ -94,6 +96,7 @@ export function parsePiSetup(value: unknown): PiSetupStatus | null {
       "models",
       "permissions",
       "workspaceAvailable",
+      "workspaceWriteAllowed",
       "login",
       "code",
     ]) ||
@@ -103,6 +106,7 @@ export function parsePiSetup(value: unknown): PiSetupStatus | null {
       "legacyConfiguration",
       "authenticated",
       "workspaceAvailable",
+      "workspaceWriteAllowed",
     ].some((key) => typeof value[key] !== "boolean") ||
     !["present", "missing", "invalid"].includes(String(value.authentication)) ||
     typeof value.model !== "string" ||
@@ -156,6 +160,7 @@ export const setupReady = (status: PiSetupStatus | null) =>
       status.configured &&
       status.authenticated &&
       status.workspaceAvailable &&
+      (!status.permissions.write || status.workspaceWriteAllowed) &&
       status.models.some((model) => model.id === status.model),
   );
 

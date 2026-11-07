@@ -17,6 +17,7 @@ const initial = (): PiSetupStatus => ({
   models: [{ id: "fixture-model", name: "Fixture" }],
   permissions: { read: true, write: false, commands: [] },
   workspaceAvailable: true,
+  workspaceWriteAllowed: true,
   login: { phase: "idle", code: null },
   code: null,
 });
@@ -44,6 +45,57 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe("Pi setup", () => {
+  it("requires a linked worktree for repository writes and uses the existing folder picker", async () => {
+    current = {
+      ...initial(),
+      authenticated: true,
+      authentication: "present",
+      workspaceWriteAllowed: false,
+    };
+    const pickFolder = vi.fn(async () => {});
+    render(<PiSetup cwd="primary repository" language="en" onPickFolder={pickFolder} />);
+    await screen.findByText(/choose a registered linked worktree/);
+    fireEvent.click(screen.getByRole("button", { name: "Choose an existing worktree" }));
+    expect(pickFolder).toHaveBeenCalledTimes(1);
+    const write = screen.getByRole("checkbox", { name: "Create and change files" });
+    const save = screen.getByRole("button", { name: "Save and use for autonomous execution" });
+    await waitFor(() => expect(save).toHaveProperty("disabled", false));
+    fireEvent.click(write);
+    expect(save).toHaveProperty("disabled", true);
+    expect(native.invoke.mock.calls.some(([name]) => name === "continuity_pi_setup_save")).toBe(
+      false,
+    );
+    fireEvent.click(write);
+    fireEvent.click(save);
+    await waitFor(() =>
+      expect(native.invoke.mock.calls.some(([name]) => name === "continuity_pi_setup_save")).toBe(
+        true,
+      ),
+    );
+    const call = native.invoke.mock.calls.find(([name]) => name === "continuity_pi_setup_save");
+    expect(call?.[1].settings.permissions.write).toBe(false);
+  });
+
+  it("shows the localized worktree requirement for an older root write grant", async () => {
+    current = {
+      ...initial(),
+      authenticated: true,
+      authentication: "present",
+      permissions: { read: true, write: true, commands: [] },
+      workspaceWriteAllowed: false,
+      code: "worktree_required",
+    };
+    const readiness = vi.fn();
+    render(<PiSetup cwd="primary repository" language="ja" onReadinessChange={readiness} />);
+    await screen.findByRole("alert");
+    expect(screen.getByRole("alert").textContent).toContain("登録済みのworktree");
+    expect(screen.getByRole("button", { name: "設定を保存して自律実行に使用" })).toHaveProperty(
+      "disabled",
+      true,
+    );
+    expect(readiness).toHaveBeenLastCalledWith(false);
+  });
+
   it("requires sign-in and an explicit permissions save without path inputs", async () => {
     const ready = vi.fn();
     render(<PiSetup cwd="workspace fixture" language="ja" onReadinessChange={ready} />);

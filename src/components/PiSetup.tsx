@@ -13,6 +13,7 @@ export interface PiSetupProps {
   readonly language: "ja" | "en";
   readonly onConfigured?: () => void;
   readonly onReadinessChange?: (ready: boolean) => void;
+  readonly onPickFolder?: () => Promise<void>;
 }
 const COPY = {
   ja: {
@@ -41,6 +42,9 @@ const COPY = {
     scope:
       "自律実行に許可する操作を保存します。ファイル操作は選択中の作業フォルダ内に制限されます。実行のOn／Offは上部のスイッチで変更できます。",
     workspace: "先に作業フォルダを選択してください。",
+    worktree:
+      "Gitリポジトリの作成・変更には、登録済みのworktreeを選択してください。現在のフォルダでは読み取りだけを許可できます。",
+    chooseWorktree: "既存のworktreeを選択",
     legacy:
       "以前の開発用設定があります。操作権限を確認して保存すると、アプリ同梱の実行環境へ切り替えます。",
     runtime: "自律実行の実行環境を読み込めません。アプリを更新または再インストールしてください。",
@@ -76,6 +80,9 @@ const COPY = {
     scope:
       "Save the operations allowed for autonomous execution. File operations stay within the selected workspace. Use the switch above to turn execution On or Off.",
     workspace: "Choose a workspace first.",
+    worktree:
+      "To create or change files in a Git repository, choose a registered linked worktree. You can allow read access in the current folder.",
+    chooseWorktree: "Choose an existing worktree",
     legacy:
       "Earlier development settings are present. Review permissions and save to switch to the runtime included with the app.",
     runtime: "The autonomous runtime could not be loaded. Update or reinstall the app.",
@@ -87,7 +94,13 @@ const COPY = {
   },
 };
 
-export function PiSetup({ cwd, language, onConfigured, onReadinessChange }: PiSetupProps) {
+export function PiSetup({
+  cwd,
+  language,
+  onConfigured,
+  onReadinessChange,
+  onPickFolder,
+}: PiSetupProps) {
   const copy = COPY[language];
   const setup = usePiSetup(cwd);
   const { status } = setup;
@@ -141,6 +154,7 @@ export function PiSetup({ cwd, language, onConfigured, onReadinessChange }: PiSe
     if (value === "login_timeout") return copy.timeout;
     if (value === "browser_unavailable") return copy.browser;
     if (value === "workspace_unavailable") return copy.workspace;
+    if (value === "worktree_required") return copy.worktree;
     if (value === "login_cancelled") return copy.cancelled;
     return copy.failed;
   };
@@ -171,6 +185,7 @@ export function PiSetup({ cwd, language, onConfigured, onReadinessChange }: PiSe
     status?.runtimeReady &&
     status.authenticated &&
     status.workspaceAvailable &&
+    (!write || status.workspaceWriteAllowed) &&
     status.models.some((item) => item.id === model) &&
     !active &&
     !setup.busy;
@@ -200,6 +215,16 @@ export function PiSetup({ cwd, language, onConfigured, onReadinessChange }: PiSe
           ) : null}
           {status?.legacyConfiguration ? <p>{copy.legacy}</p> : null}
           {!status?.workspaceAvailable ? <p>{copy.workspace}</p> : null}
+          {status?.workspaceAvailable && !status.workspaceWriteAllowed ? (
+            <div>
+              {error !== "worktree_required" ? <p>{copy.worktree}</p> : null}
+              {onPickFolder ? (
+                <button type="button" disabled={setup.busy} onClick={() => void onPickFolder()}>
+                  {copy.chooseWorktree}
+                </button>
+              ) : null}
+            </div>
+          ) : null}
           {status?.runtimeReady ? (
             <>
               <p>{status.authenticated ? copy.authPresent : copy.authMissing}</p>

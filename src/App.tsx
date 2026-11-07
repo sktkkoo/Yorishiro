@@ -6391,6 +6391,7 @@ function App() {
           language={appLanguage.resolved}
           cwd={cwd}
           onClose={handleCloseContinuityWorkspace}
+          onPickFolder={handlePickFolder}
           conversation={{
             available: voiceEntryAvailable,
             state: {
