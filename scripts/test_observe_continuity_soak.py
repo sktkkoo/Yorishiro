@@ -59,12 +59,49 @@ class ObserverTests(unittest.TestCase):
             records = [json.loads(line) for line in log.read_text().splitlines()]
             self.assertEqual(records[0]["kind"], "start")
             self.assertEqual(records[-1]["kind"], "summary")
-            self.assertGreaterEqual(records[-1]["samples"], 2)
+            # fsync or process scheduling may consume the whole 20ms budget.
+            # The CLI still emits its first observation and an accurate summary.
+            samples = [record for record in records if record["kind"] == "sample"]
+            self.assertGreaterEqual(len(samples), 1)
+            self.assertEqual(records[-1]["samples"], len(samples))
             self.assertEqual(state.read_text(), original)
             evidence = log.read_bytes()
             duplicate = subprocess.run(command, capture_output=True, text=True, timeout=5)
             self.assertNotEqual(duplicate.returncode, 0)
             self.assertEqual(log.read_bytes(), evidence)
+
+    def test_sampling_cadence_and_deadline_use_a_deterministic_clock(self):
+        with tempfile.TemporaryDirectory() as folder:
+            state = Path(folder) / "state.json"
+            log = Path(folder) / "evidence.jsonl"
+            original = json.dumps({"snapshot": {"revision": 4, "phase": "idle"},
+                                   "autoEnabled": True, "workRuns": []})
+            state.write_text(original)
+            clock = [0.0]
+
+            def advance(delay):
+                self.assertGreater(delay, 0)
+                clock[0] += delay
+                self.assertLessEqual(clock[0], 2.5)
+
+            command = [str(Path(observer.__file__)), "--state", str(state),
+                       "--pid", str(os.getpid()), "--output", str(log),
+                       "--duration-seconds", "2.5", "--interval-seconds", "1"]
+            with patch.object(sys, "argv", command), \
+                    patch.object(observer.time, "monotonic", side_effect=lambda: clock[0]), \
+                    patch.object(observer.time, "time", side_effect=lambda: 1000 + clock[0]), \
+                    patch.object(observer.time, "sleep", side_effect=advance) as sleep, \
+                    patch("builtins.print"):
+                observer.main()
+
+            records = [json.loads(line) for line in log.read_text().splitlines()]
+            samples = [record for record in records if record["kind"] == "sample"]
+            self.assertEqual([record["observedAt"] for record in samples],
+                             [1000000, 1001000, 1002000, 1002500])
+            self.assertEqual([call.args[0] for call in sleep.call_args_list], [1, 1, 0.5])
+            self.assertEqual(records[-1]["samples"], 4)
+            self.assertEqual(records[-1]["elapsedSeconds"], 2.5)
+            self.assertEqual(state.read_text(), original)
 
     def test_metadata_only_and_read_failure(self):
         with tempfile.TemporaryDirectory() as folder:

@@ -67,7 +67,10 @@ Git hooks (lefthook) are installed automatically via `npm install`.
 
 ## Development Workflow
 
-Feature work uses **git worktree**. Keep the primary directory as a shared baseline on `main`, and branch off a worktree per feature.
+Use **git worktree** when the user requests it or an applicable remembered
+preference calls for it. Worktrees are optional; do not require them for every
+feature or repository write. When using one, keep the primary directory as a
+shared baseline and work on a separate branch in the worktree.
 
 ```bash
 # Create a worktree
@@ -82,10 +85,8 @@ git worktree remove ../Yorishiro-<feature>
 git branch -d feat/<feature>
 ```
 
-Cases where working directly on `main` (without a worktree) is acceptable:
-
-- Single-file, single-line typo fixes
-- No parallel work in progress
+Without a worktree, use the existing checkout and follow the user's branch
+instructions. Check for concurrent work before editing shared files.
 
 ## Documentation
 
