@@ -117,11 +117,9 @@ import type { Body, EyeState, LipSyncSource, SpeechStateExpressionHandle } from 
 import { shouldTriggerStartleForToolFailure } from "./core/body/tool-failure-reflex";
 import { createSubsystemLog, DevLog, type DevLogEntry } from "./core/dev-log";
 import { collectGlobalPrompt } from "./core/global-prompt";
-import {
-  readContinuityPrompt,
-  registerContinuityFragment,
-} from "./core/global-prompt/continuity-fragment";
+import { registerContinuityFragment } from "./core/global-prompt/continuity-fragment";
 import { registerEnvironmentFragment } from "./core/global-prompt/environment-fragment";
+import { readVoiceContinuityPrompt } from "./core/global-prompt/voice-continuity";
 import { registerVoiceFragment } from "./core/global-prompt/voice-fragment";
 import { createLogAPI, LogBridge } from "./core/log-bridge";
 import { Perception } from "./core/perception";
@@ -4291,7 +4289,7 @@ function App() {
       const personaId = personaRegistry.getActivePersonaId();
       const instructions =
         personaRegistry.getActivePersona()?.thinking?.systemPromptAddition ?? null;
-      const continuity = await readContinuityPrompt(personaId).catch(() => "");
+      const continuity = await readVoiceContinuityPrompt(personaId).catch(() => "");
       return {
         personaId,
         instructions: [instructions, continuity].filter(Boolean).join("\n\n") || null,

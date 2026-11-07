@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { MAX_VOICE_CONTINUITY_UTF8_BYTES } from "../../core/global-prompt/voice-continuity";
 import type { ContinuitySnapshot } from "./types";
 import { useContinuityVoiceContext } from "./use-continuity-voice-context";
 
@@ -12,16 +13,6 @@ const native = vi.hoisted(() => ({
 }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: native.invoke }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: native.listen }));
-vi.mock("../../core/global-prompt/continuity-fragment", () => ({
-  continuityPrompt: (snapshot: ContinuitySnapshot) =>
-    JSON.stringify({
-      messages: snapshot.messages,
-      understandings: snapshot.understandings,
-      drafts: snapshot.drafts,
-      nextStep: snapshot.nextStep,
-    }),
-}));
-
 function snapshot(personaId: string, revision: number, text: string): ContinuitySnapshot {
   return {
     personaId,
@@ -121,6 +112,41 @@ describe("continuity updates in an active voice session", () => {
     view.unmount();
     await act(() => delivery.resolve());
     expect(onError).toHaveBeenCalledTimes(1);
+  });
+
+  it("bounds a huge history update without mutating evidence or repeating phase-only refreshes", async () => {
+    const prepareContext = vi.fn(async (_text: string) => {});
+    const onError = vi.fn();
+    const view = renderHook(() =>
+      useContinuityVoiceContext({ personaId: "yori-ja", active: true, prepareContext, onError }),
+    );
+    await waitFor(() => expect(prepareContext).toHaveBeenCalledOnce());
+    const huge: ContinuitySnapshot = {
+      ...snapshot("yori-ja", 2, ""),
+      messages: Array.from({ length: 40 }, (_, index) => ({
+        id: `evidence-${index}`,
+        role: "user" as const,
+        content: `記録${index}の先頭 ${"日本語の作業履歴😀🧑🏽‍💻".repeat(400)} 新しい優先事項${index}`,
+        source: "conversation" as const,
+        createdAt: index + 1,
+      })),
+    };
+    const original = JSON.stringify(huge);
+    act(() => native.callbacks[0]({ payload: huge }));
+    expect(prepareContext).toHaveBeenCalledTimes(2);
+    const prompt = prepareContext.mock.calls[1][0];
+    expect(new TextEncoder().encode(prompt).length).toBeLessThanOrEqual(
+      MAX_VOICE_CONTINUITY_UTF8_BYTES,
+    );
+    expect(prompt).toContain("evidence-39");
+    expect(prompt).toContain("新しい優先事項39");
+    expect(prompt).toContain("continuity_context");
+    expect(prompt).toContain("omitted");
+    expect(JSON.stringify(huge)).toBe(original);
+    act(() => native.callbacks[0]({ payload: { ...huge, revision: 3, phase: "thinking" } }));
+    expect(prepareContext).toHaveBeenCalledTimes(2);
+    expect(onError).not.toHaveBeenCalled();
+    view.unmount();
   });
 
   it("does not feed new voice transcripts back into Live while still delivering work progress", async () => {

@@ -23,6 +23,12 @@ describe("realtime diagnostics", () => {
       false,
     ],
     [new Error("Invalid voice: maple"), "realtime-start", "configuration", false],
+    [
+      new Error("each initial realtime item must not exceed 8192 estimated tokens"),
+      "realtime-start",
+      "configuration",
+      false,
+    ],
   ] as const)("classifies %s", (error, stage, category, retryable) => {
     expect(classifyRealtimeFailure(error, stage)).toEqual({ category, retryable });
   });

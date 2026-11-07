@@ -17,6 +17,7 @@ import {
 } from "../agent-state-expression/controller";
 import type { StateExpressionSchedulerCallbacks } from "../agent-state-expression/scheduler";
 import { mediaPermissionError } from "../media-permissions";
+import { realtimeContextParts } from "./context-items";
 import {
   appendRealtimeDiagnostic,
   classifyRealtimeFailure,
@@ -281,14 +282,17 @@ export class CodexRealtimeClient implements LipSyncSource {
     const delivery = (async () => {
       if (sameOwner) await previous.delivery.catch(() => {});
       this.assertActiveThreadOwner(attempt, threadId);
-      await this.request("thread/realtime/appendText", {
-        threadId,
-        role: "developer",
-        text:
-          "Host context refresh only. Do not greet, speak, or start work because this arrived. Use this latest conversation context when relevant to the user's next turn.\n" +
-          text,
-      });
-      this.assertActiveThreadOwner(attempt, threadId);
+      const prefix =
+        "Host context refresh only. Do not greet, speak, or start work because this arrived. Use this latest conversation context when relevant to the user's next turn.\n";
+      for (const part of realtimeContextParts(text, prefix)) {
+        this.assertActiveThreadOwner(attempt, threadId);
+        await this.request("thread/realtime/appendText", {
+          threadId,
+          role: "developer",
+          text: part,
+        });
+        this.assertActiveThreadOwner(attempt, threadId);
+      }
     })();
     // Keep uncertain deliveries too; a rerender must not silently replay them.
     this.continuityContext = { attempt, threadId, text, delivery };
@@ -925,7 +929,13 @@ export class CodexRealtimeClient implements LipSyncSource {
         model: CODEX_REALTIME_V3_MODEL,
         voice,
         includeStartupContext: startupContextIncluded,
-        ...(initialItems ? { initialItems } : {}),
+        ...(initialItems
+          ? {
+              initialItems: initialItems.flatMap((item) =>
+                realtimeContextParts(item.text).map((text) => ({ ...item, text })),
+              ),
+            }
+          : {}),
         ...(prompt ? { prompt } : {}),
         ...(disableDelegationAckFiller ? { delegationAckFiller: false } : {}),
         transport: { type: "webrtc", sdp },
