@@ -2,71 +2,40 @@
 
 This private package implements the production entry and JSONL runtime for the native Pi adapter. It uses pinned `@earendil-works/pi-durable`, `pi-ai`, Chord and schema libraries at **1.5.0**. It does not launch Codex CLI or Claude Code, copy their credentials, or provide a production fake-model fallback. The running Yorishiro app is not switched by adding these files.
 
-## Configuration
+## Installation and first use
 
-Node **22.19.0 or newer** is required. The native host passes every option explicitly:
+Released macOS apps contain a pinned Node **22.23.4** sidecar and this package's production dependencies. Users do not install Node, npm, a source checkout, Codex CLI, or Claude Code for the Pi execution route. The application resolves the sidecar and worker from its own signed bundle and checks the runtime manifest before use.
 
-```sh
-node /absolute/pi-worker/main.mjs \
-  --session-dir /absolute/private-state \
-  --cwd /absolute/workspace \
-  --provider openai \
-  --model '<explicit model from the pinned catalog>' \
-  --permissions-json '{"read":true,"write":false,"commands":[]}'
-```
+Open Pi setup from the autonomous execution view, choose the account/model and workspace permissions, and complete the browser login yourself. The application opens the official OpenAI authorization page and records only login state in the UI; tokens stay in the user's private data directory. Authentication does not silently switch to API-key billing.
 
-The entry supports `openai` and `anthropic`. Authentication is explicit: `--auth-mode apiKey` (also the default for older callers) requires the selected provider's `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`. `--auth-mode oauth --auth-path /absolute/private/auth.json` accepts only `openai` and requires a Pi-owned OAuth credential. OAuth mode disables environment API-key resolution entirely; a missing OAuth credential never switches to API billing. There is no CLI-session or fake-model fallback. Catalog validation is local and makes no model/network request. Unknown models are rejected instead of substituted. An actual model call starts only after an authorized `submit` or `resume` command.
-
-Missing/invalid configuration, missing authentication, unsupported providers, and unavailable catalog models emit a fixed `startup_error` code and exit before opening session storage. Production `main.mjs` rejects `--fixture`. Exception messages and credential values are not emitted in protocol diagnostics.
-
-The native configuration contains `nodePath`, `workerEntry`, `provider`, `model`, `authMode`, `authPath` and explicit `permissions`. These identities and capabilities can be persisted; credentials must not be placed in command arguments or that metadata. Provider/model/auth-mode/auth-path/policy/workspace identity is stored before model work and returned in `ready`. Missing authentication metadata in a legacy identity means `apiKey` with a null path only; it never adopts OAuth implicitly. Reopening with another identity is rejected; an existing Pi database without that identity is not silently adopted. The host must retain a pending request's original target while recovering it.
-
-OAuth example (requires a previously authorized Pi-owned login; this worker never starts login):
-
-```sh
-node runtime/pi-worker/main.mjs \
-  --session-dir /absolute/session --cwd /absolute/workspace \
-  --provider openai --model gpt-6.1-sol \
-  --auth-mode oauth --auth-path /absolute/private/pi/auth.json \
-  --permissions-json '{"read":true,"write":false,"commands":[]}'
-```
-
-`credential-store.mjs` implements Pi's public CredentialStore JSON schema, compatible with `experiments/pi-provider`'s `auth.json` and `installation.json`. It neither imports experiment code nor reads CLI credential locations. Login uses a stable installation UUID and `agentName:Yorishiro`; those are Pi OAuth registration arguments, not ordinary model-request fields. The store's `deviceId()` is async; a login caller preloads it before supplying Pi's synchronous `getDeviceId` callback. No tokens need to be copied to use the same store after review.
-
-The private directory and final files are checked against symlinks and group/other access. Atomic replacement uses 0600 same-directory temporary files, file fsync, rename and directory fsync. A separate `provider-owner.sqlite` transaction serializes each read/list/modify/delete across cooperating processes, and process-local queues serialize all stores for the same canonical directory. Unlike a lifetime account lock, idle workers for different workspaces can share the account. Acquisition retries asynchronously with cancellation and a 10-second contention limit; a `modify` lock covers the entire async refresh callback and atomic replacement. A cooperating callback must honor its cancellation signal: the store never releases a lock while that callback may still mutate credentials. If a callback returns a rotated credential as cancellation races completion, the result is persisted to avoid losing the valid token. Failed callbacks release the lock without replacing it; process death releases the SQLite lock. An existing development login driver using the older lifetime lock blocks store operations until that driver exits; it should later adopt this shared module.
-
-The worker closes the credential store only after the harness has confirmed closure. If harness closure fails, its owner lease and model resources remain retained while the process lives. Read/list do not log credentials; protocol failures report fixed categories. Static readiness does not prove token validity, user entitlement, or provider availability, and no login/token refresh/model request was made by the offline tests.
-
-The auth directory is excluded from read/write tools even when the workspace contains it, including canonical symlink aliases. Fixed commands still run with the OS user's privileges; this file-tool exclusion is not an OS sandbox or a guarantee against arbitrary other programs bypassing the cooperative ownership protocol.
-
-`diagnose.mjs` understands both explicit auth modes. OAuth readiness reads only a private file's provider/type metadata through `credentialMetadata`, never creates auth directories or lock databases, never refreshes tokens, and never uses an inherited API key as a fallback. Atomic replacement makes this a read-only snapshot; it can become stale immediately. An expired OAuth credential still counts as present. Wrong credential type or malformed/private-file failures produce a fixed `authentication_invalid` category with no credential body in diagnostics.
-
-## Native host selection
-
-After building a native host with the Pi routing command, the presence of `~/.yorishiro/continuity/pi-worker.json` selects the dedicated worker independently of the terminal tab. The frontend reads that preference on startup and window focus. It waits for the host response before selecting a new route. Malformed or inaccessible Pi configuration remains an explicit error instead of selecting another CLI. An older running host without the routing command keeps its existing route until a compatible native build is running.
-
-The file must contain explicit absolute paths and a model from the pinned provider catalog, for example:
+The managed preference file is path-free:
 
 ```json
 {
-  "nodePath": "/absolute/path/to/node",
-  "workerEntry": "/absolute/path/to/Yorishiro/runtime/pi-worker/main.mjs",
+  "version": 2,
+  "enabled": true,
   "provider": "openai",
-  "model": "<explicit model from the pinned catalog>",
-  "authMode": "apiKey",
+  "model": "gpt-6.1-sol",
+  "authMode": "oauth",
   "permissions": {
     "read": true,
     "write": false,
-    "commands": []
+    "commands": ["workspace-info", "validate-json"]
   }
 }
 ```
 
-This is a template, not an installed configuration. Creating the file selects Pi for future work; do so only when the intended model, credentials, workspace and permissions have been chosen. For API-key mode, the selected key must be available in the native app process environment. For OAuth, explicitly set `authMode` to `oauth` and `authPath` to the absolute path of the private Pi-owned credential file; only the `openai` provider accepts this mode. Neither a key nor a token belongs in the native configuration file. This source package does not install a Node runtime or dependencies into a released app; install its pinned dependencies before using an absolute source entry.
+The current workspace comes from the app's selected folder. The OS user-data location determines authentication and private session storage. Runtime executables, worker entries and command arguments are resolved internally; they are not user-entered paths. Managed command presets are implemented by the bundled runtime. Permission controls remain an application boundary, not an OS sandbox.
 
-Native execution and offline diagnosis use the same strict authentication metadata parser and pass the selected mode and path to their respective entries. A worker must echo the same mode/path in `ready`; a mismatch cannot silently select another authentication mechanism. Old saved targets without authentication metadata retain API-key mode and no path. Only the mode and reference are persisted in native targets and outbox evidence; credential contents are not copied.
+Old absolute-path configurations and targets are supported only for recovery/migration compatibility. Previously accepted requests keep their original backend and immutable admission evidence. Updating configuration does not authorize resending them under another account, workspace or request ID. New managed targets persist portable runtime/workspace identities rather than executable or authentication paths.
 
-An already-dispatched request keeps its stored backend and target even after the configuration or terminal selection changes. Removing Pi configuration changes future route selection, not the identity of pending work or its recovery target. A stored Pi target without explicit permissions remains readable but cannot start a production worker.
+## Development and packaging
+
+From a source checkout, run `npm ci` and `npm run prepare:pi-runtime`. Tauri's development and build hooks run this preparation automatically. It downloads a pinned official Node archive, verifies its committed SHA-256, and stages the production-only worker with lockfile-based dependencies. A complete verified stage is reusable offline. Generated binaries and dependencies are ignored by Git.
+
+Cross-builds use `npm run prepare:pi-runtime -- --target <Rust-target>`; Tauri also supplies the target to the build hook. The release workflow prepares Apple Silicon and Intel independently. See [runtime distribution](../../docs/pi-runtime-distribution.md) for manifest, licensing, signing and verification details.
+
+The production entry still accepts explicit internally resolved arguments for process ownership and protocol tests. Unsupported provider/model/authentication, malformed permissions and missing runtime resources fail explicitly. Production never imports a fake provider. The login entry lives in this package and does not depend on the isolated experiments.
 
 ## Execution and evidence
 
@@ -104,7 +73,7 @@ All three policy keys are required: `{read, write, commands}`. Model tools are `
 
 Commands choose only a configured `commandId`; the model supplies no shell text, executable, arguments or environment. Executables and argv are fixed by the host's policy, and command children receive a minimal environment without inherited provider credentials. Cancellation and deadlines terminate only the command's owned process/group.
 
-A host command may set `timeoutMs` to an integer from 1 to 300000. Omitting it keeps the 30000 ms default and the existing permission identity. The model cannot override this value. For a fixed Rust verification command, the host can use 120000 ms and invoke Cargo with `CARGO_INCREMENTAL=0`; other commands keep their existing deadline. Cancellation and output limits still apply.
+Managed setup offers only the bundled `workspace-info` and `validate-json` commands. They use the bundled Node executable and fixed arguments, without running mutable project scripts or requiring a system toolchain. Legacy accepted requests retain their original command policy for recovery; the model cannot expand that policy. Cancellation and output limits still apply.
 
 These controls are an application tool boundary, **not OS isolation**. A permitted command can perform whatever its executable and project code do with the OS user's privileges. In particular, allowing model writes to project code and then running that mutable code is not equivalent to sandboxing it. Production deployment still needs the host's chosen trust/isolation policy, process supervision and signed runtime packaging.
 
@@ -121,4 +90,4 @@ Tests make **no real provider calls**. Configuration tests validate pinned stati
 
 Actual Pi, SQLite, filesystem operations and subprocesses are used to check passive recovery, duplicate admission, stored identity mismatch, and a read operation. Another actual Harness test creates an artifact, edits it, executes a fixed verification command and returns its report, then reopens the same request with zero new model calls and one command effect. Workspace tests exercise escapes, symlinks, denied operations, stale content, command argv, size/deadline/cancellation limits and owned descendant cleanup. Test artifacts are retained in temporary directories with diagnostics pointing to their evidence.
 
-These tests do not establish real-model reasoning quality, provider authentication success, arbitrary external exactly-once effects, native distribution, 12-hour/24-cycle operation, or a user's 95-point quality evaluation. The application must still provide its backend/model/policy selection and perform that live acceptance run.
+These tests do not establish real-model reasoning quality, provider authentication success, arbitrary external exactly-once effects, 12-hour/24-cycle operation, or a user's 95-point quality evaluation. The application provides account, model and permission setup; packaged-app login and live acceptance remain separate checks.

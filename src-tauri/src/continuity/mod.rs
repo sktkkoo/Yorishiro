@@ -5,7 +5,10 @@ mod executor;
 mod pi_context_archive;
 mod pi_diagnostics;
 mod pi_executor;
+mod pi_installation;
 mod pi_outbox;
+pub(crate) mod pi_setup;
+mod pi_target;
 mod storage;
 mod transport;
 pub mod types;
@@ -482,7 +485,9 @@ fn execution_backend_preference(
 ) -> Result<Option<ExecutionBackend>, String> {
     match std::fs::symlink_metadata(home.join("continuity/pi-worker.json")) {
         Ok(_) => Ok(Some(ExecutionBackend::Pi)),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            Ok(Some(ExecutionBackend::Pi))
+        }
         Err(_) => Err("Could not inspect autonomous execution configuration.".into()),
     }
 }
@@ -495,11 +500,12 @@ pub fn continuity_execution_backend(window: Window) -> Result<Option<ExecutionBa
 
 #[tauri::command]
 pub async fn continuity_pi_diagnostics(
+    app: AppHandle,
     window: Window,
     cwd: Option<String>,
 ) -> Result<pi_diagnostics::Diagnostics, String> {
     check_window(&window)?;
-    pi_diagnostics::probe(&home()?, cwd.as_deref()).await
+    pi_diagnostics::managed_probe(&app, &home()?, cwd.as_deref()).await
 }
 
 #[tauri::command]
@@ -928,6 +934,25 @@ fn start(app: AppHandle, state: ContinuityState, persona_id: String) {
         let Some(session) = sessions.get_mut(&key) else {
             return;
         };
+        let accepted = session
+            .saved
+            .pending_execution
+            .as_ref()
+            .is_some_and(|work| work.dispatch_attempted);
+        let wants_pi = session
+            .context
+            .as_ref()
+            .is_some_and(|context| context.execution_backend == Some(ExecutionBackend::Pi));
+        if wants_pi && !accepted && !session.context.as_ref().is_some_and(managed_setup_enabled) {
+            session.queued = false;
+            session.queued_automatically = false;
+            session.saved.snapshot.phase = "idle".into();
+            session.saved.snapshot.error = None;
+            if let Ok(snapshot) = persist(session) {
+                emit(&app, &snapshot);
+            }
+            return;
+        }
         if session.running || !session.queued {
             return;
         }
@@ -989,6 +1014,7 @@ fn start(app: AppHandle, state: ContinuityState, persona_id: String) {
                 Ok(Some(work)) => run_execution(
                     &app,
                     work.target.clone(),
+                    &work.context,
                     executor::Request {
                         id: work.request_id.clone(),
                         prompt: work.prompt.clone(),
@@ -1139,6 +1165,14 @@ fn start(app: AppHandle, state: ContinuityState, persona_id: String) {
             emit(&app, &published);
         }
     });
+}
+
+fn managed_setup_enabled(context: &Context) -> bool {
+    let Ok(home) = home() else {
+        return false;
+    };
+    matches!(pi_installation::load(&home), Ok(pi_installation::ConfigState::Managed(settings)) if settings.enabled && settings.workspace_key.as_deref().is_some_and(|key| context.cwd.as_deref().is_some_and(|cwd| pi_target::workspace_key(std::path::Path::new(cwd)).ok().as_deref() == Some(key))))
+        && pi_installation::auth_path(&home).is_file()
 }
 
 fn record_work_run(session: &mut Session, mut run: WorkRun) {
@@ -1305,6 +1339,7 @@ fn retire_terminal_execution(
 async fn run_execution(
     app: &AppHandle,
     target: ExecutionTarget,
+    context: &Context,
     request: executor::Request,
     cancel: CancellationToken,
     on_dispatch: impl Fn() -> Result<(), String>,
@@ -1313,7 +1348,25 @@ async fn run_execution(
         ExecutionTarget::Codex(target) => {
             executor::run(app, target, request, cancel, on_dispatch).await
         }
-        ExecutionTarget::Pi(target) => pi_executor::run(target, request, cancel, on_dispatch).await,
+        ExecutionTarget::Pi(target) => {
+            let target = if target.managed.is_some() {
+                if request.allow_dispatch
+                    && !pi_setup::execution_ready(app, &home()?, context.cwd.as_deref()).await?
+                {
+                    return Err("Complete autonomous execution setup before sending work.".into());
+                }
+                let runtime = pi_installation::runtime_paths(app)?;
+                pi_installation::verify_node(&runtime).await?;
+                let cwd = context
+                    .cwd
+                    .as_deref()
+                    .ok_or("The original Pi workspace is unavailable.")?;
+                target.hydrate_runtime(&runtime, &home()?, std::path::Path::new(cwd))?
+            } else {
+                target
+            };
+            pi_executor::run(target, request, cancel, on_dispatch).await
+        }
     }
 }
 
@@ -1323,7 +1376,7 @@ fn selected_execution_target(
     context: &Context,
 ) -> Result<Option<ExecutionTarget>, String> {
     if context.execution_backend == Some(ExecutionBackend::Pi) {
-        return configured_pi_target(context, pi_generation(&session.saved))
+        return configured_pi_target(app, context, pi_generation(&session.saved))
             .map(ExecutionTarget::Pi)
             .map(Some);
     }
@@ -1348,30 +1401,51 @@ fn pi_generation(saved: &Saved) -> usize {
 }
 
 fn configured_pi_target(
+    app: &AppHandle,
     context: &Context,
     generation: usize,
 ) -> Result<pi_executor::Target, String> {
     use sha2::{Digest, Sha256};
     let home = home()?;
-    let config = std::fs::read_to_string(home.join("continuity/pi-worker.json")).map_err(|_| {
-        "Pi worker/model is not configured. Configure the dedicated worker before selecting Pi."
-            .to_owned()
-    })?;
-    let config: serde_json::Value = serde_json::from_str(&config)
-        .map_err(|_| "Could not read Pi worker configuration.".to_owned())?;
+    let pi_installation::ConfigState::Managed(settings) = pi_installation::load(&home)? else {
+        return Err("Complete autonomous execution setup in the app before starting Pi.".into());
+    };
+    if !settings.enabled {
+        return Err("Autonomous execution setup is not enabled.".into());
+    }
+    let runtime = pi_installation::runtime_paths(app)?;
     let cwd = context
         .cwd
         .as_deref()
         .ok_or("Pi workspace is unavailable.")?;
     let cwd = std::fs::canonicalize(cwd).map_err(|_| "Pi workspace is unavailable.")?;
     let cwd = cwd.to_str().ok_or("Invalid Pi workspace path.")?;
-    let key = format!("{}\0{cwd}", storage::identity(&context.persona_id));
-    let key = format!("{:x}", Sha256::digest(key.as_bytes()));
-    let mut session_dir = home.join("continuity/pi").join(key);
-    if generation > 0 {
-        session_dir = session_dir.join("generations").join(generation.to_string());
+    if settings.workspace_key.as_ref()
+        != Some(&pi_target::workspace_key(std::path::Path::new(cwd))?)
+    {
+        return Err("Review permissions for the selected workspace before starting Pi.".into());
     }
-    pi_executor::Target::from_config(&config, cwd, &session_dir)
+    // A new namespace prevents adopting a legacy externally configured worker.
+    let family = format!(
+        "managed-v2\0{}\0{cwd}",
+        storage::identity(&context.persona_id)
+    );
+    let family = format!("{:x}", Sha256::digest(family.as_bytes()));
+    let policy = serde_json::to_string(&serde_json::json!({"provider":settings.provider,"model":settings.model,"authMode":settings.auth_mode,"permissions":settings.permissions,"runtime":runtime.version}))
+        .map_err(|_| "Could not preserve the managed Pi policy.")?;
+    let key = format!(
+        "{:x}",
+        Sha256::digest(format!("{family}\0{policy}").as_bytes())
+    );
+    pi_executor::Target::from_managed(
+        &settings,
+        &runtime,
+        &home,
+        std::path::Path::new(cwd),
+        family,
+        key,
+        generation,
+    )
 }
 
 /// Finish only Pi children this process owns before the native host exits.
@@ -1417,6 +1491,13 @@ fn prepare_execution(
                 return Err("The Main Agent is not ready to recover autonomous work.".into());
             };
             if work.target != target {
+                if matches!(work.target, ExecutionTarget::Pi(_))
+                    && matches!(target, ExecutionTarget::Pi(_))
+                {
+                    let replacement = replace_undispatched_context(session, context, target)?;
+                    emit(app, &persist(session)?);
+                    return Ok(Some(replacement));
+                }
                 session.saved.pending_execution.as_mut().unwrap().target = target;
                 emit(app, &persist(session)?);
             }
@@ -1540,9 +1621,9 @@ fn replace_undispatched_context(
         to_request_id: replacement.request_id.clone(),
         at: now(),
         reason: "undispatched_context_compaction".into(),
-        from_session_dir: Some(previous.session_dir.clone()),
+        from_session_dir: Some(previous.audit_storage_ref()),
         to_session_dir: match &replacement.target {
-            ExecutionTarget::Pi(value) => value.session_dir.clone(),
+            ExecutionTarget::Pi(value) => value.audit_storage_ref(),
             _ => unreachable!(),
         },
     });
@@ -1589,6 +1670,7 @@ fn record_generation_handoff(
     target: &pi_executor::Target,
     request_id: &str,
 ) {
+    let storage_ref = target.audit_storage_ref();
     let path = std::path::Path::new(&target.session_dir);
     let Some(generations) = path
         .parent()
@@ -1601,12 +1683,13 @@ fn record_generation_handoff(
         .context_handoffs
         .last()
         .map(|entry| entry.to_session_dir.clone())
-        .or_else(|| {
-            generations
+        .or_else(|| match &target.managed {
+            Some(identity) => Some(identity.audit_storage_ref(0)),
+            None => generations
                 .parent()
-                .map(|base| base.to_string_lossy().into_owned())
+                .map(|base| base.to_string_lossy().into_owned()),
         });
-    if previous.as_deref() == Some(target.session_dir.as_str()) {
+    if previous.as_deref() == Some(storage_ref.as_str()) {
         return;
     }
     session.saved.context_handoffs.push(ContextHandoff {
@@ -1623,7 +1706,7 @@ fn record_generation_handoff(
         at: now(),
         reason: "settled_context_rotation".into(),
         from_session_dir: previous,
-        to_session_dir: target.session_dir.clone(),
+        to_session_dir: storage_ref,
     });
 }
 
@@ -1709,6 +1792,17 @@ fn mark_execution_dispatched(session: &mut Session, request_id: &str) -> Result<
         .pending_execution
         .as_mut()
         .ok_or("Work was superseded before dispatch.")?;
+    if let ExecutionTarget::Pi(target) = &work.target {
+        if let Some(identity) = &target.managed {
+            let pi_installation::ConfigState::Managed(settings) = pi_installation::load(&home()?)?
+            else {
+                return Err("Pi setup changed before dispatch; no request was sent.".into());
+            };
+            if !identity.matches_settings(&settings) {
+                return Err("Pi permissions changed before dispatch; no request was sent.".into());
+            }
+        }
+    }
     if work.request_id != request_id
         || work.dispatch_attempted
         || (!session.saved.auto_enabled

@@ -4,6 +4,7 @@ import { createModels } from "@earendil-works/pi-ai";
 import { anthropicProvider } from "@earendil-works/pi-ai/providers/anthropic";
 import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
 import { PiCredentialStore } from "./credential-store.mjs";
+import { validateManagedIdentity } from "./managed-identity.mjs";
 import { validatePermissions } from "./workspace-tools.mjs";
 
 export class StartupError extends Error {
@@ -15,7 +16,7 @@ export class StartupError extends Error {
 
 export function parseOptions(args) {
   const required = ["session-dir", "cwd", "provider", "model", "permissions-json"];
-  const names = new Set([...required, "auth-mode", "auth-path"]);
+  const names = new Set([...required, "auth-mode", "auth-path", "managed-identity-json"]);
   const values = {};
   for (let index = 0; index < args.length; index += 2) {
     const key = args[index]?.slice(2);
@@ -62,7 +63,7 @@ export function parseOptions(args) {
     (authMode === "apiKey" && authPath !== undefined)
   )
     throw new StartupError("configuration_invalid");
-  return {
+  const options = {
     cwd,
     sessionDir: resolve(values["session-dir"]),
     provider: values.provider,
@@ -71,6 +72,17 @@ export function parseOptions(args) {
     authMode,
     authPath: authPath ?? null,
   };
+  if (values["managed-identity-json"] !== undefined) {
+    try {
+      options.managedIdentity = validateManagedIdentity(
+        JSON.parse(values["managed-identity-json"]),
+        options,
+      );
+    } catch {
+      throw new StartupError("configuration_invalid");
+    }
+  }
+  return options;
 }
 
 // Resolve only the selected authentication mode. OAuth receives a Pi-owned

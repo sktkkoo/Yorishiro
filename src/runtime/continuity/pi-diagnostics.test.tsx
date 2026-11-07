@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, renderHook, screen } from "@testing-library/react";
+import { useEffect } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ContinuityWorkspace,
@@ -9,6 +10,14 @@ import { loadPiDiagnostics, parsePiDiagnostics, usePiDiagnostics } from "./pi-di
 
 const native = vi.hoisted(() => ({ invoke: vi.fn(), retry: vi.fn() }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: native.invoke }));
+// These diagnostics scenarios already have an authorized workspace. First-run
+// setup and permission review have their own component/bridge coverage.
+vi.mock("../../components/PiSetup", () => ({
+  PiSetup: ({ onReadinessChange }: { onReadinessChange?: (ready: boolean) => void }) => {
+    useEffect(() => onReadinessChange?.(true), [onReadinessChange]);
+    return null;
+  },
+}));
 vi.mock("./client", () => ({
   useContinuity: () => ({ snapshot: null, error: "Existing worker is unavailable" }),
   retryContinuity: native.retry,

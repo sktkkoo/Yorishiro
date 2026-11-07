@@ -11,9 +11,16 @@ function hasEnabledEntitlement(output, entitlement) {
   return new RegExp(`<key>\\s*${escaped}\\s*</key>\\s*<true\\s*/>`).test(output);
 }
 
-export function macosSignatureErrors(output, { requireDeveloperId = false } = {}) {
+export function macosSignatureErrors(
+  output,
+  {
+    requireDeveloperId = false,
+    requireStapledTicket = true,
+    requiredEntitlements = REQUIRED_MACOS_ENTITLEMENTS,
+  } = {},
+) {
   const errors = [];
-  const missingEntitlements = REQUIRED_MACOS_ENTITLEMENTS.filter(
+  const missingEntitlements = requiredEntitlements.filter(
     (entitlement) => !hasEnabledEntitlement(output, entitlement),
   );
 
@@ -43,7 +50,7 @@ export function macosSignatureErrors(output, { requireDeveloperId = false } = {}
     if (!/^Timestamp=.+$/m.test(output)) {
       errors.push("The secure signing timestamp is missing.");
     }
-    if (!/^Notarization Ticket=stapled$/m.test(output)) {
+    if (requireStapledTicket && !/^Notarization Ticket=stapled$/m.test(output)) {
       errors.push("The notarization ticket is not stapled to the app.");
     }
     if (/^Signature=adhoc$/m.test(output)) {

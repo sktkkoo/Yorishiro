@@ -180,6 +180,7 @@ mod tests {
 
     fn target(storage: &Path) -> Target {
         Target {
+            managed: None,
             cwd: storage.to_str().unwrap().into(),
             session_dir: storage.to_str().unwrap().into(),
             node_path: "/runtime/node".into(),

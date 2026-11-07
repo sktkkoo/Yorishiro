@@ -22,12 +22,12 @@
 
 ## 3. 12時間・24回の通常運転
 
-新しい出力ファイルを使って観測する。実アプリの接続先と実行ファイルに置き換える。
+新しい出力ファイルを使って観測する。実アプリのPIDと接続先に置き換える。出力先は実行ディレクトリからの相対パスで指定できる。
 
 ```sh
 python3 -B scripts/observe-continuity-soak.py \
-  --executable /absolute/path/to/yorishiro \
-  --output /absolute/new-soak.jsonl \
+  --pid <native-app-pid> \
+  --output new-soak.jsonl \
   --duration-seconds 43260 \
   --live-mcp-url http://127.0.0.1:18743/mcp
 ```
@@ -41,7 +41,7 @@ python3 -B scripts/observe-continuity-soak.py \
 既存ログの再集計は読み取り専用で行う。
 
 ```sh
-python3 -B scripts/observe-continuity-soak.py --summarize /absolute/new-soak.jsonl
+python3 -B scripts/observe-continuity-soak.py --summarize new-soak.jsonl
 ```
 
 `sampledWindowSeconds`、`uniqueCompletedAutonomousRequests`、backend別件数、実ツール進展、最長観測間隔、エラー、live未確認とdisk/live差異を確認する。集計の `goalAchieved: false` は意図的で、ログの回数から品質や無停止を自動認定しない。

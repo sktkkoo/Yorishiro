@@ -42,7 +42,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - uses: dtolnay/rust-toolchain@stable
@@ -54,6 +54,9 @@ jobs:
           workspaces: src-tauri
 
       - run: npm ci
+
+      - name: Prepare bundled Pi runtime
+        run: npm run prepare:pi-runtime
 
       - name: Generate Rust build artifacts (bundled_examples_gen.rs)
         run: cargo build --manifest-path src-tauri/Cargo.toml
@@ -96,6 +99,9 @@ jobs:
 
       - run: npm ci
 
+      - name: Prepare bundled Pi runtime
+        run: npm run prepare:pi-runtime
+
       - name: Install pinned Pi worker and integration fixture dependencies
         run: |
           npm ci --prefix runtime/pi-worker --ignore-scripts
@@ -106,6 +112,8 @@ jobs:
           npm --prefix runtime/pi-worker test
           npm --prefix experiments/pi-harness test
           npm --prefix experiments/pi-provider test
+
+      - run: npm run test:pi-package
 
       - run: npm run test:run
 

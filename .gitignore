@@ -61,3 +61,9 @@ docs/api/
 # Private working notes and autonomous-work runtime settings
 WORKING_AGREEMENT.draft.md
 .yorishiro/autonomy/
+
+# Generated pinned Pi runtime and production resources
+src-tauri/binaries/yorishiro-pi-node-*
+src-tauri/resources/pi-worker/
+src-tauri/resources/.pi-worker-*
+src-tauri/resources/pi-worker.previous-*

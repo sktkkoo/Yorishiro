@@ -23,8 +23,7 @@ const WORK_TIMEOUT: Duration = Duration::from_secs(60 * 60);
 const MAX_FRAME: usize = 1024 * 1024;
 const DIGEST_ALGORITHM: &str = "sha256-json-envelope-v1";
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[derive(Clone, Debug)]
 pub(super) struct Target {
     pub cwd: String,
     pub session_dir: String,
@@ -32,14 +31,10 @@ pub(super) struct Target {
     pub worker_entry: String,
     pub provider: String,
     pub model: String,
-    #[serde(default, skip_serializing_if = "AuthMode::is_api_key")]
     pub auth_mode: AuthMode,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub auth_path: Option<String>,
-    /// Older saved targets remain readable but cannot launch production
-    /// workers until the host configures permissions explicitly.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub permissions: Option<Permissions>,
+    pub managed: Option<Box<super::pi_target::ManagedTarget>>,
 }
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
@@ -52,10 +47,6 @@ pub(super) enum AuthMode {
 }
 
 impl AuthMode {
-    fn is_api_key(&self) -> bool {
-        *self == Self::ApiKey
-    }
-
     fn validate(self, provider: &str, path: Option<&str>) -> Result<(), String> {
         match (self, path) {
             (Self::ApiKey, None) => Ok(()),
@@ -84,6 +75,7 @@ impl AuthMode {
 
 /// Only non-secret metadata is accepted here. Reading or refreshing a
 /// credential belongs to the selected worker, never to native state storage.
+#[cfg(test)]
 pub(super) fn auth_configuration(
     config: &Value,
     provider: &str,
@@ -154,6 +146,7 @@ impl Permissions {
 
 impl Target {
     /// Configuration contains identities and paths, never credential material.
+    #[cfg(test)]
     pub(super) fn from_config(
         config: &Value,
         cwd: &str,
@@ -170,6 +163,7 @@ impl Target {
         let provider = field("provider")?;
         let (auth_mode, auth_path) = auth_configuration(config, &provider)?;
         let target = Self {
+            managed: None,
             cwd: cwd.into(),
             session_dir: session_dir
                 .to_str()
@@ -195,7 +189,7 @@ impl Target {
         Ok(target)
     }
 
-    fn validate(&self) -> Result<(), String> {
+    pub(super) fn validate(&self) -> Result<(), String> {
         for path in [
             &self.cwd,
             &self.session_dir,
@@ -222,6 +216,10 @@ impl Target {
         }
         Ok(())
     }
+}
+
+fn isolate_worker_environment(command: &mut Command) {
+    command.env_remove("NODE_OPTIONS").env_remove("NODE_PATH");
 }
 
 type Reply = Result<Value, String>;
@@ -308,7 +306,15 @@ impl Worker {
             target
                 .auth_mode
                 .apply_args(&mut command, target.auth_path.as_deref());
+            if let Some(identity) = &target.managed {
+                command.arg("--managed-identity-json").arg(
+                    serde_json::to_string(identity).map_err(|_| "Invalid managed Pi identity.")?,
+                );
+            }
         }
+        // A verified bundled runtime must not load shell-installed preload
+        // hooks or modules before the worker's own entry point.
+        isolate_worker_environment(&mut command);
         let mut child = command
             .spawn()
             .map_err(|_| "Could not start the configured Pi worker.")?;
@@ -561,6 +567,13 @@ async fn read_record(
 }
 
 fn validate_ready(value: &Value, target: &Target, fixture: bool) -> Result<(), String> {
+    if let Some(identity) = &target.managed {
+        if value.get("managedIdentity")
+            != Some(&serde_json::to_value(identity).map_err(|_| "Invalid managed Pi identity.")?)
+        {
+            return Err("The managed Pi worker did not confirm its saved identity.".into());
+        }
+    }
     if value.get("protocol").and_then(Value::as_u64) != Some(2)
         || value.get("fixture").and_then(Value::as_bool) != Some(fixture)
         || value.get("provider").and_then(Value::as_str) != Some(target.provider.as_str())
@@ -614,7 +627,14 @@ fn validate_live_worker_configuration(
     requested: &Target,
     requested_fixture: bool,
 ) -> Result<(), String> {
-    if owned != requested || owned_fixture != requested_fixture {
+    if owned != requested
+        || owned_fixture != requested_fixture
+        || owned.node_path != requested.node_path
+        || owned.worker_entry != requested.worker_entry
+        || owned.cwd != requested.cwd
+        || owned.auth_path != requested.auth_path
+        || owned.permissions != requested.permissions
+    {
         return Err("Pi storage already has a live owned worker with different configuration; recover or shut down that owner before changing configuration.".into());
     }
     Ok(())
@@ -694,9 +714,14 @@ fn generation_family(directory: &Path) -> Option<&Path> {
 
 async fn retire_idle_generations(target: &Target, fixture: bool) -> Result<(), String> {
     let target = canonical_worker_target(target)?;
-    let Some(family) = generation_family(Path::new(&target.session_dir)) else {
+    let family = generation_family(Path::new(&target.session_dir));
+    let managed_family = target
+        .managed
+        .as_ref()
+        .map(|identity| identity.family_key.as_str());
+    if family.is_none() && managed_family.is_none() {
         return Ok(());
-    };
+    }
     let Some(registry) = WORKERS.get() else {
         return Ok(());
     };
@@ -709,8 +734,18 @@ async fn retire_idle_generations(target: &Target, fixture: bool) -> Result<(), S
             key.as_str() != target.session_dir
                 && worker.fixture == fixture
                 && worker.target.cwd == target.cwd
-                && (Path::new(key.as_str()) == family
-                    || generation_family(Path::new(key.as_str())) == Some(family))
+                && if let Some(managed) = managed_family {
+                    worker
+                        .target
+                        .managed
+                        .as_ref()
+                        .is_some_and(|identity| identity.family_key == managed)
+                } else {
+                    family.is_some_and(|family| {
+                        Path::new(key.as_str()) == family
+                            || generation_family(Path::new(key.as_str())) == Some(family)
+                    })
+                }
         })
         .map(|(key, worker)| (key.clone(), worker.clone()))
         .collect();
@@ -1089,6 +1124,7 @@ mod tests {
             .unwrap();
         assert!(node.status.success());
         let target = Target {
+            managed: None,
             cwd: workspace.to_str().unwrap().into(),
             session_dir: root.path().join("family").to_str().unwrap().into(),
             node_path: String::from_utf8(node.stdout).unwrap().trim().into(),
@@ -1603,6 +1639,7 @@ mod tests {
         std::fs::create_dir_all(experiment.join("artifacts")).unwrap();
         let storage = tempfile::tempdir_in(experiment.join("artifacts")).unwrap();
         let target = Target {
+            managed: None,
             cwd: storage.path().to_str().unwrap().into(),
             session_dir: storage.path().to_str().unwrap().into(),
             node_path: node_path.clone(),
@@ -1743,6 +1780,7 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
 });
 "#).unwrap();
         let mock_target = Target {
+            managed: None,
             cwd: mock_dir.path().to_str().unwrap().into(),
             session_dir: mock_dir.path().join("new-storage").to_str().unwrap().into(),
             node_path,
@@ -1870,6 +1908,7 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
         )
         .unwrap();
         let production_fixture = Target {
+            managed: None,
             cwd: production_cwd.to_str().unwrap().into(),
             session_dir: production_root
                 .path()
@@ -2110,6 +2149,7 @@ setTimeout(()=>{
 },750);
 "#).unwrap();
         let target = Target {
+            managed: None,
             cwd: directory.path().to_str().unwrap().into(),
             session_dir: directory.path().join("storage").to_str().unwrap().into(),
             node_path: node_path.into(),
@@ -2154,5 +2194,24 @@ setTimeout(()=>{
             .unwrap();
         assert_eq!(again["effects"], recovered["effects"]);
         assert!(worker.waiters.lock().unwrap().is_empty());
+    }
+}
+
+#[cfg(test)]
+mod environment_tests {
+    use super::*;
+    #[test]
+    fn worker_never_loads_inherited_node_preload_hooks_or_module_paths() {
+        let mut command = Command::new("bundled-node");
+        command
+            .env("NODE_OPTIONS", "--require untrusted-hook")
+            .env("NODE_PATH", "untrusted-modules");
+        isolate_worker_environment(&mut command);
+        for name in ["NODE_OPTIONS", "NODE_PATH"] {
+            assert!(command
+                .as_std()
+                .get_envs()
+                .any(|(key, value)| key == name && value.is_none()));
+        }
     }
 }

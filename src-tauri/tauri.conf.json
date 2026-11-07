@@ -4,9 +4,9 @@
   "version": "0.7.8",
   "identifier": "dev.yorishiro.app",
   "build": {
-    "beforeDevCommand": "npm run dev",
+    "beforeDevCommand": "npm run prepare:pi-runtime && npm run dev",
     "devUrl": "http://localhost:1430",
-    "beforeBuildCommand": "npm run build",
+    "beforeBuildCommand": "npm run prepare:pi-runtime && npm run build",
     "frontendDist": "../dist"
   },
   "app": {
@@ -45,6 +45,7 @@
     "active": true,
     "targets": "all",
     "macOS": {
+      "minimumSystemVersion": "11.0",
       "signingIdentity": "-",
       "entitlements": "Entitlements.plist"
     },
@@ -60,7 +61,9 @@
       "resources/yorishiro-plugin/.claude-plugin/plugin.json",
       "resources/yorishiro-plugin/.codex-plugin/plugin.json",
       "resources/yorishiro-plugin/commands-en/*",
-      "resources/yorishiro-plugin/commands-ja/*"
-    ]
+      "resources/yorishiro-plugin/commands-ja/*",
+      "resources/pi-worker/**/*"
+    ],
+    "externalBin": ["binaries/yorishiro-pi-node"]
   }
 }

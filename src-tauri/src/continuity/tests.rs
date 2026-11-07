@@ -26,12 +26,18 @@ fn original_execution_payload_survives_restart_without_recomputing_schema() {
 }
 
 #[test]
-fn worker_configuration_presence_selects_pi_without_parsing_or_starting_it() {
+fn bundled_pi_is_selected_before_preferences_exist_without_starting_it() {
     let home = tempfile::tempdir().unwrap();
-    assert_eq!(execution_backend_preference(home.path()).unwrap(), None);
+    assert_eq!(
+        execution_backend_preference(home.path()).unwrap(),
+        Some(ExecutionBackend::Pi)
+    );
     let directory = home.path().join("continuity");
     std::fs::create_dir(&directory).unwrap();
-    assert_eq!(execution_backend_preference(home.path()).unwrap(), None);
+    assert_eq!(
+        execution_backend_preference(home.path()).unwrap(),
+        Some(ExecutionBackend::Pi)
+    );
     let path = directory.join("pi-worker.json");
     std::fs::write(&path, "malformed configuration, not a provider credential").unwrap();
     assert_eq!(
@@ -127,6 +133,7 @@ fn dispatched_work_keeps_its_backend_when_the_current_selection_changes() {
     }
     let mut pi_work = original.clone();
     pi_work.target = ExecutionTarget::Pi(pi_executor::Target {
+        managed: None,
         cwd: "/workspace".into(),
         session_dir: "/storage/pi".into(),
         node_path: "/runtime/node".into(),
@@ -2511,6 +2518,7 @@ fn visible_entry_readiness_recovers_the_original_accepted_request() {
 
 fn pi_test_target(directory: &std::path::Path) -> pi_executor::Target {
     pi_executor::Target {
+        managed: None,
         cwd: directory.to_string_lossy().into_owned(),
         session_dir: directory.join("session").to_string_lossy().into_owned(),
         node_path: "/runtime/node".into(),

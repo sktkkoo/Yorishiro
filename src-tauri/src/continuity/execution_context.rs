@@ -121,7 +121,11 @@ fn receipt_summary(receipt: &ExecutionReceipt, index: usize) -> Result<Value, St
             json!({"backend":"codex", "threadId":target.thread_id,"cwd":target.cwd})
         }
         ExecutionTarget::Pi(target) => {
-            json!({"backend":"pi", "sessionDir":target.session_dir,"cwd":target.cwd})
+            if let Some(identity) = &target.managed {
+                json!({"backend":"pi","identity":identity})
+            } else {
+                json!({"backend":"pi", "sessionDir":target.session_dir,"cwd":target.cwd})
+            }
         }
     };
     let mut events = Vec::new();

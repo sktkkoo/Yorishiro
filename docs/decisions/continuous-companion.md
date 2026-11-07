@@ -57,11 +57,11 @@ schemaVersion 3では、`mainAgent`と`pi`の完了依頼を別々に数える�
 読み取り専用の観測CLIを実際のnativeアプリPIDに接続する。標準では12時間、30秒ごとに保存状態とプロセスの生存をJSONLへ記録する。`--output`には新しいファイルを指定する。既存の観測記録は上書きしない。
 
 ```sh
-python3 -B scripts/observe-continuity-soak.py --pid <native-app-pid> --output /tmp/yorishiro-soak.jsonl --duration-seconds 43260 --live-mcp-url http://127.0.0.1:18743/mcp
+python3 -B scripts/observe-continuity-soak.py --pid <native-app-pid> --output yorishiro-soak.jsonl --duration-seconds 43260 --live-mcp-url http://127.0.0.1:18743/mcp
 python3 -B -m unittest discover -s scripts -p 'test_observe_continuity_soak.py'
 ```
 
-再起動時にlauncherがPIDファイルを更新する環境では`--pid`の代わりに`--pid-file <path>`を使う。`--executable /absolute/path/to/yorishiro`でも実行ファイルの一致から追跡できる。観測開始より前に始まった依頼は回数に加えない。Main Agentの完了依頼数と実ツールの進展があった依頼数を分け、会話・草案・エラー本文を観測ログへコピーしない。PIDの生存確認はそのプロセスが正しいアプリかを保証せず、観測間の連続性や再起動復帰の正しさ、成果の品質も証明しない。これらには実際の依頼と成果の照合、クラッシュ復帰の試験、ユーザーの評価が必要になる。
+再起動時にlauncherがPIDファイルを更新する環境では`--pid`の代わりに`--pid-file <path>`を使う。実行ファイルの一致で追跡する場合は、実機から得た実行ファイルのパスを`--executable`に渡す。観測開始より前に始まった依頼は回数に加えない。Main Agentの完了依頼数と実ツールの進展があった依頼数を分け、会話・草案・エラー本文を観測ログへコピーしない。PIDの生存確認はそのプロセスが正しいアプリかを保証せず、観測間の連続性や再起動復帰の正しさ、成果の品質も証明しない。これらには実際の依頼と成果の照合、クラッシュ復帰の試験、ユーザーの評価が必要になる。
 
 `--duration-seconds 43260`は、実測のsample間隔を12時間以上にするための余裕を含む。live MCPのURLは稼働アプリの接続先に合わせる。保存失敗時はディスク上のsnapshotが古い`working`のまま残ることがあるため、稼働中のnative snapshotも読み取り専用で照合する。同じpersonaのphase・revision・エラーの有無だけを記録し、接続失敗やpersona不一致は未確認として残す。差異は取得時刻の差でも起きるため、それだけで停止とは断定しない。観測プロセスが容量不足などで終了した場合、終了後の時間を稼働時間へ加えない。
 

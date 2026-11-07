@@ -125,7 +125,8 @@ export async function createWorkspaceTools(cwd, permissionValue, options = {}) {
       throw new Error("Worker session storage is not a workspace file");
     if (
       protectedPaths.some(
-        (protectedPath) => inside(protectedPath, path) || (write && inside(path, protectedPath)),
+        (protectedPath) =>
+          inside(protectedPath, path) || (write && !allowRoot && inside(path, protectedPath)),
       )
     )
       throw new Error("Provider credential storage is not a workspace file");

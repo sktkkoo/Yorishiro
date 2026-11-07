@@ -29,9 +29,11 @@ export function useContinuityExecutionPreference(): ContinuityExecutionPreferenc
     };
     void refresh();
     window.addEventListener("focus", refresh);
+    window.addEventListener("yorishiro:pi-configured", refresh);
     return () => {
       disposed = true;
       window.removeEventListener("focus", refresh);
+      window.removeEventListener("yorishiro:pi-configured", refresh);
     };
   }, []);
   return preference;

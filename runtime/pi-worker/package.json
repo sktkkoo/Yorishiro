@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test admission-identity.node-test.mjs diagnose.node-test.mjs config.node-test.mjs protocol.node-test.mjs workspace-tools.node-test.mjs credential-store.node-test.mjs context-archive.node-test.mjs"
+    "test": "node --test admission-identity.node-test.mjs diagnose.node-test.mjs config.node-test.mjs protocol.node-test.mjs workspace-tools.node-test.mjs credential-store.node-test.mjs context-archive.node-test.mjs auth-login.node-test.mjs workspace-check.node-test.mjs managed-identity.node-test.mjs"
   },
   "dependencies": {
     "@earendil-works/chord": "1.5.0",
@@ -25,7 +25,11 @@
     "submission-evidence.mjs",
     "README.md",
     "credential-store.mjs",
-    "context-archive.mjs"
+    "context-archive.mjs",
+    "auth-main.mjs",
+    "auth-login.mjs",
+    "workspace-check.mjs",
+    "managed-identity.mjs"
   ],
   "version": "0.1.0"
 }

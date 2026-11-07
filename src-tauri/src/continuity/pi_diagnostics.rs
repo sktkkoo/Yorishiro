@@ -63,6 +63,77 @@ fn parse_output(bytes: &[u8]) -> Result<Diagnostics, String> {
     Ok(result)
 }
 
+pub(super) async fn managed_probe(
+    app: &tauri::AppHandle,
+    home: &Path,
+    cwd: Option<&str>,
+) -> Result<Diagnostics, String> {
+    let super::pi_installation::ConfigState::Managed(settings) =
+        super::pi_installation::load(home).map_err(|_| "configuration_invalid".to_owned())?
+    else {
+        return Err("configuration_missing".into());
+    };
+    let runtime =
+        super::pi_installation::runtime_paths(app).map_err(|_| "node_unavailable".to_owned())?;
+    if runtime.manifest_fingerprint.len() != 64 {
+        return Err("diagnostic_invalid".into());
+    }
+    let cwd = cwd
+        .filter(|value| {
+            !value.contains('\0') && Path::new(value).is_absolute() && Path::new(value).is_dir()
+        })
+        .ok_or("workspace_unavailable")?;
+    let permissions = super::pi_installation::resolved_permissions(&settings, &runtime)
+        .map_err(|_| "configuration_invalid".to_owned())?;
+    let mut child = Command::new(&runtime.node)
+        .arg(&runtime.diagnostic)
+        .arg("--session-dir")
+        .arg(home.join("continuity/pi/.diagnostic-unused"))
+        .args([
+            "--cwd",
+            cwd,
+            "--provider",
+            &settings.provider,
+            "--model",
+            &settings.model,
+            "--permissions-json",
+        ])
+        .arg(serde_json::to_string(&permissions).map_err(|_| "configuration_invalid")?)
+        .args(["--auth-mode", "oauth", "--auth-path"])
+        .arg(super::pi_installation::auth_path(home))
+        .env_remove("NODE_OPTIONS")
+        .env_remove("NODE_PATH")
+        .current_dir(cwd)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .kill_on_drop(true)
+        .spawn()
+        .map_err(|_| "node_unavailable".to_owned())?;
+    let stdout = child.stdout.take().ok_or("diagnostic_invalid")?;
+    let mut limited = stdout.take(MAX_OUTPUT as u64 + 1);
+    let mut output = Vec::new();
+    let result = tokio::time::timeout(Duration::from_secs(5), async {
+        let (read, status) = tokio::join!(limited.read_to_end(&mut output), child.wait());
+        read.map_err(|_| "diagnostic_invalid".to_owned())?;
+        let status = status.map_err(|_| "diagnostic_invalid".to_owned())?;
+        if !status.success() || output.len() > MAX_OUTPUT {
+            return Err("diagnostic_invalid".into());
+        }
+        parse_output(&output)
+    })
+    .await;
+    match result {
+        Ok(value) => value,
+        Err(_) => {
+            let _ = child.kill().await;
+            let _ = child.wait().await;
+            Err("diagnostic_timeout".into())
+        }
+    }
+}
+
+#[cfg(test)]
 pub(super) async fn probe(home: &Path, cwd: Option<&str>) -> Result<Diagnostics, String> {
     let config_path = home.join("continuity/pi-worker.json");
     let file = std::fs::File::open(&config_path).map_err(|error| {

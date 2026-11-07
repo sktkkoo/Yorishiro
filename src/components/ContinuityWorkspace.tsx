@@ -1,5 +1,5 @@
 import { ArrowDown, ArrowUp, BookOpen, LoaderCircle, Mic, MicOff, X } from "lucide-react";
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { CONTINUITY_COPY } from "../i18n/continuity";
 import {
@@ -18,6 +18,7 @@ import type {
   ContinuityUnderstanding,
 } from "../runtime/continuity/types";
 import "./ContinuityWorkspace.css";
+import { PiSetup } from "./PiSetup";
 
 export interface ContinuityConversation {
   readonly available: boolean;
@@ -107,6 +108,9 @@ function ResidentWorkspace({
   );
   const { snapshot, error: syncError } = useContinuity(context, open);
   const piDiagnostics = usePiDiagnostics(cwd, open, executionBackend);
+  const [piReadiness, setPiReadiness] = useState({ cwd, ready: executionBackend !== "pi" });
+  const onPiReadiness = useCallback((ready: boolean) => setPiReadiness({ cwd, ready }), [cwd]);
+  const piReady = executionBackend !== "pi" || (piReadiness.cwd === cwd && piReadiness.ready);
   const [draft, setDraft] = useState<InputDraft>(() => readInput(personaId));
   const [understandingOpen, setUnderstandingOpen] = useState(false);
   const [detail, setDetail] = useState<
@@ -195,6 +199,7 @@ function ResidentWorkspace({
   }, [open, latestArrival]);
 
   async function submit() {
+    if (executionBackend === "pi" && !piReady) return;
     const text = draft.text.trim();
     if (!text || composing.current || inFlight.current) return;
     inFlight.current = true;
@@ -216,6 +221,7 @@ function ResidentWorkspace({
     }
   }
   async function act(draftId: string, action: "continue" | "dismiss") {
+    if (action === "continue" && executionBackend === "pi" && !piReady) return;
     if (actionPending) return;
     setActionPending(true);
     setLocalError(null);
@@ -384,6 +390,16 @@ function ResidentWorkspace({
       </header>
       <div className="continuity-layout" data-understanding={understandingOpen}>
         <div className="continuity-conversation">
+          {executionBackend === "pi" ? (
+            <PiSetup
+              cwd={cwd}
+              language={language}
+              onReadinessChange={onPiReadiness}
+              onConfigured={() => {
+                if (snapshot?.autoEnabled === true) void retry();
+              }}
+            />
+          ) : null}
           <div
             className="continuity-flow"
             ref={flowRef}
@@ -436,7 +452,7 @@ function ResidentWorkspace({
             ) : null}
           </div>
           <div className="continuity-compose-area">
-            {error && !detail ? (
+            {error && !detail && (executionBackend !== "pi" || piReady) ? (
               <>
                 <div className="continuity-error" role="alert">
                   <p>{error}</p>
@@ -582,7 +598,9 @@ function ResidentWorkspace({
                 <button
                   className="continuity-send"
                   type="submit"
-                  disabled={!draft.text.trim() || sending}
+                  disabled={
+                    !draft.text.trim() || sending || (executionBackend === "pi" && !piReady)
+                  }
                   aria-label={copy.send}
                   title={copy.send}
                 >
@@ -682,7 +700,7 @@ function ResidentWorkspace({
                 <div className="continuity-detail-actions">
                   <button
                     type="button"
-                    disabled={actionPending}
+                    disabled={actionPending || (executionBackend === "pi" && !piReady)}
                     onClick={() => void act(selectedDraft.id, "continue")}
                   >
                     {copy.continueDraft}

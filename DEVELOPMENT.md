@@ -140,3 +140,9 @@ npm run check:pack -- --mode publish-candidate ~/.yorishiro/packs/<pack-id>
 ```
 
 `local-authoring` mode is for `/yori:create` output. `publish-candidate` mode is a preview of pre-registry-review checks for the future and is not an official publication gate at this time. The public submission flow does not yet exist, and JS / TS scanning relies on heuristics pending AST implementation.
+
+## Bundled Pi runtime
+
+Use Node 22.19 or newer for Pi development and test commands. After `npm ci`, run `npm run prepare:pi-runtime` once before invoking Cargo directly. Tauri development/build hooks prepare the runtime automatically. This stages a checksum-verified Node sidecar and pinned production worker resources; generated outputs stay ignored. No personal executable paths belong in settings or source files.
+
+Run `npm run test:pi-package` for offline packaging fixtures, and see [Pi runtime distribution](docs/pi-runtime-distribution.md) for architecture selection and release verification.

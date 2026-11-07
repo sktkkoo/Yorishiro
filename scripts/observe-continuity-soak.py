@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Read-only, bounded continuity observation. Never dispatches work or restarts apps.
 
-Example: python3 scripts/observe-continuity-soak.py --pid 123 --output /tmp/soak.jsonl
+Example: python3 scripts/observe-continuity-soak.py --pid 123 --output soak.jsonl
 Use --pid-file for a file maintained by the launcher when the app restarts.
 Use --executable with an absolute native executable path to observe restarts.
 The JSONL includes no conversation, persona prompt, draft content or error text.
 Samples cannot prove uninterrupted execution between observations or user quality.
-Replay an existing capture without writing it: --summarize /path/to/capture.jsonl
+Replay an existing capture without writing it: --summarize capture.jsonl
 Optional --live-mcp-url http://127.0.0.1:18743/mcp verifies native memory through
 the local read-only continuity_context tool. It sends the required MCP handshake,
 accepts rmcp SSE/direct JSON, and projects only persona/revision/phase/error presence.

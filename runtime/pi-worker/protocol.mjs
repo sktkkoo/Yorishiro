@@ -18,6 +18,7 @@ import { createRegistry, defineDoc, defineExtension, Harness } from "@earendil-w
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { assertAdmission, openAdmissionEpoch } from "./admission-identity.mjs";
 import { createContextArchiveTool } from "./context-archive.mjs";
+import { protectedInstallationPaths } from "./managed-identity.mjs";
 import { acquireOwnerLock } from "./owner-lock.mjs";
 import { describeSubmissionTools } from "./submission-evidence.mjs";
 import { createWorkspaceTools, validatePermissions } from "./workspace-tools.mjs";
@@ -83,6 +84,10 @@ function storeIdentity(sessionDir, identity) {
       existing = JSON.parse(readFileSync(path, "utf8"));
     } catch {
       throw new Error("storage_identity_invalid");
+    }
+    if (identity.managedIdentity !== undefined) {
+      if (!isDeepStrictEqual(existing, identity)) throw new Error("storage_identity_mismatch");
+      return;
     }
     const normalized = {
       ...existing,
@@ -153,21 +158,26 @@ export async function runWorker(options, dependencies) {
   process.once("SIGTERM", signal);
   process.once("SIGHUP", signal);
   try {
-    storeIdentity(sessionDir, {
-      provider: options.provider,
-      model: options.model,
-      cwd,
-      permissions,
-      fixture,
-      authMode: options.authMode ?? "apiKey",
-      authPath: options.authPath ?? null,
-    });
+    storeIdentity(
+      sessionDir,
+      options.managedIdentity
+        ? { managedIdentity: options.managedIdentity }
+        : {
+            provider: options.provider,
+            model: options.model,
+            cwd,
+            permissions,
+            fixture,
+            authMode: options.authMode ?? "apiKey",
+            authPath: options.authPath ?? null,
+          },
+    );
     const sessionPath = join(sessionDir, "session.sqlite");
     const epoch = openAdmissionEpoch(sessionPath);
     const registry = createRegistry();
     const tools = await createWorkspaceTools(cwd, permissions, {
       sessionDir,
-      protectedPaths: options.authPath ? [join(options.authPath, "..")] : [],
+      protectedPaths: protectedInstallationPaths(options),
     });
     tools.push(await createContextArchiveTool(sessionDir));
     registry.install(defineExtension({ name: "workspace", tools }));
@@ -388,6 +398,7 @@ export async function runWorker(options, dependencies) {
       fixture,
       authMode: options.authMode ?? "apiKey",
       authPath: options.authPath ?? null,
+      ...(options.managedIdentity ? { managedIdentity: options.managedIdentity } : {}),
       conversationId: root.id,
       ownerLock: "sqlite-exclusive",
       admission,
