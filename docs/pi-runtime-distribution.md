@@ -21,8 +21,6 @@ Tauri bundles the Node executable as an [external binary](https://v2.tauri.app/d
 
 The managed preference schema contains provider/model, enabled state, authentication mode and permission choices. Native targets use portable references. The chosen workspace and OS user-data directory resolve local paths only when execution starts. Old accepted requests retain their original recovery identities; onboarding or moving an app does not authorize a second submission.
 
-For Git project edits, first create a linked worktree, select it with the app's folder picker, and review write permissions there. A primary checkout can be used read-only. Native Git metadata checks and managed worker file tools reject primary-checkout writes; the worker rechecks before atomic publication and protects nested repositories too. Worktree creation is a host/user operation, not an arbitrary command granted to the model.
-
 Each worker dependency carries its original package license files; `licenses/Node-LICENSE.txt` carries Node and its bundled third-party notices. Generated resources and binaries remain outside Git.
 
 ## Signing and release checks

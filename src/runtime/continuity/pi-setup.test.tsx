@@ -6,7 +6,6 @@ import {
   type PiSetupStatus,
   parsePiLogin,
   parsePiSetup,
-  setupReady,
   usePiSetup,
 } from "./pi-setup";
 
@@ -22,7 +21,6 @@ const status = (configured = false): PiSetupStatus => ({
   models: [{ id: "model", name: "Model" }],
   permissions: { read: true, write: false, commands: [] },
   workspaceAvailable: true,
-  workspaceWriteAllowed: true,
   login: { phase: "idle", code: null },
   code: null,
 });
@@ -44,17 +42,6 @@ describe("Pi setup bridge", () => {
     expect(parsePiLogin({ phase: "waiting", code: null, url: "PRIVATE" })).toBeNull();
     expect(parsePiLogin({ phase: "unknown", code: null })).toBeNull();
     expect(parsePiLogin({ phase: "error", code: "PRIVATE" })).toBeNull();
-  });
-  it("requires a native write-scope result and preserves read-only readiness in the primary checkout", () => {
-    const readOnly = { ...status(true), workspaceWriteAllowed: false };
-    expect(parsePiSetup(readOnly)).toBeTruthy();
-    expect(setupReady(readOnly)).toBe(true);
-    expect(
-      setupReady({ ...readOnly, permissions: { read: true, write: true, commands: [] } }),
-    ).toBe(false);
-    const { workspaceWriteAllowed: _ignored, ...olderHost } = status();
-    expect(parsePiSetup(olderHost)).toBeNull();
-    expect(parsePiSetup({ ...readOnly, workspaceWriteAllowed: "true" })).toBeNull();
   });
   it("ignores a previous workspace status arriving after the new workspace", async () => {
     let finish: (value: PiSetupStatus) => void = () => {};

@@ -57,10 +57,6 @@ A durable receipt takes precedence: accepted or completed requests recover the o
 
 ## Tool permissions
 
-Managed Git repository writes require a registered linked worktree. Select that worktree as the app's project folder and review its permissions before starting new work. The primary checkout remains readable; explicitly granted notes outside Git remain writable. The host checks the selected workspace before dispatch, and file tools check the destination again immediately before publication, including nested repositories. A prompt asking for a worktree does not replace these checks. The model has no Git command or worktree-creation tool.
-
-Changing folders does not move an already accepted request: its original ID, payload and target remain available for recovery. Stop automatic execution and preserve unfinished work before switching; moving source changes is a separate reviewed operation. Writes prohibited by the current host boundary fail with `worktree_required` rather than silently editing the primary checkout.
-
 ### Bounded context, compaction and handoff
 
 New native Pi requests use a reversible projection: at most 96 KiB of UTF-8 prompt and 256 KiB of conservatively encoded submit data, including escaping the persisted JSON envelope again. The 1 MiB protocol limit is unchanged. All explicit user messages, required correction sources and the current next step remain intact. Other evidence is selected as whole records; only three bounded recent receipt summaries are sent. If essential context alone cannot fit, execution fails explicitly rather than silently truncating authority.

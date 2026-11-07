@@ -178,7 +178,6 @@ export async function runWorker(options, dependencies) {
     const tools = await createWorkspaceTools(cwd, permissions, {
       sessionDir,
       protectedPaths: protectedInstallationPaths(options),
-      managed: Boolean(options.managedIdentity),
     });
     tools.push(await createContextArchiveTool(sessionDir));
     registry.install(defineExtension({ name: "workspace", tools }));

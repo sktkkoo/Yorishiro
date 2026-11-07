@@ -42,7 +42,6 @@ export interface ContinuityWorkspaceProps {
   readonly executionBackend?: ContinuityContext["executionBackend"];
   readonly executionSessionId?: string | null;
   readonly onClose: () => void;
-  readonly onPickFolder?: () => Promise<void>;
   readonly conversation?: ContinuityConversation;
 }
 interface InputDraft {
@@ -91,7 +90,6 @@ function ResidentWorkspace({
   executionBackend,
   executionSessionId,
   onClose,
-  onPickFolder,
   conversation,
 }: ContinuityWorkspaceProps) {
   const copy = CONTINUITY_COPY[language];
@@ -396,7 +394,6 @@ function ResidentWorkspace({
             <PiSetup
               cwd={cwd}
               language={language}
-              onPickFolder={onPickFolder}
               onReadinessChange={onPiReadiness}
               onConfigured={() => {
                 if (snapshot?.autoEnabled === true) void retry();

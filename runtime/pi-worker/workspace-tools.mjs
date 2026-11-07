@@ -5,7 +5,6 @@ import { access, link, lstat, mkdir, open, realpath, rename, unlink } from "node
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { defineTool } from "@earendil-works/pi-durable";
 import { obj, opt, str } from "@earendil-works/pi-schema";
-import { createWorktreeWritePolicy } from "./worktree-policy.mjs";
 
 export const WORKSPACE_LIMITS = Object.freeze({
   maxFileBytes: 1024 * 1024,
@@ -104,7 +103,6 @@ export async function createWorkspaceTools(cwd, permissionValue, options = {}) {
   const root = await realpath(cwd);
   const rootStat = await lstat(root);
   if (!rootStat.isDirectory()) throw new Error("Workspace must be a directory");
-  const worktreeWrite = options.managed ? await createWorktreeWritePolicy(root) : null;
   const excluded = options.sessionDir ? await futureRealpath(options.sessionDir) : null;
   const protectedPaths = await Promise.all((options.protectedPaths ?? []).map(futureRealpath));
   const limits = { ...WORKSPACE_LIMITS, ...options.limits };
@@ -169,11 +167,6 @@ export async function createWorkspaceTools(cwd, permissionValue, options = {}) {
     }
     return check(join(parent, basename(raw)), true);
   }
-  async function checkWriteBoundary(path) {
-    // Check before making even parent directories. Canonicalizing the existing
-    // prefix also catches a nested primary checkout under a non-Git note root.
-    if (worktreeWrite) await worktreeWrite(await futureRealpath(dirname(lexical(path, true))));
-  }
   async function readBounded(path) {
     const handle = await open(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
     try {
@@ -234,11 +227,9 @@ export async function createWorkspaceTools(cwd, permissionValue, options = {}) {
           current.stat.dev !== previous.stat.dev
         )
           throw new Error("Workspace file changed before write");
-        await checkWriteBoundary(path);
         await rename(temp, path);
       } else {
         // Exclusive publication never overwrites a file another writer created.
-        await checkWriteBoundary(path);
         await link(temp, path);
       }
     } finally {
@@ -289,7 +280,6 @@ export async function createWorkspaceTools(cwd, permissionValue, options = {}) {
             abort(context?.abortSignal);
             if (typeof content !== "string" || Buffer.byteLength(content) > limits.maxFileBytes)
               throw new Error("Workspace content exceeds text-file limit");
-            await checkWriteBoundary(path);
             return publish(
               await writePath(path, expectedContent === undefined),
               content,
@@ -314,7 +304,6 @@ export async function createWorkspaceTools(cwd, permissionValue, options = {}) {
         execute: ({ path, oldText, newText }, _api, context) =>
           mutate(async () => {
             abort(context?.abortSignal);
-            await checkWriteBoundary(path);
             const selected = await writePath(path);
             const { content } = await readBounded(selected);
             if (!oldText || content.split(oldText).length !== 2)
