@@ -3880,6 +3880,7 @@ pub fn run() {
         .manage(hook_server_endpoint)
         .manage(RealtimeBridgeState::default())
         .manage(continuity::ContinuityState::default())
+        .manage(continuity::pi_setup::PiSetupState::default())
         .manage(WatcherState::new())
         .manage(tts::TtsState::new())
         .manage(mcp::McpServerStatus::default())
@@ -3913,9 +3914,17 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            continuity::continuity_execution_backend,
+            continuity::pi_setup::continuity_pi_setup_status,
+            continuity::pi_setup::continuity_pi_login_start,
+            continuity::pi_setup::continuity_pi_login_cancel,
+            continuity::pi_setup::continuity_pi_login_status,
+            continuity::pi_setup::continuity_pi_setup_save,
+            continuity::continuity_pi_diagnostics,
             continuity::continuity_status,
             continuity::continuity_sync_context,
             continuity::continuity_enter,
+            continuity::continuity_set_auto_enabled,
             continuity::continuity_tick,
             continuity::continuity_advance,
             continuity::continuity_send,
@@ -4075,6 +4084,8 @@ pub fn run() {
             if let tauri::RunEvent::Exit = event {
                 screen_annotation::shutdown(app);
                 claude_screen_sharing::reset(app);
+                continuity::shutdown_workers();
+                continuity::pi_setup::shutdown(&app.state::<continuity::pi_setup::PiSetupState>());
                 // 全 PTY session と codex app-server sidecar を明示的に teardown する。
                 // managed state の Drop は process exit では走らない（issue #109）。
                 let registry: State<'_, Arc<SessionRegistry>> = app.state();

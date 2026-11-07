@@ -9,6 +9,7 @@ const native = vi.hoisted(() => ({
   sendContinuityMessage: vi.fn(),
   actOnContinuityDraft: vi.fn(),
   retryContinuity: vi.fn(),
+  setContinuityAutoEnabled: vi.fn(),
 }));
 vi.mock("../runtime/continuity/client", () => native);
 
@@ -16,6 +17,7 @@ const now = 1_795_000_000_000;
 function snapshot(): ContinuitySnapshot {
   return {
     personaId: "yori",
+    autoEnabled: true,
     revision: 1,
     phase: "idle",
     error: null,
@@ -120,6 +122,7 @@ beforeEach(() => {
   native.sendContinuityMessage.mockResolvedValue(undefined);
   native.actOnContinuityDraft.mockResolvedValue(undefined);
   native.retryContinuity.mockResolvedValue(undefined);
+  native.setContinuityAutoEnabled.mockResolvedValue(undefined);
   Object.defineProperty(HTMLDialogElement.prototype, "showModal", {
     configurable: true,
     value: function (this: HTMLDialogElement) {
@@ -148,12 +151,62 @@ afterEach(() => {
 });
 
 describe("ContinuityWorkspace", () => {
+  it("changes autonomous execution through the native setting and preserves Off on reopening", async () => {
+    let finish!: () => void;
+    native.setContinuityAutoEnabled.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const initial = props();
+    const view = render(<ContinuityWorkspace {...initial} />);
+    const control = screen.getByRole("switch", { name: "自律実行" });
+    expect(control.getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(control);
+    fireEvent.click(control);
+    expect(native.setContinuityAutoEnabled).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ personaId: "yori-ja", cwd: "/workspace" }),
+      false,
+    );
+    expect(control.getAttribute("aria-checked")).toBe("true");
+    expect((control as HTMLButtonElement).disabled).toBe(true);
+    current = { ...current, revision: 2, autoEnabled: false };
+    await act(async () => finish());
+    view.rerender(<ContinuityWorkspace {...initial} />);
+    expect(control.getAttribute("aria-checked")).toBe("false");
+    view.rerender(<ContinuityWorkspace {...initial} open={false} />);
+    view.rerender(<ContinuityWorkspace {...initial} />);
+    expect(screen.getByRole("switch").getAttribute("aria-checked")).toBe("false");
+    await act(async () => fireEvent.click(screen.getByRole("switch")));
+    expect(native.setContinuityAutoEnabled).toHaveBeenLastCalledWith(
+      expect.objectContaining({ personaId: "yori-ja" }),
+      true,
+    );
+  });
+
+  it("keeps the saved switch state and shows a setting failure", async () => {
+    native.setContinuityAutoEnabled.mockRejectedValueOnce(new Error("Could not save setting"));
+    render(<ContinuityWorkspace {...props()} />);
+    await act(async () => fireEvent.click(screen.getByRole("switch")));
+    expect(screen.getByRole("switch").getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByRole("alert").textContent).toContain("Could not save setting");
+  });
+
+  it("does not offer an active switch before the host setting is available", () => {
+    current = { ...current, autoEnabled: undefined };
+    render(<ContinuityWorkspace {...props()} />);
+    expect((screen.getByRole("switch") as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole("switch"));
+    expect(native.setContinuityAutoEnabled).not.toHaveBeenCalled();
+  });
+
   it("shows real conversation and draft, and keeps imported diary material inside provenance", () => {
     render(<ContinuityWorkspace {...props()} />);
     const log = screen.getByRole("log");
     expect(log.textContent).toContain("起動したところから考え直してみる。");
     expect(log.textContent).not.toContain("以前の日記の全文");
-    expect(screen.getByRole("heading", { name: "Yoriとの会話" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "自律実行" })).toBeTruthy();
     expect(screen.queryByText("記憶と日記")).toBeNull();
     expect(screen.queryByText("任せたいこと")).toBeNull();
     expect(native.useContinuity).toHaveBeenCalledWith(
@@ -191,7 +244,7 @@ describe("ContinuityWorkspace", () => {
     expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe("書きかけ");
     view.rerender(<ContinuityWorkspace {...initial} personaId="yori" personaName="Another" />);
     expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe("");
-    expect(screen.getByRole("heading", { name: "Anotherとの会話" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "自律実行" })).toBeTruthy();
     view.rerender(<ContinuityWorkspace {...initial} personaId="yori-en" language="en" />);
     expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe("書きかけ");
     expect(native.sendContinuityMessage).not.toHaveBeenCalled();

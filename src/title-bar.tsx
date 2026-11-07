@@ -1,7 +1,7 @@
 import {
+  Bot,
   ChevronDown,
   LoaderCircle,
-  MessageCircle,
   Mic,
   Monitor,
   PanelLeftClose,
@@ -272,12 +272,12 @@ export default function TitleBar({
           <button
             type="button"
             className="title-bar-button title-bar-continuity-button"
-            aria-label={language === "en" ? "Talk with Yori" : "Yoriと話す"}
-            title={language === "en" ? "Talk with Yori" : "Yoriと話す"}
-            aria-pressed={continuityActive}
+            aria-label={language === "en" ? "Autonomous execution" : "自律実行"}
+            title={language === "en" ? "Autonomous execution" : "自律実行"}
+            aria-expanded={continuityActive}
             onClick={onToggleContinuity}
           >
-            <MessageCircle size={15} strokeWidth={1.8} aria-hidden="true" />
+            <Bot size={15} strokeWidth={1.8} aria-hidden="true" />
           </button>
         ) : null}
       </div>

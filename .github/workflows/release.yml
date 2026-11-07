@@ -40,7 +40,7 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - uses: dtolnay/rust-toolchain@stable
@@ -52,6 +52,9 @@ jobs:
           workspaces: src-tauri
 
       - run: npm ci
+
+      - name: Prepare pinned Pi runtime for release architecture
+        run: npm run prepare:pi-runtime -- --target ${{ matrix.target }}
 
       - name: Download private assets from R2
         run: |

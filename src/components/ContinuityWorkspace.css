@@ -75,8 +75,48 @@
   padding: 18px 28px;
 }
 .continuity-header h1 {
-  margin-right: auto;
+  margin: 0;
   font-size: 14px;
+}
+.continuity-autonomy {
+  flex: 1;
+  min-width: 0;
+}
+.continuity-autonomy-control {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.continuity-autonomy p {
+  margin: 4px 0 0;
+  font-size: 11px;
+  color: var(--yorishiro-fg-dim);
+}
+.continuity-header .continuity-autonomy-switch {
+  border: 0;
+  padding: 4px 6px;
+  min-width: 76px;
+}
+.continuity-switch-track {
+  display: inline-flex;
+  align-items: center;
+  width: 30px;
+  height: 18px;
+  padding: 3px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--yorishiro-fg) 20%, transparent);
+}
+.continuity-switch-track > span {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--yorishiro-fg);
+}
+.continuity-autonomy-switch[aria-checked="true"] .continuity-switch-track {
+  background: var(--yorishiro-accent);
+}
+.continuity-autonomy-switch[aria-checked="true"] .continuity-switch-track > span {
+  transform: translateX(12px);
 }
 .continuity-header .continuity-text-button {
   padding-inline: 8px;

@@ -8,6 +8,19 @@ on:
   workflow_dispatch:
 
 jobs:
+  continuity-observation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Test read-only autonomous-run observation
+        run: python3 -B -m unittest discover -s scripts -p 'test_observe_continuity_soak.py'
+
   check:
     runs-on: ubuntu-latest
     steps:
@@ -29,7 +42,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - uses: dtolnay/rust-toolchain@stable
@@ -41,6 +54,9 @@ jobs:
           workspaces: src-tauri
 
       - run: npm ci
+
+      - name: Prepare bundled Pi runtime
+        run: npm run prepare:pi-runtime
 
       - name: Generate Rust build artifacts (bundled_examples_gen.rs)
         run: cargo build --manifest-path src-tauri/Cargo.toml
@@ -68,8 +84,12 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            runtime/pi-worker/package-lock.json
+            experiments/pi-harness/package-lock.json
 
       - uses: dtolnay/rust-toolchain@stable
 
@@ -78,6 +98,22 @@ jobs:
           workspaces: src-tauri
 
       - run: npm ci
+
+      - name: Prepare bundled Pi runtime
+        run: npm run prepare:pi-runtime
+
+      - name: Install pinned Pi worker and integration fixture dependencies
+        run: |
+          npm ci --prefix runtime/pi-worker --ignore-scripts
+          npm ci --prefix experiments/pi-harness --ignore-scripts
+
+      - name: Test Pi worker and durable recovery without provider calls
+        run: |
+          npm --prefix runtime/pi-worker test
+          npm --prefix experiments/pi-harness test
+          npm --prefix experiments/pi-provider test
+
+      - run: npm run test:pi-package
 
       - run: npm run test:run
 

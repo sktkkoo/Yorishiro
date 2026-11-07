@@ -20,6 +20,7 @@ const context: ContinuityContext = {
 function snapshot(personaId = "yori-ja", revision = 1): ContinuitySnapshot {
   return {
     personaId,
+    autoEnabled: true,
     revision,
     phase: "idle",
     messages: [],
@@ -49,6 +50,64 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 describe("shared continuity bridge", () => {
+  it("stops automatic timers while Off, keeps context sync, and explicitly enables through native", async () => {
+    const client = await import("./client");
+    vi.useFakeTimers();
+    let latest: ContinuitySnapshot = { ...snapshot(), autoEnabled: false, nextStep: "Old work" };
+    native.invoke.mockImplementation(async (name, args) => {
+      if (name === "continuity_set_auto_enabled") {
+        latest = { ...latest, revision: 3, autoEnabled: args.enabled, nextStep: null };
+      }
+      return latest;
+    });
+    const view = renderHook(({ open }) => client.useContinuity(context, open), {
+      initialProps: { open: true },
+    });
+    await act(async () => {});
+    await act(async () => vi.advanceTimersByTimeAsync(30 * 60 * 1000));
+    expect(native.invoke.mock.calls.some(([name]) => /advance|tick/.test(name))).toBe(false);
+    await act(async () => view.rerender({ open: false }));
+    await act(async () => view.rerender({ open: true }));
+    expect(view.result.current.snapshot?.autoEnabled).toBe(false);
+    await act(() => client.setContinuityAutoEnabled(context, true));
+    expect(native.invoke).toHaveBeenLastCalledWith("continuity_set_auto_enabled", {
+      context,
+      enabled: true,
+    });
+    await act(async () => vi.advanceTimersByTimeAsync(5 * 60 * 1000));
+    expect(native.invoke).toHaveBeenLastCalledWith("continuity_tick", { context });
+    act(() => native.callback?.({ payload: { ...latest, revision: 4, autoEnabled: false } }));
+    const count = native.invoke.mock.calls.length;
+    await act(async () => vi.advanceTimersByTimeAsync(30 * 60 * 1000));
+    expect(native.invoke).toHaveBeenCalledTimes(count);
+    view.unmount();
+  });
+
+  it("keeps the selected execution backend while its session is not ready", async () => {
+    const client = await import("./client");
+    const view = renderHook(
+      ({ backend, session }: { backend: "codex" | "text"; session: string | null }) =>
+        client.useContinuity(
+          { ...context, executionBackend: backend, executionSessionId: session },
+          false,
+        ),
+      { initialProps: { backend: "codex" as "codex" | "text", session: null as string | null } },
+    );
+    await act(async () => {});
+    expect(native.invoke).toHaveBeenLastCalledWith("continuity_sync_context", {
+      context: { ...context, executionBackend: "codex", executionSessionId: null },
+    });
+    await act(async () => view.rerender({ backend: "codex", session: "main-ready" }));
+    expect(native.invoke).toHaveBeenLastCalledWith("continuity_sync_context", {
+      context: { ...context, executionBackend: "codex", executionSessionId: "main-ready" },
+    });
+    await act(async () => view.rerender({ backend: "text", session: null }));
+    expect(native.invoke).toHaveBeenLastCalledWith("continuity_sync_context", {
+      context: { ...context, executionBackend: "text", executionSessionId: null },
+    });
+    view.unmount();
+  });
+
   it("binds automatic work to the current Main session and updates it on replacement", async () => {
     const client = await import("./client");
     vi.useFakeTimers();
@@ -374,6 +433,42 @@ describe("shared continuity bridge", () => {
     );
     reopened.unmount();
   });
+
+  it("receives native background progress while closed and hidden without a frontend wakeup", async () => {
+    const client = await import("./client");
+    vi.useFakeTimers();
+    const visibility = vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+    let latest = snapshot();
+    native.invoke.mockImplementation(async () => latest);
+    const view = renderHook(({ open }) => client.useContinuity(context, open), {
+      initialProps: { open: true },
+    });
+    await act(async () => {});
+    await act(async () => view.rerender({ open: false }));
+    visibility.mockReturnValue("hidden");
+    act(() => document.dispatchEvent(new Event("visibilitychange")));
+    // Native owns continuation now: it can finish one step and start another
+    // without a visible React surface invoking advance or tick.
+    for (const [revision, phase] of [
+      [2, "working"],
+      [3, "idle"],
+      [4, "working"],
+    ] as const) {
+      latest = { ...latest, revision, phase };
+      act(() => native.callback?.({ payload: latest }));
+      expect(view.result.current.snapshot?.revision).toBe(revision);
+      expect(view.result.current.snapshot?.phase).toBe(phase);
+    }
+    await act(async () => vi.advanceTimersByTimeAsync(15 * 60 * 1000));
+    expect(
+      native.invoke.mock.calls.some(([name]) => /advance|tick|cancel|pause|stop/.test(name)),
+    ).toBe(false);
+    visibility.mockReturnValue("visible");
+    await act(async () => view.rerender({ open: true }));
+    expect(view.result.current.snapshot?.revision).toBe(4);
+    view.unmount();
+  });
+
   it("recovers a failed event subscription through retry and forwards real exchanges", async () => {
     native.listen.mockRejectedValueOnce(new Error("Event bridge unavailable"));
     const client = await import("./client");

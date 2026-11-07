@@ -4,6 +4,8 @@ export interface ContinuityContext {
   readonly personaPrompt: string;
   readonly language: "ja" | "en";
   readonly cwd: string | null;
+  /** Selected route, including while its Main Agent is still starting. */
+  readonly executionBackend?: "codex" | "text" | "pi";
   /** Exact current Main Agent session; absent for text-only companions. */
   readonly executionSessionId?: string | null;
 }
@@ -49,6 +51,8 @@ export interface ContinuityDraft {
 }
 export interface ContinuitySnapshot {
   readonly personaId: string;
+  /** Native-owned setting. Missing on older hosts means the control is unavailable. */
+  readonly autoEnabled?: boolean;
   readonly revision: number;
   readonly phase: "idle" | "thinking" | "drafting" | "working" | "error";
   readonly messages: readonly ContinuityMessage[];

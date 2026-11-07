@@ -1,6 +1,14 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum ExecutionBackend {
+    Codex,
+    Pi,
+    Text,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Context {
@@ -11,6 +19,9 @@ pub struct Context {
     pub cwd: Option<String>,
     #[serde(default)]
     pub execution_session_id: Option<String>,
+    /// Backend selection survives the Main Agent's transient startup absence.
+    #[serde(default)]
+    pub execution_backend: Option<ExecutionBackend>,
 }
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -81,6 +92,8 @@ pub struct Draft {
 pub struct Snapshot {
     pub persona_id: String,
     pub revision: u64,
+    #[serde(default)]
+    pub auto_enabled: bool,
     pub phase: String,
     pub messages: Vec<Message>,
     pub understandings: Vec<Understanding>,
@@ -96,6 +109,7 @@ impl Snapshot {
         Self {
             persona_id: persona_id.into(),
             revision: 0,
+            auto_enabled: true,
             phase: "idle".into(),
             messages: vec![],
             understandings: vec![],
@@ -113,6 +127,21 @@ pub struct Saved {
     pub version: u32,
     pub snapshot: Snapshot,
     #[serde(default)]
+    pub auto_enabled: bool,
+    #[serde(default)]
+    pub auto_context: Option<Context>,
+    /// Actual native worker observations, committed with the resulting state.
+    /// Quiet model checks and tool progress remain distinguishable.
+    #[serde(default)]
+    pub work_runs: Vec<WorkRun>,
+    /// Persisted automatic failure backoff survives process restarts.
+    #[serde(default)]
+    pub(super) failure_streak: u32,
+    #[serde(default)]
+    pub(super) retry_not_before: Option<u64>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(super) context_handoffs: Vec<ContextHandoff>,
+    #[serde(default)]
     pub observed_keys: std::collections::BTreeMap<String, String>,
     #[serde(default)]
     pub pending_correction_ids: Vec<String>,
@@ -128,17 +157,47 @@ pub struct Saved {
     pub(super) resume_after_recovery: bool,
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct ContextHandoff {
+    pub from_request_id: Option<String>,
+    pub to_request_id: String,
+    pub at: u64,
+    pub reason: String,
+    pub from_session_dir: Option<String>,
+    pub to_session_dir: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkRun {
+    pub request_id: String,
+    /// Original request creation, distinct from this recovery observation.
+    /// Unknown for requests saved before this evidence was collected.
+    #[serde(default)]
+    pub request_created_at: Option<u64>,
+    pub started_at: u64,
+    pub finished_at: u64,
+    pub trigger: String,
+    pub executor: String,
+    pub outcome: String,
+    pub progressed: bool,
+    pub error: Option<String>,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub(super) enum TerminalStatus {
     Interrupted,
     Failed,
+    CompletedWithoutReport,
 }
 impl TerminalStatus {
     pub(super) fn message(&self) -> &'static str {
         match self {
             Self::Interrupted => "Autonomous work was interrupted in Main Agent. Inspect its result before continuing; it will not be repeated automatically.",
             Self::Failed => "Autonomous work failed in Main Agent. Inspect its result before continuing; it will not be repeated automatically.",
+            Self::CompletedWithoutReport => "Main Agent finished without a readable work report. Inspect its completed turn and current workspace before continuing; its operations will not be repeated automatically.",
         }
     }
 }
@@ -147,7 +206,7 @@ impl TerminalStatus {
 #[serde(rename_all = "camelCase")]
 pub(super) struct ExecutionReceipt {
     pub request_id: String,
-    pub target: super::executor::Target,
+    pub target: super::execution_target::ExecutionTarget,
     pub turn_id: String,
     pub status: TerminalStatus,
     pub observed_at: u64,
@@ -160,9 +219,17 @@ pub(super) struct ExecutionReceipt {
 #[serde(rename_all = "camelCase")]
 pub(super) struct PendingExecution {
     pub request_id: String,
-    pub target: super::executor::Target,
+    #[serde(default)]
+    pub created_at: Option<u64>,
+    pub target: super::execution_target::ExecutionTarget,
     pub context: Context,
     pub prompt: String,
+    /// Exact original message/schema envelope. Legacy requests without it may
+    /// recover receipts but cannot authorize a managed same-ID admission retry.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub request_payload: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_budget: Option<super::execution_context::BudgetReport>,
     pub trigger: String,
     pub correction_ids: Vec<String>,
     #[serde(default)]

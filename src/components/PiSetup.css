@@ -1,0 +1,63 @@
+.pi-setup {
+  margin: 12px 28px;
+  padding: 12px 16px;
+  border: 1px solid var(--yorishiro-border);
+  border-radius: 8px;
+  font-size: 12px;
+  max-height: 60vh;
+  overflow: auto;
+}
+.pi-setup-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.pi-setup-heading h2 {
+  margin: 0 auto 0 0;
+  font-size: 12px;
+  font-weight: 600;
+}
+.pi-setup-ready {
+  color: var(--yorishiro-accent);
+}
+.pi-setup-form {
+  display: grid;
+  gap: 10px;
+  padding-top: 10px;
+}
+.pi-setup p {
+  margin: 0;
+  color: var(--yorishiro-fg-dim);
+  line-height: 1.5;
+}
+.pi-setup-form fieldset {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 10px;
+  border: 1px solid var(--yorishiro-border);
+  border-radius: 6px;
+}
+.pi-setup-form label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.pi-setup button,
+.pi-setup select {
+  width: fit-content;
+  max-width: 100%;
+  padding: 6px 10px;
+  color: var(--yorishiro-fg);
+  border: 1px solid var(--yorishiro-border);
+  border-radius: 6px;
+  background: var(--yorishiro-bg);
+  font: inherit;
+}
+.pi-setup button:disabled {
+  opacity: 0.5;
+}
+.pi-setup .pi-setup-error {
+  margin-top: 10px;
+  color: var(--yorishiro-danger, #e78686);
+}

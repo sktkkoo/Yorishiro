@@ -41,7 +41,7 @@ function renderTitleBar(overrides: Partial<Parameters<typeof TitleBar>[0]> = {})
 }
 
 describe("TitleBar View Mode picker", () => {
-  it("opens the companion screen from its icon and exposes its selected state", () => {
+  it("opens autonomous execution controls and exposes whether the window is open", () => {
     const toggle = vi.fn();
     renderTitleBar({
       screenSharingControl: <button type="button">Screen sharing</button>,
@@ -49,12 +49,12 @@ describe("TitleBar View Mode picker", () => {
       continuityActive: true,
     });
     const sharing = screen.getByRole("button", { name: "Screen sharing" });
-    const companion = screen.getByRole("button", { name: "Yoriと話す" });
+    const companion = screen.getByRole("button", { name: "自律実行" });
     expect(sharing.nextElementSibling).toBe(companion);
-    expect(companion.getAttribute("aria-pressed")).toBe("true");
+    expect(companion.getAttribute("aria-expanded")).toBe("true");
     expect(companion.textContent).toBe("");
     expect(companion.querySelector("svg")).not.toBeNull();
-    expect(companion.title).toBe("Yoriと話す");
+    expect(companion.title).toBe("自律実行");
     fireEvent.click(companion);
     expect(toggle).toHaveBeenCalledOnce();
   });

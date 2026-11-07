@@ -86,11 +86,22 @@ pub fn load(home: &Path, id: &str) -> Result<Saved, String> {
     validate_id(id)?;
     let key = identity(id);
     if let Some(text) = read_regular(&state_path(home, id))? {
-        let mut saved: Saved = serde_json::from_str(&text)
+        let stored: serde_json::Value = serde_json::from_str(&text)
+            .map_err(|e| format!("Could not read saved understanding: {e}"))?;
+        let migrate_auto = stored.get("autoEnabled").is_none();
+        let mut saved: Saved = serde_json::from_value(stored)
             .map_err(|e| format!("Could not read saved understanding: {e}"))?;
         if saved.version != 1 || identity(&saved.snapshot.persona_id) != key {
             return Err("Unsupported continuity data".into());
         }
+        // Test rollout defaults to On. A persisted user choice always wins,
+        // including false; opening the workspace must never re-enable it.
+        if migrate_auto {
+            saved.auto_enabled = true;
+            saved.snapshot.auto_enabled = true;
+            save(home, &saved)?;
+        }
+        saved.snapshot.auto_enabled = saved.auto_enabled;
         if ["thinking", "drafting", "working"].contains(&saved.snapshot.phase.as_str()) {
             saved.snapshot.phase = "error".into();
             saved.snapshot.error = Some("前回の返答は中断しました。再試行できます。 / The previous reply was interrupted. You can retry.".into());
@@ -101,6 +112,12 @@ pub fn load(home: &Path, id: &str) -> Result<Saved, String> {
     let mut saved = Saved {
         version: 1,
         snapshot: Snapshot::new(id),
+        auto_enabled: true,
+        auto_context: None,
+        work_runs: vec![],
+        failure_streak: 0,
+        retry_not_before: None,
+        context_handoffs: vec![],
         observed_keys: std::collections::BTreeMap::new(),
         pending_correction_ids: vec![],
         pending_trigger: None,

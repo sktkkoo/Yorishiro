@@ -1,0 +1,17 @@
+{
+  "name": "yorishiro-pi-durable-evaluation",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test harness.node-test.mjs sidecar.node-test.mjs failure-continuation.node-test.mjs"
+  },
+  "dependencies": {
+    "@earendil-works/chord": "1.5.0",
+    "@earendil-works/pi-ai": "1.5.0",
+    "@earendil-works/pi-durable": "1.5.0",
+    "@earendil-works/pi-schema": "1.5.0"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  }
+}

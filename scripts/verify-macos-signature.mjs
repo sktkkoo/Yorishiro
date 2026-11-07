@@ -5,6 +5,7 @@ import {
   macosSignatureErrors,
   REQUIRED_MACOS_ENTITLEMENTS,
 } from "./lib/macos-signature-verifier.mjs";
+import { verifyPiRuntimeBundle } from "./lib/pi-runtime-bundle-verifier.mjs";
 
 const args = process.argv.slice(2);
 const requireDeveloperId = args.includes("--require-developer-id");
@@ -44,6 +45,25 @@ function run(command, commandArgs) {
 }
 
 run("codesign", ["--verify", "--deep", "--strict", "--verbose=4", appPath]);
+const runtime = verifyPiRuntimeBundle(appPath);
+run("codesign", ["--verify", "--strict", "--verbose=4", runtime.node]);
+const nodeSignature = run("codesign", [
+  "--display",
+  "--verbose=4",
+  "--entitlements",
+  "-",
+  "--xml",
+  runtime.node,
+]);
+const nodeErrors = macosSignatureErrors(nodeSignature, {
+  requireDeveloperId,
+  requireStapledTicket: false,
+  requiredEntitlements: ["com.apple.security.cs.allow-jit"],
+});
+if (nodeErrors.length) {
+  console.error(nodeErrors.join("\n"));
+  process.exit(1);
+}
 const signatureDetails = run("codesign", [
   "--display",
   "--verbose=4",
@@ -66,6 +86,7 @@ if (requireDeveloperId) {
 }
 
 console.log(`Valid macOS signature: ${appPath}`);
+console.log(`Verified bundled Pi runtime: Node ${runtime.nodeVersion}, ${runtime.target}`);
 console.log(`Signed entitlements: ${REQUIRED_MACOS_ENTITLEMENTS.join(", ")}`);
 console.log(
   requireDeveloperId
