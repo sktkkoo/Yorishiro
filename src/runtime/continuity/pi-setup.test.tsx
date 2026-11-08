@@ -27,6 +27,31 @@ const status = (configured = false): PiSetupStatus => ({
 beforeEach(() => native.invoke.mockReset());
 afterEach(() => cleanup());
 describe("Pi setup bridge", () => {
+  it("accepts only the named development presets without granting them to old settings", () => {
+    const commands = ["git-status", "git-diff", "project-check", "project-test", "project-build"];
+    expect(parsePiSetup(status())?.permissions.commands).toEqual([]);
+    expect(
+      parsePiSetup({
+        ...status(),
+        permissions: { read: true, write: false, commands },
+      })?.permissions.commands,
+    ).toEqual(commands);
+    for (const rejected of [
+      ["git-status", "git-status"],
+      ["git-commit"],
+      ["project-deploy"],
+      ["npm test"],
+      [{ program: "git", args: ["status"] }],
+    ]) {
+      expect(
+        parsePiSetup({
+          ...status(),
+          permissions: { read: true, write: false, commands: rejected },
+        }),
+      ).toBeNull();
+    }
+  });
+
   it("rejects private fields, unknown phases and malformed permission flags", () => {
     expect(parsePiSetup(status())).toBeTruthy();
     expect(parsePiSetup({ ...status(), token: "PRIVATE" })).toBeNull();

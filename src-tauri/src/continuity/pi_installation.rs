@@ -22,6 +22,11 @@ const RUNTIME_ERROR: &str = "runtime_invalid";
 pub enum CommandPreset {
     WorkspaceInfo,
     ValidateJson,
+    GitStatus,
+    GitDiff,
+    ProjectCheck,
+    ProjectTest,
+    ProjectBuild,
 }
 
 impl CommandPreset {
@@ -29,6 +34,11 @@ impl CommandPreset {
         match self {
             Self::WorkspaceInfo => "workspace-info",
             Self::ValidateJson => "validate-json",
+            Self::GitStatus => "git-status",
+            Self::GitDiff => "git-diff",
+            Self::ProjectCheck => "project-check",
+            Self::ProjectTest => "project-test",
+            Self::ProjectBuild => "project-build",
         }
     }
 }
@@ -96,7 +106,7 @@ impl Settings {
                         .bytes()
                         .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
             })
-            || self.permissions.commands.len() > 2
+            || self.permissions.commands.len() > 7
             || self
                 .permissions
                 .commands
@@ -520,7 +530,13 @@ pub(super) fn resolved_permissions(
                 id: preset.id().into(),
                 program: runtime.node.to_string_lossy().into_owned(),
                 args: vec![script.to_string_lossy().into_owned(), preset.id().into()],
-                timeout_ms: None,
+                timeout_ms: matches!(
+                    preset,
+                    CommandPreset::ProjectCheck
+                        | CommandPreset::ProjectTest
+                        | CommandPreset::ProjectBuild
+                )
+                .then_some(300_000),
             })
             .collect(),
     })
@@ -773,6 +789,40 @@ mod tests {
             );
             assert_eq!(command.args[1], command.id);
         }
+    }
+
+    #[test]
+    fn development_commands_are_opt_in_fixed_and_have_bounded_project_deadlines() {
+        let root = tempfile::tempdir().unwrap();
+        let (resources, executable, _) = fixture_bundle(root.path());
+        let runtime = runtime_paths_at(&resources, &executable, None).unwrap();
+        let settings = Settings {
+            permissions: PortablePermissions {
+                commands: vec![
+                    CommandPreset::WorkspaceInfo,
+                    CommandPreset::ValidateJson,
+                    CommandPreset::GitStatus,
+                    CommandPreset::GitDiff,
+                    CommandPreset::ProjectCheck,
+                    CommandPreset::ProjectTest,
+                    CommandPreset::ProjectBuild,
+                ],
+                ..PortablePermissions::default()
+            },
+            ..Settings::default()
+        };
+        let resolved = resolved_permissions(&settings, &runtime).unwrap();
+        assert_eq!(resolved.commands.len(), 7);
+        for command in resolved.commands {
+            assert_eq!(Path::new(&command.program), runtime.node);
+            assert_eq!(command.args.len(), 2);
+            assert_eq!(command.args[1], command.id);
+            assert_eq!(
+                command.timeout_ms,
+                command.id.starts_with("project-").then_some(300_000)
+            );
+        }
+        assert!(Settings::default().permissions.commands.is_empty());
     }
 
     #[test]

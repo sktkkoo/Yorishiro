@@ -5,6 +5,7 @@ import { access, link, lstat, mkdir, open, realpath, rename, unlink } from "node
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { defineTool } from "@earendil-works/pi-durable";
 import { obj, opt, str } from "@earendil-works/pi-schema";
+import { verifiedProjectCommandIds } from "./project-commands.mjs";
 
 export const WORKSPACE_LIMITS = Object.freeze({
   maxFileBytes: 1024 * 1024,
@@ -98,6 +99,7 @@ async function futureRealpath(path) {
 /** Cooperative workspace access, not an OS sandbox for configured executables. */
 export async function createWorkspaceTools(cwd, permissionValue, options = {}) {
   const permissions = validatePermissions(permissionValue);
+  const projectCommands = await verifiedProjectCommandIds(permissions);
   if (typeof cwd !== "string" || !isAbsolute(cwd))
     throw new Error("Workspace must be an absolute directory");
   const root = await realpath(cwd);
@@ -339,6 +341,9 @@ export async function createWorkspaceTools(cwd, permissionValue, options = {}) {
               env: {
                 PATH: process.env.PATH ?? "/usr/bin:/bin",
                 LANG: "C.UTF-8",
+                ...(projectCommands.has(commandId) && process.env.CARGO_TARGET_DIR
+                  ? { CARGO_TARGET_DIR: process.env.CARGO_TARGET_DIR }
+                  : {}),
               },
               stdio: ["ignore", "pipe", "pipe"],
             });
@@ -389,7 +394,23 @@ export async function createWorkspaceTools(cwd, permissionValue, options = {}) {
                     `Configured command failed (${code ?? signal}): ${output.toString("utf8")}`,
                   ),
                 );
-              else resolveCommand(text(output.toString("utf8"), { commandId, exitCode: code }));
+              else {
+                let result = output.toString("utf8");
+                if (commandId === "workspace-info") {
+                  try {
+                    const info = JSON.parse(result);
+                    if (info.check === "workspace-info")
+                      result = JSON.stringify({
+                        ...info,
+                        grantedCommandPresets: [...allowed.keys()],
+                        fileCapabilities: { read: permissions.read, write: permissions.write },
+                      });
+                  } catch {
+                    /* 既存の独自コマンドの出力は変更しない。 */
+                  }
+                }
+                resolveCommand(text(result, { commandId, exitCode: code }));
+              }
             });
             context?.abortSignal?.addEventListener("abort", onAbort, {
               once: true,

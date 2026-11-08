@@ -73,7 +73,23 @@ All three policy keys are required: `{read, write, commands}`. Model tools are `
 
 Commands choose only a configured `commandId`; the model supplies no shell text, executable, arguments or environment. Executables and argv are fixed by the host's policy, and command children receive a minimal environment without inherited provider credentials. Cancellation and deadlines terminate only the command's owned process/group.
 
-Managed setup offers only the bundled `workspace-info` and `validate-json` commands. They use the bundled Node executable and fixed arguments, without running mutable project scripts or requiring a system toolchain. Legacy accepted requests retain their original command policy for recovery; the model cannot expand that policy. Cancellation and output limits still apply.
+Managed commands are individually opt-in. Existing settings gain no new commands automatically. All use bundled Node and a fixed helper/action argv; the model supplies only the granted command ID:
+
+| ID | Fixed behavior |
+| --- | --- |
+| `workspace-info` | Bounded folder listing, canonical selected cwd, repository root/kind/branch, filesystem-verified linked registration, detected project commands and actual granted command IDs. |
+| `validate-json` | Bounded JSON syntax validation; no project code executes. |
+| `git-status` | `git --no-pager --no-optional-locks` status with short/branch output, normal untracked files, ignored submodules and `-- .` scope. |
+| `git-diff` | Both unstaged and staged diffs with `--no-ext-diff --no-textconv --ignore-submodules=all -- .`; no commit, push or staging. |
+| `project-check` | Own `package.json`: first declared `check`, `typecheck`, then `lint` script via `npm run`; otherwise own `Cargo.toml`: `cargo check`. |
+| `project-test` | Own `package.json`: first declared `test:run`, `test:ci`, then `test` via `npm run`. A fallback Vitest `test` receives fixed `--run`; otherwise own `Cargo.toml`: `cargo test`. |
+| `project-build` | Own `package.json`: `npm run build`; otherwise own `Cargo.toml`: `cargo build`. |
+
+Git queries disable fsmonitor, hooks, optional locks, external diff and textconv. Repository observation reads bounded regular metadata files without evaluating Git configuration; a linked checkout is verified only when its canonical `commondir`, `worktrees` registration and `gitdir` backpointer agree with the current `.git` file. Worktrees are optional unless requested by the user or remembered project instructions. A supported/detected command is distinct from a permission grant.
+
+Project presets execute trusted project code and may write build artifacts, lockfiles or other files. Selecting a command is a separate grant from file-tool read/write. `package.json` takes priority over Cargo when both exist; no parent folder is searched. npm uses the bundled Node executable, an ephemeral Node PATH alias and `CI=true`; provider environment credentials are not inherited. Git, npm and Cargo must be installed on the application PATH where required; missing tools/scripts produce actionable failures. Project presets have a 300-second deadline; existing inspection defaults stay 30 seconds. Output stays capped at 64 KiB and cancellation terminates the owned process group, including descendants. Legacy accepted requests retain their original command policy for recovery; the model cannot expand it.
+
+Fixed project presets set `CARGO_INCREMENTAL=0` to limit additional incremental caches. An explicitly configured host `CARGO_TARGET_DIR` is preserved only for verified project grants; no shared cache location is discovered or invented. Without that variable, the project's normal Cargo target location applies.
 
 These controls are an application tool boundary, **not OS isolation**. A permitted command can perform whatever its executable and project code do with the OS user's privileges. In particular, allowing model writes to project code and then running that mutable code is not equivalent to sandboxing it. Production deployment still needs the host's chosen trust/isolation policy, process supervision and signed runtime packaging.
 

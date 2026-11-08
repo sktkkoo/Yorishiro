@@ -20,6 +20,7 @@ import { assertAdmission, openAdmissionEpoch } from "./admission-identity.mjs";
 import { createContextArchiveTool } from "./context-archive.mjs";
 import { protectedInstallationPaths } from "./managed-identity.mjs";
 import { acquireOwnerLock } from "./owner-lock.mjs";
+import { verifiedProjectCommandIds } from "./project-commands.mjs";
 import { describeSubmissionTools } from "./submission-evidence.mjs";
 import { createWorkspaceTools, validatePermissions } from "./workspace-tools.mjs";
 
@@ -122,6 +123,7 @@ export async function runWorker(options, dependencies) {
   const { models, fixture = false, input = process.stdin, output = process.stdout } = dependencies;
   const context = BACKGROUND_CONTEXT;
   const permissions = validatePermissions(options.permissions);
+  const verifiedProjects = await verifiedProjectCommandIds(permissions);
   const cwd = realpathSync(options.cwd);
   if (!models.getModel(options.provider, options.model)) throw new Error("model_unavailable");
   mkdirSync(options.sessionDir, { recursive: true, mode: 0o700 });
@@ -243,7 +245,9 @@ export async function runWorker(options, dependencies) {
         status: record?.status ?? null,
         reason: record?.status === "unanswered" ? record.reason : undefined,
         report,
-        ...(await describeSubmissionTools(root, record, context)),
+        ...(await describeSubmissionTools(root, record, context, {
+          verifiedProjectCommandIds: verifiedProjects,
+        })),
         ...(fixture && dependencies.modelCalls ? { modelCalls: dependencies.modelCalls() } : {}),
       };
     }

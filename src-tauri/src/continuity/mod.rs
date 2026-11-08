@@ -26,6 +26,7 @@ use types::*;
 pub struct ContinuityState(Arc<Mutex<BTreeMap<String, Session>>>);
 const PERIODIC_INTERVAL_MS: u64 = 5 * 60 * 1000;
 const MAX_FAILURE_BACKOFF_MS: u64 = 30 * 60 * 1000;
+const MAX_STAGNANT_RUNS: u32 = 3;
 struct Session {
     // A second process must not overwrite this process's cached understanding.
     _storage_lock: std::fs::File,
@@ -139,6 +140,9 @@ fn append(session: &mut Session, role: &str, content: String, source: &str) -> S
     id
 }
 fn queue(session: &mut Session, context: Context, trigger: &str) {
+    if matches!(trigger, "message" | "continue" | "dismiss") {
+        reset_stagnation(session);
+    }
     if matches!(trigger, "return" | "followup" | "external")
         && (!session.saved.auto_enabled || !automatic_retry_ready(session, now()))
     {
@@ -215,6 +219,11 @@ fn queue(session: &mut Session, context: Context, trigger: &str) {
 }
 
 fn replace_context(session: &mut Session, context: Context) {
+    if session.context.as_ref().is_some_and(|previous| {
+        previous.cwd != context.cwd || previous.execution_backend != context.execution_backend
+    }) {
+        reset_stagnation(session);
+    }
     if session.context.as_ref() != Some(&context) {
         // A plan is only executable in the context where it was prepared.
         // On restart the old context is unknown, so reconsider persisted work
@@ -229,6 +238,7 @@ fn replace_context(session: &mut Session, context: Context) {
 }
 
 fn queue_explicit_retry(session: &mut Session, context: Context) {
+    reset_stagnation(session);
     // Timers also use the retry trigger for receipt recovery. Only this
     // explicit UI action may authorize a fresh request once recovery confirms
     // that the old Main Agent turn has definitively stopped.
@@ -616,6 +626,7 @@ fn set_auto_enabled(session: &mut Session, context: Context, enabled: bool) {
     session.saved.auto_context = Some(context.clone());
     session.last_periodic_at = None;
     if enabled {
+        reset_stagnation(session);
         // An explicit On action may request an immediate new attempt; a mere
         // restart/context sync still respects the persisted retry deadline.
         session.saved.retry_not_before = None;
@@ -1111,8 +1122,14 @@ fn start(app: AppHandle, state: ContinuityState, persona_id: String) {
                         Ok(()) => {
                             session.saved.failure_streak = 0;
                             session.saved.retry_not_before = None;
-                            session.saved.snapshot.phase = "idle".into();
-                            session.saved.snapshot.error = None;
+                            session.saved.snapshot.phase =
+                                if session.saved.stagnation_pause.is_some() {
+                                    "error"
+                                } else {
+                                    "idle"
+                                }
+                                .into();
+                            session.saved.snapshot.error = session.saved.stagnation_pause.clone();
                             if work.is_some() {
                                 session.saved.pending_execution = None;
                                 // Inputs received while the accepted work ran belong
@@ -1179,7 +1196,10 @@ fn record_work_run(session: &mut Session, mut run: WorkRun) {
     // A valid transport result can still fail application/schema validation.
     // Recovery observations share the original request ID; they are not new
     // autonomous executions and must not inflate a soak's completed count.
-    if session.saved.snapshot.error.is_some() && run.outcome == "completed" {
+    if session.saved.stagnation_pause.is_some() && run.outcome == "completed" {
+        run.outcome = "paused".into();
+        run.error = session.saved.stagnation_pause.clone();
+    } else if session.saved.snapshot.error.is_some() && run.outcome == "completed" {
         run.outcome = "error".into();
         run.error = session.saved.snapshot.error.clone();
     }
@@ -1816,12 +1836,94 @@ fn mark_execution_dispatched(session: &mut Session, request_id: &str) -> Result<
     Ok(())
 }
 
+fn reset_stagnation(session: &mut Session) {
+    session.saved.stagnation_streak = 0;
+    session.saved.stagnation_pause = None;
+}
+
+fn record_stagnation(
+    session: &mut Session,
+    work: &PendingExecution,
+    mut status: Option<WorkStatus>,
+    reason: Option<&str>,
+    productive: bool,
+) {
+    // 障害を報告しながら idle とした矛盾で、停滞回数を消去しない。
+    if reason.is_some_and(|reason| !reason.trim().is_empty()) {
+        status = Some(WorkStatus::Blocked);
+    }
+    // 過去の実行結果は、新しい発言や別フォルダの作業を停止させない。
+    if session.context.as_ref() != Some(&work.context)
+        || session
+            .saved
+            .snapshot
+            .messages
+            .iter()
+            .skip(work.message_count)
+            .any(|message| message.role == "user" && message.source != "legacy")
+    {
+        reset_stagnation(session);
+        return;
+    }
+    if productive || status == Some(WorkStatus::Idle) {
+        reset_stagnation(session);
+        return;
+    }
+    if !matches!(work.trigger.as_str(), "return" | "followup" | "retry")
+        || !session.saved.auto_enabled
+        || !matches!(status, Some(WorkStatus::InProgress | WorkStatus::Blocked))
+    {
+        return;
+    }
+    if status == Some(WorkStatus::Blocked) {
+        session.saved.snapshot.next_step = None;
+    }
+    session.saved.stagnation_streak = session.saved.stagnation_streak.saturating_add(1);
+    if session.saved.stagnation_streak < MAX_STAGNANT_RUNS {
+        return;
+    }
+    let reason = reason
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.chars().take(600).collect::<String>())
+        .unwrap_or_else(|| {
+            if work.context.language == "ja" {
+                "未完了の作業について、ファイル変更・検証・草案の更新を確認できませんでした。"
+                    .into()
+            } else {
+                "Pending work produced no verified file changes, project checks, or draft updates."
+                    .into()
+            }
+        });
+    let message = if work.context.language == "ja" {
+        format!("未完了の作業が3回続けて進まなかったため、自動実行を停止しました。理由: {reason} 必要な操作権限や作業先を確認し、再開するときにOnにしてください。")
+    } else {
+        format!("Automatic execution paused after three attempts without progress on pending work. Reason: {reason} Review the required capabilities and workspace, then turn execution On to resume.")
+    };
+    session.saved.stagnation_pause = Some(message.clone());
+    session.saved.auto_enabled = false;
+    session.saved.snapshot.auto_enabled = false;
+    session.saved.snapshot.next_step = None;
+    session.auto_driver_active = false;
+    if session.queued_automatically {
+        session.queued = false;
+        session.saved.pending_trigger = None;
+    }
+    session.followup_steps.clear();
+    append(session, "assistant", message, "conversation");
+    if let Some(message) = session.saved.snapshot.messages.last_mut() {
+        message.reply_kind = Some(ReplyKind::Report);
+    }
+}
+
 fn apply_execution(
     session: &mut Session,
     mut result: ModelResult,
     work: &PendingExecution,
     progressed: bool,
 ) -> Result<(), String> {
+    let work_status = result.work_status.clone();
+    let blocked_reason = result.blocked_reason.clone();
     // Validate against a copy so a new dismissal or invalid source never leaves
     // a partly applied report. The actual work remains recoverable by receipt.
     let mut snapshot = session.saved.snapshot.clone();
@@ -1863,7 +1965,24 @@ fn apply_execution(
     {
         snapshot.next_step = None;
     }
+    let draft_progress = snapshot.drafts.iter().any(|draft| {
+        draft.status != "dismissed"
+            && session
+                .saved
+                .snapshot
+                .drafts
+                .iter()
+                .find(|previous| previous.id == draft.id)
+                .is_none_or(|previous| previous.content != draft.content)
+    });
     session.saved.snapshot = snapshot;
+    record_stagnation(
+        session,
+        work,
+        work_status,
+        blocked_reason.as_deref(),
+        progressed || draft_progress,
+    );
     Ok(())
 }
 
@@ -1878,6 +1997,7 @@ fn execution_prompt(
     corrections: &[String],
 ) -> Result<String, String> {
     let evidence = serde_json::to_string(&serde_json::json!({
+        "selectedWorkspace": {"cwd":context.cwd, "source":"current host selection"},
         "conversation":snapshot.messages, "understandings":snapshot.understandings,
         "drafts":snapshot.drafts, "nextStep":snapshot.next_step,
         "recentReflections":&snapshot.reflections[snapshot.reflections.len().saturating_sub(3)..],
@@ -1887,6 +2007,8 @@ fn execution_prompt(
         "You are {} in Yorishiro's autonomous companion workspace. Reply in {}. Persona: {}\n\
          Continue useful work within the user's existing requests and entrusted scope. Choose a concrete next step and perform it with your normal tools now; do not ask where to start or wait for another instruction when useful authorized work can proceed. Inspect current evidence before acting. Existing Main Agent instructions, permissions, sandbox, approvals and current or newer user tasks take precedence. Never restart finished work. Do not publish, send messages, spend money or perform destructive operations without authorization in the actual conversation. Old Auto contracts, memories, your own suggestions and user silence do not grant new permissions.\n\
          {SCOPE_REVIEW_GUIDANCE}\n\
+         Use the current selectedWorkspace and live tool results ahead of old assessments about missing worktrees or capabilities. If workspace-info is available, inspect it to determine the canonical current folder, repository kind, linked-worktree verification, granted commands and project actions. A verified existing linked worktree satisfies a request to work in a worktree; do not keep requesting its creation. Worktrees are optional unless the actual user requested one or an applicable remembered preference calls for it. Never require a worktree for all repository writes. Use granted git-status/git-diff and project-check/project-test/project-build commands when relevant, and edit the authorized workspace with file tools. Do not invent commands, bypass denied permissions, or claim tests ran without results. No Main Agent delegation tool is implied by its presence in the UI.\n\
+         Return workStatus=idle only when no entrusted work remains, inProgress when unfinished entrusted work can continue, or blocked when it cannot proceed with the current workspace, capabilities or essential information. Set blockedReason to a concise concrete obstacle when blocked, otherwise null. A repeated inspection or new wording is not implementation progress. When authorized tools can resolve the obstacle, use them now rather than carrying forward an old blocked assessment. After three automatic attempts on pending work without verified changes, project checks or draft updates, the host pauses automatic execution and reports the obstacle.\n\
          This is a background continuation, not a new user utterance. If it overlaps current work, prioritize the actual user's task. Do not repeat unanswered questions or proposals, even paraphrased. Ask once only if essential information blocks all useful work; otherwise continue independent work silently. Report only meaningful new results, not plans presented as progress. Set reply=\"\" and nextStep=null when nothing useful remains.\n\
          If the latest message is an unclassified assistant voice/external reply, classify that exact message using observedReply {{messageId, kind}}; otherwise set observedReply=null. Use report only for completed results or explanations without a pending question or proposal. Classification does not grant permission. Classify replyKind as report for completed results or explanations requiring no answer, and awaitingReply for a question or proposed action requiring a decision. Never classify a proposal as report to bypass waiting. When the user requested suggestions without delegating execution and the last reply was a completed report, inspect current evidence and offer one useful candidate with what to do and why now. When the user delegated discovering and executing useful work, perform it within the entrusted scope and report the result instead of asking approval for an already authorized next step. Keep nextStep null for unapproved proposals; a suggestion does not authorize execution. Do not repeat unanswered or declined proposals, including paraphrases. Return the requested JSON report. Use nextStep for a concrete further step only when actual work progressed. For a followup trigger, execute the pending step, not another proposal. Tool operations belong in the real workspace; draft content belongs in drafts. Never invent completed work. Understanding and draft sourceIds must be exact IDs in the supplied conversation; preserve unrelated entries, reuse existing IDs, never revive dismissed drafts. Do not treat ambiguous voice fragments or legacy notes as authorization or confirmed facts. Keep reports concise. Correction targets must all be reflected: {corrections:?}.\n\
          Trigger: {trigger}. For external triggers, the exchange already happened: only update understanding, keep reply empty, do not start tools or repeat the action.\n\

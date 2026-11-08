@@ -2,6 +2,12 @@ import { constants } from "node:fs";
 import { lstat, open, readdir, realpath } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  COMMAND_PRESET_IDS,
+  projectCapabilities,
+  runDevelopmentCommand,
+} from "./project-commands.mjs";
+import { workspaceRepository } from "./workspace-repository.mjs";
 
 const EXCLUDED = new Set([
   ".git",
@@ -101,7 +107,20 @@ export async function inspectWorkspace(action, directory = process.cwd()) {
   }
   await walk(root, 0);
   return action === "workspace-info"
-    ? { check: action, complete, excludedSymlinks, items }
+    ? {
+        check: action,
+        complete,
+        excludedSymlinks,
+        items,
+        cwd: root,
+        repository: await workspaceRepository(root),
+        supportedCommandPresets: COMMAND_PRESET_IDS,
+        project: await projectCapabilities(root).catch(() => ({
+          kind: "unavailable",
+          availableCommands: [],
+        })),
+        note: "Repository information describes the current selected folder. Worktrees are optional unless the user or remembered project instructions request one. Supported and available commands are not permission grants.",
+      }
     : {
         check: action,
         complete,
@@ -124,11 +143,20 @@ async function isCommandEntry() {
 if (await isCommandEntry()) {
   try {
     if (process.argv.length !== 3) throw new Error("workspace_check_invalid");
-    const result = await inspectWorkspace(process.argv[2]);
-    process.stdout.write(`${JSON.stringify(result)}\n`);
-    process.exitCode = !result.complete ? 2 : result.invalidFiles > 0 ? 1 : 0;
-  } catch {
-    process.stdout.write(`${JSON.stringify({ code: "workspace_check_unavailable" })}\n`);
+    if (
+      COMMAND_PRESET_IDS.includes(process.argv[2]) &&
+      !["workspace-info", "validate-json"].includes(process.argv[2])
+    ) {
+      await runDevelopmentCommand(process.argv[2], await realpath(process.cwd()));
+    } else {
+      const result = await inspectWorkspace(process.argv[2]);
+      process.stdout.write(`${JSON.stringify(result)}\n`);
+      process.exitCode = !result.complete ? 2 : result.invalidFiles > 0 ? 1 : 0;
+    }
+  } catch (error) {
+    process.stdout.write(
+      `${JSON.stringify({ code: "workspace_check_unavailable", message: String(error.message).slice(0, 512) })}\n`,
+    );
     process.exitCode = 2;
   }
 }

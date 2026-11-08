@@ -134,6 +134,11 @@ test("actual Harness creates, edits and verifies an artifact through explicit to
   assert.equal(settled.modelCalls, 4);
   assert.equal(settled.toolResults.length, 3);
   assert.ok(settled.toolResults.every((result) => !result.isError));
+  assert.deepEqual(
+    settled.toolResults.map((result) => result.effect),
+    ["write", "write", "unknown"],
+  );
+  assert.ok(settled.toolResults.every((result) => result.progressEvidenceVersion === 1));
   assert.equal(settled.toolEvidenceComplete, true);
   assert.equal(await readFile(join(cwd, "result.txt"), "utf8"), "two");
   assert.equal(await readFile(join(cwd, "command-effects.txt"), "utf8"), "verified\n");
@@ -258,6 +263,7 @@ test("production protocol runtime uses actual Pi tools, passive recovery and dur
   assert.equal(settled.modelCalls, 2);
   assert.equal(settled.toolResults.length, 1);
   assert.equal(settled.toolResults[0].isError, false);
+  assert.equal(settled.toolResults[0].effect, "read");
   assert.equal(settled.toolEvidenceComplete, true);
   const sid = settled.submissionId;
   await first.close();

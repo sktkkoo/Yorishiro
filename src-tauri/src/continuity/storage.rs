@@ -116,6 +116,8 @@ pub fn load(home: &Path, id: &str) -> Result<Saved, String> {
         auto_context: None,
         work_runs: vec![],
         failure_streak: 0,
+        stagnation_streak: 0,
+        stagnation_pause: None,
         retry_not_before: None,
         context_handoffs: vec![],
         observed_keys: std::collections::BTreeMap::new(),

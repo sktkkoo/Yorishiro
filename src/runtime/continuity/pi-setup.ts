@@ -1,7 +1,16 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-export type PiCommandPreset = "workspace-info" | "validate-json";
+const COMMAND_PRESETS = [
+  "workspace-info",
+  "validate-json",
+  "git-status",
+  "git-diff",
+  "project-check",
+  "project-test",
+  "project-build",
+] as const;
+export type PiCommandPreset = (typeof COMMAND_PRESETS)[number];
 export interface PiPermissions {
   readonly read: boolean;
   readonly write: boolean;
@@ -125,7 +134,7 @@ export function parsePiSetup(value: unknown): PiSetupStatus | null {
     typeof value.permissions.write !== "boolean" ||
     !Array.isArray(value.permissions.commands) ||
     value.permissions.commands.some(
-      (item) => !["workspace-info", "validate-json"].includes(item),
+      (item) => !COMMAND_PRESETS.some((command) => command === item),
     ) ||
     new Set(value.permissions.commands).size !== value.permissions.commands.length ||
     !parsePiLogin(value.login) ||

@@ -137,6 +137,11 @@ pub struct Saved {
     /// Persisted automatic failure backoff survives process restarts.
     #[serde(default)]
     pub(super) failure_streak: u32,
+    /// 未完了作業があるまま成果を得られなかった連続回数。
+    #[serde(default)]
+    pub(super) stagnation_streak: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) stagnation_pause: Option<String>,
     #[serde(default)]
     pub(super) retry_not_before: Option<u64>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -264,9 +269,20 @@ pub struct ObservedReply {
     pub message_id: String,
     pub kind: ReplyKind,
 }
+#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum WorkStatus {
+    Idle,
+    InProgress,
+    Blocked,
+}
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ModelResult {
+    #[serde(default)]
+    pub work_status: Option<WorkStatus>,
+    #[serde(default)]
+    pub blocked_reason: Option<String>,
     #[serde(default)]
     pub observed_reply: Option<ObservedReply>,
     pub reply: String,

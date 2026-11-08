@@ -36,10 +36,17 @@ const COPY = {
     write: "ファイルを作成・変更する",
     info: "作業フォルダの概要を確認する",
     validate: "JSONファイルを検証する",
+    gitStatus: "Gitの状態を読む",
+    gitDiff: "Gitの差分を読む",
+    projectCheck: "プロジェクトの検証を実行する",
+    projectTest: "プロジェクトのテストを実行する",
+    projectBuild: "プロジェクトのビルドを実行する",
+    projectCommands:
+      "検証・テスト・ビルドは、選択中のプロジェクトのスクリプトやコードを実行します。ファイル変更の許可がOffでも、生成物の作成・変更や、あなたのアカウントで可能な他の操作を伴います。許可する実行を個別に選択してください。",
     save: "設定を保存して自律実行に使用",
     saving: "保存しています…",
     scope:
-      "自律実行に許可する操作を保存します。ファイル操作は選択中の作業フォルダ内に制限されます。実行のOn／Offは上部のスイッチで変更できます。",
+      "自律実行に許可する操作を保存します。ファイルを直接読み書きする操作は選択中の作業フォルダ内に制限されます。実行のOn／Offは上部のスイッチで変更できます。",
     workspace: "先に作業フォルダを選択してください。",
     legacy:
       "以前の開発用設定があります。操作権限を確認して保存すると、アプリ同梱の実行環境へ切り替えます。",
@@ -71,10 +78,17 @@ const COPY = {
     write: "Create and change files",
     info: "Inspect the workspace overview",
     validate: "Validate JSON files",
+    gitStatus: "Read Git status",
+    gitDiff: "Read Git diff",
+    projectCheck: "Run project checks",
+    projectTest: "Run project tests",
+    projectBuild: "Run project build",
+    projectCommands:
+      "Checks, tests and builds execute scripts and code from the selected project. Even with file changes turned Off, they can create or change files and perform other actions with your account's access. Allow each operation separately.",
     save: "Save and use for autonomous execution",
     saving: "Saving…",
     scope:
-      "Save the operations allowed for autonomous execution. File operations stay within the selected workspace. Use the switch above to turn execution On or Off.",
+      "Save the operations allowed for autonomous execution. Direct file reading and editing stay within the selected workspace. Use the switch above to turn execution On or Off.",
     workspace: "Choose a workspace first.",
     legacy:
       "Earlier development settings are present. Review permissions and save to switch to the runtime included with the app.",
@@ -277,6 +291,39 @@ export function PiSetup({ cwd, language, onConfigured, onReadinessChange }: PiSe
                   />
                   {copy.validate}
                 </label>
+                {(
+                  [
+                    ["git-status", copy.gitStatus],
+                    ["git-diff", copy.gitDiff],
+                  ] as const
+                ).map(([command, label]) => (
+                  <label key={command}>
+                    <input
+                      type="checkbox"
+                      checked={commands.includes(command)}
+                      onChange={(event) => selectCommand(command, event.target.checked)}
+                    />
+                    {label}
+                  </label>
+                ))}
+                <p id={`${id}-project-commands`}>{copy.projectCommands}</p>
+                {(
+                  [
+                    ["project-check", copy.projectCheck],
+                    ["project-test", copy.projectTest],
+                    ["project-build", copy.projectBuild],
+                  ] as const
+                ).map(([command, label]) => (
+                  <label key={command}>
+                    <input
+                      type="checkbox"
+                      aria-describedby={`${id}-project-commands`}
+                      checked={commands.includes(command)}
+                      onChange={(event) => selectCommand(command, event.target.checked)}
+                    />
+                    {label}
+                  </label>
+                ))}
               </fieldset>
               <p>{copy.scope}</p>
               <button type="button" disabled={!canSave} onClick={() => void save()}>
