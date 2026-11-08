@@ -44,6 +44,69 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe("Pi setup", () => {
+  it("initializes a newly available model without discarding reviewed permissions", async () => {
+    current = { ...initial(), model: "", models: [] };
+    render(<PiSetup cwd="workspace fixture" language="en" />);
+    fireEvent.click(await screen.findByRole("checkbox", { name: "Create and change files" }));
+    current = { ...initial(), authenticated: true, authentication: "present" };
+    fireEvent(window, new Event("focus"));
+    await screen.findByText("Sign-in information is available.");
+    const save = screen.getByRole("button", { name: "Save and use for autonomous execution" });
+    await waitFor(() => expect(save).toHaveProperty("disabled", false));
+    expect(screen.getByRole("checkbox", { name: "Create and change files" })).toHaveProperty(
+      "checked",
+      true,
+    );
+    fireEvent.click(save);
+    await waitFor(() =>
+      expect(native.invoke.mock.calls.some(([name]) => name === "continuity_pi_setup_save")).toBe(
+        true,
+      ),
+    );
+    const settings = native.invoke.mock.calls.find(
+      ([name]) => name === "continuity_pi_setup_save",
+    )?.[1].settings;
+    expect(settings.model).toBe("fixture-model");
+    expect(settings.permissions.write).toBe(true);
+  });
+
+  it("preserves an explicit model selection and permission edits across a status refresh", async () => {
+    current = {
+      ...initial(),
+      authenticated: true,
+      authentication: "present",
+      models: [
+        { id: "fixture-model", name: "Fixture" },
+        { id: "chosen-model", name: "Chosen" },
+      ],
+    };
+    render(<PiSetup cwd="workspace fixture" language="en" />);
+    const model = await screen.findByRole("combobox", { name: "Model" });
+    fireEvent.change(model, { target: { value: "chosen-model" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: "Create and change files" }));
+    current = { ...current, model: "fixture-model" };
+    fireEvent(window, new Event("focus"));
+    await waitFor(() =>
+      expect(
+        native.invoke.mock.calls.filter(([name]) => name === "continuity_pi_setup_status"),
+      ).toHaveLength(2),
+    );
+    expect(model).toHaveProperty("value", "chosen-model");
+    const save = screen.getByRole("button", { name: "Save and use for autonomous execution" });
+    await waitFor(() => expect(save).toHaveProperty("disabled", false));
+    fireEvent.click(save);
+    await waitFor(() =>
+      expect(native.invoke.mock.calls.some(([name]) => name === "continuity_pi_setup_save")).toBe(
+        true,
+      ),
+    );
+    const settings = native.invoke.mock.calls.find(
+      ([name]) => name === "continuity_pi_setup_save",
+    )?.[1].settings;
+    expect(settings.model).toBe("chosen-model");
+    expect(settings.permissions.write).toBe(true);
+  });
+
   it.each([
     [
       "en",
@@ -177,7 +240,9 @@ describe("Pi setup", () => {
       true,
     );
     fireEvent.click(screen.getByRole("checkbox", { name: "Validate JSON files" }));
-    fireEvent.click(screen.getByRole("button", { name: "Save and use for autonomous execution" }));
+    const save = screen.getByRole("button", { name: "Save and use for autonomous execution" });
+    await waitFor(() => expect(save).toHaveProperty("disabled", false));
+    fireEvent.click(save);
     await waitFor(() => expect(configured).toHaveBeenCalledTimes(1));
     const call = native.invoke.mock.calls.find(([name]) => name === "continuity_pi_setup_save");
     expect(call?.[1]).toEqual({

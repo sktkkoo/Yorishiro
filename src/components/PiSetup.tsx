@@ -111,11 +111,13 @@ export function PiSetup({ cwd, language, onConfigured, onReadinessChange }: PiSe
   const [write, setWrite] = useState(false);
   const [commands, setCommands] = useState<readonly PiCommandPreset[]>([]);
   const dirty = useRef(false);
+  const modelDirty = useRef(false);
   const reviewedCwd = useRef(cwd);
   useEffect(() => {
     if (reviewedCwd.current === cwd) return;
     reviewedCwd.current = cwd;
     dirty.current = false;
+    modelDirty.current = false;
     setRead(true);
     setWrite(false);
     setCommands([]);
@@ -135,12 +137,16 @@ export function PiSetup({ cwd, language, onConfigured, onReadinessChange }: PiSe
     onReadinessChange?.(ready);
   }, [ready, onReadinessChange]);
   useEffect(() => {
-    if (!status || dirty.current) return;
-    setModel(
-      status.models.some((item) => item.id === status.model)
-        ? status.model
-        : (status.models[0]?.id ?? ""),
-    );
+    if (!status) return;
+    // 権限の確認後もモデル一覧を初期化し、明示的に選んだモデルは保持する。
+    if (!modelDirty.current) {
+      setModel(
+        status.models.some((item) => item.id === status.model)
+          ? status.model
+          : (status.models[0]?.id ?? ""),
+      );
+    }
+    if (dirty.current) return;
     setRead(status.permissions.read);
     setWrite(status.permissions.write);
     setCommands(status.permissions.commands);
@@ -177,6 +183,7 @@ export function PiSetup({ cwd, language, onConfigured, onReadinessChange }: PiSe
     });
     if (saved) {
       dirty.current = false;
+      modelDirty.current = false;
       setExpanded(false);
       onConfigured?.();
     }
@@ -241,7 +248,7 @@ export function PiSetup({ cwd, language, onConfigured, onReadinessChange }: PiSe
                 value={model}
                 disabled={setup.busy}
                 onChange={(event) => {
-                  dirty.current = true;
+                  modelDirty.current = true;
                   setModel(event.target.value);
                 }}
               >

@@ -103,7 +103,10 @@ describe("independent screen-sharing controls", () => {
     vi.mocked(readAuxiliarySnapshot).mockResolvedValue(state);
     render(<AuxiliaryScreenSharing />);
     const slider = await screen.findByRole("slider", { name: "Frames to combine" });
+    // 公開スナップショットの値が入力へ反映されてから操作する。
+    await waitFor(() => expect(slider).toHaveProperty("value", "2"));
     fireEvent.change(slider, { target: { value: "1" } });
+    expect(slider).toHaveProperty("value", "1");
     fireEvent.pointerUp(slider);
     await waitFor(() =>
       expect(requestAuxiliaryAction).toHaveBeenCalledWith(1, {
