@@ -4,6 +4,11 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
+import {
+  COMMAND_PRESET_IDS,
+  PROJECT_COMMAND_IDS,
+  PROJECT_TIMEOUT_MS,
+} from "./project-commands.mjs";
 
 const keys = [
   "version",
@@ -69,9 +74,9 @@ export function validateManagedIdentity(value, options, environment = {}) {
     typeof policy.read !== "boolean" ||
     typeof policy.write !== "boolean" ||
     !Array.isArray(policy.commands) ||
-    policy.commands.length > 2 ||
+    policy.commands.length > COMMAND_PRESET_IDS.length ||
     new Set(policy.commands).size !== policy.commands.length ||
-    policy.commands.some((id) => !["workspace-info", "validate-json"].includes(id))
+    policy.commands.some((id) => !COMMAND_PRESET_IDS.includes(id))
   )
     fail();
   const cwd = realpathSync(options.cwd);
@@ -89,7 +94,12 @@ export function validateManagedIdentity(value, options, environment = {}) {
   const expected = {
     read: policy.read,
     write: policy.write,
-    commands: policy.commands.map((id) => ({ id, program: node, args: [checker, id] })),
+    commands: policy.commands.map((id) => ({
+      id,
+      program: node,
+      args: [checker, id],
+      ...(PROJECT_COMMAND_IDS.includes(id) ? { timeoutMs: PROJECT_TIMEOUT_MS } : {}),
+    })),
   };
   if (!isDeepStrictEqual(options.permissions, expected)) fail();
   return Object.fromEntries(keys.map((key) => [key, value[key]]));

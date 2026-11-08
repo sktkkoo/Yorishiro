@@ -995,6 +995,39 @@ fn validate_request_status(
     }
 }
 
+// This metadata is produced by the owned worker from the matching durable
+// assistant tool call, never from a model's structured work report.
+fn verified_tool_progress(tool: &Value, first: u64, last: u64) -> bool {
+    if tool.get("progressEvidenceVersion").and_then(Value::as_u64) != Some(1)
+        || tool.get("isError").and_then(Value::as_bool) != Some(false)
+        || tool.get("interrupted").and_then(Value::as_bool) != Some(false)
+    {
+        return false;
+    }
+    let Some(call_entry) = tool.get("callEntryId").and_then(Value::as_u64) else {
+        return false;
+    };
+    let Some(result_entry) = tool.get("entryId").and_then(Value::as_u64) else {
+        return false;
+    };
+    if !(first <= call_entry && call_entry < result_entry && result_entry <= last) {
+        return false;
+    }
+    match (
+        tool.get("toolName").and_then(Value::as_str),
+        tool.get("effect").and_then(Value::as_str),
+    ) {
+        (Some("write_file" | "edit_file"), Some("write")) => {
+            tool.get("commandId").is_none_or(Value::is_null)
+        }
+        (Some("run_command"), Some("project-check")) => matches!(
+            tool.get("commandId").and_then(Value::as_str),
+            Some("project-check" | "project-test" | "project-build")
+        ),
+        _ => false,
+    }
+}
+
 fn interpret_status(status: &Value, request_id: &str) -> Result<Option<Outcome>, String> {
     if status.get("found").and_then(Value::as_bool) != Some(true)
         || status.get("requestId").and_then(Value::as_str) != Some(request_id)
@@ -1021,6 +1054,9 @@ fn interpret_status(status: &Value, request_id: &str) -> Result<Option<Outcome>,
             json!({
                 "entryId": tool.get("entryId"), "toolCallId": tool.get("toolCallId"),
                 "isError": tool.get("isError"), "interrupted": tool.get("interrupted"),
+                "progressEvidenceVersion": tool.get("progressEvidenceVersion"),
+                "callEntryId": tool.get("callEntryId"), "toolName": tool.get("toolName"),
+                "commandId": tool.get("commandId"), "effect": tool.get("effect"),
             })
         })
         .collect();
@@ -1055,10 +1091,12 @@ fn interpret_status(status: &Value, request_id: &str) -> Result<Option<Outcome>,
                                     .and_then(Value::as_str)
                                     .is_some_and(|id| !id.is_empty())
                                 && tool.get("isError").and_then(Value::as_bool).is_some()
+                                && tool.get("interrupted").is_none_or(Value::is_boolean)
                         })
                         && tools.iter().any(|tool| {
-                            tool.get("isError").and_then(Value::as_bool) == Some(false)
-                                && tool.get("interrupted").and_then(Value::as_bool) != Some(true)
+                            range.is_some_and(|(first, last)| {
+                                verified_tool_progress(tool, first, last)
+                            })
                         })
                 });
             Ok(Some(Outcome::Completed(Report {
@@ -1455,7 +1493,8 @@ mod tests {
         let mut value = json!({"found":true,"requestId":"original","submissionId":7,
             "status":"done","report":report(),"toolEvidenceComplete":true,
             "toolEvidenceRange":{"firstEntryId":8,"lastEntryId":10},
-            "toolResults":[{"entryId":9,"toolCallId":"tool-1","isError":false}]});
+            "toolResults":[{"entryId":9,"callEntryId":8,"toolCallId":"tool-1","isError":false,
+                "interrupted":false,"progressEvidenceVersion":1,"toolName":"write_file","commandId":null,"effect":"write"}]});
         let Some(Outcome::Completed(result)) = interpret_status(&value, "original").unwrap() else {
             panic!()
         };
@@ -1489,8 +1528,10 @@ mod tests {
         "status":"done","report":report(),"toolEvidenceComplete":true,
         "toolEvidenceRange":{"firstEntryId":8,"lastEntryId":12},
         "toolResults":[
-            {"entryId":9,"toolCallId":"successful-edit","isError":false},
-            {"entryId":10,"toolCallId":"failed-check","isError":true}
+            {"entryId":9,"callEntryId":8,"toolCallId":"successful-edit","isError":false,
+             "interrupted":false,"progressEvidenceVersion":1,"toolName":"edit_file","commandId":null,"effect":"write"},
+            {"entryId":10,"callEntryId":9,"toolCallId":"failed-check","isError":true,
+             "interrupted":false,"progressEvidenceVersion":1,"toolName":"run_command","commandId":"project-test","effect":"project-check"}
         ]});
         let progress = |value: &Value| {
             let Some(Outcome::Completed(result)) = interpret_status(value, "original").unwrap()
@@ -1520,6 +1561,72 @@ mod tests {
             .as_object_mut()
             .unwrap()
             .remove("isError");
+        assert!(!progress(&malformed));
+    }
+
+    #[test]
+    fn inspection_and_unverified_effects_never_count_as_execution_progress() {
+        let base = json!({"found":true,"requestId":"original","submissionId":7,
+            "status":"done","report":report(),"toolEvidenceComplete":true,
+            "toolEvidenceRange":{"firstEntryId":8,"lastEntryId":12},
+            "toolResults":[{"entryId":10,"callEntryId":9,"toolCallId":"original-call",
+                "isError":false,"interrupted":false,"progressEvidenceVersion":1,
+                "toolName":"write_file","commandId":null,"effect":"write"}]});
+        let progress = |value: &Value| {
+            let Some(Outcome::Completed(result)) = interpret_status(value, "original").unwrap()
+            else {
+                panic!("expected a completed report");
+            };
+            result.progressed
+        };
+        assert!(progress(&base));
+        for (name, command, effect, expected) in [
+            ("read_file", None, "read", false),
+            ("read_continuity_context", None, "read", false),
+            ("run_command", Some("workspace-info"), "read", false),
+            ("run_command", Some("validate-json"), "read", false),
+            ("run_command", Some("git-status"), "read", false),
+            ("run_command", Some("git-diff"), "read", false),
+            ("run_command", Some("project-check"), "project-check", true),
+            ("run_command", Some("project-test"), "project-check", true),
+            ("run_command", Some("project-build"), "project-check", true),
+            ("edit_file", None, "write", true),
+            ("run_command", Some("project-test"), "unknown", false),
+            ("run_command", Some("git-status"), "project-check", false),
+            ("read_file", None, "write", false),
+            ("write_file", Some("project-test"), "write", false),
+        ] {
+            let mut value = base.clone();
+            let item = &mut value["toolResults"][0];
+            item["toolName"] = json!(name);
+            item["commandId"] = json!(command);
+            item["effect"] = json!(effect);
+            assert_eq!(progress(&value), expected, "{name} {command:?} {effect}");
+        }
+        for field in [
+            "progressEvidenceVersion",
+            "callEntryId",
+            "toolName",
+            "effect",
+            "interrupted",
+        ] {
+            let mut missing = base.clone();
+            missing["toolResults"][0]
+                .as_object_mut()
+                .unwrap()
+                .remove(field);
+            assert!(!progress(&missing), "legacy/unverified missing {field}");
+        }
+        for call_entry in [0, 7, 10, 11, 13] {
+            let mut value = base.clone();
+            value["toolResults"][0]["callEntryId"] = json!(call_entry);
+            assert!(
+                !progress(&value),
+                "call/result order and scope must be verified"
+            );
+        }
+        let mut malformed = base.clone();
+        malformed["toolResults"][0]["interrupted"] = json!("false");
         assert!(!progress(&malformed));
     }
 
@@ -1956,7 +2063,7 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
         assert!(matches!(
             completed,
             Outcome::Completed(Report {
-                progressed: true,
+                progressed: false,
                 ..
             })
         ));
@@ -2025,7 +2132,7 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
         assert!(matches!(
             retry,
             Outcome::Completed(Report {
-                progressed: true,
+                progressed: false,
                 ..
             })
         ));
@@ -2096,7 +2203,7 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
         assert!(matches!(
             recovered,
             Outcome::Completed(Report {
-                progressed: true,
+                progressed: false,
                 ..
             })
         ));

@@ -44,6 +44,148 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe("Pi setup", () => {
+  it("initializes a newly available model without discarding reviewed permissions", async () => {
+    current = { ...initial(), model: "", models: [] };
+    render(<PiSetup cwd="workspace fixture" language="en" />);
+    fireEvent.click(await screen.findByRole("checkbox", { name: "Create and change files" }));
+    current = { ...initial(), authenticated: true, authentication: "present" };
+    fireEvent(window, new Event("focus"));
+    await screen.findByText("Sign-in information is available.");
+    const save = screen.getByRole("button", { name: "Save and use for autonomous execution" });
+    await waitFor(() => expect(save).toHaveProperty("disabled", false));
+    expect(screen.getByRole("checkbox", { name: "Create and change files" })).toHaveProperty(
+      "checked",
+      true,
+    );
+    fireEvent.click(save);
+    await waitFor(() =>
+      expect(native.invoke.mock.calls.some(([name]) => name === "continuity_pi_setup_save")).toBe(
+        true,
+      ),
+    );
+    const settings = native.invoke.mock.calls.find(
+      ([name]) => name === "continuity_pi_setup_save",
+    )?.[1].settings;
+    expect(settings.model).toBe("fixture-model");
+    expect(settings.permissions.write).toBe(true);
+  });
+
+  it("preserves an explicit model selection and permission edits across a status refresh", async () => {
+    current = {
+      ...initial(),
+      authenticated: true,
+      authentication: "present",
+      models: [
+        { id: "fixture-model", name: "Fixture" },
+        { id: "chosen-model", name: "Chosen" },
+      ],
+    };
+    render(<PiSetup cwd="workspace fixture" language="en" />);
+    const model = await screen.findByRole("combobox", { name: "Model" });
+    fireEvent.change(model, { target: { value: "chosen-model" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: "Create and change files" }));
+    current = { ...current, model: "fixture-model" };
+    fireEvent(window, new Event("focus"));
+    await waitFor(() =>
+      expect(
+        native.invoke.mock.calls.filter(([name]) => name === "continuity_pi_setup_status"),
+      ).toHaveLength(2),
+    );
+    expect(model).toHaveProperty("value", "chosen-model");
+    const save = screen.getByRole("button", { name: "Save and use for autonomous execution" });
+    await waitFor(() => expect(save).toHaveProperty("disabled", false));
+    fireEvent.click(save);
+    await waitFor(() =>
+      expect(native.invoke.mock.calls.some(([name]) => name === "continuity_pi_setup_save")).toBe(
+        true,
+      ),
+    );
+    const settings = native.invoke.mock.calls.find(
+      ([name]) => name === "continuity_pi_setup_save",
+    )?.[1].settings;
+    expect(settings.model).toBe("chosen-model");
+    expect(settings.permissions.write).toBe(true);
+  });
+
+  it.each([
+    [
+      "en",
+      [
+        "Read Git status",
+        "Read Git diff",
+        "Run project checks",
+        "Run project tests",
+        "Run project build",
+      ],
+      "Even with file changes turned Off",
+    ],
+    [
+      "ja",
+      [
+        "Gitの状態を読む",
+        "Gitの差分を読む",
+        "プロジェクトの検証を実行する",
+        "プロジェクトのテストを実行する",
+        "プロジェクトのビルドを実行する",
+      ],
+      "ファイル変更の許可がOffでも",
+    ],
+  ] as const)("offers development commands as separate unchecked grants in %s", async (language, labels, explanation) => {
+    current = {
+      ...initial(),
+      configured: true,
+      authenticated: true,
+      authentication: "present",
+      permissions: { read: true, write: false, commands: ["workspace-info"] },
+    };
+    render(<PiSetup cwd="existing worktree" language={language} />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: language === "en" ? "Settings" : "設定" }),
+    );
+    for (const label of labels)
+      expect(screen.getByRole("checkbox", { name: label })).toHaveProperty("checked", false);
+    expect(screen.getByText(new RegExp(explanation))).toBeTruthy();
+    const developmentCheckbox = screen.getByRole("checkbox", { name: labels[2] });
+    expect(developmentCheckbox.getAttribute("aria-describedby")).toBeTruthy();
+    expect(native.invoke.mock.calls.some(([name]) => name === "continuity_pi_setup_save")).toBe(
+      false,
+    );
+  });
+
+  it("saves only explicitly selected development commands and supports removing a grant", async () => {
+    current = {
+      ...initial(),
+      configured: true,
+      authenticated: true,
+      authentication: "present",
+      permissions: { read: true, write: false, commands: ["workspace-info", "project-build"] },
+    };
+    render(<PiSetup cwd="existing worktree" language="en" />);
+    fireEvent.click(await screen.findByRole("button", { name: "Settings" }));
+    const build = screen.getByRole("checkbox", { name: "Run project build" });
+    await waitFor(() => expect(build).toHaveProperty("checked", true));
+    fireEvent.click(build);
+    fireEvent.click(screen.getByRole("checkbox", { name: "Read Git status" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Run project tests" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save and use for autonomous execution" }));
+    await waitFor(() =>
+      expect(native.invoke.mock.calls.some(([name]) => name === "continuity_pi_setup_save")).toBe(
+        true,
+      ),
+    );
+    const saved = native.invoke.mock.calls.find(
+      ([name]) => name === "continuity_pi_setup_save",
+    )?.[1];
+    expect(saved.settings.permissions).toEqual({
+      read: true,
+      write: false,
+      commands: ["workspace-info", "git-status", "project-test"],
+    });
+    expect(JSON.stringify(saved.settings)).not.toMatch(
+      /nodePath|workerEntry|authPath|program|argv/,
+    );
+  });
+
   it("requires sign-in and an explicit permissions save without path inputs", async () => {
     const ready = vi.fn();
     render(<PiSetup cwd="workspace fixture" language="ja" onReadinessChange={ready} />);
@@ -98,7 +240,9 @@ describe("Pi setup", () => {
       true,
     );
     fireEvent.click(screen.getByRole("checkbox", { name: "Validate JSON files" }));
-    fireEvent.click(screen.getByRole("button", { name: "Save and use for autonomous execution" }));
+    const save = screen.getByRole("button", { name: "Save and use for autonomous execution" });
+    await waitFor(() => expect(save).toHaveProperty("disabled", false));
+    fireEvent.click(save);
     await waitFor(() => expect(configured).toHaveBeenCalledTimes(1));
     const call = native.invoke.mock.calls.find(([name]) => name === "continuity_pi_setup_save");
     expect(call?.[1]).toEqual({
@@ -161,7 +305,11 @@ it("requires a fresh permission review when the selected workspace changes", asy
     configured: true,
     authenticated: true,
     authentication: "present",
-    permissions: { read: true, write: true, commands: ["workspace-info"] },
+    permissions: {
+      read: true,
+      write: true,
+      commands: ["workspace-info", "git-status", "project-test"],
+    },
   };
   const readiness = vi.fn();
   const view = render(<PiSetup cwd="project a" language="en" onReadinessChange={readiness} />);
@@ -174,6 +322,14 @@ it("requires a fresh permission review when the selected workspace changes", asy
     false,
   );
   expect(screen.getByRole("checkbox", { name: "Inspect the workspace overview" })).toHaveProperty(
+    "checked",
+    false,
+  );
+  expect(screen.getByRole("checkbox", { name: "Read Git status" })).toHaveProperty(
+    "checked",
+    false,
+  );
+  expect(screen.getByRole("checkbox", { name: "Run project tests" })).toHaveProperty(
     "checked",
     false,
   );

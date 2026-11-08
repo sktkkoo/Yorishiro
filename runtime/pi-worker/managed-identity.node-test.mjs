@@ -5,6 +5,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { validateManagedIdentity } from "./managed-identity.mjs";
+import {
+  COMMAND_PRESET_IDS,
+  PROJECT_COMMAND_IDS,
+  PROJECT_TIMEOUT_MS,
+} from "./project-commands.mjs";
 
 function fixture() {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "pi-managed-identity-")));
@@ -108,6 +113,42 @@ test("managed identity rejects expanded permissions, changed workspace and arbit
       /managed_identity_invalid/,
     );
     assert.equal(validateManagedIdentity(undefined, f.options), undefined);
+  } finally {
+    rmSync(f.root, { recursive: true, force: true });
+  }
+});
+
+test("development grants require exact bundled helper argv and project-only bounded timeouts", () => {
+  const f = fixture();
+  try {
+    const identity = {
+      ...f.value,
+      permissions: { ...f.value.permissions, commands: [...COMMAND_PRESET_IDS] },
+    };
+    const options = {
+      ...f.options,
+      permissions: {
+        ...f.options.permissions,
+        commands: COMMAND_PRESET_IDS.map((id) => ({
+          id,
+          program: f.node,
+          args: [f.checker, id],
+          ...(PROJECT_COMMAND_IDS.includes(id) ? { timeoutMs: PROJECT_TIMEOUT_MS } : {}),
+        })),
+      },
+    };
+    assert.deepEqual(validateManagedIdentity(identity, options, f), identity);
+    for (const index of [0, 4]) {
+      const changed = structuredClone(options);
+      changed.permissions.commands[index].timeoutMs = 30_000;
+      assert.throws(
+        () => validateManagedIdentity(identity, changed, f),
+        /managed_identity_invalid/,
+      );
+    }
+    const extra = structuredClone(options);
+    extra.permissions.commands[4].args.push("model-provided-argument");
+    assert.throws(() => validateManagedIdentity(identity, extra, f), /managed_identity_invalid/);
   } finally {
     rmSync(f.root, { recursive: true, force: true });
   }

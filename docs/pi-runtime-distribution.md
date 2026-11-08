@@ -23,6 +23,35 @@ The managed preference schema contains provider/model, enabled state, authentica
 
 Each worker dependency carries its original package license files; `licenses/Node-LICENSE.txt` carries Node and its bundled third-party notices. Generated resources and binaries remain outside Git.
 
+## Optional development capabilities and stalled work
+
+The `workspace-info` preset reports the canonical selected folder, repository kind,
+linked-worktree registration, branch, granted commands and detected project actions.
+An existing verified worktree satisfies a user request to use a worktree. Worktrees
+remain optional and follow the user's instructions or applicable remembered preferences.
+
+Git status/diff and project check/test/build are separate opt-in presets. Existing
+settings gain no new permissions on upgrade. Git is required for Git commands;
+project commands require the project's npm or Cargo toolchain on the application
+PATH. These developer tools are not dependencies of ordinary Pi conversations.
+Commands have fixed arguments and bounded runtime/output. Project scripts are
+trusted local code and can generate files or perform other actions under the
+user's account; the permission UI describes that scope explicitly.
+Git inspections discover and disable configured clean/process conversion filters
+without evaluating their commands. Invalid or excessive filter metadata fails
+closed. When filters are disabled, output explicitly notes that raw comparisons
+can mark filtered/LFS files as changed even without a source edit.
+
+Progress evidence distinguishes inspections from successful file edits and verified
+project commands. A read, inventory or Git status check does not establish an
+implementation change. The model also reports whether entrusted work remains and
+the concrete obstacle when blocked. After three automatic attempts on pending work
+without verified changes, project checks or substantive draft updates, the host
+switches automatic execution off and reports the reason once. The counter and pause
+survive restarts. New user input, a workspace change, explicit retry or turning
+execution On resets the counter; an idle conversation with no pending work does
+not trigger this pause. Accepted requests keep their existing recovery identity.
+
 ## Signing and release checks
 
 The macOS build includes the sidecar in Tauri's signing/notarization pipeline. Release verification inspects the extracted updater app and the app mounted from the DMG. It requires:

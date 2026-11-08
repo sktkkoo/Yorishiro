@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -16,7 +16,7 @@ async function fixture(run) {
   }
 }
 
-test("portable checks use the selected folder and expose no absolute paths or contents", async () =>
+test("portable checks identify the selected folder without exposing file contents", async () =>
   fixture(async (root) => {
     await writeFile(join(root, "result.json"), '{"private":"DO_NOT_ECHO"}');
     await mkdir(join(root, "folder"));
@@ -25,7 +25,8 @@ test("portable checks use the selected folder and expose no absolute paths or co
       { name: "folder", kind: "directory" },
       { name: "result.json", kind: "file" },
     ]);
-    assert.equal(JSON.stringify(result).includes(root), false);
+    assert.equal(result.cwd, await realpath(root));
+    assert.equal(result.repository.kind, "none");
     const checked = await inspectWorkspace("validate-json", root);
     assert.equal(checked.complete, true);
     assert.equal(checked.invalidFiles, 0);

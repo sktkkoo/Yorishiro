@@ -234,6 +234,8 @@ fn session() -> Session {
         auto_context: None,
         work_runs: vec![],
         failure_streak: 0,
+        stagnation_streak: 0,
+        stagnation_pause: None,
         retry_not_before: None,
         context_handoffs: vec![],
         observed_keys: std::collections::BTreeMap::new(),
@@ -2717,4 +2719,151 @@ fn context_change_handoff_restores_corrections_and_preserves_foreground_intent()
     detach_undispatched_intent(&mut value).unwrap();
     assert_eq!(value.saved.pending_trigger.as_deref(), Some("dismiss"));
     assert_eq!(value.saved.pending_correction_ids.len(), 2);
+}
+
+#[test]
+fn stalled_pending_work_pauses_once_and_survives_reload() {
+    let mut value = session();
+    value.saved.auto_enabled = true;
+    value.auto_driver_active = true;
+    user(
+        &mut value.saved.snapshot,
+        "task",
+        "Implement the requested fix",
+    );
+    let work = pending_work(&value);
+    for expected in 1..=3 {
+        record_stagnation(
+            &mut value,
+            &work,
+            Some(WorkStatus::Blocked),
+            Some("Project tests are not permitted"),
+            false,
+        );
+        assert_eq!(value.saved.stagnation_streak, expected);
+        assert_eq!(value.saved.auto_enabled, expected < 3);
+    }
+    let messages = value.saved.snapshot.messages.len();
+    record_stagnation(
+        &mut value,
+        &work,
+        Some(WorkStatus::Blocked),
+        Some("Still blocked"),
+        false,
+    );
+    assert_eq!(value.saved.snapshot.messages.len(), messages);
+    assert!(value
+        .saved
+        .stagnation_pause
+        .as_ref()
+        .unwrap()
+        .contains("Project tests are not permitted"));
+    assert!(!value.auto_driver_active);
+    assert!(value.saved.snapshot.next_step.is_none());
+    let home = tempfile::tempdir().unwrap();
+    storage::save(home.path(), &value.saved).unwrap();
+    let loaded = storage::load(home.path(), "yori-ja").unwrap();
+    assert!(!loaded.auto_enabled);
+    assert_eq!(loaded.stagnation_streak, 3);
+    assert_eq!(loaded.stagnation_pause, value.saved.stagnation_pause);
+}
+
+#[test]
+fn useful_work_and_idle_reset_stagnation_without_stopping_conversation() {
+    let mut value = session();
+    value.saved.auto_enabled = true;
+    let work = pending_work(&value);
+    for (status, productive) in [(WorkStatus::InProgress, true), (WorkStatus::Idle, false)] {
+        value.saved.stagnation_streak = 2;
+        record_stagnation(&mut value, &work, Some(status), None, productive);
+        assert_eq!(value.saved.stagnation_streak, 0);
+        assert!(value.saved.auto_enabled);
+    }
+    value.saved.stagnation_streak = 2;
+    record_stagnation(&mut value, &work, None, None, false);
+    assert_eq!(
+        value.saved.stagnation_streak, 2,
+        "old reports cannot assert pending work"
+    );
+    user(
+        &mut value.saved.snapshot,
+        "new",
+        "Here is the missing information",
+    );
+    record_stagnation(&mut value, &work, Some(WorkStatus::Blocked), None, false);
+    assert_eq!(value.saved.stagnation_streak, 0);
+    assert!(value.saved.auto_enabled);
+}
+
+#[test]
+fn manual_actions_and_workspace_changes_clear_stagnation() {
+    let mut value = session();
+    value.saved.stagnation_streak = 2;
+    let ctx = context();
+    queue(&mut value, ctx.clone(), "message");
+    assert_eq!(value.saved.stagnation_streak, 0);
+    value.saved.stagnation_streak = 2;
+    queue_explicit_retry(&mut value, ctx.clone());
+    assert_eq!(value.saved.stagnation_streak, 0);
+    value.saved.stagnation_streak = 2;
+    let mut other = ctx.clone();
+    other.cwd = Some("/different-workspace".into());
+    replace_context(&mut value, other);
+    assert_eq!(value.saved.stagnation_streak, 0);
+    value.saved.stagnation_pause = Some("Paused".into());
+    set_auto_enabled(&mut value, ctx, true);
+    assert!(value.saved.stagnation_pause.is_none());
+    assert!(value.saved.auto_enabled);
+}
+
+#[test]
+fn current_workspace_and_optional_worktree_guidance_reach_the_model() {
+    let prompt = execution_prompt(&Snapshot::new("yori-ja"), &context(), "return", &[]).unwrap();
+    assert!(prompt.contains("selectedWorkspace"));
+    assert!(prompt.contains("verified existing linked worktree satisfies"));
+    assert!(prompt.contains("Worktrees are optional"));
+    assert!(prompt.contains("project-test"));
+    assert!(prompt.contains("workStatus=idle"));
+    let schema = execution_schema();
+    for field in ["workStatus", "blockedReason"] {
+        assert!(schema["required"]
+            .as_array()
+            .unwrap()
+            .contains(&json!(field)));
+    }
+}
+
+#[test]
+fn applied_blocked_reports_pause_pending_work_and_keep_the_pause_evidence() {
+    let mut value = session();
+    value.saved.auto_enabled = true;
+    user(&mut value.saved.snapshot, "task", "Implement the change");
+    for _ in 0..3 {
+        let work = pending_work(&value);
+        let result = response(json!({
+            "workStatus":"idle", "blockedReason":"Required project-test command is unavailable",
+            "reply":"", "understandings":[], "drafts":[], "reflection":"", "nextStep":null
+        }));
+        apply_execution(&mut value, result, &work, false).unwrap();
+    }
+    assert!(!value.saved.auto_enabled);
+    assert!(value.saved.stagnation_pause.is_some());
+    assert!(!queue_periodic(&mut value, context(), u64::MAX));
+    let run = WorkRun {
+        request_id: "paused".into(),
+        request_created_at: Some(1),
+        started_at: 1,
+        finished_at: 2,
+        trigger: "return".into(),
+        executor: "pi".into(),
+        outcome: "completed".into(),
+        progressed: false,
+        error: None,
+    };
+    record_work_run(&mut value, run);
+    assert_eq!(value.saved.work_runs.last().unwrap().outcome, "paused");
+    assert_eq!(
+        value.saved.work_runs.last().unwrap().error,
+        value.saved.stagnation_pause
+    );
 }
