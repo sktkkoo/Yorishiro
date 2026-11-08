@@ -13,6 +13,7 @@ function classifyCall(call, verifiedProjects) {
     typeof args.path === "string" &&
     args.path.length > 0 &&
     typeof args.content === "string" &&
+    args.content !== args.expectedContent &&
     (args.expectedContent === undefined || typeof args.expectedContent === "string")
   )
     return { effect: "write", commandId: null };
@@ -22,7 +23,8 @@ function classifyCall(call, verifiedProjects) {
     typeof args.path === "string" &&
     args.path.length > 0 &&
     typeof args.oldText === "string" &&
-    typeof args.newText === "string"
+    typeof args.newText === "string" &&
+    args.oldText !== args.newText
   )
     return { effect: "write", commandId: null };
   if (["read_file", "read_continuity_context"].includes(call.name))

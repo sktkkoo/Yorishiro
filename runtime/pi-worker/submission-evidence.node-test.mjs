@@ -162,3 +162,22 @@ test("incomplete/legacy and malformed ranged observations stay conservative", as
   assert.equal(malformed.toolEvidenceComplete, false);
   assert.equal(malformed.toolResults.length, 1);
 });
+
+test("identical overwrites and replacements do not establish progress", async () => {
+  const value = await evidence([
+    [
+      call(2, "same-write", "write_file", {
+        path: "result.md",
+        content: "same",
+        expectedContent: "same",
+      }),
+      result(3, "same-write", "write_file"),
+      call(4, "same-edit", "edit_file", { path: "result.md", oldText: "same", newText: "same" }),
+      result(5, "same-edit", "edit_file"),
+    ],
+  ]);
+  assert.deepEqual(
+    value.toolResults.map((item) => item.effect),
+    ["unknown", "unknown"],
+  );
+});
