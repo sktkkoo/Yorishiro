@@ -8,6 +8,7 @@ import {
   realpath,
   rm,
   symlink,
+  utimes,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -357,3 +358,104 @@ test("read-only Git presets report staged and unstaged changes without running e
   assert.equal(git(["rev-parse", "HEAD"]).toString(), head);
   assert.equal(await readFile(join(root, "task.txt"), "utf8"), "unstaged\n");
 });
+
+for (const conversion of ["clean", "process"]) {
+  test(`both read-only Git presets disable actual ${conversion} filters before same-size content inspection`, async (t) => {
+    const root = await fixture(t);
+    const git = (args) =>
+      execFileSync("git", args, {
+        cwd: root,
+        stdio: "pipe",
+        env: {
+          PATH: process.env.PATH,
+          GIT_CONFIG_NOSYSTEM: "1",
+          GIT_CONFIG_GLOBAL: join(root, "no-global-config"),
+        },
+      });
+    git(["init", "-b", "main"]);
+    await writeFile(join(root, ".gitattributes"), "task.txt filter=conversion-audit\n");
+    await writeFile(join(root, "task.txt"), "original\n");
+    git(["add", "."]);
+    git([
+      "-c",
+      "user.name=Fixture",
+      "-c",
+      "user.email=fixture@example.invalid",
+      "commit",
+      "-m",
+      "initial",
+    ]);
+    const marker = join(root, "FILTER_EXECUTED");
+    const hook = join(root, "conversion.mjs");
+    await writeFile(
+      hook,
+      `import{writeFileSync}from'node:fs';writeFileSync(${JSON.stringify(marker)},'executed');process.exit(1);`,
+    );
+    const quoted = (path) => `'${path.replaceAll("'", "'\\''")}'`;
+    git([
+      "config",
+      `filter.conversion-audit.${conversion}`,
+      `${quoted(process.execPath)} ${quoted(hook)}`,
+    ]);
+    git(["config", "filter.conversion-audit.required", "true"]);
+    await writeFile(join(root, "task.txt"), "modified\n");
+    await utimes(join(root, "task.txt"), 2_000_000_000, 2_000_000_000);
+    const run = await runner(root, ["git-status", "git-diff"]);
+    for (const action of ["git-status", "git-diff"]) {
+      const output = (await run(action)).output[0].text;
+      assert.match(output, /^Notice: raw comparison with configured conversion filters disabled;/);
+      assert.match(output, /filtered\/LFS files may appear changed.*Do not treat those as edits/);
+      assert.match(output, /task\.txt/);
+      await assert.rejects(readFile(marker), { code: "ENOENT" });
+    }
+    assert.equal(await readFile(join(root, "task.txt"), "utf8"), "modified\n");
+  });
+}
+
+for (const scenario of [
+  "ordinary",
+  "malformed",
+  "too-many",
+  "too-large",
+  "query-error",
+  "invalid-empty",
+  "timeout",
+]) {
+  test(`Git filter query handles ${scenario} metadata without running the inspection unsafely`, async (t) => {
+    const root = await fixture(t);
+    const bin = join(root, "bin");
+    await mkdir(bin);
+    const git = join(bin, "git");
+    const response =
+      scenario === "malformed"
+        ? "filter.bad driver.clean\0"
+        : scenario === "too-many"
+          ? Array.from({ length: 129 }, (_, index) => `filter.driver${index}.clean\0`).join("")
+          : scenario === "too-large"
+            ? "filter.driver.clean\0".repeat(5000)
+            : "";
+    await writeFile(
+      git,
+      `#!${process.execPath}\nconst fs=require('node:fs');if(process.argv.includes('config')){${scenario === "timeout" ? "setInterval(()=>{},1000);return;" : `process.stdout.write(${JSON.stringify(response)});process.exit(${scenario === "ordinary" ? 1 : scenario === "query-error" ? 128 : 0});`}}fs.writeFileSync('INSPECTION_RAN','yes');process.stdout.write('ordinary Git output\\n');`,
+    );
+    await chmod(git, 0o755);
+    const result = spawnSync(process.execPath, [helper, "git-status"], {
+      cwd: root,
+      env: { PATH: bin },
+      encoding: "utf8",
+      timeout: 10_000,
+    });
+    if (scenario === "ordinary") {
+      assert.equal(result.status, 0, result.stdout);
+      assert.equal(result.stdout, "ordinary Git output\n");
+    } else {
+      assert.equal(result.status, 2, result.stderr);
+      assert.match(
+        result.stdout,
+        /Git inspection blocked: conversion filter configuration could not be safely verified/,
+      );
+      await assert.rejects(readFile(join(root, "INSPECTION_RAN")), { code: "ENOENT" });
+      assert.equal(result.stdout.includes("bad driver"), false);
+    }
+  });
+}

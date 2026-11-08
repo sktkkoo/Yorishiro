@@ -37,6 +37,10 @@ PATH. These developer tools are not dependencies of ordinary Pi conversations.
 Commands have fixed arguments and bounded runtime/output. Project scripts are
 trusted local code and can generate files or perform other actions under the
 user's account; the permission UI describes that scope explicitly.
+Git inspections discover and disable configured clean/process conversion filters
+without evaluating their commands. Invalid or excessive filter metadata fails
+closed. When filters are disabled, output explicitly notes that raw comparisons
+can mark filtered/LFS files as changed even without a source edit.
 
 Progress evidence distinguishes inspections from successful file edits and verified
 project commands. A read, inventory or Git status check does not establish an

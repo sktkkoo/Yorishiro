@@ -91,6 +91,8 @@ Project presets execute trusted project code and may write build artifacts, lock
 
 Fixed project presets set `CARGO_INCREMENTAL=0` to limit additional incremental caches. An explicitly configured host `CARGO_TARGET_DIR` is preserved only for verified project grants; no shared cache location is discovered or invented. Without that variable, the project's normal Cargo target location applies.
 
+Read-only Git presets first query only conversion-filter configuration names, with a 5-second/64-KiB limit and at most 128 validated driver names. They override every discovered driver's clean/process commands to empty and `required=false`; malformed names, query failures or limit violations block inspection. When filters are disabled, stdout explicitly warns that this is a raw comparison: filtered/LFS files may appear changed and must not be treated as edits. No conversion filter is executed to normalize these files.
+
 These controls are an application tool boundary, **not OS isolation**. A permitted command can perform whatever its executable and project code do with the OS user's privileges. In particular, allowing model writes to project code and then running that mutable code is not equivalent to sandboxing it. Production deployment still needs the host's chosen trust/isolation policy, process supervision and signed runtime packaging.
 
 ## Verification

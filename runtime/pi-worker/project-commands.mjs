@@ -170,6 +170,81 @@ function run(program, args, cwd, env) {
   });
 }
 
+// 値や実行コマンドを読み出さず、変換フィルター名だけを上限内で確認する。
+async function disabledGitFilters(git, fixed, cwd, env) {
+  const unavailable = () =>
+    new Error(
+      "Git inspection blocked: conversion filter configuration could not be safely verified.",
+    );
+  const output = await new Promise((resolve, reject) => {
+    const child = spawn(
+      git,
+      [
+        ...fixed,
+        "config",
+        "--null",
+        "--name-only",
+        "--get-regexp",
+        "^filter\\..*\\.(clean|process)$",
+      ],
+      {
+        cwd,
+        env,
+        shell: false,
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
+    let data = Buffer.alloc(0);
+    let failed = false;
+    const stop = () => {
+      failed = true;
+      child.kill("SIGKILL");
+    };
+    const timer = setTimeout(stop, 5000);
+    child.stdout.on("data", (chunk) => {
+      if (data.length + chunk.length > 64 * 1024) stop();
+      else data = Buffer.concat([data, chunk]);
+    });
+    child.stderr.resume();
+    child.once("error", () => {
+      failed = true;
+    });
+    child.once("close", (code) => {
+      clearTimeout(timer);
+      if (
+        failed ||
+        (code === 0 && data.length === 0) ||
+        (code !== 0 && !(code === 1 && data.length === 0))
+      )
+        reject(unavailable());
+      else resolve(data);
+    });
+  });
+  const drivers = new Set();
+  try {
+    if (output.length) {
+      const names = new TextDecoder("utf-8", { fatal: true }).decode(output);
+      if (!names.endsWith("\0")) throw unavailable();
+      for (const name of names.slice(0, -1).split("\0")) {
+        const match = /^filter\.([A-Za-z0-9._-]{1,128})\.(clean|process)$/.exec(name);
+        if (!match) throw unavailable();
+        drivers.add(match[1]);
+        if (drivers.size > 128) throw unavailable();
+      }
+    }
+  } catch {
+    throw unavailable();
+  }
+  return [...drivers].flatMap((driver) => [
+    "-c",
+    `filter.${driver}.clean=`,
+    "-c",
+    `filter.${driver}.process=`,
+    "-c",
+    `filter.${driver}.required=false`,
+  ]);
+}
+
 /** 引数は固定。npm スクリプトは利用者が許可したプロジェクトのコードで、
  * ファイルを生成する場合がある。既存のプロセスグループと出力上限、中断処理で
  * ヘルパーと子プロセスをまとめて制限する。 */
@@ -199,6 +274,12 @@ export async function runDevelopmentCommand(action, cwd) {
       "-c",
       "core.untrackedCache=false",
     ];
+    const filters = await disabledGitFilters(git, fixed, cwd, env);
+    fixed.push(...filters);
+    if (filters.length)
+      process.stdout.write(
+        "Notice: raw comparison with configured conversion filters disabled; filtered/LFS files may appear changed. Do not treat those as edits.\n",
+      );
     if (action === "git-status")
       await run(
         git,
