@@ -37,6 +37,13 @@ PATH. These developer tools are not dependencies of ordinary Pi conversations.
 Commands have fixed arguments and bounded runtime/output. Project scripts are
 trusted local code and can generate files or perform other actions under the
 user's account; the permission UI describes that scope explicitly.
+The output bound limits the preview, not command execution. Large stdout/stderr
+continues until the command exits, times out or is cancelled. Results retain the
+actual exit code and a bounded prefix/tail; output truncation is not a failure.
+Private session logs retain at most 16 MiB per command and 20 logs/64 MiB per
+session. `read_command_output` reads a bounded page or tail by the returned log
+ID, only for currently granted commands in that session. When a log exceeds its
+cap, its omitted middle is explicit. Logging failure does not hide completion.
 Git inspections discover and disable configured clean/process conversion filters
 without evaluating their commands. Invalid or excessive filter metadata fails
 closed. When filters are disabled, output explicitly notes that raw comparisons

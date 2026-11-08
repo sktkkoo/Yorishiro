@@ -27,7 +27,7 @@ function classifyCall(call, verifiedProjects) {
     args.oldText !== args.newText
   )
     return { effect: "write", commandId: null };
-  if (["read_file", "read_continuity_context"].includes(call.name))
+  if (["read_file", "read_continuity_context", "read_command_output"].includes(call.name))
     return { effect: "read", commandId: null };
   if (
     call.name === "run_command" &&

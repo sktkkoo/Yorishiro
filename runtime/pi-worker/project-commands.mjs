@@ -11,7 +11,7 @@ import {
   rm,
   symlink,
 } from "node:fs/promises";
-import { homedir, tmpdir } from "node:os";
+import { homedir, constants as osConstants, tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -139,6 +139,36 @@ async function npmCli() {
   );
 }
 
+export class ProjectCommandError extends Error {
+  constructor(code, signal, { interruption = null, timedOut = false } = {}) {
+    const exitCode = Number.isInteger(code) && code >= 1 && code <= 255 ? code : null;
+    const actualSignal =
+      typeof signal === "string" && Object.hasOwn(osConstants.signals, signal) ? signal : null;
+    const cancelledBy = ["SIGTERM", "SIGINT", "SIGHUP"].includes(interruption)
+      ? interruption
+      : null;
+    const status = exitCode ?? actualSignal ?? cancelledBy ?? "unknown";
+    super(
+      timedOut
+        ? `Project command exceeded its deadline (${status}). Review partial output before retrying.`
+        : cancelledBy
+          ? `Project command was cancelled (${status}); do not treat its partial result as success.`
+          : `Project command failed (${status}). Review its output and fix the project before retrying.`,
+    );
+    this.name = "ProjectCommandError";
+    this.exitCode = exitCode;
+    this.signal = actualSignal;
+    this.interruption = cancelledBy;
+    this.timedOut = timedOut;
+  }
+
+  get processExitCode() {
+    if (this.exitCode !== null) return this.exitCode;
+    const number = osConstants.signals[this.signal ?? this.interruption];
+    return Number.isInteger(number) && number > 0 ? Math.min(255, 128 + number) : 1;
+  }
+}
+
 function run(program, args, cwd, env) {
   return new Promise((resolve, reject) => {
     const child = spawn(program, args, {
@@ -147,25 +177,32 @@ function run(program, args, cwd, env) {
       shell: false,
       stdio: ["ignore", "inherit", "inherit"],
     });
+    let interruption = null;
+    let timedOut = false;
+    let spawnError = null;
     const signals = ["SIGTERM", "SIGINT", "SIGHUP"];
-    const handlers = signals.map((signal) => () => child.kill(signal));
+    const handlers = signals.map((signal) => () => {
+      interruption ??= signal;
+      child.kill(signal);
+    });
     signals.forEach((signal, index) => {
       process.once(signal, handlers[index]);
     });
-    const timer = setTimeout(() => child.kill("SIGKILL"), PROJECT_TIMEOUT_MS);
-    child.once("error", reject);
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill("SIGKILL");
+    }, PROJECT_TIMEOUT_MS);
+    child.once("error", (error) => {
+      spawnError = error;
+    });
     child.once("close", (code, signal) => {
       clearTimeout(timer);
       signals.forEach((name, index) => {
         process.removeListener(name, handlers[index]);
       });
-      if (code === 0) resolve();
-      else
-        reject(
-          new Error(
-            `Project command failed (${code ?? signal}). Review its output and fix the project before retrying.`,
-          ),
-        );
+      if (spawnError) reject(spawnError);
+      else if (code === 0 && !interruption && !timedOut) resolve();
+      else reject(new ProjectCommandError(code, signal, { interruption, timedOut }));
     });
   });
 }
