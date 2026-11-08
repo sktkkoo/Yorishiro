@@ -1,8 +1,5 @@
 /** Reviewed finite performances; never enter the ordinary looping idle catalog. */
-export const OCCASIONAL_IDLE_ANIMATIONS = [
-  "/animations/recorded-idle/survey.vrma",
-  "/animations/mixamo/Warrior Stretch.vrma",
-] as const;
+export const OCCASIONAL_IDLE_ANIMATIONS = ["/animations/mixamo/Warrior Stretch.vrma"] as const;
 
 /** Keep rare performances varied while respecting installed assets and entry poses. */
 export function selectOccasionalIdleAnimation(options: {

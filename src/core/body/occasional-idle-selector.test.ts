@@ -4,36 +4,22 @@ import {
   selectOccasionalIdleAnimation,
 } from "./occasional-idle-selector";
 
-const [survey, stretch] = OCCASIONAL_IDLE_ANIMATIONS;
+const stretch = "/animations/mixamo/Warrior Stretch.vrma";
 
 describe("rare idle selection", () => {
-  it("alternates compatible performances even when the random stream repeats", () => {
-    const select = (previous: string | null) =>
-      selectOccasionalIdleAnimation({
-        available: new Set(OCCASIONAL_IDLE_ANIMATIONS),
-        previous,
-        canPlay: () => true,
-        random: () => 0,
-      });
-    expect(select(null)).toBe(survey);
-    expect(select(survey)).toBe(stretch);
-    expect(select(stretch)).toBe(survey);
-  });
-
-  it("keeps an installed compatible fallback instead of forcing variety through a bad seam", () => {
-    const canPlay = vi.fn((animation: string) => animation === survey);
+  it("excludes the raised-hand survey and selects the compatible stretch", () => {
+    expect(OCCASIONAL_IDLE_ANIMATIONS).not.toContain("/animations/recorded-idle/survey.vrma");
     expect(
       selectOccasionalIdleAnimation({
         available: new Set(OCCASIONAL_IDLE_ANIMATIONS),
-        previous: survey,
-        canPlay,
-        random: () => 1,
+        previous: stretch,
+        canPlay: () => true,
+        random: () => 0,
       }),
-    ).toBe(survey);
-    expect(canPlay).toHaveBeenCalledWith(stretch);
+    ).toBe(stretch);
   });
 
-  it("does not evaluate missing assets or play an incompatible entry", () => {
+  it("does not play an incompatible entry", () => {
     const canPlay = vi.fn(() => false);
     expect(
       selectOccasionalIdleAnimation({

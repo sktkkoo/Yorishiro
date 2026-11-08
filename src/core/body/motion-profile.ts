@@ -69,12 +69,9 @@ export const DEFAULT_CHARACTER_MOTION_PROFILE: CharacterMotionProfile = {
       role: "posture",
       composition: { ...upperStanding, gain: "idle", requiresRecordedSupport: true },
     },
-    ...[
-      ["idle-survey", "/animations/recorded-idle/survey.vrma"],
-      ["idle-stretch", "/animations/mixamo/Warrior Stretch.vrma"],
-    ].map(
+    ...[["idle-stretch", "/animations/mixamo/Warrior Stretch.vrma"]].map(
       ([id, animation]): MotionProgram => ({
-        review: "docs/decisions/mixamo-motion-review.json; docs/decisions/idle-survey-review.md",
+        review: "docs/decisions/mixamo-motion-review.json",
         entry: {
           id,
           animation,

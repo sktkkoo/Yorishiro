@@ -182,12 +182,12 @@ async function createReviewedSpeechBody() {
   return { ...fixture, entry, adapter: createBodyStateExpressionAdapter(() => body) };
 }
 
-function mockSurveyOnlyLibrary() {
+function mockStretchOnlyLibrary() {
   mockPerformanceLibrary();
   return vi
     .mocked(AnimationPlayer.prototype.evaluateTransition)
     .mockImplementation((ref) =>
-      ref === "/animations/recorded-idle/survey.vrma" ? { cost: 0, startTimeSec: 0 } : null,
+      ref === "/animations/mixamo/Warrior Stretch.vrma" ? { cost: 0, startTimeSec: 0 } : null,
     );
 }
 
@@ -679,12 +679,12 @@ describe("recorded motion Body integration", () => {
   it.each([
     "user-speaking",
     "animation-claim",
-  ] as const)("keeps a rare finite survey separate from the body base, then yields to %s", async (interruption) => {
+  ] as const)("keeps a rare finite stretch separate from the body base, then yields to %s", async (interruption) => {
     vi.spyOn(Math, "random").mockReturnValue(0.999);
-    mockSurveyOnlyLibrary();
+    mockStretchOnlyLibrary();
     const { sha, base, playBase } = mockStandingBase();
-    const survey = playback();
-    const play = vi.spyOn(AnimationPlayer.prototype, "play").mockResolvedValue(survey);
+    const stretch = playback();
+    const play = vi.spyOn(AnimationPlayer.prototype, "play").mockResolvedValue(stretch);
     const { body, claims } = createBody(sha);
     body.setMotionIntensity(0.95);
     await body.initializeRecordedBody();
@@ -695,7 +695,7 @@ describe("recorded motion Body integration", () => {
     advance(body, 2);
     await flush();
     expect(play).toHaveBeenCalledOnce();
-    expect(play.mock.calls[0][0]).toBe("/animations/recorded-idle/survey.vrma");
+    expect(play.mock.calls[0][0]).toBe("/animations/mixamo/Warrior Stretch.vrma");
     expect(play.mock.calls[0][1]).toMatchObject({
       loop: false,
       mask: "upper-body",
@@ -709,11 +709,11 @@ describe("recorded motion Body integration", () => {
     advance(body, 1);
     await flush();
     expect(body.getMotionSnapshot().active?.animation).toBe(
-      "/animations/recorded-idle/survey.vrma",
+      "/animations/mixamo/Warrior Stretch.vrma",
     );
     expect(play).toHaveBeenCalledOnce();
-    expect(survey.stop).not.toHaveBeenCalled();
-    expect(survey.cancel).not.toHaveBeenCalled();
+    expect(stretch.stop).not.toHaveBeenCalled();
+    expect(stretch.cancel).not.toHaveBeenCalled();
     expect(playBase).toHaveBeenCalledOnce();
     expect(base.stop).not.toHaveBeenCalled();
     expect(base.cancel).not.toHaveBeenCalled();
@@ -724,14 +724,14 @@ describe("recorded motion Body integration", () => {
     await flush();
     expect(body.getMotionSnapshot().active).toBeNull();
     if (interruption === "user-speaking") {
-      expect(survey.stop).toHaveBeenCalledExactlyOnceWith(800);
-      expect(survey.cancel).not.toHaveBeenCalled();
+      expect(stretch.stop).toHaveBeenCalledExactlyOnceWith(800);
+      expect(stretch.cancel).not.toHaveBeenCalled();
       expect(base.stop).not.toHaveBeenCalled();
       expect(base.cancel).not.toHaveBeenCalled();
       expect(body.getRecordedBodySnapshot().active?.id).toBe("standing");
     } else {
-      expect(survey.cancel).toHaveBeenCalledOnce();
-      expect(survey.stop).not.toHaveBeenCalled();
+      expect(stretch.cancel).toHaveBeenCalledOnce();
+      expect(stretch.stop).not.toHaveBeenCalled();
       expect(base.cancel).toHaveBeenCalledOnce();
     }
   });
@@ -766,7 +766,7 @@ describe("recorded motion Body integration", () => {
     expect(body.getRecordedBodySnapshot().active?.id).toBe("standing");
   });
 
-  it("backs off an incompatible rare survey entry and retries it without another full wait", async () => {
+  it("backs off an incompatible rare stretch entry and retries it without another full wait", async () => {
     vi.spyOn(Math, "random").mockReturnValue(0);
     mockPerformanceLibrary();
     const evaluate = vi.mocked(AnimationPlayer.prototype.evaluateTransition).mockReturnValue(null);
@@ -779,10 +779,10 @@ describe("recorded motion Body integration", () => {
 
     advance(body, 91);
     expect(play).not.toHaveBeenCalled();
-    const surveyEvaluations = () =>
-      evaluate.mock.calls.filter(([ref]) => ref === "/animations/recorded-idle/survey.vrma");
-    expect(surveyEvaluations()).toHaveLength(1);
-    expect(surveyEvaluations()[0][1]).toEqual({
+    const stretchEvaluations = () =>
+      evaluate.mock.calls.filter(([ref]) => ref === "/animations/mixamo/Warrior Stretch.vrma");
+    expect(stretchEvaluations()).toHaveLength(1);
+    expect(stretchEvaluations()[0][1]).toEqual({
       loop: false,
       mask: "upper-body",
       transition: "immediate",
@@ -792,16 +792,16 @@ describe("recorded motion Body integration", () => {
       fadeOutMs: 800,
     });
     advance(body, 1.3);
-    expect(surveyEvaluations()).toHaveLength(1);
+    expect(stretchEvaluations()).toHaveLength(1);
     evaluate.mockImplementation((ref) =>
-      ref === "/animations/recorded-idle/survey.vrma" ? { cost: 0, startTimeSec: 0 } : null,
+      ref === "/animations/mixamo/Warrior Stretch.vrma" ? { cost: 0, startTimeSec: 0 } : null,
     );
     advance(body, 0.3);
     await flush();
-    expect(surveyEvaluations()).toHaveLength(2);
+    expect(stretchEvaluations()).toHaveLength(2);
     expect(play).toHaveBeenCalledOnce();
     expect(body.getMotionSnapshot().active?.animation).toBe(
-      "/animations/recorded-idle/survey.vrma",
+      "/animations/mixamo/Warrior Stretch.vrma",
     );
     expect(base.stop).not.toHaveBeenCalled();
     expect(base.cancel).not.toHaveBeenCalled();
@@ -812,7 +812,7 @@ describe("recorded motion Body integration", () => {
     "expression",
   ] as const)("does not count ungrounded %s ownership toward the rare idle wait", async (owner) => {
     vi.spyOn(Math, "random").mockReturnValue(0);
-    mockSurveyOnlyLibrary();
+    mockStretchOnlyLibrary();
     const { sha } = mockStandingBase();
     const play = vi.spyOn(AnimationPlayer.prototype, "play").mockResolvedValue(playback());
     const { body } = createBody(sha);
@@ -838,7 +838,7 @@ describe("recorded motion Body integration", () => {
     advance(body, 2);
     await flush();
     expect(play).toHaveBeenCalledOnce();
-    expect(play.mock.calls[0][0]).toBe("/animations/recorded-idle/survey.vrma");
+    expect(play.mock.calls[0][0]).toBe("/animations/mixamo/Warrior Stretch.vrma");
   });
 
   it("bounds default HandOnHip and waits its full cooldown without upper Idle fallback", async () => {
@@ -1681,7 +1681,7 @@ describe("recorded motion Body integration", () => {
         ).length,
     );
     expect(preload).toHaveBeenCalledWith("anim:Idle", { mask: "upper-body", loop: true });
-    expect(preload).toHaveBeenCalledWith("/animations/recorded-idle/survey.vrma", {
+    expect(preload).toHaveBeenCalledWith("/animations/mixamo/Warrior Stretch.vrma", {
       mask: "upper-body",
       loop: false,
     });
@@ -1764,7 +1764,7 @@ describe("recorded motion Body integration", () => {
     await loading;
     expect(preload).toHaveBeenCalledTimes(calls);
     expect(
-      preload.mock.calls.some(([ref]) => ref === "/animations/recorded-idle/survey.vrma"),
+      preload.mock.calls.some(([ref]) => ref === "/animations/mixamo/Warrior Stretch.vrma"),
     ).toBe(false);
   });
 
