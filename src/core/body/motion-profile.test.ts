@@ -77,7 +77,8 @@ describe("character motion program admission", () => {
         ({ entry }) =>
           ["anim:Idle", "anim:Idle Chatting 2"].includes(entry.animation) ||
           entry.animation.includes("Shrugging") ||
-          entry.animation.includes("Thoughtful Head Shake"),
+          entry.animation.includes("Thoughtful Head Shake") ||
+          entry.animation === "/animations/recorded-idle/survey.vrma",
       ),
     ).toBe(false);
     const hip = compiled.byAnimation.get("anim:VRMA_06_HandOnHip");
