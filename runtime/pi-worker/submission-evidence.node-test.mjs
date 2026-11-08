@@ -111,6 +111,8 @@ test("archive reads stay inspection and failures retain their actual error evide
         result(5, "write", "write_file", { isError: true }),
         call(6, "test", "run_command", { commandId: "project-test" }),
         result(7, "test", "run_command", { isError: true }),
+        call(8, "output", "read_command_output", { logId: "11111111-1111-4111-8111-111111111111" }),
+        result(9, "output", "read_command_output"),
       ],
     ],
     ["project-test"],
@@ -121,6 +123,7 @@ test("archive reads stay inspection and failures retain their actual error evide
       ["read", false],
       ["write", true],
       ["project-check", true],
+      ["read", false],
     ],
   );
 });

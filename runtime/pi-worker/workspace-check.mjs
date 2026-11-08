@@ -4,6 +4,7 @@ import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   COMMAND_PRESET_IDS,
+  ProjectCommandError,
   projectCapabilities,
   runDevelopmentCommand,
 } from "./project-commands.mjs";
@@ -154,9 +155,21 @@ if (await isCommandEntry()) {
       process.exitCode = !result.complete ? 2 : result.invalidFiles > 0 ? 1 : 0;
     }
   } catch (error) {
+    const projectFailure = error instanceof ProjectCommandError;
     process.stdout.write(
-      `${JSON.stringify({ code: "workspace_check_unavailable", message: String(error.message).slice(0, 512) })}\n`,
+      `${projectFailure ? "\n" : ""}${JSON.stringify({
+        code: projectFailure ? "workspace_command_failed" : "workspace_check_unavailable",
+        message: String(error.message).slice(0, 512),
+        ...(projectFailure
+          ? {
+              exitCode: error.exitCode,
+              signal: error.signal,
+              interruption: error.interruption,
+              timedOut: error.timedOut,
+            }
+          : {}),
+      })}\n`,
     );
-    process.exitCode = 2;
+    process.exitCode = projectFailure ? error.processExitCode : 2;
   }
 }

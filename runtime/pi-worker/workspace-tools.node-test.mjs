@@ -289,7 +289,7 @@ test("commands use only fixed argv without shell expansion or inherited provider
   }
 });
 
-test("command output and runtime are bounded; cancellation terminates its owned process", {
+test("command summaries are bounded while timeout and cancellation still terminate their owned process", {
   timeout: 8000,
 }, async () => {
   const f = await fixture(
@@ -305,7 +305,13 @@ test("command output and runtime are bounded; cancellation terminates its owned 
     },
     { limits: { maxCommandOutputBytes: 32, commandTimeoutMs: 300, commandKillGraceMs: 100 } },
   );
-  await assert.rejects(f.call("run_command", { commandId: "noisy" }), /output limit/);
+  await assert.rejects(
+    f.call("run_command", { commandId: "noisy" }),
+    (error) =>
+      /deadline/.test(error.message) &&
+      error.details.truncated &&
+      error.details.outputBytes >= 10000,
+  );
   await assert.rejects(f.call("run_command", { commandId: "wait" }), /deadline/);
   const controller = new AbortController();
   const waiting = f.call("run_command", { commandId: "wait" }, controller.signal);

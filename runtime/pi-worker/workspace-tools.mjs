@@ -4,7 +4,8 @@ import { constants } from "node:fs";
 import { access, link, lstat, mkdir, open, realpath, rename, unlink } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { defineTool } from "@earendil-works/pi-durable";
-import { obj, opt, str } from "@earendil-works/pi-schema";
+import { bool, int, obj, opt, str } from "@earendil-works/pi-schema";
+import { createCommandOutput, createCommandOutputStore } from "./command-output.mjs";
 import { verifiedProjectCommandIds } from "./project-commands.mjs";
 
 export const WORKSPACE_LIMITS = Object.freeze({
@@ -120,6 +121,10 @@ export async function createWorkspaceTools(cwd, permissionValue, options = {}) {
     await access(program, constants.X_OK);
     allowed.set(command.id, { ...command, program });
   }
+  const outputStore =
+    options.sessionDir && allowed.size
+      ? createCommandOutputStore(options.sessionDir, allowed.keys(), options.commandOutputLimits)
+      : null;
   function check(path, write, allowRoot = false) {
     if (!inside(root, path) || (!allowRoot && path === root))
       throw new Error("Path is outside workspace files");
@@ -332,6 +337,7 @@ export async function createWorkspaceTools(cwd, permissionValue, options = {}) {
           abort(context?.abortSignal);
           const command = allowed.get(commandId);
           if (!command) throw new Error("Command ID is not permitted");
+          const output = createCommandOutput(limits.maxCommandOutputBytes, commandId, outputStore);
           return new Promise((resolveCommand, rejectCommand) => {
             const detached = process.platform !== "win32";
             const child = spawn(command.program, command.args, {
@@ -347,7 +353,6 @@ export async function createWorkspaceTools(cwd, permissionValue, options = {}) {
               },
               stdio: ["ignore", "pipe", "pipe"],
             });
-            let output = Buffer.alloc(0);
             let failure;
             let closed = false;
             let killTimer;
@@ -371,11 +376,7 @@ export async function createWorkspaceTools(cwd, permissionValue, options = {}) {
               command.timeoutMs ?? limits.commandTimeoutMs,
             );
             const collect = (chunk) => {
-              if (output.length + chunk.length > limits.maxCommandOutputBytes) {
-                fail("Configured command exceeded its output limit");
-                return;
-              }
-              output = Buffer.concat([output, chunk]);
+              output.append(chunk);
             };
             child.stdout.on("data", collect);
             child.stderr.on("data", collect);
@@ -387,15 +388,20 @@ export async function createWorkspaceTools(cwd, permissionValue, options = {}) {
               clearTimeout(timer);
               clearTimeout(killTimer);
               context?.abortSignal?.removeEventListener("abort", onAbort);
-              if (failure) rejectCommand(failure);
-              else if (code !== 0)
-                rejectCommand(
-                  new Error(
-                    `Configured command failed (${code ?? signal}): ${output.toString("utf8")}`,
-                  ),
+              const captured = output.finish(
+                code !== null && code >= 0 ? code : null,
+                signal,
+                Boolean(failure),
+              );
+              const footer = `\n[command_output ${JSON.stringify(captured.details)}]`;
+              if (failure || code !== 0) {
+                const error = new Error(
+                  `${failure?.message ?? `Configured command failed (${code ?? signal})`}: ${captured.content}${footer}`,
                 );
-              else {
-                let result = output.toString("utf8");
+                error.details = captured.details;
+                rejectCommand(error);
+              } else {
+                let result = captured.content;
                 if (commandId === "workspace-info") {
                   try {
                     const info = JSON.parse(result);
@@ -409,7 +415,8 @@ export async function createWorkspaceTools(cwd, permissionValue, options = {}) {
                     /* 既存の独自コマンドの出力は変更しない。 */
                   }
                 }
-                resolveCommand(text(result, { commandId, exitCode: code }));
+                if (captured.details.truncated) result += footer;
+                resolveCommand(text(result, captured.details));
               }
             });
             context?.abortSignal?.addEventListener("abort", onAbort, {
@@ -417,6 +424,25 @@ export async function createWorkspaceTools(cwd, permissionValue, options = {}) {
             });
             if (context?.abortSignal?.aborted) onAbort();
           });
+        },
+      }),
+    );
+  if (outputStore)
+    tools.push(
+      defineTool({
+        name: "read_command_output",
+        description:
+          "Read at most 64 KiB of a private command log by its returned logId, using a stored byte offset or tail=true. Only logs for currently granted commands in this session are available. Truncated logs contain a prefix and final tail with an omitted middle; offsets refer to stored bytes.",
+        parameters: obj({ logId: str(), offset: opt(int({ minimum: 0 })), tail: opt(bool()) }),
+        replay: "safe",
+        execute: async (args, _api, context) => {
+          abort(context?.abortSignal);
+          const result = outputStore.read(args);
+          const { content, ...details } = result;
+          return text(
+            `${details.note}\n${content}\n[command_output ${JSON.stringify(details)}]`,
+            details,
+          );
         },
       }),
     );

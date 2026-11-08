@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import {
   chmod,
   mkdir,
@@ -201,6 +201,17 @@ test("missing script/tool and a failed real project command return actionable fa
   const run = await runner(root, PROJECT_COMMAND_IDS);
   await assert.rejects(run("project-build"), /No project-build script.*selected folder/);
   await assert.rejects(run("project-check"), /Project command failed \(7\)/);
+  const failed = spawnSync(process.execPath, [helper, "project-check"], {
+    cwd: root,
+    env: { PATH: process.env.PATH },
+    encoding: "utf8",
+  });
+  assert.equal(failed.status, 7, "the fixed helper must preserve npm's actual exit status");
+  const failure = JSON.parse(failed.stdout.trim().split("\n").at(-1));
+  assert.equal(failure.code, "workspace_command_failed");
+  assert.equal(failure.exitCode, 7);
+  assert.equal(failure.signal, null);
+  assert.match(failure.message, /Project command failed \(7\)/);
   const result = spawnSync(process.execPath, [helper, "project-check"], {
     cwd: root,
     env: { PATH: "" },
@@ -217,13 +228,13 @@ test("missing script/tool and a failed real project command return actionable fa
   );
 });
 
-test("real npm command cancellation and output bounds stop its owned descendants", {
+test("real npm command cancellation stops owned descendants while verbose completion is retained", {
   skip: process.platform === "win32",
 }, async (t) => {
   const root = await fixture(t);
   await packageFixture(root, {
     check: "node wait.mjs",
-    build: "node -e 'process.stdout.write(\"x\".repeat(10000));setInterval(()=>{},1000)'",
+    build: "node -e 'process.stdout.write(\"x\".repeat(10000))'",
   });
   await writeFile(
     join(root, "wait.mjs"),
@@ -252,7 +263,107 @@ test("real npm command cancellation and output bounds stop its owned descendants
       return error.code === "ESRCH";
     }
   });
-  await assert.rejects(run("project-build"), /output limit/);
+  const verbose = await run("project-build");
+  assert.equal(verbose.details.exitCode, 0);
+  assert.equal(verbose.details.truncated, true);
+  assert.ok(verbose.details.outputBytes >= 10000);
+  assert.equal(verbose.details.logId, null);
+});
+
+test("Cargo child exit status and signals survive the fixed helper boundary", {
+  skip: process.platform === "win32",
+}, async (t) => {
+  const root = await fixture(t);
+  await writeFile(join(root, "Cargo.toml"), '[package]\nname="fixture"\nversion="0.1.0"\n');
+  const bin = join(root, "bin");
+  await mkdir(bin);
+  const cargo = join(bin, "cargo");
+  await writeFile(
+    cargo,
+    `#!${process.execPath}\nprocess.stdout.write('ACTIONABLE_STDOUT_TAIL\\n');process.stderr.write('ACTIONABLE_STDERR_TAIL\\n');process.exit(101);\n`,
+  );
+  await chmod(cargo, 0o755);
+  const failed = spawnSync(process.execPath, [helper, "project-check"], {
+    cwd: root,
+    env: { PATH: bin },
+    encoding: "utf8",
+  });
+  assert.equal(failed.status, 101);
+  assert.match(failed.stdout, /ACTIONABLE_STDOUT_TAIL/);
+  assert.match(failed.stderr, /ACTIONABLE_STDERR_TAIL/);
+  let metadata = JSON.parse(failed.stdout.trim().split("\n").at(-1));
+  assert.equal(metadata.exitCode, 101);
+  assert.match(metadata.message, /Project command failed \(101\)/);
+  await writeFile(cargo, `#!${process.execPath}\nprocess.kill(process.pid,'SIGTERM');\n`);
+  const terminated = spawnSync(process.execPath, [helper, "project-check"], {
+    cwd: root,
+    env: { PATH: bin },
+    encoding: "utf8",
+  });
+  assert.equal(terminated.status, 143);
+  metadata = JSON.parse(terminated.stdout.trim().split("\n").at(-1));
+  assert.equal(metadata.exitCode, null);
+  assert.equal(metadata.signal, "SIGTERM");
+});
+
+test("a failed read-only Git inspection preserves Git's status instead of configuration code two", async (t) => {
+  const root = await fixture(t);
+  const failed = spawnSync(process.execPath, [helper, "git-status"], {
+    cwd: root,
+    env: { PATH: process.env.PATH },
+    encoding: "utf8",
+  });
+  assert.equal(failed.status, 128);
+  assert.match(failed.stderr, /not a git repository/i);
+  const metadata = JSON.parse(failed.stdout.trim().split("\n").at(-1));
+  assert.equal(metadata.code, "workspace_command_failed");
+  assert.equal(metadata.exitCode, 128);
+});
+
+test("a cancelled child that handles its signal and exits zero is never reported as success", {
+  skip: process.platform === "win32",
+  timeout: 10000,
+}, async (t) => {
+  const root = await fixture(t);
+  await writeFile(join(root, "Cargo.toml"), '[package]\nname="fixture"\nversion="0.1.0"\n');
+  const bin = join(root, "bin");
+  await mkdir(bin);
+  const cargo = join(bin, "cargo");
+  await writeFile(
+    cargo,
+    `#!${process.execPath}\nprocess.on('SIGTERM',()=>process.exit(0));require('node:fs').writeFileSync('ready','ready');setInterval(()=>{},1000);\n`,
+  );
+  await chmod(cargo, 0o755);
+  const child = spawn(process.execPath, [helper, "project-check"], {
+    cwd: root,
+    env: { PATH: bin },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  t.after(() => {
+    if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+  });
+  const output = [];
+  child.stdout.on("data", (chunk) => output.push(chunk));
+  child.stderr.resume();
+  const closed = new Promise((resolve, reject) => {
+    child.once("error", reject);
+    child.once("close", (code, signal) => resolve({ code, signal }));
+  });
+  await until(() =>
+    readFile(join(root, "ready")).then(
+      () => true,
+      () => false,
+    ),
+  );
+  child.kill("SIGTERM");
+  const result = await closed;
+  assert.equal(result.code, 143);
+  assert.equal(result.signal, null);
+  const metadata = JSON.parse(Buffer.concat(output).toString("utf8").trim().split("\n").at(-1));
+  assert.equal(metadata.code, "workspace_command_failed");
+  assert.equal(metadata.interruption, "SIGTERM");
+  assert.equal(metadata.exitCode, null);
+  assert.match(metadata.message, /cancelled/);
 });
 
 test("workspace information identifies primary, current linked branch and spoofed registrations without requiring worktrees", async (t) => {
