@@ -240,6 +240,19 @@
   padding: 10px 32px 24px;
   margin-inline: auto;
 }
+.continuity-pending-reply {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin-bottom: 8px;
+  color: var(--yorishiro-fg-dim);
+  font-size: 11px;
+}
+.continuity-message[tabindex="-1"]:focus {
+  outline: 2px solid var(--yorishiro-fg-dim);
+  outline-offset: 3px;
+}
 .continuity-composer {
   display: flex;
   flex-direction: column;

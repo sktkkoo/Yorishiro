@@ -92,6 +92,16 @@ const dateText = (date: number, language: "ja" | "en") =>
     minute: "2-digit",
   }).format(new Date(date));
 
+function latestPendingReply(messages: readonly ContinuityMessage[]): ContinuityMessage | null {
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const message = messages[index];
+    if (message.source === "legacy") continue;
+    if (message.role === "user") break;
+    if (message.role === "assistant" && message.replyKind === "awaitingReply") return message;
+  }
+  return null;
+}
+
 /** Persona-scoped UI state; native work is independent of this view's visibility. */
 export function ContinuityWorkspace(props: ContinuityWorkspaceProps) {
   return <ResidentWorkspace key={storagePersona(props.personaId)} {...props} />;
@@ -174,6 +184,8 @@ function ResidentWorkspace({
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const panelRef = useRef<HTMLElement>(null);
   const flowRef = useRef<HTMLDivElement>(null);
+  const pendingReplyRef = useRef<HTMLElement>(null);
+  const readingReplyId = useRef<string | null>(null);
   const bookButtonRef = useRef<HTMLButtonElement>(null);
   const bookCloseRef = useRef<HTMLButtonElement>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -194,6 +206,8 @@ function ResidentWorkspace({
   const dialogTitleId = `${id}-detail`;
   const inputId = `${id}-input`;
   const autoDescriptionId = `${id}-autonomy-description`;
+  const pendingReplyId = `${id}-pending-reply`;
+  const pendingReply = latestPendingReply(snapshot?.messages ?? []);
   const selectedDraft =
     detail?.kind === "draft" ? snapshot?.drafts.find((item) => item.id === detail.id) : null;
   const selectedForget =
@@ -303,15 +317,30 @@ function ResidentWorkspace({
   const latestArrival = `${latestMessage ?? ""}:${latestDraft ?? ""}`;
   useEffect(() => {
     if (!open || !flowRef.current) return;
+    if (readingReplyId.current !== pendingReply?.id) readingReplyId.current = null;
     const changed = previousMessage.current !== latestArrival;
     previousMessage.current = latestArrival;
-    if (nearBottom.current || forceFollow.current) {
+    if ((nearBottom.current && !readingReplyId.current) || forceFollow.current) {
       flowRef.current.scrollTop = flowRef.current.scrollHeight;
       forceFollow.current = false;
       nearBottom.current = true;
       setUnread(false);
     } else if (changed) setUnread(true);
-  }, [open, latestArrival]);
+  }, [open, latestArrival, pendingReply?.id]);
+
+  function showPendingReply() {
+    const message = pendingReplyRef.current;
+    const flow = flowRef.current;
+    if (!pendingReply || !message || !flow) return;
+    readingReplyId.current = pendingReply.id;
+    nearBottom.current = false;
+    forceFollow.current = false;
+    message.focus({ preventScroll: true });
+    flow.scrollTop = Math.max(
+      0,
+      flow.scrollTop + message.getBoundingClientRect().top - flow.getBoundingClientRect().top - 8,
+    );
+  }
 
   async function submit() {
     if (executionBackend === "pi" && !piReady) return;
@@ -321,6 +350,7 @@ function ResidentWorkspace({
     setSending(true);
     setLocalError(null);
     const submitted = draft;
+    readingReplyId.current = null;
     forceFollow.current = true;
     try {
       await sendContinuityMessage(context, text, draft.correctionId ?? undefined);
@@ -575,7 +605,7 @@ function ResidentWorkspace({
               const flow = flowRef.current;
               if (!flow) return;
               nearBottom.current = flow.scrollHeight - flow.scrollTop - flow.clientHeight < 100;
-              if (nearBottom.current) setUnread(false);
+              if (nearBottom.current && !readingReplyId.current) setUnread(false);
             }}
           >
             <div
@@ -586,7 +616,19 @@ function ResidentWorkspace({
               className="continuity-log"
             >
               {visibleMessages.map((message) => (
-                <article key={message.id} className="continuity-message" data-role={message.role}>
+                <article
+                  key={message.id}
+                  className="continuity-message"
+                  data-role={message.role}
+                  id={message.id === pendingReply?.id ? pendingReplyId : undefined}
+                  ref={message.id === pendingReply?.id ? pendingReplyRef : undefined}
+                  tabIndex={message.id === pendingReply?.id ? -1 : undefined}
+                  aria-label={message.id === pendingReply?.id ? copy.replyRequested : undefined}
+                  onBlur={(event) => {
+                    if (!event.currentTarget.contains(event.relatedTarget))
+                      readingReplyId.current = null;
+                  }}
+                >
                   <div className="continuity-message-meta">
                     <strong>{message.role === "user" ? copy.you : name}</strong>
                     <time dateTime={new Date(message.createdAt).toISOString()}>
@@ -610,6 +652,20 @@ function ResidentWorkspace({
                 {busy ? <LoaderCircle size={13} aria-hidden="true" /> : null}
                 {activity}
               </p>
+            ) : null}
+            {pendingReply ? (
+              <div className="continuity-pending-reply">
+                <span>{copy.replyRequested}</span>
+                <button
+                  type="button"
+                  className="continuity-text-button"
+                  aria-controls={pendingReplyId}
+                  onClick={showPendingReply}
+                >
+                  {copy.viewQuestion}
+                  <ArrowUp size={13} aria-hidden="true" />
+                </button>
+              </div>
             ) : null}
             {additionalVoiceError && !detail ? (
               <div className="continuity-error" role="alert">
@@ -676,6 +732,7 @@ function ResidentWorkspace({
                 type="button"
                 className="continuity-new-reply"
                 onClick={() => {
+                  readingReplyId.current = null;
                   const flow = flowRef.current;
                   if (flow) flow.scrollTop = flow.scrollHeight;
                   nearBottom.current = true;
