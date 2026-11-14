@@ -328,6 +328,18 @@ function ResidentWorkspace({
   const correction = draft.correctionId
     ? snapshot?.understandings.find((item) => item.id === draft.correctionId)
     : null;
+  const showVoiceError = Boolean(additionalVoiceError && !detail);
+  const showWorkspaceError = Boolean(
+    error && !detail && (!workError || executionBackend !== "pi" || piReady),
+  );
+  const hasFeedback = Boolean(
+    activity ||
+      pendingReply ||
+      showVoiceError ||
+      showWorkspaceError ||
+      unread ||
+      draft.correctionId,
+  );
 
   useEffect(() => {
     mounted.current = true;
@@ -738,117 +750,122 @@ function ResidentWorkspace({
             ) : null}
           </div>
           <div className="continuity-compose-area">
-            {activity ? (
-              <p className="continuity-state" role="status">
-                {busy ? <LoaderCircle size={13} aria-hidden="true" /> : null}
-                {activity}
-              </p>
-            ) : null}
-            {pendingReply ? (
-              <div className="continuity-pending-reply">
-                <span>{copy.replyRequested}</span>
-                <button
-                  type="button"
-                  className="continuity-text-button"
-                  aria-controls={pendingReplyId}
-                  onClick={showPendingReply}
-                >
-                  {copy.viewQuestion}
-                  <ArrowUp size={13} aria-hidden="true" />
-                </button>
-              </div>
-            ) : null}
-            {additionalVoiceError && !detail ? (
-              <div className="continuity-error" role="alert">
-                <p>
-                  {additionalVoiceError}
-                  <br />
-                  {copy.recovery.voice}
-                </p>
-              </div>
-            ) : null}
-            {error && !detail && (!workError || executionBackend !== "pi" || piReady) ? (
-              <>
-                <div className="continuity-error" role="alert">
-                  <p>
-                    {error}
-                    {recoveryHint ? (
-                      <>
-                        <br />
-                        {recoveryHint}
-                      </>
-                    ) : null}
+            {hasFeedback ? (
+              // biome-ignore lint/a11y/noNoninteractiveTabindex: 長い通知全文をキーボードでスクロールできるようにする。
+              <section className="continuity-feedback" aria-label={copy.feedback} tabIndex={0}>
+                {activity ? (
+                  <p className="continuity-state" role="status">
+                    {busy ? <LoaderCircle size={13} aria-hidden="true" /> : null}
+                    {activity}
                   </p>
-                  {workError || syncFailure ? (
+                ) : null}
+                {pendingReply ? (
+                  <div className="continuity-pending-reply">
+                    <span>{copy.replyRequested}</span>
                     <button
                       type="button"
-                      disabled={(workError && busy) || sending || retryPending}
-                      aria-busy={retryPending || undefined}
-                      onClick={() => void retry(syncFailure ? "sync" : "work")}
+                      className="continuity-text-button"
+                      aria-controls={pendingReplyId}
+                      onClick={showPendingReply}
                     >
-                      {syncFailure
-                        ? retryPending
-                          ? copy.refreshing
-                          : copy.refresh
-                        : retryPending
-                          ? copy.retrying
-                          : copy.retry}
+                      {copy.viewQuestion}
+                      <ArrowUp size={13} aria-hidden="true" />
                     </button>
-                  ) : null}
-                  {workError && executionBackend === "pi" ? (
-                    <button
-                      type="button"
-                      disabled={piDiagnostics.checking}
-                      onClick={() => void piDiagnostics.check()}
-                    >
-                      {piDiagnostics.checking
-                        ? copy.piDiagnostics.checking
-                        : copy.piDiagnostics.check}
-                    </button>
-                  ) : null}
-                </div>
-                {workError && executionBackend === "pi" && piDiagnostics.result ? (
-                  <div className="continuity-error" role="status" aria-live="polite">
+                  </div>
+                ) : null}
+                {showVoiceError ? (
+                  <div className="continuity-error" role="alert">
                     <p>
-                      {piDiagnosticMessages(piDiagnostics.result)
-                        .map((message) => copy.piDiagnostics[message])
-                        .join("\n")}
+                      {additionalVoiceError}
+                      <br />
+                      {copy.recovery.voice}
                     </p>
                   </div>
                 ) : null}
-              </>
-            ) : null}
-            {unread ? (
-              <button
-                type="button"
-                className="continuity-new-reply"
-                onClick={() => {
-                  readingReplyId.current = null;
-                  const flow = flowRef.current;
-                  if (flow) flow.scrollTop = flow.scrollHeight;
-                  nearBottom.current = true;
-                  setUnread(false);
-                }}
-              >
-                {copy.latest}
-                <ArrowDown size={13} aria-hidden="true" />
-              </button>
-            ) : null}
-            {draft.correctionId ? (
-              <div className="continuity-correction">
-                <span>
-                  {copy.correction}
-                  {correction ? ` · ${correction.title}` : ""}
-                </span>
-                <button
-                  type="button"
-                  className="continuity-icon"
-                  aria-label={copy.cancelCorrection}
-                  onClick={() => setInputDrafts(cancelCorrection)}
-                >
-                  <X size={13} aria-hidden="true" />
-                </button>
-              </div>
+                {showWorkspaceError ? (
+                  <>
+                    <div className="continuity-error" role="alert">
+                      <p>
+                        {error}
+                        {recoveryHint ? (
+                          <>
+                            <br />
+                            {recoveryHint}
+                          </>
+                        ) : null}
+                      </p>
+                      {workError || syncFailure ? (
+                        <button
+                          type="button"
+                          disabled={(workError && busy) || sending || retryPending}
+                          aria-busy={retryPending || undefined}
+                          onClick={() => void retry(syncFailure ? "sync" : "work")}
+                        >
+                          {syncFailure
+                            ? retryPending
+                              ? copy.refreshing
+                              : copy.refresh
+                            : retryPending
+                              ? copy.retrying
+                              : copy.retry}
+                        </button>
+                      ) : null}
+                      {workError && executionBackend === "pi" ? (
+                        <button
+                          type="button"
+                          disabled={piDiagnostics.checking}
+                          onClick={() => void piDiagnostics.check()}
+                        >
+                          {piDiagnostics.checking
+                            ? copy.piDiagnostics.checking
+                            : copy.piDiagnostics.check}
+                        </button>
+                      ) : null}
+                    </div>
+                    {workError && executionBackend === "pi" && piDiagnostics.result ? (
+                      <div className="continuity-error" role="status" aria-live="polite">
+                        <p>
+                          {piDiagnosticMessages(piDiagnostics.result)
+                            .map((message) => copy.piDiagnostics[message])
+                            .join("\n")}
+                        </p>
+                      </div>
+                    ) : null}
+                  </>
+                ) : null}
+                {unread ? (
+                  <button
+                    type="button"
+                    className="continuity-new-reply"
+                    onClick={() => {
+                      readingReplyId.current = null;
+                      const flow = flowRef.current;
+                      if (flow) flow.scrollTop = flow.scrollHeight;
+                      nearBottom.current = true;
+                      setUnread(false);
+                    }}
+                  >
+                    {copy.latest}
+                    <ArrowDown size={13} aria-hidden="true" />
+                  </button>
+                ) : null}
+                {draft.correctionId ? (
+                  <div className="continuity-correction">
+                    <span>
+                      {copy.correction}
+                      {correction ? ` · ${correction.title}` : ""}
+                    </span>
+                    <button
+                      type="button"
+                      className="continuity-icon"
+                      aria-label={copy.cancelCorrection}
+                      onClick={() => setInputDrafts(cancelCorrection)}
+                    >
+                      <X size={13} aria-hidden="true" />
+                    </button>
+                  </div>
+                ) : null}
+              </section>
             ) : null}
             <form
               className="continuity-composer"

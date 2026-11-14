@@ -250,10 +250,23 @@
 }
 .continuity-compose-area {
   flex: none;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: 75%;
   width: 100%;
   max-width: 784px;
   padding: 10px 32px 24px;
   margin-inline: auto;
+}
+.continuity-feedback {
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: min(35dvh, 240px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  overflow-wrap: anywhere;
 }
 .continuity-pending-reply {
   display: flex;
@@ -270,6 +283,7 @@
 }
 .continuity-composer {
   display: flex;
+  flex: none;
   flex-direction: column;
   gap: 4px;
   padding: 12px 14px 10px;
@@ -328,6 +342,9 @@
   color: var(--yorishiro-fg-dim);
   font-size: 11px;
 }
+.continuity-correction > span {
+  min-width: 0;
+}
 .continuity-error {
   display: flex;
   align-items: flex-start;
@@ -338,6 +355,7 @@
 }
 .continuity-error p {
   flex: 1;
+  min-width: 0;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
