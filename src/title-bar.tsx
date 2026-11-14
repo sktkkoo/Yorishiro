@@ -10,7 +10,9 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
+import { CONTINUITY_COPY } from "./i18n/continuity";
 import { MediaPermissionHelp } from "./media-permission-help";
+import type { ContinuitySnapshot } from "./runtime/continuity/types";
 import { getMediaPermissionKind } from "./runtime/media-permissions";
 import type { UiPackEntry } from "./runtime/ui-pack-registry";
 
@@ -45,6 +47,7 @@ export interface TitleBarProps {
   readonly onToggleVoice?: () => void;
   readonly screenSharingControl?: ReactNode;
   readonly continuityActive?: boolean;
+  readonly continuityPhase?: ContinuitySnapshot["phase"];
   readonly onToggleContinuity?: () => void;
   readonly tabs?: ReactNode;
   readonly viewModes?: ReadonlyArray<UiPackEntry>;
@@ -76,6 +79,7 @@ export default function TitleBar({
   onToggleVoice,
   screenSharingControl,
   continuityActive = false,
+  continuityPhase,
   onToggleContinuity,
   tabs,
   viewModes = [],
@@ -85,6 +89,18 @@ export default function TitleBar({
   // 切断・再試行後に capture callback が届いても、接続状態を優先して録音表示を消す。
   const microphoneRecording =
     voiceState === "active" && voiceMicrophoneActive && !voiceMicrophoneMuted;
+  const continuityCopy = CONTINUITY_COPY[language === "en" ? "en" : "ja"];
+  const continuityActivity =
+    continuityPhase === "thinking"
+      ? continuityCopy.thinking
+      : continuityPhase === "drafting"
+        ? continuityCopy.drafting
+        : continuityPhase === "working"
+          ? continuityCopy.working
+          : null;
+  const continuityLabel = continuityActivity
+    ? `${continuityCopy.autonomy} · ${continuityActivity}`
+    : continuityCopy.autonomy;
   const permissionKind = getMediaPermissionKind(voiceError);
   const SidebarIcon = sidebarOpen ? PanelLeftClose : PanelLeftOpen;
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -274,12 +290,15 @@ export default function TitleBar({
           <button
             type="button"
             className="title-bar-button title-bar-continuity-button"
-            aria-label={language === "en" ? "Autonomous execution" : "自律実行"}
-            title={language === "en" ? "Autonomous execution" : "自律実行"}
+            aria-label={continuityLabel}
+            title={continuityLabel}
             aria-expanded={continuityActive}
             onClick={onToggleContinuity}
           >
             <Bot size={15} strokeWidth={1.8} aria-hidden="true" />
+            {continuityActivity ? (
+              <span className="title-bar-continuity-status-dot" aria-hidden="true" />
+            ) : null}
           </button>
         ) : null}
       </div>

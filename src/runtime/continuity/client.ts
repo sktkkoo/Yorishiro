@@ -135,6 +135,19 @@ export function setContinuityAutoEnabled(
     command("continuity_set_auto_enabled", context, { enabled }, "autonomy"),
   );
 }
+/** 共有済みの状態だけを購読する。文脈同期や自律実行のタイマーは開始しない。 */
+export function useContinuitySnapshot(personaId: string | null): ContinuitySnapshot | null {
+  const id = personaId ? continuityIdentity(personaId) : null;
+  return useSyncExternalStore(
+    (listener) => {
+      if (!id) return () => {};
+      const current = entry(id);
+      current.listeners.add(listener);
+      return () => current.listeners.delete(listener);
+    },
+    () => (id ? entry(id).snapshot : null),
+  );
+}
 export function useContinuity(context: ContinuityContext | null, open: boolean): Entry["value"] {
   const id = context ? continuityIdentity(context.personaId) : null;
   const value = useSyncExternalStore(

@@ -45,6 +45,52 @@ function renderTitleBar(overrides: Partial<Parameters<typeof TitleBar>[0]> = {})
 }
 
 describe("TitleBar View Mode picker", () => {
+  it.each([
+    ["ja", "自律実行", "考えています", "草案を作成中", "作業中"],
+    ["en", "Autonomous execution", "Thinking", "Preparing a draft", "Working"],
+  ] as const)("shows a compact activity lamp with localized status in %s without changing the window control", (language, label, thinking, drafting, working) => {
+    const toggle = vi.fn();
+    const view = renderTitleBar({ language, onToggleContinuity: toggle });
+    for (const [phase, activity] of [
+      ["thinking", thinking],
+      ["drafting", drafting],
+      ["working", working],
+    ] as const) {
+      for (const continuityActive of [false, true]) {
+        view.rerender(
+          titleBarElement({
+            language,
+            onToggleContinuity: toggle,
+            continuityActive,
+            continuityPhase: phase,
+          }),
+        );
+        const button = screen.getByRole("button", { name: `${label} · ${activity}` });
+        expect(button.title).toBe(`${label} · ${activity}`);
+        expect(button.getAttribute("aria-expanded")).toBe(String(continuityActive));
+        expect(button.textContent).toBe("");
+        expect(button.querySelector(".lucide-bot")).not.toBeNull();
+        expect(
+          button.querySelector(".title-bar-continuity-status-dot")?.getAttribute("aria-hidden"),
+        ).toBe("true");
+        fireEvent.click(button);
+      }
+    }
+    expect(toggle).toHaveBeenCalledTimes(6);
+    for (const phase of ["idle", "error", undefined] as const) {
+      view.rerender(
+        titleBarElement({
+          language,
+          onToggleContinuity: toggle,
+          continuityPhase: phase,
+        }),
+      );
+      const button = screen.getByRole("button", { name: label });
+      expect(button.title).toBe(label);
+      expect(button.querySelector(".title-bar-continuity-status-dot")).toBeNull();
+    }
+  });
+
   it("opens autonomous execution controls and exposes whether the window is open", () => {
     const toggle = vi.fn();
     renderTitleBar({
