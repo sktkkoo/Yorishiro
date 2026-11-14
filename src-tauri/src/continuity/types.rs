@@ -123,6 +123,17 @@ pub struct Snapshot {
     #[serde(default)]
     pub next_step: Option<String>,
 }
+/// アプリへの応答専用。保存データとモデルへ渡す Snapshot には実行時の表示情報を含めない。
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UiSnapshot {
+    #[serde(flatten)]
+    pub snapshot: Snapshot,
+    /// 自動再確認が可能になる最も早い時刻。実際の開始時刻は保証しない。
+    pub automatic_retry_at: Option<u64>,
+    /// 同じ保存 revision 内の応答順序。保存せず、プロセス内の persona ごとに増やす。
+    pub publication_sequence: u64,
+}
 impl Snapshot {
     pub fn new(persona_id: &str) -> Self {
         Self {

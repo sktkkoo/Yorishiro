@@ -36,6 +36,8 @@ export const CONTINUITY_COPY = {
     feedback: "状態とお知らせ",
     retry: "再試行",
     retrying: "再試行中…",
+    automaticRecheckAfter: "自動での再確認は ",
+    automaticRecheckHint: " 以降です。今すぐ「再試行」もできます。",
     refresh: "状態を再読み込み",
     refreshing: "再読み込み中…",
     recovery: {
@@ -123,6 +125,8 @@ export const CONTINUITY_COPY = {
     feedback: "Status and notices",
     retry: "Retry",
     retrying: "Retrying…",
+    automaticRecheckAfter: "Automatic recheck after ",
+    automaticRecheckHint: ". You can also retry now.",
     refresh: "Reload status",
     refreshing: "Reloading…",
     recovery: {

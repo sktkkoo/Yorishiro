@@ -1866,7 +1866,12 @@ describe("ContinuityWorkspace", () => {
     "rejected",
     "state",
   ] as const)("keeps %s voice failures visible without retrying work while Pi is unavailable", async (failure) => {
-    current = { ...current, phase: "error", error: "Pi is not configured" };
+    current = {
+      ...current,
+      phase: "error",
+      error: "Pi is not configured",
+      automaticRetryAt: now + 30_000,
+    };
     setupNative.invoke.mockResolvedValue({ ...piStatus(), configured: false });
     const onStart = vi.fn().mockRejectedValue(new Error("Microphone unavailable"));
     render(
@@ -1892,6 +1897,7 @@ describe("ContinuityWorkspace", () => {
       expect(screen.getByRole("alert").textContent).toContain("Microphone unavailable"),
     );
     expect(screen.getByRole("alert").textContent).toContain("microphone button");
+    expect(screen.getByRole("alert").textContent).not.toContain("Automatic recheck after");
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
     expect(native.retryContinuity).not.toHaveBeenCalled();
   });
@@ -1934,11 +1940,13 @@ describe("ContinuityWorkspace", () => {
       revision: current.revision + 1,
       phase: "error",
       error: "Autonomous work failed",
+      automaticRetryAt: now + 30_000,
     };
     view.rerender(<ContinuityWorkspace {...initial} />);
     const operationMessage =
       source === "voice" ? "Microphone unavailable" : "Message was not saved";
-    expect(screen.getByText("Autonomous work failed")).toBeTruthy();
+    expect(screen.getByText(/Autonomous work failed/)).toBeTruthy();
+    expect(screen.getByText(/Automatic recheck after/)).toBeTruthy();
     expect(screen.getAllByRole("alert")).toHaveLength(2);
     expect(screen.getByRole("button", { name: "Check connection" })).toBeTruthy();
     native.retryContinuity.mockImplementationOnce(async () => {
@@ -1946,8 +1954,9 @@ describe("ContinuityWorkspace", () => {
       throw new Error(sharedWorkError);
     });
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Retry" })));
-    expect(screen.getAllByText("Work recovery failed")).toHaveLength(1);
-    expect(screen.queryByText("Autonomous work failed")).toBeNull();
+    expect(screen.getAllByText(/Work recovery failed/)).toHaveLength(1);
+    expect(screen.getByText(/Automatic recheck after/)).toBeTruthy();
+    expect(screen.queryByText(/Autonomous work failed/)).toBeNull();
     expect(screen.getAllByRole("alert")).toHaveLength(2);
     native.retryContinuity.mockImplementationOnce(async () => {
       sharedWorkError = null;
@@ -1960,6 +1969,7 @@ describe("ContinuityWorkspace", () => {
     );
     expect(screen.getByRole("textbox")).toHaveProperty("value", "Unsent message");
     expect(screen.queryByText("Autonomous work failed")).toBeNull();
+    expect(screen.queryByText(/Automatic recheck after/)).toBeNull();
     expect(native.retryContinuity).toHaveBeenCalledTimes(2);
     expect(native.sendContinuityMessage).toHaveBeenCalledTimes(source === "send" ? 1 : 0);
   });
@@ -2095,6 +2105,115 @@ describe("ContinuityWorkspace", () => {
     view.rerender(<ContinuityWorkspace {...initial} />);
     expect(screen.queryByRole("alert")).toBeNull();
     expect(operation).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    "ja",
+    "en",
+  ] as const)("shows the host's automatic recheck boundary without disabling manual retry in %s", async (language) => {
+    current = {
+      ...current,
+      phase: "error",
+      error: "Temporary worker failure",
+      automaticRetryAt: now + 30_000,
+    };
+    const initial = { ...props(), language };
+    const view = render(<ContinuityWorkspace {...initial} />);
+    const input = screen.getByRole("textbox");
+    fireEvent.change(input, { target: { value: "My unsent request" } });
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toContain(
+      language === "ja" ? "自動での再確認は" : "Automatic recheck after",
+    );
+    expect(alert.textContent).toContain(
+      language === "ja" ? "今すぐ「再試行」もできます。" : "You can also retry now.",
+    );
+    const time = alert.querySelector("time");
+    expect(time?.dateTime).toBe(new Date(now + 30_000).toISOString());
+    expect(time?.textContent).toBe(
+      new Intl.DateTimeFormat(language, { dateStyle: "medium", timeStyle: "medium" }).format(
+        now + 30_000,
+      ),
+    );
+    expect(native.retryContinuity).not.toHaveBeenCalled();
+    const retry = screen.getByRole("button", { name: language === "ja" ? "再試行" : "Retry" });
+    expect(retry).toHaveProperty("disabled", false);
+    await act(async () => fireEvent.click(retry));
+    expect(native.retryContinuity).toHaveBeenCalledOnce();
+    current = { ...current, phase: "idle", error: null, automaticRetryAt: null };
+    view.rerender(<ContinuityWorkspace {...initial} />);
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(input).toHaveProperty("value", "My unsent request");
+  });
+
+  it("does not infer a recheck from missing or malformed host metadata", () => {
+    current = { ...current, phase: "error", error: "Worker unavailable" };
+    const initial = { ...props(), language: "en" as const };
+    const view = render(<ContinuityWorkspace {...initial} />);
+    for (const value of [
+      undefined,
+      null,
+      0,
+      -1,
+      NaN,
+      Infinity,
+      1.5,
+      8_640_000_000_000_001,
+      Number.MAX_SAFE_INTEGER + 1,
+      String(now),
+    ]) {
+      current = { ...current, automaticRetryAt: value as number | null | undefined };
+      view.rerender(<ContinuityWorkspace {...initial} />);
+      expect(screen.getByRole("alert").querySelector("time"), String(value)).toBeNull();
+      expect(screen.getByRole("button", { name: "Retry" })).toHaveProperty("disabled", false);
+    }
+    expect(native.retryContinuity).not.toHaveBeenCalled();
+  });
+
+  it("suppresses stale waiting metadata outside an enabled native error state", () => {
+    const waiting: ContinuitySnapshot = {
+      ...current,
+      phase: "error",
+      error: "Worker unavailable",
+      automaticRetryAt: now,
+    };
+    current = waiting;
+    native.useContinuity.mockImplementation(() => ({
+      snapshot: current,
+      error: "Shared work failure",
+      errorSource: "work",
+    }));
+    const initial = { ...props(), language: "en" as const };
+    const view = render(<ContinuityWorkspace {...initial} />);
+    expect(screen.getByRole("alert").querySelector("time")).not.toBeNull();
+    const states: Partial<ContinuitySnapshot>[] = [
+      { automaticRetryAt: null },
+      { autoEnabled: false },
+      { autoEnabled: undefined },
+      { error: null },
+      { phase: "idle" },
+      { phase: "thinking" },
+      { phase: "drafting" },
+      { phase: "working" },
+    ];
+    for (const change of states) {
+      current = { ...waiting, ...change };
+      view.rerender(<ContinuityWorkspace {...initial} />);
+      expect(screen.getByRole("alert").querySelector("time"), JSON.stringify(change)).toBeNull();
+    }
+  });
+
+  it("keeps a passed recheck boundary honest while waiting for the host's next poll", () => {
+    const passed = Date.now() - 60_000;
+    current = { ...current, phase: "error", error: "Worker unavailable", automaticRetryAt: passed };
+    const view = render(<ContinuityWorkspace {...props()} language="en" />);
+    const time = screen.getByRole("alert").querySelector("time");
+    expect(time?.dateTime).toBe(new Date(passed).toISOString());
+    expect(screen.getByRole("alert").textContent).toContain("Automatic recheck after");
+    view.rerender(<ContinuityWorkspace {...props()} language="en" />);
+    expect(screen.getByRole("alert").querySelector("time")?.dateTime).toBe(time?.dateTime);
+    expect(native.retryContinuity).not.toHaveBeenCalled();
+    expect(native.refreshContinuity).not.toHaveBeenCalled();
   });
 
   it("guards pending work retries and keeps a failed retry available", async () => {

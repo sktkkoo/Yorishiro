@@ -43,6 +43,20 @@ function notify(value: Entry): void {
 function accept(snapshot: ContinuitySnapshot): void {
   const value = entry(continuityIdentity(snapshot.personaId));
   if (value.snapshot && value.snapshot.revision > snapshot.revision) return;
+  const previousSequence = value.snapshot?.publicationSequence;
+  const incomingSequence = snapshot.publicationSequence;
+  // 同じ保存版の一時的な表示状態は公開順に受理し、遅れた応答で待機状態を戻さない。
+  if (
+    value.snapshot?.revision === snapshot.revision &&
+    typeof previousSequence === "number" &&
+    Number.isSafeInteger(previousSequence) &&
+    previousSequence >= 0 &&
+    typeof incomingSequence === "number" &&
+    Number.isSafeInteger(incomingSequence) &&
+    incomingSequence >= 0 &&
+    incomingSequence < previousSequence
+  )
+    return;
   value.snapshot = snapshot;
   value.error = null;
   value.errorSource = null;
