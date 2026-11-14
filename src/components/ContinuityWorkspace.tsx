@@ -182,6 +182,8 @@ function ResidentWorkspace({
   const retryInFlight = useRef(false);
   const forgetInFlight = useRef(false);
   const autoInFlight = useRef(false);
+  const voiceInFlight = useRef(false);
+  const voiceAttempt = useRef(0);
   const [unread, setUnread] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const panelRef = useRef<HTMLElement>(null);
@@ -446,16 +448,30 @@ function ResidentWorkspace({
     }
   }
   async function startVoice() {
-    if (!conversation || voicePending || callConnecting) return;
+    if (!conversation || voiceInFlight.current || callConnecting || callActive) return;
+    const attempt = ++voiceAttempt.current;
+    voiceInFlight.current = true;
     setVoicePending(true);
-    setLocalError(null);
+    setLocalError((current) => (current?.source === "voice" ? null : current));
     try {
       await conversation.onStart();
     } catch (cause) {
-      if (mounted.current) setLocalError({ message: errorText(cause), source: "voice" });
+      if (mounted.current && voiceAttempt.current === attempt)
+        setLocalError({ message: errorText(cause), source: "voice" });
     } finally {
-      if (mounted.current) setVoicePending(false);
+      if (voiceAttempt.current === attempt) {
+        voiceInFlight.current = false;
+        if (mounted.current) setVoicePending(false);
+      }
     }
+  }
+  function endVoice() {
+    // 取り消した開始要求の完了は、新しい接続操作の状態を書き換えない。
+    ++voiceAttempt.current;
+    voiceInFlight.current = false;
+    setVoicePending(false);
+    setLocalError((current) => (current?.source === "voice" ? null : current));
+    conversation?.onEnd();
   }
   function showDetail(value: NonNullable<typeof detail>) {
     setLocalError(null);
@@ -828,28 +844,34 @@ function ResidentWorkspace({
                           <Mic size={16} aria-hidden="true" />
                         )}
                       </button>
+                      <button type="button" className="continuity-text-button" onClick={endVoice}>
+                        {copy.end}
+                      </button>
+                    </>
+                  ) : callConnecting || voicePending ? (
+                    <>
                       <button
                         type="button"
-                        className="continuity-text-button"
-                        onClick={conversation.onEnd}
+                        className="continuity-icon"
+                        disabled
+                        aria-label={copy.connecting}
+                        title={copy.connecting}
                       >
-                        {copy.end}
+                        <LoaderCircle size={16} aria-hidden="true" />
+                      </button>
+                      <button type="button" className="continuity-text-button" onClick={endVoice}>
+                        {copy.cancelConnection}
                       </button>
                     </>
                   ) : (
                     <button
                       type="button"
                       className="continuity-icon"
-                      disabled={callConnecting || voicePending}
-                      aria-label={callConnecting || voicePending ? copy.connecting : copy.talk}
-                      title={callConnecting || voicePending ? copy.connecting : copy.talk}
+                      aria-label={copy.talk}
+                      title={copy.talk}
                       onClick={() => void startVoice()}
                     >
-                      {callConnecting || voicePending ? (
-                        <LoaderCircle size={16} aria-hidden="true" />
-                      ) : (
-                        <Mic size={16} aria-hidden="true" />
-                      )}
+                      <Mic size={16} aria-hidden="true" />
                     </button>
                   )
                 ) : null}

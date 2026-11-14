@@ -121,6 +121,15 @@ function pendingQuestion(id = "pending-question"): ContinuitySnapshot["messages"
     replyKind: "awaitingReply",
   };
 }
+function pendingVoiceStart() {
+  let resolve!: () => void;
+  let reject!: (error: Error) => void;
+  const promise = new Promise<void>((done, fail) => {
+    resolve = done;
+    reject = fail;
+  });
+  return { promise, resolve, reject };
+}
 const originalShowModal = Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, "showModal");
 const originalClose = Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, "close");
 const props = (): ContinuityWorkspaceProps => ({
@@ -1215,6 +1224,190 @@ describe("ContinuityWorkspace", () => {
     );
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(document.activeElement).toBe(opener);
+  });
+
+  it.each([
+    ["ja", "話しかける", "接続中", "接続をキャンセル"],
+    ["en", "Start talking", "Connecting", "Cancel connection"],
+  ] as const)("cancels a local pending %s voice start once without touching autonomous work", async (language, start, connecting, cancel) => {
+    const pending = pendingVoiceStart();
+    const conversation = {
+      available: true,
+      state: { status: "idle" as const },
+      onStart: vi.fn().mockReturnValue(pending.promise),
+      onEnd: vi.fn(),
+      onSetMuted: vi.fn(),
+    };
+    current = { ...current, phase: "working" };
+    render(<ContinuityWorkspace {...props()} language={language} conversation={conversation} />);
+    const input = screen.getByRole("textbox");
+    fireEvent.change(input, { target: { value: "Unsent message" } });
+    const startButton = screen.getByRole("button", { name: start });
+    act(() => {
+      fireEvent.click(startButton);
+      fireEvent.click(startButton);
+    });
+    expect(conversation.onStart).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: connecting })).toHaveProperty("disabled", true);
+    const cancelButton = screen.getByRole("button", { name: cancel });
+    expect(cancelButton).toHaveProperty("disabled", false);
+    fireEvent.click(cancelButton);
+    expect(conversation.onEnd).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: start })).toHaveProperty("disabled", false);
+    await act(async () => pending.resolve());
+    expect(input).toHaveProperty("value", "Unsent message");
+    expect(screen.getByRole("switch").getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByRole("status").textContent).toBe(language === "ja" ? "作業中" : "Working");
+    for (const command of [
+      native.sendContinuityMessage,
+      native.actOnContinuityDraft,
+      native.retryContinuity,
+      native.refreshContinuity,
+      native.setContinuityAutoEnabled,
+      native.forgetContinuityUnderstanding,
+    ])
+      expect(command).not.toHaveBeenCalled();
+  });
+
+  it("cancels a host-owned connecting state and allows another explicit start after it becomes idle", () => {
+    const conversation = {
+      available: true,
+      state: { status: "connecting" as const },
+      onStart: vi.fn().mockReturnValue(pendingVoiceStart().promise),
+      onEnd: vi.fn(),
+      onSetMuted: vi.fn(),
+    };
+    const initial = { ...props(), language: "en" as const };
+    const view = render(<ContinuityWorkspace {...initial} conversation={conversation} />);
+    fireEvent.click(screen.getByRole("button", { name: "Cancel connection" }));
+    expect(conversation.onEnd).toHaveBeenCalledTimes(1);
+    expect(conversation.onStart).not.toHaveBeenCalled();
+    view.rerender(
+      <ContinuityWorkspace
+        {...initial}
+        conversation={{ ...conversation, state: { status: "idle" } }}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Start talking" }));
+    expect(conversation.onStart).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "Cancel connection" })).toBeTruthy();
+    expect(native.setContinuityAutoEnabled).not.toHaveBeenCalled();
+    expect(native.retryContinuity).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    "resolve",
+    "reject",
+  ] as const)("ignores a cancelled startup's late %s while a newer start is pending", async (completion) => {
+    const old = pendingVoiceStart();
+    const next = pendingVoiceStart();
+    const conversation = {
+      available: true,
+      state: { status: "idle" as const },
+      onStart: vi.fn().mockReturnValueOnce(old.promise).mockReturnValueOnce(next.promise),
+      onEnd: vi.fn(),
+      onSetMuted: vi.fn(),
+    };
+    render(<ContinuityWorkspace {...props()} language="en" conversation={conversation} />);
+    fireEvent.click(screen.getByRole("button", { name: "Start talking" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cancel connection" }));
+    fireEvent.click(screen.getByRole("button", { name: "Start talking" }));
+    await act(async () => {
+      if (completion === "resolve") old.resolve();
+      else old.reject(new Error("Cancelled failure"));
+    });
+    expect(screen.getByRole("button", { name: "Connecting" })).toHaveProperty("disabled", true);
+    expect(screen.queryByRole("button", { name: "Start talking" })).toBeNull();
+    expect(screen.queryByText("Cancelled failure")).toBeNull();
+    expect(conversation.onStart).toHaveBeenCalledTimes(2);
+    await act(async () => next.reject(new Error("Current failure")));
+    expect(screen.getByRole("alert").textContent).toContain("Current failure");
+    expect(screen.getByRole("button", { name: "Start talking" })).toHaveProperty("disabled", false);
+  });
+
+  it("keeps a newer voice failure when a cancelled start rejects later and clears it on explicit cancel", async () => {
+    const old = pendingVoiceStart();
+    const conversation = {
+      available: true,
+      state: { status: "idle" as const },
+      onStart: vi
+        .fn()
+        .mockReturnValueOnce(old.promise)
+        .mockRejectedValueOnce(new Error("Current failure")),
+      onEnd: vi.fn(),
+      onSetMuted: vi.fn(),
+    };
+    const initial = { ...props(), language: "en" as const };
+    const view = render(<ContinuityWorkspace {...initial} conversation={conversation} />);
+    fireEvent.click(screen.getByRole("button", { name: "Start talking" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cancel connection" }));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Start talking" })));
+    await act(async () => old.reject(new Error("Cancelled failure")));
+    expect(screen.getByRole("alert").textContent).toContain("Current failure");
+    expect(screen.queryByText("Cancelled failure")).toBeNull();
+    view.rerender(
+      <ContinuityWorkspace
+        {...initial}
+        conversation={{ ...conversation, state: { status: "connecting" } }}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Cancel connection" }));
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("preserves unrelated operation errors when starting and cancelling voice", async () => {
+    native.sendContinuityMessage.mockRejectedValueOnce(new Error("Message was not saved"));
+    const conversation = {
+      available: true,
+      state: { status: "idle" as const },
+      onStart: vi.fn().mockReturnValue(pendingVoiceStart().promise),
+      onEnd: vi.fn(),
+      onSetMuted: vi.fn(),
+    };
+    render(<ContinuityWorkspace {...props()} language="en" conversation={conversation} />);
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Unsent message" } });
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Send" })));
+    fireEvent.click(screen.getByRole("button", { name: "Start talking" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cancel connection" }));
+    expect(screen.getByRole("alert").textContent).toContain("Message was not saved");
+    expect(screen.getByRole("textbox")).toHaveProperty("value", "Unsent message");
+    expect(native.sendContinuityMessage).toHaveBeenCalledTimes(1);
+    expect(native.retryContinuity).not.toHaveBeenCalled();
+  });
+
+  it("ends an active call before startup settles and ignores its failure during a new attempt", async () => {
+    const old = pendingVoiceStart();
+    const next = pendingVoiceStart();
+    const conversation = {
+      available: true,
+      state: { status: "idle" as const },
+      onStart: vi.fn().mockReturnValueOnce(old.promise).mockReturnValueOnce(next.promise),
+      onEnd: vi.fn(),
+      onSetMuted: vi.fn(),
+    };
+    const initial = { ...props(), language: "en" as const };
+    const view = render(<ContinuityWorkspace {...initial} conversation={conversation} />);
+    fireEvent.click(screen.getByRole("button", { name: "Start talking" }));
+    view.rerender(
+      <ContinuityWorkspace
+        {...initial}
+        conversation={{ ...conversation, state: { status: "active" } }}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "End voice" }));
+    expect(conversation.onEnd).toHaveBeenCalledTimes(1);
+    view.rerender(<ContinuityWorkspace {...initial} conversation={conversation} />);
+    expect(screen.queryByRole("button", { name: "Cancel connection" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Start talking" }));
+    expect(conversation.onStart).toHaveBeenCalledTimes(2);
+    await act(async () => old.reject(new Error("Ended call failed late")));
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByRole("button", { name: "Connecting" })).toHaveProperty("disabled", true);
+    expect(screen.getByRole("button", { name: "Cancel connection" })).toBeTruthy();
+    await act(async () => next.resolve());
+    expect(screen.getByRole("button", { name: "Start talking" })).toHaveProperty("disabled", false);
+    expect(native.setContinuityAutoEnabled).not.toHaveBeenCalled();
+    expect(native.retryContinuity).not.toHaveBeenCalled();
   });
 
   it("never starts voice on opening and keeps voice controls separate from native work", async () => {
