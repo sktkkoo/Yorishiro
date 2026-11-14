@@ -13,7 +13,7 @@
 | Yorishiro が何を目指しているか知りたい | [`philosophy/PHILOSOPHY.ja.md`](philosophy/PHILOSOPHY.ja.md) |
 | TypeScript 側のどこに何があるか知りたい | [`../src/README.md`](../src/README.md) |
 | Rust 側のどこに何があるか知りたい | [`../src-tauri/README.md`](../src-tauri/README.md) |
-| 会話・記憶の保持条件、音声／実行 context、更新頻度を確認したい | [`decisions/continuity-retention.md`](decisions/continuity-retention.md) |
+| ジャーナルの会話・記憶の保持条件、音声／実行 context、更新頻度を確認したい | [`decisions/continuity-retention.md`](decisions/continuity-retention.md) |
 | Pack を書きたい | [`../src/sdk/README.md`](../src/sdk/README.md) |
 | Local TSX Packで使えるimport・asset・version制約を確認したい | [`decisions/local-source-authoring-contract.md`](decisions/local-source-authoring-contract.md) |
 | GitHub 等で共有された pack を手動導入したい | [`decisions/scene-execution-sandbox.md`](decisions/scene-execution-sandbox.md) |
