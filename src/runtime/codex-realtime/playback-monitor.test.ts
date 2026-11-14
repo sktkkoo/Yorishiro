@@ -1,8 +1,11 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
+import * as outputTiming from "./output-timing";
 import { monitorPlayback } from "./playback-monitor";
+import { setRealtimeDebugEnabled } from "./realtime-debug";
 
-function setup() {
+function setup(debug = true) {
+  setRealtimeDebugEnabled(debug);
   const context = Object.assign(new EventTarget(), {
     state: "running",
     currentTime: 10,
@@ -43,8 +46,42 @@ function setup() {
   });
   return { context, peer, onSample, onFailure, stop };
 }
-afterEach(() => vi.useRealTimers());
+afterEach(() => {
+  setRealtimeDebugEnabled(false);
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
 describe("playback monitor", () => {
+  it("does not poll or store output evidence by default but still recovers playback", async () => {
+    vi.useFakeTimers();
+    const timing = vi.spyOn(outputTiming, "captureOutputTiming");
+    const value = setup(false);
+    expect(vi.getTimerCount()).toBe(0);
+    value.context.state = "interrupted";
+    value.context.dispatchEvent(new Event("statechange"));
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(value.context.resume).toHaveBeenCalledOnce();
+    expect(value.peer.getStats).not.toHaveBeenCalled();
+    expect(timing).not.toHaveBeenCalled();
+    expect(value.onSample).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+    value.stop();
+  });
+  it("starts sampling only after local opt-in and discards pending samples on opt-out", async () => {
+    vi.useFakeTimers();
+    const value = setup(false);
+    setRealtimeDebugEnabled(true);
+    expect(value.peer.getStats).toHaveBeenCalledOnce();
+    setRealtimeDebugEnabled(false);
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(value.peer.getStats).toHaveBeenCalledOnce();
+    expect(value.onSample).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+    setRealtimeDebugEnabled(true);
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(value.onSample).toHaveBeenCalled();
+    value.stop();
+  });
   it("resumes an interrupted output once and keeps each observer independently owned", async () => {
     const a = setup();
     const b = setup();

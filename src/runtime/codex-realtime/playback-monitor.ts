@@ -1,4 +1,5 @@
 import { captureOutputTiming, type OutputTimingSample } from "./output-timing";
+import { isRealtimeDebugEnabled, subscribeRealtimeDebug } from "./realtime-debug";
 
 /** Numeric/state-only output evidence. Never includes SDP, transcripts, track IDs or device labels. */
 export interface PlaybackSample {
@@ -28,11 +29,14 @@ export function monitorPlayback(options: PlaybackMonitorOptions): () => void {
   let disposed = false;
   let resuming = false;
   let sampling = false;
+  let diagnosticsGeneration = 0;
+  let timer: ReturnType<typeof globalThis.setInterval> | undefined;
   let resumeTimeout: ReturnType<typeof globalThis.setTimeout> | undefined;
   const { context, stream, peer } = options;
   const state = () => context.state as AudioContextState | "interrupted";
   const sample = async () => {
-    if (disposed || sampling) return;
+    if (disposed || sampling || !isRealtimeDebugEnabled()) return;
+    const generation = diagnosticsGeneration;
     sampling = true;
     let inboundAudioBytes: number | undefined;
     let inboundAudioPackets: number | undefined;
@@ -52,7 +56,7 @@ export function monitorPlayback(options: PlaybackMonitorOptions): () => void {
     } finally {
       sampling = false;
     }
-    if (disposed) return;
+    if (disposed || generation !== diagnosticsGeneration || !isRealtimeDebugEnabled()) return;
     const tracks = stream.getAudioTracks();
     options.onSample({
       contextState: state(),
@@ -106,10 +110,20 @@ export function monitorPlayback(options: PlaybackMonitorOptions): () => void {
   window.addEventListener("focus", foreground);
   window.addEventListener("pointerdown", foreground);
   window.addEventListener("keydown", foreground);
-  const timer = globalThis.setInterval(() => void sample(), 5_000);
-  void sample();
+  const refreshDiagnostics = () => {
+    diagnosticsGeneration++;
+    globalThis.clearInterval(timer);
+    timer = undefined;
+    if (!disposed && isRealtimeDebugEnabled()) {
+      timer = globalThis.setInterval(() => void sample(), 5_000);
+      void sample();
+    }
+  };
+  const unsubscribeDebug = subscribeRealtimeDebug(refreshDiagnostics);
+  refreshDiagnostics();
   return () => {
     disposed = true;
+    unsubscribeDebug();
     globalThis.clearTimeout(resumeTimeout);
     globalThis.clearInterval(timer);
     context.removeEventListener("statechange", stateChanged);

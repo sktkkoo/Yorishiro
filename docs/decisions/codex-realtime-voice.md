@@ -487,8 +487,30 @@ with an actionable reconnect message, instead of keeping microphone input active
 with a known unusable output. Reconnecting recreates closed contexts through the
 existing audio-context helper. Cleanup invalidates pending monitor callbacks.
 
-The existing local diagnostic ring now includes at most 12 periodic output
-samples (every five seconds; 40 total records). Samples distinguish inbound audio
+Output investigation is **off by default**, including in release builds. With
+it off, no sampling timer, `getStats` call, output timing measurement, or output
+sample storage runs. Ordinary connection/failure records and functional output
+recovery remain unchanged. This has not been released by creating this PR.
+
+A developer can explicitly enable it in that local WebView's DevTools console:
+
+```js
+localStorage.setItem("yorishiro:realtime-debug", "1");
+window.dispatchEvent(new Event("yorishiro:realtime-debug-changed"));
+```
+
+Disable immediately (pending samples are discarded and polling stops):
+
+```js
+localStorage.removeItem("yorishiro:realtime-debug");
+window.dispatchEvent(new Event("yorishiro:realtime-debug-changed"));
+```
+
+Read `localStorage.getItem("yorishiro:realtime-debug")` to inspect the setting.
+This is a local development flag, never a synced preference or Pack setting.
+It does not upload diagnostics. Storage-unavailable environments stay disabled.
+With explicit opt-in, the existing local diagnostic ring includes at most 12
+periodic output samples (every five seconds; 40 total records). Samples distinguish inbound audio
 RTP bytes/packets, remote track liveness/mute, analyser signal, gain, and context
 state. They do not store transcripts, PCM, SDP, network addresses, device labels,
 or track identifiers. Missing WebRTC stats remain unavailable, not zero. Analyser
@@ -506,7 +528,8 @@ this work does not claim the original symptom has been conclusively reproduced.
 
 ## Long-session lip-sync timing investigation (#88)
 
-Periodic playback samples also record `outputTiming`: `contextTimeSeconds`,
+Only after the explicit local `yorishiro:realtime-debug` opt-in described above,
+periodic playback samples also record `outputTiming`: `contextTimeSeconds`,
 `performanceNowMs`, and, where available, `baseLatencySeconds`,
 `outputLatencySeconds`, `outputContextTimeSeconds`, `outputPerformanceTimeMs`.
 Unsupported/non-finite latency or timestamp fields are omitted; zero is preserved
