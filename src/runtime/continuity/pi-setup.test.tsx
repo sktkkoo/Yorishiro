@@ -24,9 +24,181 @@ const status = (configured = false): PiSetupStatus => ({
   login: { phase: "idle", code: null },
   code: null,
 });
-beforeEach(() => native.invoke.mockReset());
-afterEach(() => cleanup());
+beforeEach(() => {
+  native.invoke.mockReset();
+});
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
+function deferredStatus() {
+  let resolve!: (value: PiSetupStatus) => void;
+  let reject!: (cause: Error) => void;
+  const promise = new Promise<PiSetupStatus>((done, fail) => {
+    resolve = done;
+    reject = fail;
+  });
+  return { promise, resolve, reject };
+}
 describe("Pi setup bridge", () => {
+  it("coalesces synchronous manual rechecks and keeps the loaded status visible", async () => {
+    const pending = deferredStatus();
+    native.invoke.mockResolvedValueOnce(status()).mockReturnValueOnce(pending.promise);
+    const hook = renderHook(() => usePiSetup("workspace"));
+    await waitFor(() => expect(hook.result.current.loading).toBe(false));
+    let first!: Promise<void>;
+    let second!: Promise<void>;
+    act(() => {
+      first = hook.result.current.refresh();
+      second = hook.result.current.refresh();
+    });
+    expect(first).toBe(second);
+    expect(native.invoke).toHaveBeenCalledTimes(2);
+    expect(hook.result.current.checking).toBe(true);
+    expect(hook.result.current.loading).toBe(false);
+    expect(hook.result.current.status?.configured).toBe(false);
+    await act(async () => pending.resolve(status(true)));
+    expect(hook.result.current.checking).toBe(false);
+    expect(hook.result.current.status?.configured).toBe(true);
+  });
+
+  it.each([
+    "success",
+    "failure",
+  ] as const)("queues one fresh check after focus/configuration invalidation and ignores obsolete %s", async (outcome) => {
+    const previous = deferredStatus();
+    const fresh = deferredStatus();
+    native.invoke
+      .mockResolvedValueOnce(status())
+      .mockReturnValueOnce(previous.promise)
+      .mockReturnValueOnce(fresh.promise);
+    const hook = renderHook(() => usePiSetup("workspace"));
+    await waitFor(() => expect(hook.result.current.loading).toBe(false));
+    act(() => {
+      void hook.result.current.refresh();
+      window.dispatchEvent(new Event("focus"));
+      window.dispatchEvent(new Event("yorishiro:pi-configured"));
+      window.dispatchEvent(new Event("yorishiro:pi-configured"));
+    });
+    await act(async () =>
+      outcome === "success"
+        ? previous.resolve(status())
+        : previous.reject(new Error("setup_unavailable")),
+    );
+    expect(native.invoke).toHaveBeenCalledTimes(3);
+    expect(hook.result.current.checking).toBe(true);
+    expect(hook.result.current.error).toBeNull();
+    await act(async () => fresh.resolve(status(true)));
+    expect(hook.result.current.status?.configured).toBe(true);
+    expect(hook.result.current.checking).toBe(false);
+    expect(native.invoke).toHaveBeenCalledTimes(3);
+  });
+
+  it("keeps accepted saved settings authoritative while replacing an older status check", async () => {
+    const previous = deferredStatus();
+    const fresh = deferredStatus();
+    const saved = { ...status(true), permissions: { read: true, write: true, commands: [] } };
+    let reads = 0;
+    native.invoke.mockImplementation((name) =>
+      name === "continuity_pi_setup_save"
+        ? Promise.resolve(saved)
+        : ++reads === 1
+          ? Promise.resolve(status())
+          : reads === 2
+            ? previous.promise
+            : fresh.promise,
+    );
+    const hook = renderHook(() => usePiSetup("workspace"));
+    await waitFor(() => expect(hook.result.current.loading).toBe(false));
+    act(() => {
+      void hook.result.current.refresh();
+    });
+    await act(async () => {
+      await hook.result.current.save({
+        version: 2,
+        enabled: true,
+        provider: "openai",
+        model: "model",
+        authMode: "oauth",
+        permissions: saved.permissions,
+      });
+    });
+    expect(hook.result.current.status?.permissions.write).toBe(true);
+    await act(async () => previous.resolve(status()));
+    expect(hook.result.current.status?.permissions.write).toBe(true);
+    expect(hook.result.current.checking).toBe(true);
+    expect(reads).toBe(3);
+    await act(async () => fresh.resolve(saved));
+    expect(hook.result.current.checking).toBe(false);
+  });
+
+  it("preserves login acknowledgements and terminal polling invalidation during pending checks", async () => {
+    const beforeLogin = deferredStatus();
+    const duringLogin = deferredStatus();
+    let reads = 0;
+    native.invoke.mockImplementation((name) => {
+      if (name === "continuity_pi_login_start")
+        return Promise.resolve({ phase: "waiting", code: null });
+      if (name === "continuity_pi_login_status")
+        return Promise.resolve({ phase: "connected", code: null });
+      reads += 1;
+      return reads === 1
+        ? Promise.resolve(status())
+        : reads === 2
+          ? beforeLogin.promise
+          : reads === 3
+            ? duringLogin.promise
+            : Promise.resolve({ ...status(true), login: { phase: "connected", code: null } });
+    });
+    const hook = renderHook(() => usePiSetup("workspace"));
+    await waitFor(() => expect(hook.result.current.loading).toBe(false));
+    vi.useFakeTimers();
+    act(() => {
+      void hook.result.current.refresh();
+    });
+    await act(async () => {
+      await hook.result.current.login();
+    });
+    expect(hook.result.current.status?.login.phase).toBe("waiting");
+    await act(async () => beforeLogin.resolve(status()));
+    expect(hook.result.current.status?.login.phase).toBe("waiting");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    expect(hook.result.current.status?.login.phase).toBe("connected");
+    await act(async () =>
+      duringLogin.resolve({ ...status(), login: { phase: "waiting", code: null } }),
+    );
+    expect(hook.result.current.status?.login.phase).toBe("connected");
+    expect(hook.result.current.status?.configured).toBe(true);
+    expect(hook.result.current.checking).toBe(false);
+    expect(reads).toBe(4);
+  });
+
+  it.each([
+    "success",
+    "failure",
+  ] as const)("keeps a new workspace check pending when an old check finishes with %s", async (outcome) => {
+    const previous = deferredStatus();
+    const fresh = deferredStatus();
+    native.invoke.mockImplementation((_name, args) =>
+      args.cwd === "first" ? previous.promise : fresh.promise,
+    );
+    const hook = renderHook(({ cwd }) => usePiSetup(cwd), { initialProps: { cwd: "first" } });
+    hook.rerender({ cwd: "second" });
+    await act(async () =>
+      outcome === "success"
+        ? previous.resolve(status(true))
+        : previous.reject(new Error("authentication_required")),
+    );
+    expect(hook.result.current.checking).toBe(true);
+    expect(hook.result.current.loading).toBe(true);
+    expect(hook.result.current.status).toBeNull();
+    expect(hook.result.current.error).toBeNull();
+    await act(async () => fresh.resolve(status()));
+    expect(hook.result.current.checking).toBe(false);
+    expect(hook.result.current.status?.configured).toBe(false);
+  });
   it("accepts only the named development presets without granting them to old settings", () => {
     const commands = ["git-status", "git-diff", "project-check", "project-test", "project-build"];
     expect(parsePiSetup(status())?.permissions.commands).toEqual([]);
