@@ -3,7 +3,7 @@
 //! Canonical Saved data and accepted payloads are never modified here. Omitted
 //! records remain addressable through the host's request-scoped archive tool.
 use super::execution_target::ExecutionTarget;
-use super::types::{Context, ExecutionReceipt, ReplyKind, Saved, Snapshot};
+use super::types::{Context, ExecutionBackend, ExecutionReceipt, ReplyKind, Saved, Snapshot};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -17,7 +17,13 @@ pub(super) const ESSENTIAL_CONTEXT_TOO_LARGE: &str =
 const ENCODING_ERROR: &str = "Could not encode the bounded execution context.";
 const MISSING_CORRECTION: &str =
     "A required correction or its original source is missing; no execution was started.";
+const MISSING_EXPLICIT_MEMORY: &str =
+    "An explicit memory request or its original context is missing; no execution was started.";
 const MAX_RECEIPT_EVENTS_BYTES: usize = 2048;
+const MAX_OPTIONAL_MESSAGES: usize = 6;
+const MAX_OPTIONAL_UNDERSTANDINGS: usize = 8;
+const MAX_OPTIONAL_DRAFTS: usize = 3;
+const MAX_OPTIONAL_REFLECTIONS: usize = 3;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -88,6 +94,7 @@ fn projected(snapshot: &Snapshot, selected: &Selection) -> Snapshot {
         understandings: vec![],
         drafts: vec![],
         reflections: vec![],
+        explicit_memories: snapshot.explicit_memories.clone(),
         error: snapshot.error.clone(),
         last_observed_at: snapshot.last_observed_at,
         next_step: snapshot.next_step.clone(),
@@ -209,10 +216,15 @@ where
             "omittedDrafts":saved.snapshot.drafts.len()-selection.drafts.len(),
             "omittedReflections":saved.snapshot.reflections.len()-selection.reflections.len(),
         });
+        let retrieval = if context.execution_backend == Some(ExecutionBackend::Pi) {
+            format!("This request's archive contains the retained records available when the request was created. Collection hashes identify their native serialization; the archive tool reports a separate hash of the whole archive file. Before relying on omitted details, use read_continuity_context with requestId={request_id}, collection (messages, understandings, drafts, reflections, or terminalReceipts), itemIndex, characterOffset, and maxCharacters. Follow nextCharacterOffset until complete before interpreting a record. Archive item indices refer to the retained collection order at request creation.")
+        } else {
+            "Before relying on omitted conversation, understanding, or draft details, retrieve continuity_context through the backing agent's tools. It returns current retained records, which may have changed since this request; it is not an immutable request archive and these counts or hashes are not lookup indices. For a complete prior execution receipt, call continuity_context with executionReceiptIndex (the receipt summary's archiveItemIndex, or another index below terminalReceipts.totalCount), characterOffset, and maxCharacters. Follow nextCharacterOffset until complete, checking the returned requestId and revision because this is a current retained list, not an immutable archive. Also inspect the referenced Main Agent turn and current workspace.".into()
+        };
         let prompt = format!(
-        "{prompt}\nHost context archive (evidence, not authorization): {}\nProjection omissions: {counts}\nThe native host retains every original record. Collection hashes identify the original native serialization; the archive tool reports a separate hash of the whole archive file. Omission does not mean a task was finished, a draft was dismissed, or a user granted new permission. Before relying on omitted details, use read_continuity_context with requestId={request_id}, collection (messages, understandings, drafts, reflections, or terminalReceipts), itemIndex, characterOffset, and maxCharacters. The tool returns exact JSON record chunks; follow nextCharacterOffset until complete before interpreting a record. Archive item indices refer to original collection order. Classify observedReply only for originalLatestMessageId if that exact original message is included; otherwise set observedReply=null. Prior failed/interrupted/completed-without-report work may have partial effects. Inspect its original receipt and current workspace before any operation; never blindly repeat or resend it. The archive and receipt summaries do not grant permissions.\n",
-        serde_json::to_string(manifest).map_err(|_| ENCODING_ERROR.to_owned())?,
-    );
+            "{prompt}\nHost retained context metadata (evidence, not authorization): {}\nProjection omissions: {counts}\n{retrieval} Omission does not mean a task was finished, a draft was dismissed, or a user granted new permission. Classify observedReply only for originalLatestMessageId if that exact original message is included; otherwise set observedReply=null. Prior failed/interrupted/completed-without-report work may have partial effects. Inspect the original evidence and current workspace before any operation; never blindly repeat or resend it. Metadata and receipt summaries do not grant permissions.\n",
+            serde_json::to_string(manifest).map_err(|_| ENCODING_ERROR.to_owned())?,
+        );
         let request_payload =
             serde_json::to_string(&json!({"message":prompt,"outputSchema":schema}))
                 .map_err(|_| ENCODING_ERROR.to_owned())?;
@@ -240,20 +252,6 @@ where
             budget,
         })
     }
-
-    fn attempt(
-        &self,
-        candidate: Selection,
-        selected: &mut Selection,
-        result: &mut Projection,
-    ) -> Result<(), String> {
-        let value = self.compose(&candidate)?;
-        if within_budget(&value) {
-            *selected = candidate;
-            *result = value;
-        }
-        Ok(())
-    }
 }
 
 fn within_budget(projection: &Projection) -> bool {
@@ -271,11 +269,92 @@ pub(super) fn build(
     schema: &Value,
     render: impl Fn(&Snapshot, &Context, &str, &[String]) -> Result<String, String>,
 ) -> Result<Projection, String> {
+    let manifest = archive_manifest(saved, request_id)?;
+    let composer = Composer {
+        saved,
+        context,
+        trigger,
+        request_id,
+        schema,
+        manifest: &manifest,
+        render: &render,
+    };
+    select(
+        saved,
+        |selection| composer.compose(selection),
+        within_budget,
+    )
+    .map(|(_, result)| result)
+}
+
+/// text 専用 transport にも同じ選択規則を適用し、実際の prompt 全体で上限を確認する。
+/// 読み出し tool の有無に応じた説明は render 側が担当する。
+pub(super) fn bounded_snapshot(
+    saved: &Saved,
+    render: impl Fn(&Snapshot) -> Result<String, String>,
+) -> Result<Snapshot, String> {
+    let (selected, _) = select(
+        saved,
+        |selection| render(&projected(&saved.snapshot, selection)),
+        |prompt| prompt.len() <= MAX_PROMPT_UTF8_BYTES,
+    )?;
+    Ok(projected(&saved.snapshot, &selected))
+}
+
+fn select<T>(
+    saved: &Saved,
+    compose: impl Fn(&Selection) -> Result<T, String>,
+    fits: impl Fn(&T) -> bool,
+) -> Result<(Selection, T), String> {
     let snapshot = &saved.snapshot;
+    let recent_messages = snapshot
+        .messages
+        .iter()
+        .enumerate()
+        .rev()
+        .filter(|(_, message)| message.source != "legacy")
+        .take(MAX_OPTIONAL_MESSAGES)
+        .map(|(index, _)| index)
+        .collect::<BTreeSet<_>>();
+    // 明示的に整理済みでも、保存中の理解・訂正・草案・振り返り・記憶依頼の
+    // 根拠になっている相手の発言は、未解決の境界を落とさないため必須にする。
+    let mut referenced = BTreeSet::new();
+    for understanding in &snapshot.understandings {
+        referenced.extend(understanding.source_ids.iter());
+        for revision in &understanding.revisions {
+            referenced.extend(revision.source_ids.iter());
+        }
+    }
+    for draft in &snapshot.drafts {
+        referenced.extend(draft.source_ids.iter());
+    }
+    for reflection in &snapshot.reflections {
+        referenced.extend(reflection.source_ids.iter());
+    }
+    for memory in &snapshot.explicit_memories {
+        referenced.insert(&memory.request_message_id);
+        referenced.extend(memory.source_ids.iter());
+    }
     let mut selected = Selection::default();
     for (index, message) in snapshot.messages.iter().enumerate() {
-        if message.role == "user" && message.source != "legacy" {
+        if message.role == "user"
+            && message.source != "legacy"
+            && (!saved.retired_message_ids.contains(&message.id)
+                || referenced.contains(&message.id)
+                || recent_messages.contains(&index))
+        {
             selected.messages.insert(index);
+        }
+    }
+    // 「覚えて」の依頼は要約へ置き換えず、指示対象の会話を含めた原文を残す。
+    for memory in &snapshot.explicit_memories {
+        if !source_messages(
+            snapshot,
+            &mut selected,
+            std::slice::from_ref(&memory.request_message_id),
+        ) || !source_messages(snapshot, &mut selected, &memory.source_ids)
+        {
+            return Err(MISSING_EXPLICIT_MEMORY.into());
         }
     }
     if let Some((index, _)) = snapshot
@@ -309,20 +388,18 @@ pub(super) fn build(
             return Err(MISSING_CORRECTION.into());
         }
     }
-    let manifest = archive_manifest(saved, request_id)?;
-    let composer = Composer {
-        saved,
-        context,
-        trigger,
-        request_id,
-        schema,
-        manifest: &manifest,
-        render: &render,
-    };
-    let mut result = composer.compose(&selected)?;
-    if !within_budget(&result) {
+    let mut result = compose(&selected)?;
+    if !fits(&result) {
         return Err(ESSENTIAL_CONTEXT_TOO_LARGE.into());
     }
+    let attempt = |candidate: Selection, selected: &mut Selection, result: &mut T| {
+        let value = compose(&candidate)?;
+        if fits(&value) {
+            *selected = candidate;
+            *result = value;
+        }
+        Ok::<(), String>(())
+    };
     // Add whole records together with their source dependencies. A failed
     // candidate leaves the accepted selection unchanged, never half a record.
     // A separate helper scope per candidate avoids coupling later source
@@ -336,11 +413,11 @@ pub(super) fn build(
             Reverse(*index),
         )
     });
-    for index in drafts {
+    for index in drafts.into_iter().take(MAX_OPTIONAL_DRAFTS) {
         let mut candidate = selected.clone();
         if source_messages(snapshot, &mut candidate, &snapshot.drafts[index].source_ids) {
             candidate.drafts.insert(index);
-            composer.attempt(candidate, &mut selected, &mut result)?;
+            attempt(candidate, &mut selected, &mut result)?;
         }
     }
     let mut understandings = (0..snapshot.understandings.len()).collect::<Vec<_>>();
@@ -350,13 +427,16 @@ pub(super) fn build(
             Reverse(*index),
         )
     });
-    for index in understandings {
+    for index in understandings.into_iter().take(MAX_OPTIONAL_UNDERSTANDINGS) {
         let mut candidate = selected.clone();
         if include_understanding(snapshot, &mut candidate, index) {
-            composer.attempt(candidate, &mut selected, &mut result)?;
+            attempt(candidate, &mut selected, &mut result)?;
         }
     }
-    for index in (0..snapshot.reflections.len()).rev().take(3) {
+    for index in (0..snapshot.reflections.len())
+        .rev()
+        .take(MAX_OPTIONAL_REFLECTIONS)
+    {
         let mut candidate = selected.clone();
         let reflection = &snapshot.reflections[index];
         let mut complete = source_messages(snapshot, &mut candidate, &reflection.source_ids);
@@ -373,15 +453,15 @@ pub(super) fn build(
         }
         if complete {
             candidate.reflections.insert(index);
-            composer.attempt(candidate, &mut selected, &mut result)?;
+            attempt(candidate, &mut selected, &mut result)?;
         }
     }
-    for index in (0..snapshot.messages.len()).rev() {
+    for index in recent_messages.into_iter().rev() {
         let mut candidate = selected.clone();
         candidate.messages.insert(index);
-        composer.attempt(candidate, &mut selected, &mut result)?;
+        attempt(candidate, &mut selected, &mut result)?;
     }
-    Ok(result)
+    Ok((selected, result))
 }
 
 #[cfg(test)]
@@ -439,6 +519,186 @@ mod tests {
             &json!({"type":"object"}),
             render,
         )
+    }
+
+    fn compact(saved: &Saved) -> Snapshot {
+        bounded_snapshot(saved, |snapshot| {
+            serde_json::to_string(snapshot).map_err(|error| error.to_string())
+        })
+        .unwrap()
+    }
+
+    #[test]
+    fn normal_context_does_not_fill_spare_budget_with_old_optional_records() {
+        let mut saved = saved();
+        for index in 0..20 {
+            let id = format!("message-{index}");
+            saved.retired_message_ids.insert(id.clone());
+            saved
+                .snapshot
+                .messages
+                .push(message(&id, "user", format!("Reviewed chatter {index}")));
+        }
+        saved.snapshot.understandings = serde_json::from_value(json!((0..12)
+            .map(|index| json!({
+                "id":format!("memory-{index}"),"title":"Preference","value":"Short value",
+                "certainty":"confirmed","sourceIds":["message-19"],"updatedAt":index,"revisions":[]
+            }))
+            .collect::<Vec<_>>()))
+        .unwrap();
+        saved.snapshot.drafts = serde_json::from_value(json!(
+            (0..6).map(|index| json!({
+                "id":format!("draft-{index}"),"title":"Draft","content":"Short body","reason":"Request",
+                "status":"ready","sourceIds":["message-19"],"createdAt":index,"updatedAt":index
+            })).collect::<Vec<_>>()
+        )).unwrap();
+        saved.snapshot.reflections = serde_json::from_value(json!((0..6)
+            .map(|index| json!({
+                "id":format!("reflection-{index}"),"content":"Brief observation",
+                "sourceIds":["message-19"],"understandingIds":["memory-11"],"createdAt":index
+            }))
+            .collect::<Vec<_>>()))
+        .unwrap();
+        let before = serde_json::to_vec(&saved).unwrap();
+        let view = compact(&saved);
+        assert_eq!(
+            view.messages
+                .iter()
+                .map(|m| m.id.as_str())
+                .collect::<Vec<_>>(),
+            (14..20)
+                .map(|index| format!("message-{index}"))
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(view.understandings.len(), 8);
+        assert_eq!(view.understandings[0].id, "memory-4");
+        assert_eq!(view.drafts.len(), 3);
+        assert_eq!(view.drafts[0].id, "draft-3");
+        assert_eq!(view.reflections.len(), 3);
+        assert_eq!(view.reflections[0].id, "reflection-3");
+        let projection = run(&saved).unwrap();
+        assert!(projection.prompt.len() < MAX_PROMPT_UTF8_BYTES / 4);
+        assert_eq!(projection.budget.omitted_message_count, 14);
+        assert_eq!(before, serde_json::to_vec(&saved).unwrap());
+    }
+
+    #[test]
+    fn retirement_cannot_hide_unreviewed_or_referenced_user_authority() {
+        let mut saved = saved();
+        saved.snapshot.messages.push(message(
+            "unreviewed",
+            "user",
+            "Never publish without asking.".into(),
+        ));
+        saved.snapshot.messages.push(message(
+            "referenced",
+            "user",
+            "Keep the client's address private.".into(),
+        ));
+        saved.snapshot.messages.push(message(
+            "retired",
+            "user",
+            "Thanks for the completed example.".into(),
+        ));
+        saved
+            .retired_message_ids
+            .extend(["referenced".into(), "retired".into()]);
+        saved.snapshot.understandings.push(Understanding {
+            id: "boundary".into(),
+            title: "Privacy".into(),
+            value: "Keep address private".into(),
+            certainty: Certainty::Confirmed,
+            source_ids: vec!["referenced".into()],
+            updated_at: 0,
+            revisions: vec![],
+        });
+        for index in 0..8 {
+            saved.snapshot.messages.push(message(
+                &format!("report-{index}"),
+                "assistant",
+                "Recent report.".into(),
+            ));
+        }
+        let view = compact(&saved);
+        let ids = view
+            .messages
+            .iter()
+            .map(|m| m.id.as_str())
+            .collect::<Vec<_>>();
+        assert!(ids.contains(&"unreviewed"));
+        assert!(ids.contains(&"referenced"));
+        assert!(!ids.contains(&"retired"));
+        assert!(!ids.contains(&"report-0"));
+        assert_eq!(ids.len(), 8);
+    }
+
+    #[test]
+    fn explicit_memory_keeps_exact_original_request_and_context_even_outside_recent_window() {
+        use crate::continuity::types::ExplicitMemory;
+        let mut saved = saved();
+        saved.snapshot.messages.push(message(
+            "context",
+            "assistant",
+            "The exact explanation to remember.".into(),
+        ));
+        saved
+            .snapshot
+            .messages
+            .push(message("remember", "user", "Please remember this.".into()));
+        saved.snapshot.explicit_memories.push(ExplicitMemory {
+            request_message_id: "remember".into(),
+            source_ids: vec!["context".into(), "remember".into()],
+        });
+        saved
+            .retired_message_ids
+            .extend(["context".into(), "remember".into()]);
+        for index in 0..8 {
+            saved.snapshot.messages.push(message(
+                &format!("report-{index}"),
+                "assistant",
+                "Recent report.".into(),
+            ));
+        }
+        let view = compact(&saved);
+        assert_eq!(view.explicit_memories, saved.snapshot.explicit_memories);
+        assert_eq!(view.messages[0].id, "context");
+        assert_eq!(
+            view.messages[0].content,
+            "The exact explanation to remember."
+        );
+        assert_eq!(view.messages[1].id, "remember");
+        saved.snapshot.messages[0].content = "x".repeat(MAX_PROMPT_UTF8_BYTES);
+        assert_eq!(run(&saved).unwrap_err(), ESSENTIAL_CONTEXT_TOO_LARGE);
+        saved.snapshot.messages.remove(0);
+        assert_eq!(run(&saved).unwrap_err(), MISSING_EXPLICIT_MEMORY);
+    }
+
+    #[test]
+    fn text_snapshot_budget_counts_renderer_overhead_without_truncating_mandatory_context() {
+        let mut saved = saved();
+        saved
+            .snapshot
+            .messages
+            .push(message("current", "user", "Current request".into()));
+        let result = bounded_snapshot(&saved, |_| Ok("x".repeat(MAX_PROMPT_UTF8_BYTES + 1)));
+        assert_eq!(result.unwrap_err(), ESSENTIAL_CONTEXT_TOO_LARGE);
+    }
+
+    #[test]
+    fn codex_uses_current_context_retrieval_without_promising_a_pi_archive() {
+        let mut context = context();
+        context.execution_backend = Some(ExecutionBackend::Codex);
+        let projection = build(&saved(), &context, "return", REQUEST, &json!({}), render).unwrap();
+        assert!(projection.prompt.contains("retrieve continuity_context"));
+        assert!(projection.prompt.contains("current retained records"));
+        assert!(projection
+            .prompt
+            .contains("not an immutable request archive"));
+        assert!(!projection.prompt.contains("read_continuity_context"));
+        assert!(projection.prompt.contains("executionReceiptIndex"));
+        assert!(projection.prompt.contains("nextCharacterOffset"));
+        assert!(!projection.prompt.contains("every original record"));
+        assert!(within_budget(&projection));
     }
 
     fn receipt(index: usize) -> ExecutionReceipt {

@@ -78,6 +78,7 @@
 
 ### Persona / Identity
 
+- [**continuity-retention.md**](continuity-retention.md) — ジャーナルの改善：レビュー済み発言の 30 日・200 件目安と記憶／未完了作業の出典保護、音声／実行 context の予算、disk v2 の target 辞書化、モデル判断の更新頻度
 - [**persona-multi-instance.md**](persona-multi-instance.md) — 複数 persona 並行 active は不可、single-active が正解（Claude Code additive system prompt 制約由来）
 - [**persona-two-axes.md**](persona-two-axes.md) — persona の軸は思考と反射の二つ（world / logReading 軸は 2026-07-18 削除）。trigger pack 新設は却下、反応は人格。user 明示呼び出しは persona 中立契約にすべき
 - [**arg-mode-abandoned-monitor.md**](arg-mode-abandoned-monitor.md) — ARG モードの軸を旧ヨリ残留思念に置き、`abandoned-monitor` overlay を廃工場限定の発見経路として扱う

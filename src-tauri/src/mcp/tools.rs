@@ -22,8 +22,15 @@ use crate::mcp::types::{ListLoadErrorsResponse, LoadError};
 use crate::read_last_startup_report_impl;
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct ContinuityContextRequest {}
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ContinuityContextRequest {
+    /// 通常の会話 snapshot の代わりに読む、現在保持する実行記録の 0 始まり index。
+    pub execution_receipt_index: Option<usize>,
+    /// 原文 JSON の Unicode 文字位置。省略時は 0。
+    pub character_offset: Option<usize>,
+    /// 一度に読む最大文字数。1..16384、既定値 4096。
+    pub max_characters: Option<usize>,
+}
 
 /// Record an actual conversation, not a task grant or a model-written memory.
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -519,18 +526,35 @@ impl Yorishiro {
 #[tool_router]
 impl Yorishiro {
     #[tool(
-        description = "Read the active Yorishiro persona's current understanding, its supporting conversation and revisions, and actual saved drafts. Refresh this before relying on remembered preferences or reporting a draft's status. Distinguish tentative interpretations from explicit user statements. This does not start work or grant permissions."
+        description = "Read the active Yorishiro persona's current understanding, supporting conversation, revisions and saved drafts. To inspect omitted execution evidence, set executionReceiptIndex (zero-based), characterOffset (default 0) and maxCharacters (default 4096, max 16384). Receipt chunks contain exact JSON; follow nextCharacterOffset to completion and verify personaId, requestId and receiptSha256 remain the same before interpreting. Indices refer to current retained receipts, not an immutable request archive. Refresh context before relying on remembered preferences or reporting a draft's status. Distinguish tentative interpretations from explicit user statements. This does not start work or grant permissions."
     )]
     async fn continuity_context(
         &self,
-        _params: Parameters<ContinuityContextRequest>,
+        Parameters(params): Parameters<ContinuityContextRequest>,
     ) -> Result<CallToolResult, McpError> {
         let state = self
             .app_handle
             .state::<crate::continuity::ContinuityState>();
-        let context = crate::continuity::context_for_active(&state)
-            .map_err(|e| McpError::internal_error(e, None))?;
-        Ok(CallToolResult::success(vec![Content::json(context)?]))
+        if let Some(index) = params.execution_receipt_index {
+            let receipt = crate::continuity::execution_receipt_for_active(
+                &state,
+                index,
+                params.character_offset.unwrap_or(0),
+                params.max_characters.unwrap_or(4096),
+            )
+            .map_err(|e| McpError::invalid_params(e, None))?;
+            Ok(CallToolResult::success(vec![Content::json(receipt)?]))
+        } else {
+            if params.character_offset.is_some() || params.max_characters.is_some() {
+                return Err(McpError::invalid_params(
+                    "Receipt chunk options require executionReceiptIndex.",
+                    None,
+                ));
+            }
+            let context = crate::continuity::context_for_active(&state)
+                .map_err(|e| McpError::internal_error(e, None))?;
+            Ok(CallToolResult::success(vec![Content::json(context)?]))
+        }
     }
 
     #[tool(
@@ -1478,6 +1502,30 @@ mod tests {
     use super::*;
     use std::fs;
     use std::path::PathBuf;
+
+    #[test]
+    fn continuity_context_accepts_default_or_bounded_receipt_arguments() {
+        let normal: ContinuityContextRequest = serde_json::from_value(json!({})).unwrap();
+        assert!(normal.execution_receipt_index.is_none());
+        let receipt: ContinuityContextRequest = serde_json::from_value(json!({
+            "executionReceiptIndex":0,"characterOffset":257,"maxCharacters":4096
+        }))
+        .unwrap();
+        assert_eq!(receipt.execution_receipt_index, Some(0));
+        assert_eq!(receipt.character_offset, Some(257));
+        assert_eq!(receipt.max_characters, Some(4096));
+        for invalid in [
+            json!({"executionReceiptIndex":-1}),
+            json!({"characterOffset":0.5}),
+            json!({"unknown":0}),
+        ] {
+            assert!(serde_json::from_value::<ContinuityContextRequest>(invalid).is_err());
+        }
+        let schema = serde_json::to_value(schemars::schema_for!(ContinuityContextRequest)).unwrap();
+        for property in ["executionReceiptIndex", "characterOffset", "maxCharacters"] {
+            assert!(schema["properties"].get(property).is_some());
+        }
+    }
 
     fn tmp_home() -> PathBuf {
         let base = std::env::temp_dir();

@@ -87,6 +87,13 @@ pub struct Draft {
     pub created_at: u64,
     pub updated_at: u64,
 }
+/// 明示的な記憶依頼の原文と、その場の会話を保持する参照。推測した事実ではない。
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ExplicitMemory {
+    pub request_message_id: String,
+    pub source_ids: Vec<String>,
+}
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Snapshot {
@@ -96,6 +103,8 @@ pub struct Snapshot {
     pub auto_enabled: bool,
     pub phase: String,
     pub messages: Vec<Message>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub explicit_memories: Vec<ExplicitMemory>,
     pub understandings: Vec<Understanding>,
     pub drafts: Vec<Draft>,
     pub reflections: Vec<Reflection>,
@@ -112,6 +121,7 @@ impl Snapshot {
             auto_enabled: true,
             phase: "idle".into(),
             messages: vec![],
+            explicit_memories: vec![],
             understandings: vec![],
             drafts: vec![],
             reflections: vec![],
@@ -148,6 +158,9 @@ pub struct Saved {
     pub(super) context_handoffs: Vec<ContextHandoff>,
     #[serde(default)]
     pub observed_keys: std::collections::BTreeMap<String, String>,
+    /// 読み終えた通常会話の整理候補。参照中・未処理の情報は別途保護する。
+    #[serde(default, skip_serializing_if = "std::collections::BTreeSet::is_empty")]
+    pub(super) retired_message_ids: std::collections::BTreeSet<String>,
     #[serde(default)]
     pub pending_correction_ids: Vec<String>,
     #[serde(default)]
@@ -279,6 +292,10 @@ pub enum WorkStatus {
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ModelResult {
+    /// 内容を確認済みで、未完了の依頼・制約を含まない通常会話の ID。
+    #[serde(default)]
+    #[schemars(length(max = 32))]
+    pub retired_message_ids: Vec<String>,
     #[serde(default)]
     pub work_status: Option<WorkStatus>,
     #[serde(default)]
