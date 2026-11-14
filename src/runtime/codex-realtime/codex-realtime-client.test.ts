@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { sessionRealtimeCapabilities } from "../../bindings/tauri-commands";
 import { ensureAudioContextRunning } from "../../core/voice/audio-context";
 import type { MouthValues } from "../../core/voice/mouth-values";
 import { getVoiceVolumeStore } from "../../core/voice/voice-volume-store";
@@ -11,8 +12,14 @@ import {
   type CodexRealtimeVoiceFallback,
 } from "./codex-realtime-client";
 import { MAX_REALTIME_TEXT_JSON_BYTES } from "./context-items";
+import { generateSessionFollowup } from "./followup-bridge";
 import { setRealtimeDebugEnabled } from "./realtime-debug";
 import { readRealtimeDiagnostics } from "./realtime-diagnostics";
+import { writeSilenceFollowupSettings } from "./silence-followup-settings";
+
+vi.mock("./followup-bridge", () => ({
+  generateSessionFollowup: vi.fn(async () => ({ speak: true, text: "Want to revisit blue?" })),
+}));
 
 interface FakeChannel<T> {
   onmessage: (message: T) => void;
@@ -265,7 +272,7 @@ class FakeMediaStream extends EventTarget {
   }
 }
 
-class FakeDataChannel {
+class FakeDataChannel extends EventTarget {
   onmessage: ((event: { data: string }) => void) | null = null;
   readonly close = vi.fn();
 }
@@ -310,6 +317,9 @@ describe("CodexRealtimeClient", () => {
 
   beforeEach(() => {
     localStorage.clear();
+    vi.mocked(generateSessionFollowup)
+      .mockReset()
+      .mockResolvedValue({ speak: true, text: "Want to revisit blue?" });
     microphoneTrack = new FakeAudioTrack();
     vi.stubGlobal("MediaStream", FakeMediaStream);
     vi.stubGlobal("RTCPeerConnection", FakePeerConnection);
@@ -475,6 +485,185 @@ describe("CodexRealtimeClient", () => {
       outcome: "rejected",
       effectiveModel: null,
     });
+  });
+
+  function enableFollowup(): void {
+    bridge.capabilities.appServerVersion = "0.169.0";
+    setRealtimeDebugEnabled(true);
+    writeSilenceFollowupSettings({ enabled: true, silenceSeconds: 60, cooldownSeconds: 300 });
+  }
+  function transcript(role: string, text: string, channel = bridge.channel): void {
+    channel?.onmessage(
+      JSON.stringify({
+        method: "thread/realtime/transcript/done",
+        params: { threadId: "thread-1", role, text },
+      }),
+    );
+  }
+  it("never buffers or generates follow-ups by default, even on supported versions", async () => {
+    bridge.capabilities.appServerVersion = "0.169.0";
+    const client = new CodexRealtimeClient("main-session");
+    await client.start();
+    vi.useFakeTimers();
+    transcript("user", "private");
+    transcript("assistant", "reply");
+    await vi.advanceTimersByTimeAsync(600_000);
+    expect(generateSessionFollowup).not.toHaveBeenCalled();
+    expect((client as unknown as { followup: unknown }).followup).toBeNull();
+    client.stop();
+  });
+  it("requires the verified CLI version even when both local opt-ins are enabled", async () => {
+    enableFollowup();
+    bridge.capabilities.appServerVersion = "0.170.0";
+    const client = new CodexRealtimeClient("main-session");
+    await client.start();
+    vi.useFakeTimers();
+    transcript("user", "hello");
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(generateSessionFollowup).not.toHaveBeenCalled();
+    client.stop();
+  });
+  it("cannot enable follow-ups with a stale capability response from a stopped attempt", async () => {
+    enableFollowup();
+    let resolve!: (value: typeof bridge.capabilities) => void;
+    let requested = false;
+    vi.mocked(sessionRealtimeCapabilities).mockImplementationOnce(() => {
+      requested = true;
+      return new Promise((done) => {
+        resolve = done;
+      });
+    });
+    const client = new CodexRealtimeClient("main-session");
+    const old = client.start().catch((error: unknown) => error);
+    await vi.waitFor(() => expect(requested).toBe(true));
+    client.stop();
+    bridge.capabilities.appServerVersion = "0.170.0";
+    await client.start();
+    resolve({ ...bridge.capabilities, appServerVersion: "0.169.0" });
+    expect(await old).toBeInstanceOf(Error);
+    expect(client.getStatus()).toBe("active");
+    vi.useFakeTimers();
+    transcript("user", "fresh");
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(generateSessionFollowup).not.toHaveBeenCalled();
+    expect((client as unknown as { followupSupported: boolean }).followupSupported).toBe(false);
+    client.stop();
+  });
+
+  it("sends only generated spoken text through native appendSpeech after a quiet completed user turn", async () => {
+    enableFollowup();
+    const client = new CodexRealtimeClient("main-session");
+    await client.start();
+    vi.useFakeTimers();
+    transcript("user", "blue or red?");
+    transcript("assistant", "Both could work.");
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(generateSessionFollowup).toHaveBeenCalledWith(
+      "main-session",
+      "thread-1",
+      [
+        { role: "user", text: "blue or red?" },
+        { role: "assistant", text: "Both could work." },
+      ],
+      expect.any(AbortSignal),
+    );
+    expect(
+      bridge.sent.find((message) => message.method === "thread/realtime/appendSpeech")?.params,
+    ).toEqual({ threadId: "thread-1", text: "Want to revisit blue?" });
+    client.stop();
+  });
+  it.each([
+    "mute",
+    "stop",
+    "disable",
+  ])("cancels a pending follow-up on %s and discards its late result", async (action) => {
+    enableFollowup();
+    const client = new CodexRealtimeClient("main-session");
+    await client.start();
+    let resolve!: (value: { speak: boolean; text: string }) => void;
+    vi.mocked(generateSessionFollowup).mockImplementation(
+      () =>
+        new Promise((done) => {
+          resolve = done;
+        }),
+    );
+    vi.useFakeTimers();
+    transcript("user", "hello");
+    await vi.advanceTimersByTimeAsync(60_000);
+    const signal = vi.mocked(generateSessionFollowup).mock.calls[0]?.[3];
+    if (action === "mute") client.setMicrophoneMuted(true);
+    else if (action === "stop") client.stop();
+    else setRealtimeDebugEnabled(false);
+    expect(signal?.aborted).toBe(true);
+    resolve({ speak: true, text: "stale" });
+    await Promise.resolve();
+    expect(bridge.sent.some((message) => message.method === "thread/realtime/appendSpeech")).toBe(
+      false,
+    );
+    client.stop();
+  });
+  it("does not catch up on foreground return and ignores prior connection transcripts", async () => {
+    enableFollowup();
+    const client = new CodexRealtimeClient("main-session");
+    await client.start();
+    const stale = bridge.channel;
+    client.stop();
+    await client.start();
+    vi.useFakeTimers();
+    transcript("user", "old", stale);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(generateSessionFollowup).not.toHaveBeenCalled();
+    transcript("user", "current");
+    const visibility = vi.spyOn(document, "visibilityState", "get");
+    visibility.mockReturnValue("hidden");
+    document.dispatchEvent(new Event("visibilitychange"));
+    visibility.mockReturnValue("visible");
+    document.dispatchEvent(new Event("visibilitychange"));
+    await vi.advanceTimersByTimeAsync(600_000);
+    expect(generateSessionFollowup).not.toHaveBeenCalled();
+    transcript("user", "fresh");
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(vi.mocked(generateSessionFollowup).mock.calls[0]?.[2]).toEqual([
+      { role: "user", text: "fresh" },
+    ]);
+    visibility.mockRestore();
+    client.stop();
+  });
+
+  it("does not measure remote speech for the experiment when both consumers are absent", () => {
+    const client = new CodexRealtimeClient("main-session");
+    const internal = client as unknown as {
+      lipSync: { hasSignal: () => boolean };
+      startRemoteSpeechObservation(attempt: number): void;
+      stopRemoteSpeechObservation(): void;
+    };
+    const hasSignal = vi.fn(() => false);
+    internal.lipSync = { hasSignal };
+    vi.useFakeTimers();
+    internal.startRemoteSpeechObservation(0);
+    vi.advanceTimersByTime(1000);
+    expect(hasSignal).not.toHaveBeenCalled();
+    internal.stopRemoteSpeechObservation();
+  });
+  it("waits for response completion on the data channel before counting silence", async () => {
+    enableFollowup();
+    const client = new CodexRealtimeClient("main-session");
+    await client.start();
+    vi.useFakeTimers();
+    transcript("user", "hello");
+    const channel = FakePeerConnection.latest?.channel;
+    channel?.dispatchEvent(
+      new MessageEvent("message", { data: JSON.stringify({ type: "response.created" }) }),
+    );
+    transcript("assistant", "A reply.");
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(generateSessionFollowup).not.toHaveBeenCalled();
+    channel?.dispatchEvent(
+      new MessageEvent("message", { data: JSON.stringify({ type: "response.done" }) }),
+    );
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(generateSessionFollowup).toHaveBeenCalledOnce();
+    client.stop();
   });
 
   it("joins the loaded TUI thread through realtime v3 WebRTC and releases the microphone", async () => {
