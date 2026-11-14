@@ -888,6 +888,126 @@ describe("ContinuityWorkspace", () => {
   });
 
   it.each([
+    ["Memories", "Close memories"],
+    ["Settings", "Close settings"],
+    ["View question", null],
+  ] as const)("keeps focus after navigating to %s while a send is acknowledged", async (destination, focusedButton) => {
+    let finish!: () => void;
+    native.sendContinuityMessage.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        finish = resolve;
+      }),
+    );
+    current = { ...current, messages: [...current.messages, pendingQuestion()] };
+    render(<ContinuityWorkspace {...props()} language="en" executionBackend="pi" />);
+    const input = screen.getByRole("textbox");
+    const send = screen.getByRole("button", { name: "Send" });
+    fireEvent.change(input, { target: { value: "First message" } });
+    await waitFor(() => expect(send).toHaveProperty("disabled", false));
+    send.focus();
+    fireEvent.click(send);
+    expect(document.activeElement).toBe(input);
+    fireEvent.change(input, { target: { value: "A newer unsent message" } });
+    fireEvent.click(screen.getByRole("button", { name: destination }));
+    const target = focusedButton
+      ? screen.getByRole("button", { name: focusedButton })
+      : screen.getByRole("article", { name: "Reply requested" });
+    expect(document.activeElement).toBe(target);
+    await act(async () => finish());
+    expect(document.activeElement).toBe(target);
+    expect(input).toHaveProperty("value", "A newer unsent message");
+    expect(native.sendContinuityMessage).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ cwd: "/workspace" }),
+      "First message",
+      undefined,
+    );
+    expect(native.retryContinuity).not.toHaveBeenCalled();
+  });
+
+  it("does not reclaim focus when a hidden workspace is reopened before send acknowledgement", async () => {
+    let finish!: () => void;
+    native.sendContinuityMessage.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        finish = resolve;
+      }),
+    );
+    const initial = { ...props(), language: "en" as const };
+    const view = render(<ContinuityWorkspace {...initial} />);
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Accepted message" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    view.rerender(<ContinuityWorkspace {...initial} open={false} />);
+    view.rerender(<ContinuityWorkspace {...initial} />);
+    const reopenedFocus = document.activeElement;
+    expect(reopenedFocus).not.toBe(screen.getByRole("textbox"));
+    await act(async () => finish());
+    expect(document.activeElement).toBe(reopenedFocus);
+    expect(screen.getByRole("textbox")).toHaveProperty("value", "");
+    expect(native.sendContinuityMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    "another draft",
+    "same draft",
+    "reopened workspace",
+    "hidden workspace",
+  ] as const)("keeps the user's %s after an earlier continuation succeeds", async (destination) => {
+    let finish!: () => void;
+    native.actOnContinuityDraft.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        finish = resolve;
+      }),
+    );
+    current = {
+      ...current,
+      drafts: [
+        ...current.drafts,
+        {
+          id: "draft-2",
+          title: "Another draft",
+          content: "Other content",
+          reason: "",
+          status: "ready",
+          sourceIds: [],
+          createdAt: now,
+          updatedAt: now,
+        },
+      ],
+    };
+    const initial = { ...props(), language: "en" as const };
+    const view = render(<ContinuityWorkspace {...initial} />);
+    fireEvent.click(screen.getAllByRole("button", { name: "Open draft" })[0]);
+    const originalDialog = screen.getByRole("dialog");
+    fireEvent.click(within(originalDialog).getByRole("button", { name: "Continue thinking" }));
+    if (destination === "another draft" || destination === "same draft") {
+      fireEvent.click(within(originalDialog).getByRole("button", { name: "Close" }));
+      fireEvent.click(
+        screen.getAllByRole("button", { name: "Open draft" })[
+          destination === "another draft" ? 1 : 0
+        ],
+      );
+    } else {
+      view.rerender(<ContinuityWorkspace {...initial} open={false} />);
+      if (destination === "reopened workspace") view.rerender(<ContinuityWorkspace {...initial} />);
+    }
+    const currentDialog = screen.queryByRole("dialog");
+    if (currentDialog) within(currentDialog).getByRole("button", { name: "Close" }).focus();
+    const currentFocus = document.activeElement;
+    await act(async () => finish());
+    expect(screen.queryByRole("dialog")).toBe(currentDialog);
+    expect(document.activeElement).toBe(currentFocus);
+    if (currentDialog) expect(currentDialog).toHaveProperty("open", true);
+    if (destination === "hidden workspace") {
+      view.rerender(<ContinuityWorkspace {...initial} />);
+      expect(screen.getByRole("dialog")).toHaveProperty("open", true);
+    }
+    expect(native.actOnContinuityDraft).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ cwd: "/workspace" }),
+      "draft-1",
+      "continue",
+    );
+  });
+
+  it.each([
     ["ja", "送る", "再試行", "入力内容を確認して、送信ボタンからもう一度送ってください。"],
     ["en", "Send", "Retry", "Review your message and use Send to try again."],
   ] as const)("recovers failed %s messages through Send, preserving the actual input", async (language, send, retry, hint) => {
