@@ -64,4 +64,20 @@ describe("realtime diagnostics", () => {
     expect(records[0].attemptId).toBe("attempt-5");
     expect(records[records.length - 1]?.attemptId).toBe("attempt-44");
   });
+  it("retains connection evidence when periodic output samples fill the ring", () => {
+    const base = {
+      attemptId: "one",
+      timestamp: "now",
+      stage: "playback" as const,
+      elapsedMs: 0,
+      retryDecision: "none" as const,
+      terminationRequested: false,
+    };
+    appendRealtimeDiagnostic({ ...base, event: "negotiated" });
+    for (let index = 0; index < 100; index++)
+      appendRealtimeDiagnostic({ ...base, event: "playback-sample" });
+    const records = readRealtimeDiagnostics();
+    expect(records).toHaveLength(13);
+    expect(records[0].event).toBe("negotiated");
+  });
 });

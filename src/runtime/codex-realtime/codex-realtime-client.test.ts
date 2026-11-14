@@ -2022,13 +2022,14 @@ describe("CodexRealtimeClient", () => {
       }),
     };
     const outputGain = { connect: vi.fn(), disconnect: vi.fn(), gain: gainParam };
-    const audioContext = {
+    const audioContext = Object.assign(new EventTarget(), {
       currentTime: 4,
+      state: "running",
       destination: {},
       createAnalyser: vi.fn(() => analyser),
       createMediaStreamSource: vi.fn(() => source),
       createGain: vi.fn(() => outputGain),
-    } as unknown as AudioContext;
+    }) as unknown as AudioContext;
     const client = new CodexRealtimeClient("main-session");
     await client.start();
     vi.mocked(ensureAudioContextRunning).mockResolvedValue(audioContext);
@@ -2073,6 +2074,10 @@ describe("CodexRealtimeClient", () => {
     getVoiceVolumeStore().set(0.5);
     expect(gainParam.setValueAtTime).toHaveBeenCalledWith(0.5, audioContext.currentTime);
 
+    Object.defineProperty(audioContext, "state", { value: "closed" });
+    audioContext.dispatchEvent(new Event("statechange"));
+    expect(client.getStatus()).toBe("error");
+    expect(outputGain.disconnect).toHaveBeenCalledTimes(2);
     client.stop();
     expect(outputGain.disconnect).toHaveBeenCalledTimes(2);
   });

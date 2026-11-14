@@ -1,3 +1,5 @@
+import type { PlaybackSample } from "./playback-monitor";
+
 export type RealtimeConnectionStage =
   | "preflight"
   | "bridge-connect"
@@ -29,8 +31,15 @@ export interface RealtimeDiagnosticRecord {
   readonly attemptId: string;
   readonly timestamp: string;
   readonly stage: RealtimeConnectionStage;
-  readonly event: "started" | "negotiated" | "failed" | "remote-error" | "closed";
+  readonly event:
+    | "started"
+    | "negotiated"
+    | "failed"
+    | "remote-error"
+    | "closed"
+    | "playback-sample";
   readonly category?: RealtimeFailureCategory;
+  readonly playback?: PlaybackSample;
   readonly elapsedMs: number;
   readonly retryDecision: "none" | "scheduled" | "exhausted";
   readonly terminationRequested: boolean;
@@ -140,7 +149,17 @@ export function appendRealtimeDiagnostic(
   try {
     const parsed: unknown = JSON.parse(storage.getItem(STORAGE_KEY) ?? "[]");
     const previous = Array.isArray(parsed) ? parsed : [];
-    storage.setItem(STORAGE_KEY, JSON.stringify([...previous, record].slice(-MAX_RECORDS)));
+    const records = [...previous, record];
+    // Periodic output samples must not evict the connection/failure timeline.
+    let samples = records.filter((entry) => entry?.event === "playback-sample").length;
+    const retained = records.filter((entry) => {
+      if (entry?.event === "playback-sample" && samples > 12) {
+        samples--;
+        return false;
+      }
+      return true;
+    });
+    storage.setItem(STORAGE_KEY, JSON.stringify(retained.slice(-MAX_RECORDS)));
   } catch {
     // Diagnostics must never interfere with voice lifecycle.
   }
