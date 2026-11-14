@@ -18,6 +18,7 @@ import {
 import type { StateExpressionSchedulerCallbacks } from "../agent-state-expression/scheduler";
 import { mediaPermissionError } from "../media-permissions";
 import { realtimeContextParts } from "./context-items";
+import { generateSessionFollowup } from "./followup-bridge";
 import { monitorPlayback, type PlaybackSample } from "./playback-monitor";
 import { isRealtimeDebugEnabled, subscribeRealtimeDebug } from "./realtime-debug";
 import {
@@ -35,6 +36,11 @@ import {
 } from "./realtime-model";
 import type { ScreenPointerAvailability } from "./screen-observation";
 import { screenCaptureNotice, screenPointerPreferenceNotice } from "./screen-sharing-prompts";
+import { SilenceFollowup } from "./silence-followup";
+import {
+  readSilenceFollowupSettings,
+  subscribeSilenceFollowupSettings,
+} from "./silence-followup-settings";
 import { isCodexVoiceRejectionMessage } from "./voice-rejection";
 
 export type CodexRealtimeStatus = "idle" | "connecting" | "active" | "error";
@@ -198,6 +204,12 @@ export class CodexRealtimeClient implements LipSyncSource {
   private eventChannel: RTCDataChannel | null = null;
   private microphone: MediaStream | null = null;
   private microphoneMuted = false;
+  private followup: SilenceFollowup | null = null;
+  private followupSettingsKey: string | null = null;
+  private followupSupported = false;
+  private followupUnsubscribe: (() => void) | null = null;
+  private followupEventsCleanup: (() => void) | null = null;
+  private readonly followupCooldown = { lastAttempt: -Infinity };
   private microphoneLivenessCleanups: Array<() => void> = [];
   private remoteStream: MediaStream | null = null;
   private stopPlaybackMonitor: (() => void) | null = null;
@@ -505,6 +517,8 @@ export class CodexRealtimeClient implements LipSyncSource {
       sessionId: this.sessionId,
     });
     this.assertAttemptOwner(attempt);
+    // 一時推論の道具無効化リストを検証した版だけで有効にする。
+    this.followupSupported = realtimeCapabilities.appServerVersion === "0.169.0";
     this.currentStage = "initialize";
     await this.request("initialize", {
       clientInfo: { name: "yorishiro", title: "Yorishiro", version: APP_VERSION },
@@ -1041,6 +1055,7 @@ export class CodexRealtimeClient implements LipSyncSource {
         this.unsubscribeVoiceVolume = getVoiceVolumeStore().subscribe((volume) => {
           outputGain.gain.cancelScheduledValues(context.currentTime);
           outputGain.gain.setValueAtTime(volume, context.currentTime);
+          this.syncFollowup();
         });
         this.lipSync = new LipSyncAnalyser(analyser);
         this.startRemoteSpeechObservation(attempt);
@@ -1191,6 +1206,8 @@ export class CodexRealtimeClient implements LipSyncSource {
       message.method === "thread/realtime/transcript/delta" &&
       params?.threadId === this.threadId
     ) {
+      if (params.role === "user") this.followup?.userStarted();
+      if (params.role === "assistant") this.followup?.responseStarted();
       this.stateExpressionController?.onTranscriptDelta(params.role, params.delta);
     } else if (
       message.method === "thread/realtime/transcript/done" &&
@@ -1203,6 +1220,9 @@ export class CodexRealtimeClient implements LipSyncSource {
   }
 
   private observeCompletedTranscript(role: unknown, text: unknown, attempt: number): void {
+    if (!this.isAttemptOwner(attempt)) return;
+    this.syncFollowup();
+    this.followup?.record(role, text);
     // Generated ThreadRealtimeTranscriptDoneNotification has threadId/role/text,
     // but no item or turn ID. Record each actual user part; never guess a pair
     // with an assistant part or merge repeated wording into one utterance.
@@ -1225,11 +1245,17 @@ export class CodexRealtimeClient implements LipSyncSource {
   private routeRealtimeItemBoundary(value: unknown): void {
     if (!isRecord(value)) return;
     if (value.type === "input_audio_buffer.speech_started") {
+      this.followup?.userStarted();
       this.notifyUserSpeechStarted(value.item_id);
       this.stateExpressionController?.onUserSpeechStarted(value.item_id);
       return;
     }
+    if (value.type === "input_audio_buffer.speech_stopped") {
+      this.followup?.userStopped();
+      return;
+    }
     if (value.role !== "assistant") return;
+    this.followup?.responseStarted();
     this.stateExpressionController?.onAssistantResponseBoundary(value.id);
   }
 
@@ -1271,7 +1297,10 @@ export class CodexRealtimeClient implements LipSyncSource {
     this.stopRemoteSpeechObservation();
     const sample = () => {
       if (!this.isAttemptOwner(attempt) || !this.lipSync) return;
-      this.stateExpressionController?.observeRemoteSpeech(this.lipSync.hasSignal());
+      if (!this.stateExpressionController && !this.followup) return;
+      const active = this.lipSync.hasSignal();
+      this.stateExpressionController?.observeRemoteSpeech(active);
+      this.followup?.observePlayback(active);
     };
     sample();
     this.remoteSpeechSampleInterval = globalThis.setInterval(
@@ -1458,6 +1487,11 @@ export class CodexRealtimeClient implements LipSyncSource {
   private disposeResources(finalMessage?: string): void {
     this.stopModelInvestigation?.();
     this.stopModelInvestigation = null;
+    this.resetFollowup();
+    this.followupUnsubscribe?.();
+    this.followupUnsubscribe = null;
+    this.followupSupported = false;
+    this.followupCooldown.lastAttempt = -Infinity;
     this.stopPlaybackMonitor?.();
     this.stopPlaybackMonitor = null;
     this.continuityContext = null;
@@ -1495,7 +1529,92 @@ export class CodexRealtimeClient implements LipSyncSource {
 
   private setState(state: CodexRealtimeState): void {
     this.state = state;
+    this.syncFollowup();
     this.onStateChange(state);
+  }
+
+  private followupAllowed(): boolean {
+    return (
+      this.followupSupported &&
+      this.state.status === "active" &&
+      !this.stopping &&
+      !this.microphoneMuted &&
+      this.isMicrophoneCaptureActive() &&
+      document.visibilityState !== "hidden" &&
+      getVoiceVolumeStore().get() > 0 &&
+      readSilenceFollowupSettings().enabled
+    );
+  }
+
+  private resetFollowup(): void {
+    this.followup?.dispose();
+    this.followup = null;
+    this.followupSettingsKey = null;
+    this.followupEventsCleanup?.();
+    this.followupEventsCleanup = null;
+  }
+
+  private syncFollowup(): void {
+    if (this.state.status === "active" && !this.followupUnsubscribe) {
+      this.followupUnsubscribe = subscribeSilenceFollowupSettings(() => this.syncFollowup());
+    }
+    if (!this.followupAllowed() || !this.threadId) {
+      this.resetFollowup();
+      return;
+    }
+    const settings = readSilenceFollowupSettings();
+    const key = JSON.stringify(settings);
+    if (this.followup && key === this.followupSettingsKey) return;
+    this.resetFollowup();
+    const attempt = this.startAttemptEpoch;
+    const threadId = this.threadId;
+    this.followupSettingsKey = key;
+    this.followup = new SilenceFollowup(
+      settings,
+      () => this.followupAllowed() && this.isAttemptOwner(attempt),
+      (parts, signal) => {
+        this.assertActiveThreadOwner(attempt, threadId);
+        return generateSessionFollowup(this.sessionId, threadId, parts, signal);
+      },
+      async (text) => {
+        this.assertActiveThreadOwner(attempt, threadId);
+        if (!this.followupAllowed()) return;
+        // 生成器の JSON や制御指示ではなく、検証済みの短い発話本文だけを渡す。
+        await this.request("thread/realtime/appendSpeech", { threadId, text });
+      },
+      this.followupCooldown,
+    );
+    const unsubscribeVolume = getVoiceVolumeStore().subscribe(() => this.syncFollowup());
+    const visibility = () => {
+      if (document.visibilityState === "hidden") this.resetFollowup();
+    };
+    document.addEventListener("visibilitychange", visibility);
+    const channel = this.eventChannel;
+    const receive = (event: MessageEvent) => {
+      if (
+        !this.isAttemptOwner(attempt) ||
+        typeof event.data !== "string" ||
+        new TextEncoder().encode(event.data).length > 65_536
+      )
+        return;
+      let value: unknown;
+      try {
+        value = JSON.parse(event.data);
+      } catch {
+        return;
+      }
+      if (!isRecord(value)) return;
+      if (value.type === "response.created") this.followup?.responseStarted(true);
+      if (value.type === "response.done") this.followup?.responseStopped();
+      if (value.type === "input_audio_buffer.speech_started") this.followup?.userStarted();
+      if (value.type === "input_audio_buffer.speech_stopped") this.followup?.userStopped();
+    };
+    channel?.addEventListener("message", receive);
+    this.followupEventsCleanup = () => {
+      unsubscribeVolume();
+      document.removeEventListener("visibilitychange", visibility);
+      channel?.removeEventListener("message", receive);
+    };
   }
 
   private isAttemptOwner(attempt: number): boolean {
