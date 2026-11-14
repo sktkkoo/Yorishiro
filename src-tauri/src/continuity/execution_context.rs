@@ -1,7 +1,7 @@
 //! Budgeted, reversible projection of native evidence for a new execution.
 //!
 //! Canonical Saved data and accepted payloads are never modified here. Omitted
-//! records remain addressable through the host's request-scoped archive tool.
+//! records remain addressable through the backend's bounded context reader.
 use super::execution_target::ExecutionTarget;
 use super::types::{Context, ExecutionBackend, ExecutionReceipt, ReplyKind, Saved, Snapshot};
 use serde::{Deserialize, Serialize};
@@ -12,8 +12,13 @@ use std::collections::BTreeSet;
 
 pub(super) const MAX_PROMPT_UTF8_BYTES: usize = 96 * 1024;
 pub(super) const MAX_SUBMIT_UTF8_BYTES: usize = 256 * 1024;
-pub(super) const ESSENTIAL_CONTEXT_TOO_LARGE: &str =
-    "The original user requests and required corrections exceed the execution context budget; they were preserved without truncation.";
+const FIXED_CONTEXT_TOO_LARGE: &str =
+    "The fixed execution instructions exceed the transport budget; retained conversation was not truncated.";
+const MAX_INLINE_EVIDENCE_BYTES: usize = 24 * 1024;
+const MAX_INLINE_USER_MESSAGES: usize = 8;
+const MAX_INLINE_EXPLICIT_MEMORIES: usize = 8;
+const MAX_INLINE_CORRECTION_IDS: usize = 16;
+const TEXT_CONTEXT_REQUIRES_RETRIEVAL: &str = "This text-only connection cannot retrieve an oversized current request or required correction. Use a tool-enabled connection; the original evidence is preserved.";
 const ENCODING_ERROR: &str = "Could not encode the bounded execution context.";
 const MISSING_CORRECTION: &str =
     "A required correction or its original source is missing; no execution was started.";
@@ -51,6 +56,8 @@ struct Selection {
     drafts: BTreeSet<usize>,
     reflections: BTreeSet<usize>,
     forgotten_understandings: BTreeSet<usize>,
+    explicit_memories: BTreeSet<usize>,
+    next_step: bool,
 }
 
 fn explicit_memory_is_active(snapshot: &Snapshot, memory: &super::types::ExplicitMemory) -> bool {
@@ -104,11 +111,10 @@ fn projected(snapshot: &Snapshot, selected: &Selection) -> Snapshot {
         understandings: vec![],
         drafts: vec![],
         reflections: vec![],
-        explicit_memories: snapshot
+        explicit_memories: selected
             .explicit_memories
             .iter()
-            .filter(|memory| explicit_memory_is_active(snapshot, memory))
-            .cloned()
+            .map(|index| snapshot.explicit_memories[*index].clone())
             .collect(),
         forgotten_understandings: selected
             .forgotten_understandings
@@ -117,7 +123,11 @@ fn projected(snapshot: &Snapshot, selected: &Selection) -> Snapshot {
             .collect(),
         error: snapshot.error.clone(),
         last_observed_at: snapshot.last_observed_at,
-        next_step: snapshot.next_step.clone(),
+        next_step: if selected.next_step {
+            snapshot.next_step.clone()
+        } else {
+            None
+        },
     };
     projection.messages = selected
         .messages
@@ -180,6 +190,32 @@ fn receipt_summary(receipt: &ExecutionReceipt, index: usize) -> Result<Value, St
     }))
 }
 
+fn preview(text: &str) -> String {
+    text.chars().take(120).collect()
+}
+
+fn recent_index<T: Serialize>(items: &[T], count: usize) -> Result<Vec<Value>, String> {
+    items
+        .iter()
+        .enumerate()
+        .rev()
+        .take(count)
+        .map(|(index, item)| {
+            let record = serde_json::to_value(item).map_err(|_| ENCODING_ERROR.to_owned())?;
+            let body = record
+                .get("content")
+                .or_else(|| record.get("value"))
+                .or_else(|| record.get("title"))
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            Ok(
+                json!({"itemIndex":index,"id":record.get("id"),"role":record.get("role"),
+            "preview":preview(body),"previewOnly":true}),
+            )
+        })
+        .collect()
+}
+
 fn archive_manifest(saved: &Saved, request_id: &str) -> Result<Value, String> {
     let snapshot = &saved.snapshot;
     let recent = saved
@@ -191,7 +227,7 @@ fn archive_manifest(saved: &Saved, request_id: &str) -> Result<Value, String> {
         .map(|(index, receipt)| receipt_summary(receipt, index))
         .collect::<Result<Vec<_>, _>>()?;
     Ok(json!({
-        "version":1,"requestId":request_id,
+        "version":2,"requestId":request_id,"personaId":snapshot.persona_id,"revision":snapshot.revision,
         "originalLatestMessageId":snapshot.messages.last().map(|message| &message.id),
         "collections":{
             "messages":{"totalCount":snapshot.messages.len(),"nativeCollectionEncodingSha256":digest(&snapshot.messages)?},
@@ -199,7 +235,16 @@ fn archive_manifest(saved: &Saved, request_id: &str) -> Result<Value, String> {
             "drafts":{"totalCount":snapshot.drafts.len(),"nativeCollectionEncodingSha256":digest(&snapshot.drafts)?},
             "reflections":{"totalCount":snapshot.reflections.len(),"nativeCollectionEncodingSha256":digest(&snapshot.reflections)?},
             "terminalReceipts":{"totalCount":saved.terminal_receipts.len(),"nativeCollectionEncodingSha256":digest(&saved.terminal_receipts)?},
+            "explicitMemories":{"totalCount":snapshot.explicit_memories.len()},
+            "forgottenUnderstandings":{"totalCount":snapshot.forgotten_understandings.len()},
+            "state":{"totalCount":1},
         },
+        "recentIndex":{
+            "messages":recent_index(&snapshot.messages,6)?,
+            "understandings":recent_index(&snapshot.understandings,2)?,
+            "drafts":recent_index(&snapshot.drafts,2)?,
+        },
+        "pendingCorrectionCount":saved.pending_correction_ids.len(),
         "recentTerminalReceiptSummaries":recent,
     }))
 }
@@ -229,12 +274,22 @@ where
             render,
         } = self;
         let snapshot = projected(&saved.snapshot, selection);
-        let prompt = render(&snapshot, context, trigger, &saved.pending_correction_ids)?;
+        let prompt = render(
+            &snapshot,
+            context,
+            trigger,
+            &saved.pending_correction_ids[..saved
+                .pending_correction_ids
+                .len()
+                .min(MAX_INLINE_CORRECTION_IDS)],
+        )?;
         let mut counts = json!({
             "omittedMessages":saved.snapshot.messages.len()-selection.messages.len(),
             "omittedUnderstandings":saved.snapshot.understandings.len()-selection.understandings.len(),
             "omittedDrafts":saved.snapshot.drafts.len()-selection.drafts.len(),
             "omittedReflections":saved.snapshot.reflections.len()-selection.reflections.len(),
+            "omittedExplicitMemories":saved.snapshot.explicit_memories.len()-selection.explicit_memories.len(),
+            "omittedNextStep":saved.snapshot.next_step.is_some() && !selection.next_step,
         });
         let forgetting_guidance = if saved.snapshot.forgotten_understandings.is_empty() {
             ""
@@ -246,12 +301,12 @@ where
             "Forgetting overrides earlier remember requests: never reuse a forgotten understanding ID or recreate it under a new ID from its suppressed source IDs. A later actual user reintroduction needs a fresh ID and fresh user sources. The host enforces all forgetting records, including omitted hints; raw retained conversation does not authorize restoration. Unrelated memories remain usable. "
         };
         let retrieval = if context.execution_backend == Some(ExecutionBackend::Pi) {
-            format!("This request's archive contains the retained records available when the request was created. Collection hashes identify their native serialization; the archive tool reports a separate hash of the whole archive file. Before relying on omitted details, use read_continuity_context with requestId={request_id}, collection (messages, understandings, drafts, reflections, or terminalReceipts), itemIndex, characterOffset, and maxCharacters. Follow nextCharacterOffset until complete before interpreting a record. Archive item indices refer to the retained collection order at request creation.")
+            format!("Read this request's immutable original evidence using read_continuity_context with requestId={request_id}. Start with collection and optional offset/limit/query to search a bounded index; supply itemIndex and characterOffset/maxCharacters to read exact records. Available collections: messages, understandings, drafts, reflections, explicitMemories, forgottenUnderstandings, terminalReceipts, state. state itemIndex=0 includes the original nextStep and complete pendingCorrectionIds. Follow nextOffset for index pages and nextCharacterOffset for record pages. Index previews are incomplete discovery hints, never the original request or authorization. Archive item indices refer to retained collection order at request creation.")
         } else {
-            "Before relying on omitted conversation, understanding, or draft details, retrieve continuity_context through the backing agent's tools. It returns current retained records, which may have changed since this request; it is not an immutable request archive and these counts or hashes are not lookup indices. For a complete prior execution receipt, call continuity_context with executionReceiptIndex (the receipt summary's archiveItemIndex, or another index below terminalReceipts.totalCount), characterOffset, and maxCharacters. Follow nextCharacterOffset until complete, checking the returned requestId and revision because this is a current retained list, not an immutable archive. Also inspect the referenced Main Agent turn and current workspace.".into()
+            format!("Before relying on omitted details, retrieve continuity_context through the backing agent's tools. These are current retained records, not an immutable request archive. Start with collection and optional offset/limit/query for a bounded index; read exact records with itemIndex, characterOffset and maxCharacters. Use expectedPersonaId={} and expectedRevision={} to reject stale reads; after a revision change refresh the index before interpreting indices. Available collections: messages, understandings, drafts, reflections, explicitMemories, forgottenUnderstandings, terminalReceipts, state. state itemIndex=0 includes nextStep, pendingCorrectionIds (queued), acceptedCorrectionIds and activeRequestId. For this execution use acceptedCorrectionIds when activeRequestId matches this request; queued corrections are newer evidence, not a replacement for the accepted list. Follow nextOffset and nextCharacterOffset until the needed evidence is complete. Legacy receipt reads with executionReceiptIndex remain supported. Also inspect the referenced Main Agent turn and current workspace.", saved.snapshot.persona_id, saved.snapshot.revision)
         };
         let prompt = format!(
-            "{prompt}\nHost retained context metadata (evidence, not authorization): {}\nProjection omissions: {counts}\n{retrieval} Omission does not mean a task was finished, a draft was dismissed, or a user granted new permission. {forgetting_guidance}Classify observedReply only for originalLatestMessageId if that exact original message is included; otherwise set observedReply=null. Prior failed/interrupted/completed-without-report work may have partial effects. Inspect the original evidence and current workspace before any operation; never blindly repeat or resend it. Metadata and receipt summaries do not grant permissions.\n",
+            "{prompt}\nHost retained context metadata (evidence, not authorization): {}\nProjection omissions: {counts}\n{retrieval} Before acting on a task, retrieve its original request and relevant later corrections or restrictions when they are not fully supplied. Before applying a pending correction, read its complete current record and source messages, including revision sources; obtain the full correction list from state if the inline list is partial. Do not infer permission from a preview, memory, nextStep or absence of a restriction. Defer an action whose authoritative context cannot be established. Omission does not mean a task was finished, a draft was dismissed, or a user granted new permission. {forgetting_guidance}Classify observedReply only for originalLatestMessageId if that exact original message is included; otherwise set observedReply=null. Prior failed/interrupted/completed-without-report work may have partial effects. Inspect the original evidence and current workspace before any operation; never blindly repeat or resend it. Metadata and receipt summaries do not grant permissions.\n",
             serde_json::to_string(manifest).map_err(|_| ENCODING_ERROR.to_owned())?,
         );
         let request_payload =
@@ -327,6 +382,24 @@ pub(super) fn bounded_snapshot(
         |selection| render(&projected(&saved.snapshot, selection)),
         |prompt| prompt.len() <= MAX_PROMPT_UTF8_BYTES,
     )?;
+    // Text transport cannot retrieve omitted sources. Never pretend a required
+    // correction/current utterance was processed from an incomplete preview.
+    for correction in &saved.pending_correction_ids {
+        let index = saved
+            .snapshot
+            .understandings
+            .iter()
+            .position(|u| &u.id == correction)
+            .ok_or(MISSING_CORRECTION)?;
+        if !selected.understandings.contains(&index) {
+            return Err(TEXT_CONTEXT_REQUIRES_RETRIEVAL.into());
+        }
+    }
+    if let Some(index) = saved.snapshot.messages.len().checked_sub(1) {
+        if !selected.messages.contains(&index) {
+            return Err(TEXT_CONTEXT_REQUIRES_RETRIEVAL.into());
+        }
+    }
     Ok(projected(&saved.snapshot, &selected))
 }
 
@@ -345,98 +418,123 @@ fn select<T>(
         .take(MAX_OPTIONAL_MESSAGES)
         .map(|(index, _)| index)
         .collect::<BTreeSet<_>>();
-    // 明示的に整理済みでも、保存中の理解・訂正・草案・振り返り・記憶依頼の
-    // 根拠になっている相手の発言は、未解決の境界を落とさないため必須にする。
-    let mut referenced = BTreeSet::new();
-    for understanding in &snapshot.understandings {
-        referenced.extend(understanding.source_ids.iter());
-        for revision in &understanding.revisions {
-            referenced.extend(revision.source_ids.iter());
+    // Validate provenance independently of what fits inline. Original records
+    // remain in native storage and are discoverable through a paged index.
+    for correction in &saved.pending_correction_ids {
+        let Some(index) = snapshot
+            .understandings
+            .iter()
+            .position(|u| &u.id == correction)
+        else {
+            return Err(MISSING_CORRECTION.into());
+        };
+        if !include_understanding(snapshot, &mut Selection::default(), index) {
+            return Err(MISSING_CORRECTION.into());
         }
-    }
-    for draft in &snapshot.drafts {
-        referenced.extend(draft.source_ids.iter());
-    }
-    for reflection in &snapshot.reflections {
-        referenced.extend(reflection.source_ids.iter());
     }
     for memory in snapshot
         .explicit_memories
         .iter()
-        .filter(|memory| explicit_memory_is_active(snapshot, memory))
+        .filter(|m| explicit_memory_is_active(snapshot, m))
     {
-        referenced.insert(&memory.request_message_id);
-        referenced.extend(memory.source_ids.iter());
-    }
-    let mut selected = Selection::default();
-    for (index, message) in snapshot.messages.iter().enumerate() {
-        if message.role == "user"
-            && message.source != "legacy"
-            && (!saved.retired_message_ids.contains(&message.id)
-                || referenced.contains(&message.id)
-                || recent_messages.contains(&index))
-        {
-            selected.messages.insert(index);
-        }
-    }
-    // 「覚えて」の依頼は要約へ置き換えず、指示対象の会話を含めた原文を残す。
-    for memory in snapshot
-        .explicit_memories
-        .iter()
-        .filter(|memory| explicit_memory_is_active(snapshot, memory))
-    {
+        let mut check = Selection::default();
         if !source_messages(
             snapshot,
-            &mut selected,
+            &mut check,
             std::slice::from_ref(&memory.request_message_id),
-        ) || !source_messages(snapshot, &mut selected, &memory.source_ids)
+        ) || !source_messages(snapshot, &mut check, &memory.source_ids)
         {
             return Err(MISSING_EXPLICIT_MEMORY.into());
         }
+    }
+    let mut selected = Selection::default();
+    let mut result = compose(&selected)?;
+    if !fits(&result) {
+        return Err(FIXED_CONTEXT_TOO_LARGE.into());
+    }
+    let attempt = |candidate: Selection, selected: &mut Selection, result: &mut T| {
+        // A fixed evidence allowance prevents sparse history from filling the
+        // whole model context. Never cut a record or a source dependency in half.
+        if serde_json::to_vec(&projected(snapshot, &candidate))
+            .map_err(|_| ENCODING_ERROR.to_owned())?
+            .len()
+            > MAX_INLINE_EVIDENCE_BYTES
+        {
+            return Ok::<(), String>(());
+        }
+        let value = compose(&candidate)?;
+        if fits(&value) {
+            *selected = candidate;
+            *result = value;
+        }
+        Ok(())
+    };
+    // Newest conversation and current task first; older evidence stays indexed.
+    for index in recent_messages.iter().rev() {
+        let mut candidate = selected.clone();
+        candidate.messages.insert(*index);
+        attempt(candidate, &mut selected, &mut result)?;
+    }
+    if snapshot.next_step.is_some() {
+        let mut candidate = selected.clone();
+        candidate.next_step = true;
+        attempt(candidate, &mut selected, &mut result)?;
+    }
+    for correction in &saved.pending_correction_ids {
+        let index = snapshot
+            .understandings
+            .iter()
+            .position(|u| &u.id == correction)
+            .unwrap();
+        let mut candidate = selected.clone();
+        include_understanding(snapshot, &mut candidate, index);
+        attempt(candidate, &mut selected, &mut result)?;
+    }
+    for (index, memory) in snapshot
+        .explicit_memories
+        .iter()
+        .enumerate()
+        .rev()
+        .filter(|(_, m)| explicit_memory_is_active(snapshot, m))
+        .take(MAX_INLINE_EXPLICIT_MEMORIES)
+    {
+        let mut candidate = selected.clone();
+        source_messages(
+            snapshot,
+            &mut candidate,
+            std::slice::from_ref(&memory.request_message_id),
+        );
+        source_messages(snapshot, &mut candidate, &memory.source_ids);
+        candidate.explicit_memories.insert(index);
+        attempt(candidate, &mut selected, &mut result)?;
+    }
+    // A bounded handful of older user turns and the last pending question are
+    // useful hints, not an ever-growing mandatory transcript.
+    for (index, _) in snapshot
+        .messages
+        .iter()
+        .enumerate()
+        .rev()
+        .filter(|(_, m)| {
+            m.role == "user" && m.source != "legacy" && !saved.retired_message_ids.contains(&m.id)
+        })
+        .take(MAX_INLINE_USER_MESSAGES)
+    {
+        let mut candidate = selected.clone();
+        candidate.messages.insert(index);
+        attempt(candidate, &mut selected, &mut result)?;
     }
     if let Some((index, _)) = snapshot
         .messages
         .iter()
         .enumerate()
         .rev()
-        .find(|(_, message)| {
-            message.role == "assistant" && message.reply_kind == Some(ReplyKind::AwaitingReply)
-        })
+        .find(|(_, m)| m.role == "assistant" && m.reply_kind == Some(ReplyKind::AwaitingReply))
     {
-        selected.messages.insert(index);
+        let mut candidate = selected.clone();
+        candidate.messages.insert(index);
+        attempt(candidate, &mut selected, &mut result)?;
     }
-    if let Some((index, message)) = snapshot.messages.iter().enumerate().next_back() {
-        if message.role == "assistant"
-            && matches!(message.source.as_str(), "voice" | "external")
-            && message.reply_kind.is_none()
-        {
-            selected.messages.insert(index);
-        }
-    }
-    for correction in &saved.pending_correction_ids {
-        let Some(index) = snapshot
-            .understandings
-            .iter()
-            .position(|understanding| &understanding.id == correction)
-        else {
-            return Err(MISSING_CORRECTION.into());
-        };
-        if !include_understanding(snapshot, &mut selected, index) {
-            return Err(MISSING_CORRECTION.into());
-        }
-    }
-    let mut result = compose(&selected)?;
-    if !fits(&result) {
-        return Err(ESSENTIAL_CONTEXT_TOO_LARGE.into());
-    }
-    let attempt = |candidate: Selection, selected: &mut Selection, result: &mut T| {
-        let value = compose(&candidate)?;
-        if fits(&value) {
-            *selected = candidate;
-            *result = value;
-        }
-        Ok::<(), String>(())
-    };
     // 全削除履歴は host の更新検証が参照する。prompt には今の原文に関連する
     // 手掛かりと直近のものだけを載せ、削除件数で必須の依頼を圧迫しない。
     let required_sources = selected
@@ -813,7 +911,9 @@ mod tests {
         );
         assert_eq!(view.messages[1].id, "remember");
         saved.snapshot.messages[0].content = "x".repeat(MAX_PROMPT_UTF8_BYTES);
-        assert_eq!(run(&saved).unwrap_err(), ESSENTIAL_CONTEXT_TOO_LARGE);
+        let projection = run(&saved).unwrap();
+        assert!(within_budget(&projection));
+        assert!(projection.prompt.contains("explicitMemories"));
         saved.snapshot.messages.remove(0);
         assert_eq!(run(&saved).unwrap_err(), MISSING_EXPLICIT_MEMORY);
     }
@@ -826,7 +926,7 @@ mod tests {
             .messages
             .push(message("current", "user", "Current request".into()));
         let result = bounded_snapshot(&saved, |_| Ok("x".repeat(MAX_PROMPT_UTF8_BYTES + 1)));
-        assert_eq!(result.unwrap_err(), ESSENTIAL_CONTEXT_TOO_LARGE);
+        assert_eq!(result.unwrap_err(), FIXED_CONTEXT_TOO_LARGE);
     }
 
     #[test]
@@ -990,7 +1090,7 @@ mod tests {
     }
 
     #[test]
-    fn essential_context_overflow_is_not_silently_truncated() {
+    fn oversized_original_is_indexed_and_retrievable_without_truncating_native_history() {
         let mut saved = saved();
         saved.snapshot.messages.push(message(
             "authority",
@@ -998,8 +1098,125 @@ mod tests {
             "同意なしに公開しない。".repeat(12000),
         ));
         let before = serde_json::to_vec(&saved).unwrap();
-        assert_eq!(run(&saved).unwrap_err(), ESSENTIAL_CONTEXT_TOO_LARGE);
+        let projection = run(&saved).unwrap();
+        assert!(within_budget(&projection));
+        assert!(projection.prompt.contains("previewOnly"));
+        assert!(projection.prompt.contains("retrieve its original request"));
+        assert!(!projection
+            .prompt
+            .contains(&saved.snapshot.messages[0].content));
         assert_eq!(before, serde_json::to_vec(&saved).unwrap());
+    }
+
+    #[test]
+    fn growing_user_history_uses_a_fixed_inline_allowance_and_does_not_mutate_evidence() {
+        let mut saved = saved();
+        for index in 0..1000 {
+            saved.snapshot.messages.push(message(
+                &format!("user-{index}"),
+                "user",
+                format!("Original task {index}. {}", "条件".repeat(120)),
+            ));
+        }
+        let before = serde_json::to_vec(&saved).unwrap();
+        let projection = run(&saved).unwrap();
+        assert!(projection.prompt.len() < 40 * 1024);
+        assert!(projection.budget.omitted_message_count > 980);
+        assert!(projection.prompt.contains("user-999"));
+        assert!(projection.prompt.contains("totalCount\":1000"));
+        assert!(projection.prompt.contains("offset/limit/query"));
+        assert_eq!(serde_json::to_vec(&saved).unwrap(), before);
+    }
+
+    #[test]
+    fn large_correction_sources_are_retrievable_and_text_transport_defers_explicitly() {
+        let mut saved = saved();
+        saved.snapshot.messages.push(message(
+            "original",
+            "user",
+            format!("{} NEVER_SEND_WITHOUT_APPROVAL", "文脈".repeat(40000)),
+        ));
+        saved.snapshot.messages.push(message(
+            "current",
+            "user",
+            "Correct that understanding.".into(),
+        ));
+        saved.snapshot.understandings.push(Understanding {
+            id: "correct-me".into(),
+            title: "Boundary".into(),
+            value: "Do not send".into(),
+            certainty: Certainty::Confirmed,
+            source_ids: vec!["current".into()],
+            updated_at: 1,
+            revisions: vec![Revision {
+                value: "Earlier".into(),
+                reason: "Original".into(),
+                source_ids: vec!["original".into()],
+                created_at: 0,
+            }],
+        });
+        saved.pending_correction_ids.push("correct-me".into());
+        let before = serde_json::to_vec(&saved).unwrap();
+        let projection = run(&saved).unwrap();
+        assert!(within_budget(&projection));
+        assert!(projection.prompt.contains("correct-me"));
+        assert!(projection
+            .prompt
+            .contains("read its complete current record and source messages"));
+        assert!(projection.prompt.contains("pendingCorrectionCount\":1"));
+        assert_eq!(
+            bounded_snapshot(&saved, |s| Ok(serde_json::to_string(s).unwrap())).unwrap_err(),
+            TEXT_CONTEXT_REQUIRES_RETRIEVAL
+        );
+        assert_eq!(serde_json::to_vec(&saved).unwrap(), before);
+    }
+
+    #[test]
+    fn huge_next_step_and_latest_request_do_not_overflow_tool_projection() {
+        let mut saved = saved();
+        saved
+            .snapshot
+            .messages
+            .push(message("huge", "user", "🦊".repeat(100000)));
+        saved.snapshot.next_step = Some("Follow up ".repeat(50000));
+        let before = serde_json::to_vec(&saved).unwrap();
+        let projection = run(&saved).unwrap();
+        assert!(projection.prompt.len() < 20 * 1024);
+        assert!(projection.prompt.contains("omittedNextStep\":true"));
+        assert!(projection.prompt.contains("state itemIndex=0"));
+        assert_eq!(
+            bounded_snapshot(&saved, |s| Ok(serde_json::to_string(s).unwrap())).unwrap_err(),
+            TEXT_CONTEXT_REQUIRES_RETRIEVAL
+        );
+        assert_eq!(serde_json::to_vec(&saved).unwrap(), before);
+    }
+
+    /// Local diagnosis only: never commits private conversation as a fixture.
+    #[test]
+    #[ignore]
+    fn replay_native_state_without_copying_private_evidence() {
+        let path = std::env::var("YORISHIRO_CONTEXT_REPLAY").expect("set native state path");
+        let bytes = std::fs::read(&path).unwrap();
+        let decoded =
+            super::super::storage::decode_saved(serde_json::from_slice(&bytes).unwrap()).unwrap();
+        let saved: Saved = serde_json::from_value(decoded).unwrap();
+        let context = saved.auto_context.as_ref().unwrap();
+        let projection = build(
+            &saved,
+            context,
+            "return",
+            REQUEST,
+            &super::super::execution_schema(),
+            super::super::execution_prompt,
+        )
+        .unwrap();
+        assert!(within_budget(&projection));
+        assert!(projection.prompt.len() < 64 * 1024);
+        assert_eq!(std::fs::read(path).unwrap(), bytes);
+        eprintln!(
+            "Replay budget: prompt={} omittedMessages={}",
+            projection.budget.prompt_utf8_bytes, projection.budget.omitted_message_count
+        );
     }
 
     #[test]
@@ -1074,7 +1291,7 @@ mod tests {
             "active-current",
             "active",
             20,
-            format!("{}CURRENT_ACTIVE_WORK", "a".repeat(60000)),
+            format!("{}CURRENT_ACTIVE_WORK", "a".repeat(12000)),
         ));
         saved.snapshot.drafts.push(make_draft(
             "old-dismissed",

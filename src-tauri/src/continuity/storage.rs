@@ -264,7 +264,7 @@ fn encode_saved(saved: &Saved) -> Result<Value, String> {
     Ok(value)
 }
 
-fn decode_saved(mut value: Value) -> Result<Value, String> {
+pub(super) fn decode_saved(mut value: Value) -> Result<Value, String> {
     let object = value.as_object_mut().ok_or(FORMAT_ERROR)?;
     let has_forgetting = match object
         .get("snapshot")
