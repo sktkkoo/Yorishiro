@@ -61,7 +61,7 @@ const COPY = {
     failed: "ログインまたは設定に失敗しました。もう一度お試しください。",
     timeout: "ログインが時間切れになりました。もう一度開始してください。",
     browser: "ブラウザを開けませんでした。既定のブラウザの設定を確認してください。",
-    unavailable: "このアプリでは接続設定を利用できません。アプリを更新してください。",
+    unavailable: "接続設定にアクセスできませんでした。接続状態を再確認してください。",
   },
   en: {
     title: "Settings",
@@ -104,7 +104,7 @@ const COPY = {
     failed: "Sign-in or setup failed. Please try again.",
     timeout: "Sign-in timed out. Start it again when ready.",
     browser: "The browser could not be opened. Check your default browser settings.",
-    unavailable: "Connection setup is unavailable in this app. Please update it.",
+    unavailable: "Could not access connection settings. Recheck the connection status.",
   },
 };
 
@@ -189,6 +189,7 @@ export function PiSetup({
     if (value === "login_cancelled") return copy.cancelled;
     return copy.failed;
   };
+  const errorMessage = error ? message(error) : null;
   const selectCommand = (command: PiCommandPreset, enabled: boolean) => {
     dirty.current = true;
     setCommands((current) =>
@@ -233,14 +234,16 @@ export function PiSetup({
       {setup.loading ? <p role="status">{copy.loading}</p> : null}
       {!setup.loading ? (
         <div className="pi-setup-form">
-          <p>{copy.description}</p>
+          {status?.runtimeReady ? <p>{copy.description}</p> : null}
           {cwd ? (
             <p>
               {copy.workspaceLabel}: <strong>{workspaceName}</strong>
             </p>
           ) : null}
           {status?.legacyConfiguration ? <p>{copy.legacy}</p> : null}
-          {!status?.workspaceAvailable ? <p>{copy.workspace}</p> : null}
+          {status?.workspaceAvailable === false && errorMessage !== copy.workspace ? (
+            <p>{copy.workspace}</p>
+          ) : null}
           {status?.runtimeReady ? (
             <>
               <p>{status.authenticated ? copy.authPresent : copy.authMissing}</p>
@@ -357,9 +360,9 @@ export function PiSetup({
                 {setup.busy && !active ? copy.saving : copy.save}
               </button>
             </>
-          ) : (
+          ) : status?.runtimeReady === false && errorMessage !== copy.runtime ? (
             <p>{copy.runtime}</p>
-          )}
+          ) : null}
           <button
             type="button"
             disabled={setup.busy || setup.loading || setup.checking}
@@ -374,9 +377,9 @@ export function PiSetup({
           <p id={`${id}-refresh-hint`}>{copy.retryHint}</p>
         </div>
       ) : null}
-      {error ? (
+      {errorMessage ? (
         <p className="pi-setup-error" role="alert">
-          {message(error)}
+          {errorMessage}
         </p>
       ) : null}
     </section>
