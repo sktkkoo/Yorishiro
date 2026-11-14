@@ -111,6 +111,16 @@ function snapshot(): ContinuitySnapshot {
   };
 }
 let current: ContinuitySnapshot;
+function pendingQuestion(id = "pending-question"): ContinuitySnapshot["messages"][number] {
+  return {
+    id,
+    role: "assistant",
+    content: `Choose a direction: ${id}`,
+    createdAt: now + 2,
+    source: "conversation",
+    replyKind: "awaitingReply",
+  };
+}
 const originalShowModal = Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, "showModal");
 const originalClose = Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, "close");
 const props = (): ContinuityWorkspaceProps => ({
@@ -259,6 +269,146 @@ describe("ContinuityWorkspace", () => {
     );
     expect(screen.getByRole("status").textContent).toBe("Working");
     expect(native.retryContinuity).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["ja", "返答を求めています", "質問を見る", "作業中"],
+    ["en", "Reply requested", "View question", "Working"],
+  ] as const)("finds and focuses the latest unanswered %s question without changing the draft or work", (language, cue, viewQuestion, activity) => {
+    current = {
+      ...current,
+      phase: "working",
+      messages: [
+        ...current.messages,
+        pendingQuestion("older-question"),
+        pendingQuestion(),
+        {
+          ...pendingQuestion("report"),
+          replyKind: "report",
+          content: "Independent work completed",
+        },
+      ],
+    };
+    render(<ContinuityWorkspace {...props()} language={language} />);
+    const input = screen.getByRole("textbox");
+    fireEvent.change(input, { target: { value: "My unsent answer" } });
+    const button = screen.getByRole("button", { name: viewQuestion });
+    const target = screen.getByRole("article", { name: cue });
+    const flow = screen.getByRole("log").closest(".continuity-flow") as HTMLElement;
+    expect(button.getAttribute("aria-controls")).toBe(target.id);
+    expect(target.textContent).toContain("Choose a direction: pending-question");
+    vi.spyOn(flow, "getBoundingClientRect").mockReturnValue({ top: 100 } as DOMRect);
+    vi.spyOn(target, "getBoundingClientRect").mockReturnValue({ top: 320 } as DOMRect);
+    flow.scrollTop = 150;
+    button.focus();
+    expect(document.activeElement).toBe(button);
+    fireEvent.click(button);
+    expect(document.activeElement).toBe(target);
+    expect(target.tabIndex).toBe(-1);
+    expect(flow.scrollTop).toBe(362);
+    expect(input).toHaveProperty("value", "My unsent answer");
+    expect(screen.getByRole("status").textContent).toBe(activity);
+    expect(screen.getByRole("switch").getAttribute("aria-checked")).toBe("true");
+    for (const command of [
+      native.sendContinuityMessage,
+      native.actOnContinuityDraft,
+      native.retryContinuity,
+      native.refreshContinuity,
+      native.setContinuityAutoEnabled,
+      native.forgetContinuityUnderstanding,
+    ])
+      expect(command).not.toHaveBeenCalled();
+  });
+
+  it("keeps the question discoverable until a user reply is recorded, including a failed send", async () => {
+    current = { ...current, messages: [...current.messages, pendingQuestion()] };
+    const view = render(<ContinuityWorkspace {...props()} language="en" />);
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Unsent answer" } });
+    expect(screen.getByRole("button", { name: "View question" })).toBeTruthy();
+    native.sendContinuityMessage.mockRejectedValueOnce(new Error("Could not save answer"));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Send" })));
+    expect(screen.getByRole("button", { name: "View question" })).toBeTruthy();
+    expect(screen.getByRole("textbox")).toHaveProperty("value", "Unsent answer");
+    current = {
+      ...current,
+      messages: [
+        ...current.messages,
+        {
+          ...pendingQuestion("recorded-reply"),
+          role: "user",
+          source: "voice",
+          replyKind: null,
+          content: "Recorded answer",
+        },
+      ],
+    };
+    view.rerender(<ContinuityWorkspace {...props()} language="en" />);
+    expect(screen.queryByRole("button", { name: "View question" })).toBeNull();
+    expect(screen.getByRole("textbox")).toHaveProperty("value", "Unsent answer");
+  });
+
+  it.each([
+    [{ ...pendingQuestion(), replyKind: undefined }],
+    [{ ...pendingQuestion(), replyKind: null }],
+    [{ ...pendingQuestion(), replyKind: "report" as const }],
+    [{ ...pendingQuestion(), source: "legacy" as const }],
+    [pendingQuestion(), { ...pendingQuestion("answered"), role: "user" as const }],
+  ])("does not infer pending questions from old metadata, legacy content or answered messages", (...messages) => {
+    current = { ...current, messages: [...current.messages, ...messages] };
+    render(<ContinuityWorkspace {...props()} language="en" />);
+    expect(screen.queryByRole("button", { name: "View question" })).toBeNull();
+  });
+
+  it("ignores legacy user text as an answer and scopes pending questions to the selected persona", () => {
+    current = {
+      ...current,
+      messages: [
+        ...current.messages,
+        pendingQuestion(),
+        { ...pendingQuestion("legacy-user"), role: "user", source: "legacy" },
+      ],
+    };
+    const view = render(<ContinuityWorkspace {...props()} language="en" />);
+    expect(screen.getByRole("button", { name: "View question" })).toBeTruthy();
+    current = snapshot();
+    view.rerender(<ContinuityWorkspace {...props()} language="en" personaId="another-persona" />);
+    expect(screen.queryByRole("button", { name: "View question" })).toBeNull();
+  });
+
+  it("preserves reading position and unread reports while focused on a question, then follows the latest reply on request", () => {
+    current = { ...current, messages: [...current.messages, pendingQuestion()] };
+    const view = render(<ContinuityWorkspace {...props()} language="en" />);
+    const flow = screen.getByRole("log").closest(".continuity-flow") as HTMLElement;
+    Object.defineProperties(flow, {
+      scrollHeight: { configurable: true, value: 800 },
+      clientHeight: { configurable: true, value: 400 },
+    });
+    flow.scrollTop = 400;
+    fireEvent.click(screen.getByRole("button", { name: "View question" }));
+    const readingPosition = flow.scrollTop;
+    fireEvent.scroll(flow);
+    current = {
+      ...current,
+      messages: [...current.messages, { ...pendingQuestion("report-1"), replyKind: "report" }],
+    };
+    view.rerender(<ContinuityWorkspace {...props()} language="en" />);
+    expect(flow.scrollTop).toBe(readingPosition);
+    expect(document.activeElement).toBe(screen.getByRole("article", { name: "Reply requested" }));
+    expect(screen.getByRole("button", { name: "New reply" })).toBeTruthy();
+    fireEvent.scroll(flow);
+    expect(screen.getByRole("button", { name: "New reply" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "View question" }));
+    expect(screen.getByRole("button", { name: "New reply" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "New reply" }));
+    expect(flow.scrollTop).toBe(800);
+    expect(screen.queryByRole("button", { name: "New reply" })).toBeNull();
+    current = {
+      ...current,
+      messages: [...current.messages, { ...pendingQuestion("report-2"), replyKind: "report" }],
+    };
+    view.rerender(<ContinuityWorkspace {...props()} language="en" />);
+    expect(screen.queryByRole("button", { name: "New reply" })).toBeNull();
+    expect(screen.getByRole("button", { name: "View question" })).toBeTruthy();
   });
 
   it("updates activity without scrolling older replies, losing input, or clearing unread replies", () => {
