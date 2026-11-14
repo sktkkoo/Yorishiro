@@ -728,9 +728,10 @@ export class CodexRealtimeClient implements LipSyncSource {
     readonly startupContextIncluded: boolean;
     readonly diagnostic: CodexRealtimePersonaApplication;
   } {
+    // 人格の読込・適用結果にかかわらず、呼び出し元の履歴送信方針を守る。
     if (personaSnapshot.status === "load-failed") {
       return {
-        startupContextIncluded: true,
+        startupContextIncluded: this.includeStartupContext,
         diagnostic: {
           personaId: null,
           status: "load-failed",
@@ -743,7 +744,7 @@ export class CodexRealtimeClient implements LipSyncSource {
     const personaId = normalizePersonaId(snapshot.personaId);
     if (!personaId) {
       return {
-        startupContextIncluded: true,
+        startupContextIncluded: this.includeStartupContext,
         diagnostic: {
           personaId: null,
           status: "skipped-no-persona",
@@ -754,7 +755,7 @@ export class CodexRealtimeClient implements LipSyncSource {
     const instructions = snapshot.instructions?.trim() ?? "";
     if (!instructions) {
       return {
-        startupContextIncluded: true,
+        startupContextIncluded: this.includeStartupContext,
         diagnostic: {
           personaId,
           status: "skipped-empty",
@@ -764,7 +765,7 @@ export class CodexRealtimeClient implements LipSyncSource {
     }
     if (!capabilities.personaInitialItems) {
       return {
-        startupContextIncluded: true,
+        startupContextIncluded: this.includeStartupContext,
         diagnostic: {
           personaId,
           status: "unsupported",
@@ -776,13 +777,13 @@ export class CodexRealtimeClient implements LipSyncSource {
       return {
         prompt: instructions,
         // Prompt replacement does not use the supplemental developer-item experiment.
-        startupContextIncluded: true,
+        startupContextIncluded: this.includeStartupContext,
         diagnostic: {
           personaId,
           status: "accepted",
           appServerVersion: capabilities.appServerVersion,
           delivery: "prompt-replacement",
-          startupContextIncluded: true,
+          startupContextIncluded: this.includeStartupContext,
         },
       };
     }

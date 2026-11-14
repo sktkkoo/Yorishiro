@@ -1141,6 +1141,43 @@ describe("CodexRealtimeClient", () => {
     client.stop();
   });
 
+  it.each(
+    ["supplemental", "replace", "no-persona", "empty", "unsupported", "load-failed"].flatMap(
+      (outcome) =>
+        [undefined, true, false].map((includeStartupContext) => ({
+          outcome,
+          includeStartupContext,
+        })),
+    ),
+  )("preserves startup history policy $includeStartupContext for $outcome", async ({
+    outcome,
+    includeStartupContext,
+  }) => {
+    if (outcome === "unsupported") {
+      bridge.capabilities = {
+        appServerVersion: "0.145.0",
+        personaInitialItems: false,
+        delegationAckFiller: false,
+      };
+    }
+    const client = new CodexRealtimeClient("main-session", undefined, {
+      includeStartupContext,
+      personaPromptMode: outcome === "replace" ? "replace" : "supplemental",
+      getPersonaSnapshot: () => {
+        if (outcome === "load-failed") throw new Error("persona unavailable");
+        return {
+          personaId: outcome === "no-persona" ? null : "yori-ja",
+          instructions: outcome === "empty" ? " " : "persona guidance",
+        };
+      },
+    });
+    await client.start();
+    const start = bridge.sent.find((message) => message.method === "thread/realtime/start");
+    expect(start?.params?.includeStartupContext).toBe(includeStartupContext ?? true);
+    expect(client.getStatus()).toBe("active");
+    client.stop();
+  });
+
   it("can explicitly replace the realtime backend prompt for a comparison experiment", async () => {
     const diagnostics: CodexRealtimePersonaApplication[] = [];
     const client = new CodexRealtimeClient("main-session", undefined, {
@@ -1155,14 +1192,14 @@ describe("CodexRealtimeClient", () => {
     const start = bridge.sent.find((message) => message.method === "thread/realtime/start");
     expect(start?.params?.prompt).toBe("I am Yori");
     expect(start?.params).not.toHaveProperty("initialItems");
-    expect(start?.params?.includeStartupContext).toBe(true);
+    expect(start?.params?.includeStartupContext).toBe(false);
     expect(diagnostics).toEqual([
       {
         personaId: "yori-ja",
         status: "accepted",
         appServerVersion: "0.146.0",
         delivery: "prompt-replacement",
-        startupContextIncluded: true,
+        startupContextIncluded: false,
       },
     ]);
     client.stop();
@@ -1270,7 +1307,7 @@ describe("CodexRealtimeClient", () => {
 
     const start = bridge.sent.find((message) => message.method === "thread/realtime/start");
     expect(start?.params?.initialItems).toEqual([localWorkHandoffItem()]);
-    expect(start?.params?.includeStartupContext).toBe(true);
+    expect(start?.params?.includeStartupContext).toBe(false);
     expect(start?.params).not.toHaveProperty("prompt");
     expect(start?.params).not.toHaveProperty("realtimeStartInstructions");
     expect(start?.params).not.toHaveProperty("realtimeEndInstructions");
@@ -1298,7 +1335,7 @@ describe("CodexRealtimeClient", () => {
     expect(start?.params).not.toHaveProperty("initialItems");
     expect(start?.params).not.toHaveProperty("prompt");
     expect(start?.params).not.toHaveProperty("delegationAckFiller");
-    expect(start?.params?.includeStartupContext).toBe(true);
+    expect(start?.params?.includeStartupContext).toBe(false);
     expect(JSON.stringify(start?.params)).not.toContain("persona prompt");
     expect(diagnostics).toEqual([
       { personaId: "yori", status: "unsupported", appServerVersion: "0.145.0" },
@@ -1321,7 +1358,7 @@ describe("CodexRealtimeClient", () => {
     expect(client.getStatus()).toBe("active");
     const start = bridge.sent.find((message) => message.method === "thread/realtime/start");
     expect(start?.params?.initialItems).toEqual([localWorkHandoffItem()]);
-    expect(start?.params?.includeStartupContext).toBe(true);
+    expect(start?.params?.includeStartupContext).toBe(false);
     expect(diagnostics).toEqual([
       { personaId: null, status: "load-failed", appServerVersion: "0.146.0" },
     ]);
