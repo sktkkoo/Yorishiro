@@ -1,4 +1,14 @@
-import { ArrowDown, ArrowUp, BookOpen, LoaderCircle, Mic, MicOff, Trash2, X } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowUp,
+  BookOpen,
+  LoaderCircle,
+  Mic,
+  MicOff,
+  Settings,
+  Trash2,
+  X,
+} from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { CONTINUITY_COPY } from "../i18n/continuity";
@@ -112,6 +122,30 @@ function ResidentWorkspace({
   const [piReadiness, setPiReadiness] = useState({ cwd, ready: executionBackend !== "pi" });
   const onPiReadiness = useCallback((ready: boolean) => setPiReadiness({ cwd, ready }), [cwd]);
   const piReady = executionBackend !== "pi" || (piReadiness.cwd === cwd && piReadiness.ready);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const settingsOpenRef = useRef(settingsOpen);
+  settingsOpenRef.current = settingsOpen;
+  const settingsScope = useRef({ cwd, personaId, executionBackend });
+  const [piAttention, setPiAttention] = useState(false);
+  const settingsButtonRef = useRef<HTMLButtonElement>(null);
+  const closeSettings = () => {
+    if (!settingsOpenRef.current) return;
+    settingsOpenRef.current = false;
+    setSettingsOpen(false);
+    settingsButtonRef.current?.focus();
+  };
+  useEffect(() => {
+    const previous = settingsScope.current;
+    if (
+      previous.cwd === cwd &&
+      previous.personaId === personaId &&
+      previous.executionBackend === executionBackend
+    )
+      return;
+    settingsScope.current = { cwd, personaId, executionBackend };
+    if (settingsOpenRef.current) settingsButtonRef.current?.focus();
+    setSettingsOpen(false);
+  }, [cwd, personaId, executionBackend]);
   const [draft, setDraft] = useState<InputDraft>(() => readInput(personaId));
   const [understandingOpen, setUnderstandingOpen] = useState(false);
   const [detail, setDetail] = useState<
@@ -146,6 +180,8 @@ function ResidentWorkspace({
   const previousMessage = useRef<string | undefined>(undefined);
   const id = useId();
   const titleId = `${id}-title`;
+  const settingsId = `${id}-settings`;
+  const settingsHintId = `${id}-settings-hint`;
   const bookId = `${id}-understanding`;
   const dialogTitleId = `${id}-detail`;
   const inputId = `${id}-input`;
@@ -398,6 +434,7 @@ function ResidentWorkspace({
         event.preventDefault();
         event.stopPropagation();
         if (detail) closeDetail();
+        else if (settingsOpen) closeSettings();
         else if (understandingOpen) closeUnderstanding();
         else onClose();
       }}
@@ -429,22 +466,46 @@ function ResidentWorkspace({
           </div>
           {autoDescription ? <p id={autoDescriptionId}>{autoDescription}</p> : null}
         </div>
-        <button
-          type="button"
-          ref={bookButtonRef}
-          className="continuity-text-button"
-          aria-controls={bookId}
-          aria-expanded={understandingOpen}
-          onClick={() => setUnderstandingOpen((value) => !value)}
-        >
-          <BookOpen size={15} aria-hidden="true" />
-          {copy.understanding}
-        </button>
+        <div className="continuity-header-actions">
+          <button
+            type="button"
+            ref={bookButtonRef}
+            className="continuity-text-button"
+            aria-controls={bookId}
+            aria-expanded={understandingOpen}
+            onClick={() => setUnderstandingOpen((value) => !value)}
+          >
+            <BookOpen size={15} aria-hidden="true" />
+            {copy.understanding}
+          </button>
+          {executionBackend === "pi" ? (
+            <div className="continuity-settings-control">
+              <button
+                type="button"
+                ref={settingsButtonRef}
+                className="continuity-text-button"
+                aria-controls={settingsId}
+                aria-expanded={settingsOpen}
+                aria-describedby={piAttention ? settingsHintId : undefined}
+                onClick={() => (settingsOpen ? closeSettings() : setSettingsOpen(true))}
+              >
+                <Settings size={15} aria-hidden="true" />
+                {copy.settings}
+              </button>
+              {piAttention ? <span id={settingsHintId}>{copy.settingsAttention}</span> : null}
+            </div>
+          ) : null}
+        </div>
       </header>
       <div className="continuity-layout" data-understanding={understandingOpen}>
         <div className="continuity-conversation">
           {executionBackend === "pi" ? (
             <PiSetup
+              key={cwd}
+              open={settingsOpen}
+              panelId={settingsId}
+              onClose={closeSettings}
+              onAttentionChange={setPiAttention}
               cwd={cwd}
               language={language}
               onReadinessChange={onPiReadiness}

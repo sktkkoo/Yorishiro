@@ -1,9 +1,24 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ContinuitySnapshot } from "../runtime/continuity/types";
 import { ContinuityWorkspace, type ContinuityWorkspaceProps } from "./ContinuityWorkspace";
 
+const setupNative = vi.hoisted(() => ({ invoke: vi.fn() }));
+vi.mock("@tauri-apps/api/core", () => setupNative);
+const piStatus = () => ({
+  runtimeReady: true,
+  configured: true,
+  legacyConfiguration: false,
+  authenticated: true,
+  authentication: "present",
+  model: "fixture-model",
+  models: [{ id: "fixture-model", name: "Fixture" }],
+  permissions: { read: true, write: false, commands: [] },
+  workspaceAvailable: true,
+  login: { phase: "idle", code: null },
+  code: null,
+});
 const native = vi.hoisted(() => ({
   useContinuity: vi.fn(),
   sendContinuityMessage: vi.fn(),
@@ -108,6 +123,8 @@ const props = (): ContinuityWorkspaceProps => ({
 });
 beforeEach(() => {
   current = snapshot();
+  setupNative.invoke.mockReset();
+  setupNative.invoke.mockResolvedValue(piStatus());
   const stored = new Map<string, string>();
   vi.stubGlobal("localStorage", {
     getItem: (key: string) => stored.get(key) ?? null,
@@ -153,6 +170,156 @@ afterEach(() => {
 });
 
 describe("ContinuityWorkspace", () => {
+  it.each([
+    ["ja", "設定", "メモリー", "設定を閉じる", "設定を保存して自律実行に使用"],
+    ["en", "Settings", "Memories", "Close settings", "Save and use for autonomous execution"],
+  ] as const)("opens compact settings beside memories and saves without enabling autonomy in %s", async (language, settings, memories, close, save) => {
+    current = { ...current, autoEnabled: false };
+    render(<ContinuityWorkspace {...props()} language={language} executionBackend="pi" />);
+    const button = screen.getByRole("button", { name: settings });
+    expect(screen.getByRole("button", { name: memories }).parentElement).toBe(
+      button.parentElement?.parentElement,
+    );
+    expect(button.getAttribute("aria-expanded")).toBe("false");
+    expect(document.getElementById(button.getAttribute("aria-controls") ?? "")).toHaveProperty(
+      "hidden",
+      true,
+    );
+    expect(screen.queryByRole("combobox")).toBeNull();
+    expect(
+      screen.queryByText(
+        /自律実行の接続と権限|Autonomous execution connection and permissions|設定済み|Configured/,
+      ),
+    ).toBeNull();
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "hello" } });
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: language === "ja" ? "送る" : "Send" }),
+      ).toHaveProperty("disabled", false),
+    );
+    fireEvent.click(button);
+    expect(button.getAttribute("aria-expanded")).toBe("true");
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: close }));
+    fireEvent.keyDown(screen.getByRole("combobox"), { key: "Escape" });
+    expect(button.getAttribute("aria-expanded")).toBe("false");
+    expect(document.activeElement).toBe(button);
+    fireEvent.click(button);
+    fireEvent.click(screen.getByRole("button", { name: save }));
+    await waitFor(() => expect(button.getAttribute("aria-expanded")).toBe("false"));
+    expect(document.activeElement).toBe(button);
+    expect(native.setContinuityAutoEnabled).not.toHaveBeenCalled();
+    expect(native.retryContinuity).not.toHaveBeenCalled();
+  });
+
+  it("does not steal focus or restart work when a pending save finishes after closing and turning Off", async () => {
+    let finish!: (value: ReturnType<typeof piStatus>) => void;
+    setupNative.invoke.mockImplementation((command) =>
+      command === "continuity_pi_setup_save"
+        ? new Promise((resolve) => {
+            finish = resolve;
+          })
+        : Promise.resolve(piStatus()),
+    );
+    const view = render(<ContinuityWorkspace {...props()} language="en" executionBackend="pi" />);
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    const save = await screen.findByRole("button", {
+      name: "Save and use for autonomous execution",
+    });
+    await waitFor(() => expect(save).toHaveProperty("disabled", false));
+    fireEvent.click(save);
+    fireEvent.click(screen.getByRole("button", { name: "Close settings" }));
+    current = { ...current, autoEnabled: false };
+    view.rerender(<ContinuityWorkspace {...props()} language="en" executionBackend="pi" />);
+    const input = screen.getByRole("textbox");
+    input.focus();
+    await act(async () => finish(piStatus()));
+    expect(document.activeElement).toBe(input);
+    expect(screen.getByRole("button", { name: "Settings" }).getAttribute("aria-expanded")).toBe(
+      "false",
+    );
+    expect(native.retryContinuity).not.toHaveBeenCalled();
+    expect(native.setContinuityAutoEnabled).not.toHaveBeenCalled();
+  });
+
+  it("ignores old workspace save completion after switching to another workspace", async () => {
+    let finish!: (value: ReturnType<typeof piStatus>) => void;
+    setupNative.invoke.mockImplementation((command) =>
+      command === "continuity_pi_setup_save"
+        ? new Promise((resolve) => {
+            finish = resolve;
+          })
+        : Promise.resolve(piStatus()),
+    );
+    const view = render(<ContinuityWorkspace {...props()} language="en" executionBackend="pi" />);
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    const save = await screen.findByRole("button", {
+      name: "Save and use for autonomous execution",
+    });
+    await waitFor(() => expect(save).toHaveProperty("disabled", false));
+    fireEvent.click(save);
+    view.rerender(
+      <ContinuityWorkspace {...props()} language="en" executionBackend="pi" cwd="/other" />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    await screen.findByRole("combobox");
+    await act(async () => finish(piStatus()));
+    expect(screen.getByRole("button", { name: "Settings" }).getAttribute("aria-expanded")).toBe(
+      "true",
+    );
+    expect(screen.getByText("other")).toBeTruthy();
+    expect(native.retryContinuity).not.toHaveBeenCalled();
+  });
+
+  it("closes settings and resets unsaved grants when switching workspace or persona", async () => {
+    const view = render(<ContinuityWorkspace {...props()} language="en" executionBackend="pi" />);
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    fireEvent.click(await screen.findByRole("checkbox", { name: "Create and change files" }));
+    view.rerender(
+      <ContinuityWorkspace {...props()} language="en" executionBackend="pi" cwd="/other" />,
+    );
+    expect(screen.getByRole("button", { name: "Settings" }).getAttribute("aria-expanded")).toBe(
+      "false",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    await waitFor(() =>
+      expect(screen.getByRole("checkbox", { name: "Create and change files" })).toHaveProperty(
+        "checked",
+        false,
+      ),
+    );
+    view.rerender(
+      <ContinuityWorkspace
+        {...props()}
+        language="en"
+        executionBackend="pi"
+        cwd="/other"
+        personaId="custom"
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Settings" }).getAttribute("aria-expanded")).toBe(
+      "false",
+    );
+  });
+
+  it("shows a settings hint for unconfigured or failed connections while the panel stays closed", async () => {
+    setupNative.invoke.mockResolvedValue({ ...piStatus(), configured: false });
+    const view = render(<ContinuityWorkspace {...props()} language="en" executionBackend="pi" />);
+    await screen.findByText("Check connection settings");
+    const button = screen.getByRole("button", { name: "Settings" });
+    expect(
+      document.getElementById(button.getAttribute("aria-describedby") ?? "")?.textContent,
+    ).toBe("Check connection settings");
+    expect(button.getAttribute("aria-expanded")).toBe("false");
+    view.rerender(
+      <ContinuityWorkspace {...props()} language="en" executionBackend="pi" personaId="yori-en" />,
+    );
+    expect(screen.getByText("Check connection settings")).toBeTruthy();
+    setupNative.invoke.mockRejectedValue("setup_unavailable");
+    fireEvent(window, new Event("focus"));
+    fireEvent.click(button);
+    await screen.findByRole("alert");
+  });
+
   it.each([
     "ja",
     "en",

@@ -74,6 +74,22 @@
   flex: none;
   padding: 18px 28px;
 }
+.continuity-header-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px 12px;
+}
+.continuity-settings-control {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+.continuity-settings-control > span {
+  font-size: 10px;
+  color: var(--yorishiro-fg-dim);
+}
 .continuity-header h1 {
   margin: 0;
   font-size: 14px;
