@@ -47,6 +47,7 @@ import {
   forgetCorrection,
   selectCorrection,
 } from "./continuity-input";
+import { useDraftArrivals } from "./draft-arrivals";
 import { PiSetup } from "./PiSetup";
 import { ResultText } from "./ResultText";
 
@@ -170,6 +171,7 @@ function ResidentWorkspace({
     [personaId, name, personaInstructions, language, cwd, executionBackend, executionSessionId],
   );
   const { snapshot, error: syncError, errorSource: syncErrorSource } = useContinuity(context, open);
+  const draftArrivals = useDraftArrivals(personaId, snapshot?.drafts ?? null);
   const piDiagnostics = usePiDiagnostics(cwd, open, executionBackend);
   const [piReadiness, setPiReadiness] = useState({ cwd, ready: executionBackend !== "pi" });
   const onPiReadiness = useCallback((ready: boolean) => setPiReadiness({ cwd, ready }), [cwd]);
@@ -255,6 +257,7 @@ function ResidentWorkspace({
   const forceFollow = useRef(false);
   const previouslyVisible = useRef(false);
   const previousMessage = useRef<string | undefined>(undefined);
+  const previousDraftLayout = useRef<string | undefined>(undefined);
   const id = useId();
   const titleId = `${id}-title`;
   const settingsId = `${id}-settings`;
@@ -335,6 +338,7 @@ function ResidentWorkspace({
   const hasFeedback = Boolean(
     activity ||
       pendingReply ||
+      draftArrivals.pending.length ||
       showVoiceError ||
       feedbackErrors.length ||
       unread ||
@@ -377,17 +381,32 @@ function ResidentWorkspace({
     bookCloseRef.current?.focus({ preventScroll: true });
   }, [open, detail, snapshot, forgetPending, setInputDrafts]);
   const latestMessage = snapshot?.messages[snapshot.messages.length - 1]?.id;
-  const latestDraft = snapshot?.drafts
-    .map((item) => `${item.id}:${item.updatedAt}:${item.status}`)
-    .join("|");
-  const latestArrival = `${latestMessage ?? ""}:${latestDraft ?? ""}`;
+  const draftLayout = useMemo(
+    () =>
+      JSON.stringify(
+        snapshot?.drafts.map((item) => [
+          item.id,
+          item.title,
+          item.content,
+          item.status,
+          [...item.sourceIds].sort(),
+        ]),
+      ),
+    [snapshot?.drafts],
+  );
   useLayoutEffect(() => {
     if (!open || !flowRef.current) return;
     const flow = flowRef.current;
     if (readingReplyId.current !== pendingReply?.id) readingReplyId.current = null;
-    const changed = previousMessage.current !== latestArrival;
-    previousMessage.current = latestArrival;
-    if ((nearBottom.current && !readingReplyId.current) || forceFollow.current) {
+    const changed = previousMessage.current !== (latestMessage ?? "");
+    const draftChanged = previousDraftLayout.current !== draftLayout;
+    previousMessage.current = latestMessage ?? "";
+    previousDraftLayout.current = draftLayout;
+    // 過去の発言に草案が追加されても、読んでいる行を動かさない。
+    if (!forceFollow.current && !changed && draftChanged && readingPosition.current) {
+      restoreReadingPosition(flow, readingPosition.current);
+      restoredScrollTop.current = flow.scrollTop;
+    } else if ((nearBottom.current && !readingReplyId.current) || forceFollow.current) {
       flow.scrollTop = flow.scrollHeight;
       forceFollow.current = false;
       nearBottom.current = true;
@@ -400,7 +419,8 @@ function ResidentWorkspace({
       if (changed) setUnread(true);
     }
     flowNeedsRestore.current = false;
-  }, [open, latestArrival, pendingReply?.id]);
+    readingPosition.current = captureReadingPosition(flow);
+  }, [open, latestMessage, draftLayout, pendingReply?.id]);
 
   function showPendingReply() {
     const message = pendingReplyRef.current;
@@ -414,6 +434,7 @@ function ResidentWorkspace({
       0,
       flow.scrollTop + message.getBoundingClientRect().top - flow.getBoundingClientRect().top - 8,
     );
+    readingPosition.current = captureReadingPosition(flow);
   }
 
   async function submit() {
@@ -536,6 +557,12 @@ function ResidentWorkspace({
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setDetail(value);
   }
+  function openDraft(item: { id: string; content: string }, fromCue = false) {
+    showDetail({ kind: "draft", id: item.id });
+    // 確認済みの通知は消えるので、閉じるときは安定した入力欄へ戻す。
+    if (fromCue) dialogOpener.current = inputRef.current;
+    draftArrivals.acknowledge(item.id, item.content);
+  }
   function closeDetail(forgotten = false) {
     if (forgetInFlight.current && !forgotten) return;
     dialogRef.current?.close();
@@ -563,11 +590,7 @@ function ResidentWorkspace({
       >
         <h3>{item.title}</h3>
         {item.status === "dismissed" ? <small>{copy.dismissed}</small> : null}
-        <button
-          type="button"
-          className="continuity-text-button"
-          onClick={() => showDetail({ kind: "draft", id: item.id })}
-        >
+        <button type="button" className="continuity-text-button" onClick={() => openDraft(item)}>
           {copy.openDraft}
           <ArrowUp size={13} aria-hidden="true" className="continuity-diagonal-arrow" />
         </button>
@@ -690,6 +713,7 @@ function ResidentWorkspace({
             onScroll={() => {
               const flow = flowRef.current;
               if (!flow) return;
+              readingPosition.current = captureReadingPosition(flow);
               const restored = restoredScrollTop.current;
               restoredScrollTop.current = null;
               if (restored === flow.scrollTop) return;
@@ -739,6 +763,18 @@ function ResidentWorkspace({
             ) : null}
           </div>
           <div className="continuity-compose-area">
+            <div
+              className="continuity-draft-announcements continuity-sr-only"
+              aria-live="polite"
+              aria-relevant="additions"
+              aria-atomic="false"
+            >
+              {draftArrivals.pending.map((arrival) => (
+                <span key={JSON.stringify([arrival.id, arrival.content])}>
+                  {arrival.kind === "new" ? copy.newDraft : copy.updatedDraft} · {arrival.title}
+                </span>
+              ))}
+            </div>
             {hasFeedback ? (
               // biome-ignore lint/a11y/noNoninteractiveTabindex: 長い通知全文をキーボードでスクロールできるようにする。
               <section className="continuity-feedback" aria-label={copy.feedback} tabIndex={0}>
@@ -762,6 +798,18 @@ function ResidentWorkspace({
                     </button>
                   </div>
                 ) : null}
+                {draftArrivals.pending.map((arrival) => (
+                  <div className="continuity-draft-arrival" key={arrival.id}>
+                    <button
+                      type="button"
+                      className="continuity-text-button"
+                      onClick={() => openDraft(arrival, true)}
+                    >
+                      {arrival.kind === "new" ? copy.newDraft : copy.updatedDraft} · {arrival.title}
+                      <ArrowUp size={13} aria-hidden="true" className="continuity-diagonal-arrow" />
+                    </button>
+                  </div>
+                ))}
                 {showVoiceError ? (
                   <div className="continuity-error" role="alert">
                     <p>
@@ -835,7 +883,10 @@ function ResidentWorkspace({
                     onClick={() => {
                       readingReplyId.current = null;
                       const flow = flowRef.current;
-                      if (flow) flow.scrollTop = flow.scrollHeight;
+                      if (flow) {
+                        flow.scrollTop = flow.scrollHeight;
+                        readingPosition.current = captureReadingPosition(flow);
+                      }
                       nearBottom.current = true;
                       setUnread(false);
                     }}
