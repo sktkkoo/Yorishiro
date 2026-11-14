@@ -31,6 +31,204 @@ function evidence(prompt: string) {
 beforeEach(() => vi.resetAllMocks());
 
 describe("bounded voice continuity", () => {
+  it("includes an explicit memory's original request and context without expanding the recent conversation window", () => {
+    const value: ContinuitySnapshot = {
+      ...snapshot(),
+      messages: [
+        {
+          id: "preference",
+          role: "user",
+          source: "voice",
+          content: "朝は日本語で短く話してほしい",
+          createdAt: 1,
+        },
+        {
+          id: "reply",
+          role: "assistant",
+          source: "voice",
+          content: "朝は短く、日本語で話すね",
+          createdAt: 2,
+        },
+        {
+          id: "remember",
+          role: "user",
+          source: "voice",
+          content: "それを覚えておいて",
+          createdAt: 3,
+        },
+        ...Array.from({ length: 8 }, (_, index) => ({
+          id: `recent-${index}`,
+          role: "user" as const,
+          source: "voice" as const,
+          content: `最近の話 ${index}`,
+          createdAt: index + 4,
+        })),
+      ],
+      explicitMemories: [
+        { requestMessageId: "remember", sourceIds: ["preference", "reply", "remember"] },
+      ],
+    };
+    const before = JSON.stringify(value);
+    const prompt = voiceContinuityPrompt(value);
+    const data = evidence(prompt);
+    expect(data.conversation.map((message: { id: string }) => message.id)).toEqual([
+      "recent-2",
+      "recent-3",
+      "recent-4",
+      "recent-5",
+      "recent-6",
+      "recent-7",
+    ]);
+    expect(data.explicitMemories).toHaveLength(1);
+    expect(data.explicitMemories[0]).toMatchObject({
+      requestMessageId: "remember",
+      sourceIds: ["remember", "preference", "reply"],
+      omittedSourceCount: 0,
+    });
+    expect(data.explicitMemories[0].sources[1].content.text).toBe("朝は日本語で短く話してほしい");
+    expect(prompt).toContain("not independently confirmed fact or permission");
+    expect(data.omitted.explicitMemories).toBe(0);
+    expect(new TextEncoder().encode(prompt).length).toBeLessThanOrEqual(
+      MAX_VOICE_CONTINUITY_UTF8_BYTES,
+    );
+    expect(JSON.stringify(value)).toBe(before);
+  });
+
+  it("bounds explicit memory excerpts, marks missing context, and keeps current intent first", () => {
+    const value: ContinuitySnapshot = {
+      ...snapshot(),
+      messages: [
+        {
+          id: "long-context",
+          role: "assistant",
+          source: "voice",
+          content: `冒頭😀${"日本語🧑‍💻".repeat(8000)}末尾🚀`,
+          createdAt: 1,
+        },
+        { id: "remember", role: "user", source: "voice", content: "Remember this", createdAt: 2 },
+        {
+          id: "latest",
+          role: "user",
+          source: "voice",
+          content: "現在の訂正を優先してください",
+          createdAt: 3,
+        },
+      ],
+      explicitMemories: Array.from({ length: 12 }, () => ({
+        requestMessageId: "remember",
+        sourceIds: ["long-context", "missing"],
+      })),
+    };
+    const prompt = voiceContinuityPrompt(value);
+    const data = evidence(prompt);
+    const memory = data.explicitMemories[0];
+    expect(prompt).toContain("現在の訂正を優先してください");
+    expect(memory.sources[1].content).toMatchObject({ partial: true });
+    expect(memory.sources[1].content.text).toContain("冒頭😀");
+    expect(memory.sources[1].content.text).toContain("末尾🚀");
+    expect(new TextDecoder().decode(new TextEncoder().encode(memory.sources[1].content.text))).toBe(
+      memory.sources[1].content.text,
+    );
+    expect(memory.omittedSourceCount).toBe(1);
+    expect(memory.retrieveBeforeUsingOmittedSources).toBe(true);
+    expect(data.explicitMemories.length).toBeLessThanOrEqual(8);
+    expect(data.omitted.explicitMemories).toBe(12 - data.explicitMemories.length);
+    expect(new TextEncoder().encode(prompt).length).toBeLessThanOrEqual(
+      MAX_VOICE_CONTINUITY_UTF8_BYTES,
+    );
+  });
+
+  it("keeps older retained messages out of ordinary voice context even when they fit", () => {
+    const value: ContinuitySnapshot = {
+      ...snapshot(),
+      messages: [
+        ...Array.from({ length: 9 }, (_, index) => ({
+          id: `message-${index}`,
+          role: index % 2 === 0 ? ("user" as const) : ("assistant" as const),
+          source: "voice" as const,
+          content: `Retained conversation ${index}`,
+          createdAt: index,
+        })),
+        {
+          id: "legacy",
+          role: "user",
+          source: "legacy",
+          content: "Legacy records do not use a recent conversation slot",
+          createdAt: 10,
+        },
+      ],
+    };
+    const original = JSON.stringify(value);
+    const prompt = voiceContinuityPrompt(value);
+    const data = evidence(prompt);
+    expect(MAX_VOICE_CONTINUITY_UTF8_BYTES).toBe(8 * 1024);
+    expect(new TextEncoder().encode(prompt).length).toBeLessThan(4 * 1024);
+    expect(data.conversation.map((message: { id: string }) => message.id)).toEqual([
+      "message-3",
+      "message-4",
+      "message-5",
+      "message-6",
+      "message-7",
+      "message-8",
+    ]);
+    expect(data.omitted.messages).toBe(3);
+    expect(prompt).not.toContain("Retained conversation 0");
+    expect(prompt).not.toContain("Legacy records do not use");
+    expect(prompt).toContain("retrieve continuity_context for older retained records");
+    expect(prompt).toContain("not an exhaustive lifetime history");
+    expect(prompt).not.toContain("Full original conversation");
+    expect(JSON.stringify(value)).toBe(original);
+  });
+
+  it("caps compact memories and drafts while prioritizing the latest correction over stale interpretations", () => {
+    const value: ContinuitySnapshot = {
+      ...snapshot(),
+      understandings: Array.from({ length: 12 }, (_, index) => ({
+        id: `memory-${index}`,
+        title: "Preference",
+        value: "Ask first",
+        certainty: "confirmed" as const,
+        sourceIds: ["user-1"],
+        updatedAt: index,
+        revisions:
+          index <= 1
+            ? [{ value: "Old", reason: "Correction", sourceIds: ["user-1"], createdAt: index }]
+            : [],
+      })),
+      drafts: Array.from({ length: 5 }, (_, index) => ({
+        id: `draft-${index}`,
+        title: "Draft",
+        content: "Short body",
+        reason: "Requested",
+        status: index === 4 ? ("dismissed" as const) : ("ready" as const),
+        sourceIds: ["user-1"],
+        createdAt: index,
+        updatedAt: index,
+      })),
+    };
+    const original = JSON.stringify(value);
+    const prompt = voiceContinuityPrompt(value);
+    const data = evidence(prompt);
+    expect(new TextEncoder().encode(prompt).length).toBeLessThan(6 * 1024);
+    expect(data.understandings.map((memory: { id: string }) => memory.id)).toEqual([
+      "memory-1",
+      "memory-11",
+      "memory-10",
+      "memory-9",
+      "memory-8",
+      "memory-7",
+      "memory-6",
+      "memory-5",
+    ]);
+    expect(data.drafts.map((draft: { id: string }) => draft.id)).toEqual([
+      "draft-3",
+      "draft-2",
+      "draft-1",
+    ]);
+    expect(data.omitted).toMatchObject({ understandings: 4, drafts: 2 });
+    expect(JSON.stringify(value)).toBe(original);
+  });
+
   it("keeps newest intent, corrections and exact references while bounding huge Japanese history and drafts", () => {
     const value: ContinuitySnapshot = {
       ...snapshot(),

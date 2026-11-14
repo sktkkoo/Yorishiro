@@ -239,6 +239,7 @@ fn session() -> Session {
         retry_not_before: None,
         context_handoffs: vec![],
         observed_keys: std::collections::BTreeMap::new(),
+        retired_message_ids: BTreeSet::new(),
         pending_correction_ids: vec![],
         pending_trigger: None,
         pending_execution: None,
@@ -1154,8 +1155,9 @@ fn explicit_input_after_a_terminal_receipt_claims_a_fresh_request_with_prior_evi
         assert!(fresh.prompt.contains("stopped-main-turn"));
         assert!(fresh
             .prompt
-            .contains("Inspect the referenced Main Agent turns and current workspace state"));
-        assert!(fresh.prompt.contains("Do not blindly repeat"));
+            .contains("inspect the referenced Main Agent turn and current workspace"));
+        assert!(fresh.prompt.contains("continuity_context"));
+        assert!(fresh.prompt.contains("never blindly repeat"));
         if trigger == "message" {
             assert!(fresh.prompt.contains("Inspect the existing changes first"));
         }
@@ -2355,7 +2357,7 @@ fn enabled_recovery_inspects_confirmed_stopped_work_with_a_fresh_request() {
         let fresh = new_execution(&mut value, &context(), work.target.clone()).unwrap();
         assert_ne!(fresh.request_id, work.request_id);
         assert!(fresh.prompt.contains(&work.request_id));
-        assert!(fresh.prompt.contains("Do not blindly repeat"));
+        assert!(fresh.prompt.contains("never blindly repeat"));
     }
 }
 
@@ -2455,7 +2457,7 @@ fn semantically_invalid_completed_reports_are_archived_before_fresh_inspection()
             let fresh = new_execution(&mut value, &context(), work.target.clone()).unwrap();
             assert_ne!(fresh.request_id, work.request_id);
             assert!(fresh.prompt.contains("reportValidation"));
-            assert!(fresh.prompt.contains("Do not blindly repeat"));
+            assert!(fresh.prompt.contains("never blindly repeat"));
         }
     }
 }
@@ -2866,4 +2868,237 @@ fn applied_blocked_reports_pause_pending_work_and_keep_the_pause_evidence() {
         value.saved.work_runs.last().unwrap().error,
         value.saved.stagnation_pause
     );
+}
+
+#[test]
+fn retirement_requires_distinct_ids_from_the_judged_input() {
+    let mut value = session();
+    user(&mut value.saved.snapshot, "u1", "A routine greeting");
+    let work = pending_work(&value);
+    user(&mut value.saved.snapshot, "u2", "An arriving request");
+    for ids in [json!(["missing"]), json!(["u1", "u1"]), json!(["u2"])] {
+        let before = serde_json::to_value(&value.saved).unwrap();
+        let result = response(json!({
+            "reply":"", "understandings":[], "drafts":[], "reflection":"",
+            "nextStep":null,"retiredMessageIds":ids
+        }));
+        assert!(apply_execution(&mut value, result, &work, false).is_err());
+        assert_eq!(serde_json::to_value(&value.saved).unwrap(), before);
+    }
+}
+
+#[test]
+fn invalid_memory_report_does_not_retire_its_conversation() {
+    let mut value = session();
+    user(&mut value.saved.snapshot, "u1", "A routine greeting");
+    let before = serde_json::to_value(&value.saved).unwrap();
+    let result = response(json!({
+        "reply":"", "understandings":[update("bad", "Unsupported", "missing")],
+        "drafts":[], "reflection":"", "nextStep":null,"retiredMessageIds":["u1"]
+    }));
+    assert!(apply_completed(&mut value, result, &context(), "message", &[]).is_err());
+    assert_eq!(serde_json::to_value(&value.saved).unwrap(), before);
+}
+
+#[test]
+fn valid_retirement_waits_for_safe_idle_and_survives_disk_round_trip() {
+    let mut value = session();
+    user(
+        &mut value.saved.snapshot,
+        "old",
+        "A completed routine exchange",
+    );
+    value.saved.snapshot.messages[0].created_at = 1;
+    user(&mut value.saved.snapshot, "latest", "The current request");
+    let result = response(json!({
+        "reply":"", "understandings":[], "drafts":[], "reflection":"",
+        "nextStep":null,"retiredMessageIds":["old"]
+    }));
+    apply_completed(&mut value, result, &context(), "external", &[]).unwrap();
+    assert!(value.saved.retired_message_ids.contains("old"));
+    assert_eq!(
+        retention::compact(&mut value.saved, now(), true, false).removed_messages,
+        0
+    );
+    let home = tempfile::tempdir().unwrap();
+    storage::save(home.path(), &value.saved).unwrap();
+    let mut loaded = storage::load(home.path(), "yori-ja").unwrap();
+    loaded.snapshot.phase = "idle".into();
+    assert_eq!(
+        retention::compact(&mut loaded, now(), false, false).removed_messages,
+        1
+    );
+    assert_eq!(loaded.snapshot.messages.len(), 1);
+    assert_eq!(loaded.snapshot.messages[0].id, "latest");
+    assert!(loaded.retired_message_ids.is_empty());
+}
+
+#[test]
+fn legacy_model_report_needs_no_retirement_field() {
+    let result = response(json!({
+        "reply":"", "understandings":[], "drafts":[], "reflection":"", "nextStep":null
+    }));
+    assert!(result.retired_message_ids.is_empty());
+}
+
+#[test]
+fn codex_and_text_use_compact_new_context_without_changing_retained_sources() {
+    let mut value = session();
+    for index in 0..300 {
+        let id = format!("routine-{index}");
+        user(
+            &mut value.saved.snapshot,
+            &id,
+            &"Completed routine discussion. ".repeat(20),
+        );
+        value.saved.retired_message_ids.insert(id);
+    }
+    user(
+        &mut value.saved.snapshot,
+        "active",
+        "Finish the authorized investigation",
+    );
+    let before = serde_json::to_value(&value.saved.snapshot).unwrap();
+    let full = reason_prompt(&value.saved.snapshot, &context(), "message", &[]).unwrap();
+    let bounded = execution_context::bounded_snapshot(&value.saved, |snapshot| {
+        reason_prompt(snapshot, &context(), "message", &[])
+    })
+    .unwrap();
+    let compact = reason_prompt(&bounded, &context(), "message", &[]).unwrap();
+    assert!(compact.len() < full.len() / 4);
+    assert_eq!(bounded.messages.len(), 6);
+    assert_eq!(bounded.messages.last().unwrap().id, "active");
+    let target = pending_work(&value).target;
+    let work = new_execution(&mut value, &context(), target).unwrap();
+    assert!(work.prompt.contains("continuity_context"));
+    assert!(!work.prompt.contains("read_continuity_context"));
+    assert!(!work.prompt.contains("routine-0\""));
+    assert!(work.prompt.contains("Finish the authorized investigation"));
+    assert!(work.context_budget.unwrap().prompt_utf8_bytes < full.len() / 4);
+    let mut after = serde_json::to_value(&value.saved.snapshot).unwrap();
+    assert_eq!(after["phase"], "working");
+    after["phase"] = before["phase"].clone();
+    assert_eq!(after, before);
+}
+
+#[test]
+fn append_protects_actual_remember_requests_but_not_generated_draft_titles() {
+    let mut value = session();
+    append(
+        &mut value,
+        "user",
+        "草案「覚えておいて」の続きを考えて。".into(),
+        "draft-action",
+    );
+    append(
+        &mut value,
+        "assistant",
+        "これを覚えておいて".into(),
+        "voice",
+    );
+    assert!(value.saved.snapshot.explicit_memories.is_empty());
+    for source in ["conversation", "voice", "external"] {
+        let id = append(
+            &mut value,
+            "user",
+            "朝は短く話すことを覚えておいて".into(),
+            source,
+        );
+        assert_eq!(
+            value
+                .saved
+                .snapshot
+                .explicit_memories
+                .last()
+                .unwrap()
+                .request_message_id,
+            id
+        );
+    }
+    assert_eq!(value.saved.snapshot.explicit_memories.len(), 3);
+}
+
+#[test]
+fn retirement_report_limit_bounds_output_without_partial_changes() {
+    let mut value = session();
+    for index in 0..33 {
+        user(
+            &mut value.saved.snapshot,
+            &format!("u{index}"),
+            "Completed routine conversation",
+        );
+    }
+    let ids = value
+        .saved
+        .snapshot
+        .messages
+        .iter()
+        .map(|message| message.id.clone())
+        .collect::<Vec<_>>();
+    assert!(validate_retirements(&value.saved.snapshot, &ids[..32]).is_ok());
+    let before = serde_json::to_value(&value.saved).unwrap();
+    let result = response(
+        json!({"reply":"", "understandings":[],"drafts":[],"reflection":"",
+        "nextStep":null,"retiredMessageIds":ids}),
+    );
+    assert!(apply_completed(&mut value, result, &context(), "external", &[]).is_err());
+    assert_eq!(serde_json::to_value(&value.saved).unwrap(), before);
+    assert_eq!(
+        response_schema()["properties"]["retiredMessageIds"]["maxItems"],
+        32
+    );
+}
+
+#[test]
+fn earlier_receipts_remain_readable_in_exact_unicode_chunks_without_mutation() {
+    let mut value = session();
+    let target = pending_work(&value).target;
+    for index in 0..5 {
+        value.saved.terminal_receipts.push(ExecutionReceipt {
+            request_id: format!("receipt-{index}"),
+            target: target.clone(),
+            turn_id: format!("turn-{index}"),
+            status: TerminalStatus::Interrupted,
+            observed_at: index,
+            previous_step: Some("Inspect original effects".into()),
+            evidence: vec![
+                json!({"type":"commandExecution","text":"日本語🦊\n\"original\"".repeat(400)}),
+            ],
+        });
+    }
+    let before = serde_json::to_value(&value.saved).unwrap();
+    let expected = serde_json::to_string(&value.saved.terminal_receipts[0]).unwrap();
+    let mut offset = 0;
+    let mut restored = String::new();
+    let mut digest = None;
+    loop {
+        let chunk = execution_receipt_chunk(&value.saved, 0, offset, 257).unwrap();
+        assert_eq!(chunk["totalCount"], 5);
+        assert_eq!(chunk["requestId"], "receipt-0");
+        assert_eq!(chunk["executionReceiptIndex"], 0);
+        assert_eq!(chunk["revision"], value.saved.snapshot.revision);
+        assert_eq!(chunk["characterOffset"], offset);
+        if let Some(previous) = &digest {
+            assert_eq!(&chunk["receiptSha256"], previous);
+        }
+        digest = Some(chunk["receiptSha256"].clone());
+        let text = chunk["content"].as_str().unwrap();
+        assert!(text.chars().count() <= 257);
+        restored.push_str(text);
+        match chunk["nextCharacterOffset"].as_u64() {
+            Some(next) => {
+                assert!(next as usize > offset);
+                offset = next as usize;
+            }
+            None => break,
+        }
+    }
+    assert_eq!(restored, expected);
+    for (index, offset, limit) in [(5, 0, 1), (0, usize::MAX, 1), (0, 0, 0), (0, 0, 16_385)] {
+        assert!(execution_receipt_chunk(&value.saved, index, offset, limit).is_err());
+    }
+    let end = execution_receipt_chunk(&value.saved, 0, expected.chars().count(), 4096).unwrap();
+    assert_eq!(end["content"], "");
+    assert!(end["nextCharacterOffset"].is_null());
+    assert_eq!(serde_json::to_value(&value.saved).unwrap(), before);
 }

@@ -49,6 +49,11 @@ export interface ContinuityDraft {
   readonly createdAt: number;
   readonly updatedAt: number;
 }
+export interface ContinuityExplicitMemory {
+  /** 実際の記憶依頼と、その指示対象になった原文の参照。事実認定や実行許可ではない。 */
+  readonly requestMessageId: string;
+  readonly sourceIds: readonly string[];
+}
 export interface ContinuitySnapshot {
   readonly personaId: string;
   /** Native-owned setting. Missing on older hosts means the control is unavailable. */
@@ -59,6 +64,8 @@ export interface ContinuitySnapshot {
   readonly understandings: readonly ContinuityUnderstanding[];
   readonly drafts: readonly ContinuityDraft[];
   readonly reflections: readonly ContinuityReflection[];
+  /** 古い保存データやホストでは省略される。 */
+  readonly explicitMemories?: readonly ContinuityExplicitMemory[];
   readonly error: string | null;
   readonly lastObservedAt: number | null;
   /** Absent in older saved snapshots; null means quietly wait. */
