@@ -519,6 +519,10 @@ describe("ContinuityWorkspace", () => {
     const flow = screen.getByRole("log").closest(".continuity-flow") as HTMLElement;
     expect(button.getAttribute("aria-controls")).toBe(target.id);
     expect(target.textContent).toContain("Choose a direction: pending-question");
+    Object.defineProperties(flow, {
+      scrollHeight: { configurable: true, value: 1200 },
+      clientHeight: { configurable: true, value: 400 },
+    });
     vi.spyOn(flow, "getBoundingClientRect").mockReturnValue({ top: 100 } as DOMRect);
     vi.spyOn(target, "getBoundingClientRect").mockReturnValue({ top: 320 } as DOMRect);
     flow.scrollTop = 150;
@@ -597,39 +601,238 @@ describe("ContinuityWorkspace", () => {
     expect(screen.queryByRole("button", { name: "View question" })).toBeNull();
   });
 
-  it("preserves reading position and unread reports while focused on a question, then follows the latest reply on request", () => {
-    current = { ...current, messages: [...current.messages, pendingQuestion()] };
-    const view = render(<ContinuityWorkspace {...props()} language="en" />);
-    const flow = screen.getByRole("log").closest(".continuity-flow") as HTMLElement;
-    Object.defineProperties(flow, {
-      scrollHeight: { configurable: true, value: 800 },
-      clientHeight: { configurable: true, value: 400 },
-    });
-    flow.scrollTop = 400;
-    fireEvent.click(screen.getByRole("button", { name: "View question" }));
-    const readingPosition = flow.scrollTop;
-    fireEvent.scroll(flow);
+  it("reaches the first tall unread report and keeps later reports pending", () => {
+    const layout = readingLayout();
+    const initial = { ...props(), language: "en" as const };
+    const view = render(<ContinuityWorkspace {...initial} />);
+    readingFlow().scrollTop = 300;
+    fireEvent.scroll(readingFlow());
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Keep my draft" } });
+    const first = { ...pendingQuestion("first-report"), replyKind: "report" as const };
+    const second = { ...pendingQuestion("second-report"), replyKind: "report" as const };
+    layout.items.set("message:first-report", { top: 1800, height: 900 });
+    layout.items.set("message:second-report", { top: 2750, height: 500 });
+    layout.height = 3300;
+    current = { ...current, messages: [...current.messages, first, second] };
+    view.rerender(<ContinuityWorkspace {...initial} />);
+    expect(readingFlow().scrollTop).toBe(300);
+    fireEvent.click(screen.getByRole("button", { name: "New reply" }));
+    const target = screen.getByText(first.content).closest("article");
+    expect(readingFlow().scrollTop).toBe(1792);
+    expect(document.activeElement).toBe(target);
+    expect(screen.getByRole("button", { name: "New reply" })).toBeTruthy();
+    fireEvent.scroll(readingFlow());
+    const third = { ...pendingQuestion("third-report"), replyKind: "report" as const };
+    layout.items.set("message:third-report", { top: 3300, height: 600 });
+    layout.height = 4000;
+    current = { ...current, messages: [...current.messages, third] };
+    view.rerender(<ContinuityWorkspace {...initial} />);
+    expect(readingFlow().scrollTop).toBe(1792);
+    expect(document.activeElement).toBe(target);
+    fireEvent.click(screen.getByRole("button", { name: "New reply" }));
+    expect(readingFlow().scrollTop).toBe(2742);
+    expect(document.activeElement).toBe(screen.getByText(second.content).closest("article"));
+    fireEvent.click(screen.getByRole("button", { name: "New reply" }));
+    expect(readingFlow().scrollTop).toBe(3292);
+    expect(screen.queryByRole("button", { name: "New reply" })).toBeNull();
+    expect(screen.getByRole("textbox")).toHaveProperty("value", "Keep my draft");
+    expect(native.sendContinuityMessage).not.toHaveBeenCalled();
+    expect(native.actOnContinuityDraft).not.toHaveBeenCalled();
+    expect(native.retryContinuity).not.toHaveBeenCalled();
+    expect(native.setContinuityAutoEnabled).not.toHaveBeenCalled();
+  });
+
+  it("keeps a clamped report navigation pending, then resumes follow after a manual bottom scroll", () => {
+    const layout = readingLayout();
+    const initial = { ...props(), language: "en" as const };
+    const view = render(<ContinuityWorkspace {...initial} />);
+    readingFlow().scrollTop = 300;
+    fireEvent.scroll(readingFlow());
+    layout.items.set("message:first", { top: 1700, height: 30 });
+    layout.items.set("message:second", { top: 1760, height: 30 });
     current = {
       ...current,
-      messages: [...current.messages, { ...pendingQuestion("report-1"), replyKind: "report" }],
+      messages: [
+        ...current.messages,
+        { ...pendingQuestion("first"), replyKind: "report" },
+        { ...pendingQuestion("second"), replyKind: "report" },
+      ],
     };
-    view.rerender(<ContinuityWorkspace {...props()} language="en" />);
-    expect(flow.scrollTop).toBe(readingPosition);
-    expect(document.activeElement).toBe(screen.getByRole("article", { name: "Reply requested" }));
+    view.rerender(<ContinuityWorkspace {...initial} />);
+    fireEvent.click(screen.getByRole("button", { name: "New reply" }));
+    expect(readingFlow().scrollTop).toBe(1600);
+    const target = screen.getByText("Choose a direction: first").closest("article");
+    expect(document.activeElement).toBe(target);
+    fireEvent.scroll(readingFlow());
     expect(screen.getByRole("button", { name: "New reply" })).toBeTruthy();
+    layout.height = 2700;
+    current = {
+      ...current,
+      messages: [...current.messages, { ...pendingQuestion("third"), replyKind: "report" }],
+    };
+    view.rerender(<ContinuityWorkspace {...initial} />);
+    expect(readingFlow().scrollTop).toBe(1600);
+    expect(document.activeElement).toBe(target);
+    readingFlow().scrollTop = 2300;
+    fireEvent.scroll(readingFlow());
+    expect(screen.queryByRole("button", { name: "New reply" })).toBeNull();
+    layout.height = 3200;
+    current = {
+      ...current,
+      messages: [...current.messages, { ...pendingQuestion("fourth"), replyKind: "report" }],
+    };
+    view.rerender(<ContinuityWorkspace {...initial} />);
+    expect(readingFlow().scrollTop).toBe(3200);
+    expect(screen.queryByRole("button", { name: "New reply" })).toBeNull();
+  });
+
+  it("aligns a final short report after cue removal changes the viewport and keeps later arrivals pending", () => {
+    const layout = readingLayout();
+    const initial = { ...props(), language: "en" as const };
+    const view = render(<ContinuityWorkspace {...initial} />);
+    const flow = readingFlow();
+    Object.defineProperty(flow, "clientHeight", {
+      configurable: true,
+      get: () => (document.querySelector(".continuity-new-reply") ? 400 : 440),
+    });
+    flow.scrollTop = 300;
     fireEvent.scroll(flow);
+    layout.items.set("message:last", { top: 1950, height: 50 });
+    current = {
+      ...current,
+      messages: [...current.messages, { ...pendingQuestion("last"), replyKind: "report" }],
+    };
+    view.rerender(<ContinuityWorkspace {...initial} />);
+    fireEvent.click(screen.getByRole("button", { name: "New reply" }));
+    expect(screen.queryByRole("button", { name: "New reply" })).toBeNull();
+    expect(flow.scrollTop).toBe(1560);
+    const target = screen.getByText("Choose a direction: last").closest("article");
+    expect(document.activeElement).toBe(target);
+    fireEvent.scroll(flow);
+    fireEvent.scroll(flow);
+    layout.height = 2600;
+    current = {
+      ...current,
+      messages: [...current.messages, { ...pendingQuestion("later"), replyKind: "report" }],
+    };
+    view.rerender(<ContinuityWorkspace {...initial} />);
+    expect(flow.scrollTop).toBe(1560);
+    expect(document.activeElement).toBe(target);
     expect(screen.getByRole("button", { name: "New reply" })).toBeTruthy();
+    flow.scrollTop = 2200;
+    fireEvent.scroll(flow);
+    expect(screen.queryByRole("button", { name: "New reply" })).toBeNull();
+    layout.height = 3000;
+    current = {
+      ...current,
+      messages: [...current.messages, { ...pendingQuestion("following"), replyKind: "report" }],
+    };
+    view.rerender(<ContinuityWorkspace {...initial} />);
+    expect(flow.scrollTop).toBe(3000);
+  });
+
+  it("retains hidden arrivals and skips a compacted first target without jumping to the bottom", () => {
+    const layout = readingLayout();
+    const initial = { ...props(), language: "en" as const };
+    const view = render(<ContinuityWorkspace {...initial} />);
+    readingFlow().scrollTop = 300;
+    fireEvent.scroll(readingFlow());
+    view.rerender(<ContinuityWorkspace {...initial} open={false} />);
+    current = {
+      ...current,
+      messages: [...current.messages, { ...pendingQuestion("first"), replyKind: "report" }],
+    };
+    view.rerender(<ContinuityWorkspace {...initial} open={false} />);
+    current = {
+      ...current,
+      messages: [
+        ...current.messages,
+        { ...pendingQuestion("second"), replyKind: "report" },
+        { ...pendingQuestion("third"), replyKind: "report" },
+      ],
+    };
+    view.rerender(<ContinuityWorkspace {...initial} open={false} />);
+    current = {
+      ...current,
+      messages: current.messages.filter((message) => message.id !== "first"),
+    };
+    view.rerender(<ContinuityWorkspace {...initial} open={false} />);
+    layout.height = 3000;
+    layout.items.set("message:second", { top: 2200, height: 500 });
+    view.rerender(<ContinuityWorkspace {...initial} />);
+    expect(readingFlow().scrollTop).toBe(300);
+    fireEvent.click(screen.getByRole("button", { name: "New reply" }));
+    expect(readingFlow().scrollTop).toBe(2192);
+    expect(document.activeElement).toBe(
+      screen.getByText("Choose a direction: second").closest("article"),
+    );
+    current = {
+      ...current,
+      messages: current.messages.filter((message) => message.id !== "third"),
+    };
+    view.rerender(<ContinuityWorkspace {...initial} />);
+    expect(screen.queryByRole("button", { name: "New reply" })).toBeNull();
+    expect(readingFlow().scrollTop).toBe(2192);
+  });
+
+  it("does not treat user-only or legacy arrivals as unread assistant replies", () => {
+    readingLayout();
+    const initial = { ...props(), language: "en" as const };
+    const view = render(<ContinuityWorkspace {...initial} />);
+    readingFlow().scrollTop = 300;
+    fireEvent.scroll(readingFlow());
+    current = {
+      ...current,
+      messages: [
+        ...current.messages,
+        { ...pendingQuestion("external-user"), role: "user", source: "voice" },
+        { ...pendingQuestion("legacy-report"), source: "legacy" },
+      ],
+    };
+    view.rerender(<ContinuityWorkspace {...initial} />);
+    expect(screen.queryByRole("button", { name: "New reply" })).toBeNull();
+    expect(readingFlow().scrollTop).toBe(300);
+  });
+
+  it("acknowledges only the viewed question and preserves later reports while reading their headers", () => {
+    const layout = readingLayout();
+    const initial = { ...props(), language: "en" as const };
+    const view = render(<ContinuityWorkspace {...initial} />);
+    readingFlow().scrollTop = 300;
+    fireEvent.scroll(readingFlow());
+    layout.items.set("message:pending-question", { top: 1500, height: 300 });
+    layout.items.set("message:report-1", { top: 1900, height: 500 });
+    layout.height = 2500;
+    current = {
+      ...current,
+      messages: [
+        ...current.messages,
+        pendingQuestion(),
+        { ...pendingQuestion("report-1"), replyKind: "report" },
+      ],
+    };
+    view.rerender(<ContinuityWorkspace {...initial} />);
+    fireEvent.click(screen.getByRole("button", { name: "View question" }));
+    expect(readingFlow().scrollTop).toBe(1492);
+    expect(document.activeElement).toBe(screen.getByRole("article", { name: "Reply requested" }));
+    fireEvent.scroll(readingFlow());
     fireEvent.click(screen.getByRole("button", { name: "View question" }));
     expect(screen.getByRole("button", { name: "New reply" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "New reply" }));
-    expect(flow.scrollTop).toBe(800);
+    expect(readingFlow().scrollTop).toBe(1892);
+    const target = screen.getByText("Choose a direction: report-1").closest("article");
+    expect(document.activeElement).toBe(target);
     expect(screen.queryByRole("button", { name: "New reply" })).toBeNull();
+    layout.items.set("message:report-2", { top: 2500, height: 600 });
+    layout.height = 3200;
     current = {
       ...current,
       messages: [...current.messages, { ...pendingQuestion("report-2"), replyKind: "report" }],
     };
-    view.rerender(<ContinuityWorkspace {...props()} language="en" />);
-    expect(screen.queryByRole("button", { name: "New reply" })).toBeNull();
+    view.rerender(<ContinuityWorkspace {...initial} />);
+    expect(readingFlow().scrollTop).toBe(1892);
+    expect(document.activeElement).toBe(target);
+    expect(screen.getByRole("button", { name: "New reply" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "View question" })).toBeTruthy();
   });
 
@@ -905,8 +1108,15 @@ describe("ContinuityWorkspace", () => {
     layout.height = 800;
     view.rerender(<ContinuityWorkspace {...initial} />);
     expect(readingFlow().scrollTop).toBe(100);
+    layout.items.set("message:retained", { top: 0, height: 500 });
+    layout.items.set("message:later", { top: 520, height: 280 });
     fireEvent.click(screen.getByRole("button", { name: "New reply" }));
-    expect(readingFlow().scrollTop).toBe(800);
+    expect(readingFlow().scrollTop).toBe(0);
+    expect(document.activeElement).toBe(
+      screen.getByText("Choose a direction: retained").closest("article"),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "New reply" }));
+    expect(readingFlow().scrollTop).toBe(400);
     expect(screen.queryByRole("button", { name: "New reply" })).toBeNull();
   });
 
