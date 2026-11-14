@@ -1,3 +1,4 @@
+import { X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import {
   loginActive,
@@ -9,6 +10,10 @@ import {
 import "./PiSetup.css";
 
 export interface PiSetupProps {
+  readonly open?: boolean;
+  readonly panelId?: string;
+  readonly onClose?: () => void;
+  readonly onAttentionChange?: (attention: boolean) => void;
   readonly cwd: string | null;
   readonly language: "ja" | "en";
   readonly onConfigured?: () => void;
@@ -16,10 +21,9 @@ export interface PiSetupProps {
 }
 const COPY = {
   ja: {
-    title: "自律実行の接続と権限",
+    title: "設定",
+    close: "設定を閉じる",
     workspaceLabel: "アクセスを許可するフォルダ",
-    settings: "設定",
-    ready: "設定済み",
     loading: "接続設定を確認しています…",
     description: "OpenAIにログインし、選択中の作業フォルダで許可する操作を確認してください。",
     signIn: "OpenAIにログイン",
@@ -59,10 +63,9 @@ const COPY = {
     unavailable: "このアプリでは接続設定を利用できません。アプリを更新してください。",
   },
   en: {
-    title: "Autonomous execution connection and permissions",
+    title: "Settings",
+    close: "Close settings",
     workspaceLabel: "Folder to allow access to",
-    settings: "Settings",
-    ready: "Configured",
     loading: "Checking connection settings…",
     description: "Sign in to OpenAI and review the operations allowed in the selected workspace.",
     signIn: "Sign in to OpenAI",
@@ -103,11 +106,25 @@ const COPY = {
   },
 };
 
-export function PiSetup({ cwd, language, onConfigured, onReadinessChange }: PiSetupProps) {
+export function PiSetup({
+  cwd,
+  language,
+  open = true,
+  panelId,
+  onClose,
+  onConfigured,
+  onReadinessChange,
+  onAttentionChange,
+}: PiSetupProps) {
   const copy = COPY[language];
   const setup = usePiSetup(cwd);
   const { status } = setup;
-  const [expanded, setExpanded] = useState(false);
+  const callbacks = useRef({ onConfigured, onClose });
+  callbacks.current = { onConfigured, onClose };
+  const closeRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (open) closeRef.current?.focus();
+  }, [open]);
   const [model, setModel] = useState("");
   const [read, setRead] = useState(true);
   const [write, setWrite] = useState(false);
@@ -123,7 +140,7 @@ export function PiSetup({ cwd, language, onConfigured, onReadinessChange }: PiSe
     setRead(true);
     setWrite(false);
     setCommands([]);
-    setExpanded(false);
+    setModel("");
   }, [cwd]);
   const id = useId();
   const ready = setupReady(status);
@@ -154,6 +171,10 @@ export function PiSetup({ cwd, language, onConfigured, onReadinessChange }: PiSe
     setCommands(status.permissions.commands);
   }, [status]);
   const error = setup.error ?? status?.login.code ?? status?.code;
+  const attention = !setup.loading && (!ready || Boolean(error));
+  useEffect(() => {
+    onAttentionChange?.(attention);
+  }, [attention, onAttentionChange]);
   const message = (value: PiSetupCode) => {
     if (
       ["runtime_unavailable", "runtime_invalid", "node_unavailable", "node_invalid"].includes(value)
@@ -186,8 +207,8 @@ export function PiSetup({ cwd, language, onConfigured, onReadinessChange }: PiSe
     if (saved) {
       dirty.current = false;
       modelDirty.current = false;
-      setExpanded(false);
-      onConfigured?.();
+      callbacks.current.onConfigured?.();
+      callbacks.current.onClose?.();
     }
   };
   const canSave =
@@ -198,22 +219,17 @@ export function PiSetup({ cwd, language, onConfigured, onReadinessChange }: PiSe
     !active &&
     !setup.busy;
   return (
-    <section className="pi-setup" aria-labelledby={`${id}-title`}>
+    <section className="pi-setup" id={panelId} hidden={!open} aria-labelledby={`${id}-title`}>
       <div className="pi-setup-heading">
         <h2 id={`${id}-title`}>{copy.title}</h2>
-        {ready ? <span className="pi-setup-ready">{copy.ready}</span> : null}
-        {ready ? (
-          <button
-            type="button"
-            aria-expanded={expanded}
-            onClick={() => setExpanded((value) => !value)}
-          >
-            {copy.settings}
+        {onClose ? (
+          <button type="button" ref={closeRef} aria-label={copy.close} onClick={onClose}>
+            <X size={15} aria-hidden="true" />
           </button>
         ) : null}
       </div>
       {setup.loading ? <p role="status">{copy.loading}</p> : null}
-      {(!ready || expanded) && !setup.loading ? (
+      {!setup.loading ? (
         <div className="pi-setup-form">
           <p>{copy.description}</p>
           {cwd ? (

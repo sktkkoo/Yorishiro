@@ -139,9 +139,7 @@ describe("Pi setup", () => {
       permissions: { read: true, write: false, commands: ["workspace-info"] },
     };
     render(<PiSetup cwd="existing worktree" language={language} />);
-    fireEvent.click(
-      await screen.findByRole("button", { name: language === "en" ? "Settings" : "設定" }),
-    );
+    await screen.findByRole("checkbox", { name: labels[0] });
     for (const label of labels)
       expect(screen.getByRole("checkbox", { name: label })).toHaveProperty("checked", false);
     expect(screen.getByText(new RegExp(explanation))).toBeTruthy();
@@ -161,7 +159,7 @@ describe("Pi setup", () => {
       permissions: { read: true, write: false, commands: ["workspace-info", "project-build"] },
     };
     render(<PiSetup cwd="existing worktree" language="en" />);
-    fireEvent.click(await screen.findByRole("button", { name: "Settings" }));
+    await screen.findByRole("combobox", { name: "Model" });
     const build = screen.getByRole("checkbox", { name: "Run project build" });
     await waitFor(() => expect(build).toHaveProperty("checked", true));
     fireEvent.click(build);
@@ -284,18 +282,87 @@ describe("Pi setup", () => {
     expect(ready).toHaveBeenLastCalledWith(false);
   });
 
-  it("shows existing configuration compactly and requires explicit editing", async () => {
+  it("refreshes readiness while hidden and retains unsaved edits across manual close", async () => {
     current = { ...current, configured: true, authenticated: true, authentication: "present" };
-    render(<PiSetup cwd="workspace fixture" language="en" />);
-    await screen.findByText("Configured");
+    const readiness = vi.fn();
+    const attention = vi.fn();
+    const view = render(
+      <PiSetup
+        cwd="workspace fixture"
+        language="en"
+        open={false}
+        onReadinessChange={readiness}
+        onAttentionChange={attention}
+      />,
+    );
+    await waitFor(() => expect(readiness).toHaveBeenLastCalledWith(true));
     expect(screen.queryByRole("combobox")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
-    expect(screen.getByRole("combobox", { name: "Model" })).toBeTruthy();
-    expect(
-      native.invoke.mock.calls.some(
-        ([name]) => name === "continuity_pi_login_start" || name === "continuity_pi_setup_save",
-      ),
-    ).toBe(false);
+    expect(screen.queryByText("Configured")).toBeNull();
+    view.rerender(
+      <PiSetup
+        cwd="workspace fixture"
+        language="en"
+        open
+        onReadinessChange={readiness}
+        onAttentionChange={attention}
+      />,
+    );
+    fireEvent.click(screen.getByRole("checkbox", { name: "Create and change files" }));
+    view.rerender(
+      <PiSetup
+        cwd="workspace fixture"
+        language="en"
+        open={false}
+        onReadinessChange={readiness}
+        onAttentionChange={attention}
+      />,
+    );
+    current = { ...current, authenticated: false, authentication: "missing" };
+    fireEvent(window, new Event("focus"));
+    await waitFor(() => expect(readiness).toHaveBeenLastCalledWith(false));
+    expect(attention).toHaveBeenLastCalledWith(true);
+    view.rerender(
+      <PiSetup
+        cwd="workspace fixture"
+        language="en"
+        open
+        onReadinessChange={readiness}
+        onAttentionChange={attention}
+      />,
+    );
+    expect(screen.getByRole("checkbox", { name: "Create and change files" })).toHaveProperty(
+      "checked",
+      true,
+    );
+    expect(native.invoke.mock.calls.some(([name]) => name === "continuity_pi_setup_save")).toBe(
+      false,
+    );
+  });
+
+  it("keeps failed saves open and closes only after successful saving", async () => {
+    current = { ...current, authenticated: true, authentication: "present" };
+    const onClose = vi.fn();
+    const onConfigured = vi.fn();
+    render(
+      <PiSetup
+        cwd="workspace fixture"
+        language="en"
+        onClose={onClose}
+        onConfigured={onConfigured}
+      />,
+    );
+    const save = await screen.findByRole("button", {
+      name: "Save and use for autonomous execution",
+    });
+    await waitFor(() => expect(save).toHaveProperty("disabled", false));
+    native.invoke.mockRejectedValueOnce("configuration_invalid");
+    fireEvent.click(save);
+    await screen.findByRole("alert");
+    expect(onClose).not.toHaveBeenCalled();
+    expect(onConfigured).not.toHaveBeenCalled();
+    fireEvent.click(save);
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(onConfigured).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -313,7 +380,7 @@ it("requires a fresh permission review when the selected workspace changes", asy
   };
   const readiness = vi.fn();
   const view = render(<PiSetup cwd="project a" language="en" onReadinessChange={readiness} />);
-  await screen.findByText("Configured");
+  await screen.findByRole("combobox", { name: "Model" });
   current = { ...initial(), authenticated: true, authentication: "present" };
   view.rerender(<PiSetup cwd="project b" language="en" onReadinessChange={readiness} />);
   await screen.findByRole("checkbox", { name: "Create and change files" });

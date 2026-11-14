@@ -1,5 +1,8 @@
 .pi-setup {
-  margin: 12px 28px;
+  flex: 0 1 auto;
+  width: calc(100% - 56px);
+  max-width: 720px;
+  margin: 0 auto 12px;
   padding: 12px 16px;
   border: 1px solid var(--yorishiro-border);
   border-radius: 8px;
@@ -17,8 +20,8 @@
   font-size: 12px;
   font-weight: 600;
 }
-.pi-setup-ready {
-  color: var(--yorishiro-accent);
+.pi-setup[hidden] {
+  display: none;
 }
 .pi-setup-form {
   display: grid;
