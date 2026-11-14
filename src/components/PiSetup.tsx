@@ -51,7 +51,8 @@ const COPY = {
     legacy:
       "以前の開発用設定があります。操作権限を確認して保存すると、アプリ同梱の実行環境へ切り替えます。",
     runtime: "自律実行の実行環境を読み込めません。アプリを更新または再インストールしてください。",
-    retry: "再確認",
+    retry: "接続状態を再確認",
+    retryHint: "ログインや実行環境の状態を更新します。設定の変更は保存されません。",
     failed: "ログインまたは設定に失敗しました。もう一度お試しください。",
     timeout: "ログインが時間切れになりました。もう一度開始してください。",
     browser: "ブラウザを開けませんでした。既定のブラウザの設定を確認してください。",
@@ -93,7 +94,8 @@ const COPY = {
     legacy:
       "Earlier development settings are present. Review permissions and save to switch to the runtime included with the app.",
     runtime: "The autonomous runtime could not be loaded. Update or reinstall the app.",
-    retry: "Check again",
+    retry: "Recheck connection status",
+    retryHint: "Refresh sign-in and runtime status. This does not save changes to your settings.",
     failed: "Sign-in or setup failed. Please try again.",
     timeout: "Sign-in timed out. Start it again when ready.",
     browser: "The browser could not be opened. Check your default browser settings.",
@@ -343,10 +345,12 @@ export function PiSetup({ cwd, language, onConfigured, onReadinessChange }: PiSe
           <button
             type="button"
             disabled={setup.busy || setup.loading}
+            aria-describedby={`${id}-refresh-hint`}
             onClick={() => void setup.refresh()}
           >
             {copy.retry}
           </button>
+          <p id={`${id}-refresh-hint`}>{copy.retryHint}</p>
         </div>
       ) : null}
       {error ? (
