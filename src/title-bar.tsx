@@ -3,11 +3,9 @@ import {
   ChevronDown,
   LoaderCircle,
   Mic,
-  MicOff,
   Monitor,
   PanelLeftClose,
   PanelLeftOpen,
-  PhoneOff,
   Settings,
 } from "lucide-react";
 import type { ReactNode } from "react";
@@ -18,7 +16,7 @@ import type { UiPackEntry } from "./runtime/ui-pack-registry";
 
 /**
  * GPT Live 音声会話ボタンの表示状態。会話状態は realtime client の status を写し、
- * 赤丸は送話中だけ。MicOff はユーザーのミュート意図、終了は別の PhoneOff に分ける。
+ * マイクボタンは接続・終了を切り替え、赤丸は接続中かつミュートしていない送話中だけ。
  */
 export type VoiceControlState = "idle" | "connecting" | "active" | "error";
 
@@ -41,9 +39,6 @@ export interface TitleBarProps {
   /** Browser-owned microphone capture liveness, independent of the conversation status. */
   readonly voiceMicrophoneActive?: boolean;
   readonly voiceMicrophoneMuted?: boolean;
-  readonly voiceMuteLabel?: string;
-  readonly voiceInputStatusLabel?: string;
-  readonly onToggleMicrophoneMute?: () => void;
   readonly voiceLabel?: string;
   readonly voiceError?: string;
   readonly language?: string;
@@ -75,9 +70,6 @@ export default function TitleBar({
   voiceState = "idle",
   voiceMicrophoneActive = false,
   voiceMicrophoneMuted = false,
-  voiceMuteLabel = "Mute microphone",
-  voiceInputStatusLabel,
-  onToggleMicrophoneMute,
   voiceLabel = "",
   voiceError,
   language,
@@ -90,11 +82,9 @@ export default function TitleBar({
   activeViewModeId = null,
   onSelectViewMode,
 }: TitleBarProps) {
-  const hasMuteControl = voiceState === "active" && onToggleMicrophoneMute !== undefined;
   // 切断・再試行後に capture callback が届いても、接続状態を優先して録音表示を消す。
   const microphoneRecording =
     voiceState === "active" && voiceMicrophoneActive && !voiceMicrophoneMuted;
-  const microphoneLabel = hasMuteControl ? voiceMuteLabel : voiceLabel;
   const permissionKind = getMediaPermissionKind(voiceError);
   const SidebarIcon = sidebarOpen ? PanelLeftClose : PanelLeftOpen;
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -257,49 +247,27 @@ export default function TitleBar({
           <span className="title-bar-control-separator" aria-hidden="true" />
         ) : null}
         {voiceAvailable ? (
-          <>
-            <button
-              type="button"
-              className="title-bar-button title-bar-voice-button"
-              data-voice-state={voiceState}
-              data-microphone-active={microphoneRecording}
-              data-microphone-muted={voiceMicrophoneMuted}
-              onClick={hasMuteControl ? onToggleMicrophoneMute : onToggleVoice}
-              disabled={voiceDisabled}
-              aria-label={microphoneLabel}
-              aria-pressed={hasMuteControl ? voiceMicrophoneMuted : voiceState === "active"}
-              aria-busy={voiceState === "connecting" || undefined}
-              title={microphoneLabel}
-            >
-              {voiceState === "connecting" ? (
-                <LoaderCircle size={15} strokeWidth={1.8} aria-hidden="true" />
-              ) : hasMuteControl && voiceMicrophoneMuted ? (
-                <MicOff size={15} strokeWidth={1.8} aria-hidden="true" />
-              ) : (
-                <Mic size={15} strokeWidth={1.8} aria-hidden="true" />
-              )}
-              {microphoneRecording ? (
-                <span className="title-bar-voice-status-dot" aria-hidden="true" />
-              ) : null}
-            </button>
-            {hasMuteControl ? (
-              <>
-                <span className="title-bar-voice-input-status" role="status">
-                  {voiceInputStatusLabel}
-                </span>
-                <button
-                  type="button"
-                  className="title-bar-button"
-                  onClick={onToggleVoice}
-                  disabled={voiceDisabled}
-                  aria-label={voiceLabel}
-                  title={voiceLabel}
-                >
-                  <PhoneOff size={15} strokeWidth={1.8} aria-hidden="true" />
-                </button>
-              </>
+          <button
+            type="button"
+            className="title-bar-button title-bar-voice-button"
+            data-voice-state={voiceState}
+            data-microphone-active={microphoneRecording}
+            onClick={onToggleVoice}
+            disabled={voiceDisabled}
+            aria-label={voiceLabel}
+            aria-pressed={voiceState === "active"}
+            aria-busy={voiceState === "connecting" || undefined}
+            title={voiceLabel}
+          >
+            {voiceState === "connecting" ? (
+              <LoaderCircle size={15} strokeWidth={1.8} aria-hidden="true" />
+            ) : (
+              <Mic size={15} strokeWidth={1.8} aria-hidden="true" />
+            )}
+            {microphoneRecording ? (
+              <span className="title-bar-voice-status-dot" aria-hidden="true" />
             ) : null}
-          </>
+          </button>
         ) : null}
         {screenSharingControl}
         {onToggleContinuity ? (
