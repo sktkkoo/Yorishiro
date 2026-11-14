@@ -514,12 +514,6 @@ html[data-rounded-view] body {
   pointer-events: none;
 }
 
-.title-bar-voice-input-status {
-  font-size: 11px;
-  color: #c9c9d0;
-  white-space: nowrap;
-}
-
 .title-bar-voice-button[data-voice-state="error"] svg {
   opacity: 1;
 }
