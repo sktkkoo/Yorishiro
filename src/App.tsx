@@ -6227,17 +6227,6 @@ function App() {
         voiceState={titleBarVoiceState}
         voiceMicrophoneActive={codexRealtimeState.microphoneActive === true}
         voiceMicrophoneMuted={microphoneControl.muted}
-        voiceMuteLabel={`${microphoneControl.muted ? strings.quickVoiceUnmuteMicrophone : strings.quickVoiceMuteMicrophone} (${isMac ? "⌘⇧M" : "Ctrl+Shift+M"})`}
-        voiceInputStatusLabel={`GPT Live · ${
-          microphoneControl.status === "interrupted"
-            ? appLanguage.resolved === "en"
-              ? "Microphone unavailable"
-              : "マイク入力が中断中"
-            : microphoneControl.muted
-              ? strings.quickVoiceMuted
-              : strings.quickVoiceListening
-        }`}
-        onToggleMicrophoneMute={microphoneControl.toggleMute}
         voiceLabel={
           titleBarVoiceState === "active"
             ? strings.gptLiveVoiceStop
