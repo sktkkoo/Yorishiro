@@ -208,6 +208,10 @@ import {
   type ResolvedLanguage,
   resolveLanguage,
 } from "./runtime/language/language";
+import {
+  createLocalMicrophoneControl,
+  installMicrophoneMuteShortcut,
+} from "./runtime/local-microphone";
 import { getModuleRegistry, KEYS } from "./runtime/module-registry";
 import { PersonaReflexDispatcher } from "./runtime/persona-reflex";
 import type { PersonaEntry } from "./runtime/persona-registry";
@@ -4350,6 +4354,27 @@ function App() {
     },
   });
 
+  const microphoneControl = useMemo(
+    () =>
+      createLocalMicrophoneControl({
+        transportId: "gpt-live",
+        connection: codexRealtimeState.status,
+        muted: codexRealtimeState.microphoneMuted === true,
+        captureActive: codexRealtimeState.microphoneActive === true,
+        interrupted: codexRealtimeState.microphoneInterrupted === true,
+        setMuted: setCodexMicrophoneMuted,
+      }),
+    [codexRealtimeState, setCodexMicrophoneMuted],
+  );
+  useEffect(
+    () =>
+      installMicrophoneMuteShortcut({
+        macos: isMac,
+        getControl: () => microphoneControl,
+      }),
+    [microphoneControl, isMac],
+  );
+
   const handleContinuityContextError = useCallback((error: unknown) => {
     setContinuityAudioError(error instanceof Error ? error.message : String(error));
   }, []);
@@ -4455,14 +4480,14 @@ function App() {
       await handleToggleVoice();
       return;
     }
-    setCodexMicrophoneMuted(false);
+    microphoneControl.setMuted(false);
     await toggleCodexRealtime();
   }, [
     mainAgentAvailable,
     codexVoiceAvailable,
     handleToggleVoice,
     toggleCodexRealtime,
-    setCodexMicrophoneMuted,
+    microphoneControl,
   ]);
 
   const handleCloseContinuityWorkspace = useCallback(() => {
@@ -5889,7 +5914,7 @@ function App() {
       macos: isMac,
       onInvoke: () => {
         if (codexRealtimeState.status === "active") {
-          setCodexMicrophoneMuted(codexRealtimeState.microphoneMuted !== true);
+          microphoneControl.toggleMute();
           return;
         }
         if (codexRealtimeState.status === "connecting") return;
@@ -5914,13 +5939,12 @@ function App() {
           : undefined,
     });
   }, [
-    codexRealtimeState.microphoneMuted,
+    microphoneControl,
     codexRealtimeState.status,
     conversationShortcutEnabled,
     handleToggleVoice,
     isMac,
     quickChatOpen,
-    setCodexMicrophoneMuted,
     tabManager,
   ]);
 
@@ -6202,6 +6226,18 @@ function App() {
         voiceDisabled={!mainAgentAvailable || mainSessionReplacing}
         voiceState={titleBarVoiceState}
         voiceMicrophoneActive={codexRealtimeState.microphoneActive === true}
+        voiceMicrophoneMuted={microphoneControl.muted}
+        voiceMuteLabel={`${microphoneControl.muted ? strings.quickVoiceUnmuteMicrophone : strings.quickVoiceMuteMicrophone} (${isMac ? "⌘⇧M" : "Ctrl+Shift+M"})`}
+        voiceInputStatusLabel={`GPT Live · ${
+          microphoneControl.status === "interrupted"
+            ? appLanguage.resolved === "en"
+              ? "Microphone unavailable"
+              : "マイク入力が中断中"
+            : microphoneControl.muted
+              ? strings.quickVoiceMuted
+              : strings.quickVoiceListening
+        }`}
+        onToggleMicrophoneMute={microphoneControl.toggleMute}
         voiceLabel={
           titleBarVoiceState === "active"
             ? strings.gptLiveVoiceStop
@@ -6401,7 +6437,7 @@ function App() {
             phase: continuityConversationPhase,
             onStart: handleContinuityVoiceStart,
             onEnd: handleEndContinuityConversation,
-            onSetMuted: setCodexMicrophoneMuted,
+            onSetMuted: microphoneControl.setMuted,
           }}
         />
       ) : null}
@@ -6432,7 +6468,7 @@ function App() {
           shortcutMuteLabel={strings.quickVoiceShortcutMute}
           shortcutUnmuteLabel={strings.quickVoiceShortcutUnmute}
           stopLabel={strings.quickVoiceEnd}
-          onToggleMuted={() => setCodexMicrophoneMuted(codexRealtimeState.microphoneMuted !== true)}
+          onToggleMuted={microphoneControl.toggleMute}
           onStop={stopCodexRealtime}
         />
       ) : null}
