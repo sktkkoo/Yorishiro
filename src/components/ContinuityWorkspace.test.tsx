@@ -132,6 +132,38 @@ function pendingVoiceStart() {
   });
   return { promise, resolve, reject };
 }
+function readingLayout() {
+  const layout = {
+    height: 2000,
+    detachedMeasurements: 0,
+    items: new Map<string, { top: number; height: number }>([
+      ["message:user-1", { top: 0, height: 100 }],
+      ["message:reply-1", { top: 600, height: 700 }],
+      ["draft:draft-1", { top: 1100, height: 200 }],
+    ]),
+  };
+  vi.spyOn(Element.prototype, "scrollHeight", "get").mockImplementation(function (this: Element) {
+    return this.classList.contains("continuity-flow") ? layout.height : 0;
+  });
+  vi.spyOn(Element.prototype, "clientHeight", "get").mockImplementation(function (this: Element) {
+    return this.classList.contains("continuity-flow") ? 400 : 0;
+  });
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (
+    this: HTMLElement,
+  ) {
+    const bounds = (top: number, height: number) =>
+      ({ top, bottom: top + height, height }) as DOMRect;
+    if (this.classList.contains("continuity-flow")) {
+      if (!this.isConnected) layout.detachedMeasurements += 1;
+      return bounds(100, 400);
+    }
+    const item = layout.items.get(this.dataset.readingKey ?? "");
+    const flow = this.closest<HTMLElement>(".continuity-flow");
+    return item && flow ? bounds(100 + item.top - flow.scrollTop, item.height) : bounds(0, 0);
+  });
+  return layout;
+}
+const readingFlow = () => screen.getByRole("log").closest(".continuity-flow") as HTMLDivElement;
 const originalShowModal = Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, "showModal");
 const originalClose = Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, "close");
 const props = (): ContinuityWorkspaceProps => ({
@@ -476,6 +508,141 @@ describe("ContinuityWorkspace", () => {
     view.rerender(<ContinuityWorkspace {...props()} language="en" />);
     expect(screen.queryByRole("button", { name: "New reply" })).toBeNull();
     expect(screen.getByRole("button", { name: "View question" })).toBeTruthy();
+  });
+
+  it("restores the message being read after hidden arrivals and reflow, without adopting a lower visible draft", () => {
+    const layout = readingLayout();
+    const initial = { ...props(), language: "en" as const };
+    const view = render(<ContinuityWorkspace {...initial} />);
+    readingFlow().scrollTop = 750;
+    fireEvent.scroll(readingFlow());
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Unsent reply" } });
+    view.rerender(<ContinuityWorkspace {...initial} open={false} />);
+    expect(layout.detachedMeasurements).toBe(0);
+    current = {
+      ...current,
+      messages: [
+        ...current.messages.slice(1),
+        { ...pendingQuestion("new-report"), replyKind: "report" },
+      ],
+    };
+    layout.items.set("message:reply-1", { top: 450, height: 1050 });
+    layout.items.set("draft:draft-1", { top: 1300, height: 200 });
+    view.rerender(<ContinuityWorkspace {...initial} open={false} />);
+    view.rerender(<ContinuityWorkspace {...initial} />);
+    expect(readingFlow().scrollTop).toBe(600);
+    expect(screen.getByRole("button", { name: "New reply" })).toBeTruthy();
+    expect(screen.getByRole("textbox")).toHaveProperty("value", "Unsent reply");
+    readingFlow().scrollTop = 650;
+    fireEvent.scroll(readingFlow());
+    current = { ...current, phase: "working", revision: 2 };
+    view.rerender(<ContinuityWorkspace {...initial} />);
+    expect(readingFlow().scrollTop).toBe(650);
+    expect(native.sendContinuityMessage).not.toHaveBeenCalled();
+    expect(native.actOnContinuityDraft).not.toHaveBeenCalled();
+  });
+
+  it("anchors the draft at the reading edge independently from its same-id enclosing message", () => {
+    const layout = readingLayout();
+    current = { ...current, drafts: [{ ...current.drafts[0], id: "reply-1" }] };
+    layout.items.set("draft:reply-1", { top: 1100, height: 200 });
+    const initial = { ...props(), language: "en" as const };
+    const view = render(<ContinuityWorkspace {...initial} />);
+    readingFlow().scrollTop = 1120;
+    fireEvent.scroll(readingFlow());
+    view.rerender(<ContinuityWorkspace {...initial} open={false} />);
+    layout.items.set("message:reply-1", { top: 100, height: 1300 });
+    layout.items.set("draft:reply-1", { top: 1200, height: 200 });
+    view.rerender(<ContinuityWorkspace {...initial} />);
+    expect(readingFlow().scrollTop).toBe(1220);
+    expect(screen.queryByRole("button", { name: "New reply" })).toBeNull();
+  });
+
+  it("clamps the fallback when a retained anchor disappears without treating restore as reading new replies", () => {
+    const layout = readingLayout();
+    const initial = { ...props(), language: "en" as const };
+    const view = render(<ContinuityWorkspace {...initial} />);
+    readingFlow().scrollTop = 750;
+    fireEvent.scroll(readingFlow());
+    view.rerender(<ContinuityWorkspace {...initial} open={false} />);
+    current = {
+      ...current,
+      messages: [{ ...pendingQuestion("retained"), replyKind: "report" }],
+      drafts: [],
+    };
+    layout.height = 500;
+    view.rerender(<ContinuityWorkspace {...initial} />);
+    expect(readingFlow().scrollTop).toBe(100);
+    fireEvent.scroll(readingFlow());
+    expect(screen.getByRole("button", { name: "New reply" })).toBeTruthy();
+    current = {
+      ...current,
+      messages: [...current.messages, { ...pendingQuestion("later"), replyKind: "report" }],
+    };
+    layout.height = 800;
+    view.rerender(<ContinuityWorkspace {...initial} />);
+    expect(readingFlow().scrollTop).toBe(100);
+    fireEvent.click(screen.getByRole("button", { name: "New reply" }));
+    expect(readingFlow().scrollTop).toBe(800);
+    expect(screen.queryByRole("button", { name: "New reply" })).toBeNull();
+  });
+
+  it("continues bottom-follow on reopen and starts a different persona independently", () => {
+    const layout = readingLayout();
+    const initial = { ...props(), language: "en" as const };
+    const view = render(<ContinuityWorkspace {...initial} />);
+    readingFlow().scrollTop = 1600;
+    fireEvent.scroll(readingFlow());
+    view.rerender(<ContinuityWorkspace {...initial} open={false} />);
+    current = { ...current, messages: [...current.messages, pendingQuestion("new-question")] };
+    layout.height = 2400;
+    view.rerender(<ContinuityWorkspace {...initial} />);
+    expect(readingFlow().scrollTop).toBe(2400);
+    expect(screen.queryByRole("button", { name: "New reply" })).toBeNull();
+    readingFlow().scrollTop = 750;
+    fireEvent.scroll(readingFlow());
+    view.rerender(<ContinuityWorkspace {...initial} personaId="other-persona" />);
+    expect(readingFlow().scrollTop).toBe(2400);
+    expect(screen.queryByRole("button", { name: "New reply" })).toBeNull();
+  });
+
+  it("reopens at a requested question even near the bottom and preserves hidden report notifications", () => {
+    const layout = readingLayout();
+    current = { ...current, messages: [...current.messages, pendingQuestion()] };
+    layout.items.set("message:pending-question", { top: 1550, height: 100 });
+    const initial = { ...props(), language: "en" as const };
+    const view = render(<ContinuityWorkspace {...initial} />);
+    fireEvent.click(screen.getByRole("button", { name: "View question" }));
+    expect(readingFlow().scrollTop).toBe(1542);
+    fireEvent.scroll(readingFlow());
+    view.rerender(<ContinuityWorkspace {...initial} open={false} />);
+    current = {
+      ...current,
+      messages: [...current.messages, { ...pendingQuestion("new-report"), replyKind: "report" }],
+    };
+    view.rerender(<ContinuityWorkspace {...initial} />);
+    expect(readingFlow().scrollTop).toBe(1542);
+    fireEvent.scroll(readingFlow());
+    expect(screen.getByRole("button", { name: "New reply" })).toBeTruthy();
+  });
+
+  it("lets an explicit send follow the latest conversation instead of restoring the older reading position", async () => {
+    readingLayout();
+    const initial = { ...props(), language: "en" as const };
+    const view = render(<ContinuityWorkspace {...initial} />);
+    readingFlow().scrollTop = 750;
+    fireEvent.scroll(readingFlow());
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Continue here" } });
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Send" })));
+    view.rerender(<ContinuityWorkspace {...initial} open={false} />);
+    current = {
+      ...current,
+      messages: [...current.messages, { ...pendingQuestion("sent"), role: "user" }],
+    };
+    view.rerender(<ContinuityWorkspace {...initial} />);
+    expect(readingFlow().scrollTop).toBe(2000);
+    expect(screen.queryByRole("button", { name: "New reply" })).toBeNull();
+    expect(native.sendContinuityMessage).toHaveBeenCalledTimes(1);
   });
 
   it("updates activity without scrolling older replies, losing input, or clearing unread replies", () => {
