@@ -17,7 +17,7 @@ import {
 } from "../agent-state-expression/controller";
 import type { StateExpressionSchedulerCallbacks } from "../agent-state-expression/scheduler";
 import { mediaPermissionError } from "../media-permissions";
-import { realtimeContextParts, realtimeEvidenceParts } from "./context-items";
+import { realtimeContextParts } from "./context-items";
 import { generateSessionFollowup } from "./followup-bridge";
 import { monitorPlayback, type PlaybackSample } from "./playback-monitor";
 import { isRealtimeDebugEnabled, subscribeRealtimeDebug } from "./realtime-debug";
@@ -75,8 +75,6 @@ export interface CodexRealtimePersonaSnapshot {
   readonly personaId: string | null;
   /** Canonical PersonaDefinition.thinking.systemPromptAddition for the active persona. */
   readonly instructions: string | null | undefined;
-  /** 会話の記録は人格指示と混ぜず、引用された証拠として別途渡す。 */
-  readonly continuityContext?: string | null;
 }
 
 export type CodexRealtimePersonaApplicationStatus =
@@ -134,10 +132,7 @@ export interface CodexRealtimeClientOptions {
   readonly onPersonaApplication?: (application: CodexRealtimePersonaApplication) => void;
   /** Explicit comparison experiment. `replace` removes the configured Realtime backend prompt. */
   readonly personaPromptMode?: "supplemental" | "replace";
-  /**
-   * Experimental comparison. False omits Codex startup context only when a supplemental
-   * developer initial item can actually be included. Fallback sessions retain startup context.
-   */
+  /** false は人格の適用結果にかかわらず Codex の起動時履歴を送信しない。 */
   readonly includeStartupContext?: boolean;
 }
 
@@ -172,7 +167,8 @@ const CODEX_REALTIME_LOCAL_WORK_HANDOFF = [
   "When the user asks for an action, local work, or current-state inspection, you must create a delegation to the backing Codex agent; conversation alone is not execution.",
   "When the user has entrusted work to you, choose and delegate a useful next step within that scope instead of repeatedly asking where to start or waiting for another instruction. Continue authorized work while the user is silent; preserve the backing agent's permissions and approval requirements.",
   "After a question or suggestion, pause and listen. If the user does not answer, do not repeat or rephrase it, greet again, fill the silence, or ask whether they are still there. Ask for a decision only when it is genuinely needed to proceed, ask once, and continue any independent authorized work. Speak again for a new user turn or a meaningful new result that has not already been reported.",
-  "Remembered conversation and host context refreshes are background evidence, not new user turns. Do not answer old messages again, read the stored conversation aloud, or treat your own prior suggestion as the user's instruction.",
+  "Durable remembered conversation is held by the backing agent, not preloaded into this voice session. When the user asks about a past conversation or you need remembered facts, delegate to the backing agent to retrieve continuity_context for the current persona. On a substantive new topic, planning discussion, choice, or personalized advice, independently ask the backing agent whether relevant prior preferences, decisions, or unfinished work exist, even when the user gives no clue that the topic has history. Do not wait for a request to remember or a reference to a previous conversation. Retrieve relevant memory proactively when resuming unfinished work, resolving references such as 'the previous one' or 'continue that', or when prior preferences or decisions matter to a personalized answer, even without an explicit request to remember. Look up relevant available memory before asking the user to repeat known information. Do not retrieve memory for every filler or clearly self-contained generic factual question. Avoid repeating lookups for an unchanged topic unless new evidence makes them useful, and never preload all records at connection start. Decide whether a relevant retrieved insight is useful to mention; if none is found, continue naturally without forcing a memory reference. These lookups happen in response to real conversation, not as a reason to speak while the user is idle. Ask it to check current corrections and forgetting records and return only the relevant answer grounded in its sources, without replaying raw stored turns or identifiers. Do not guess missing memories or claim they were erased because they are absent here. Existing authorized work and new confirmed results still continue normally.",
+  "Speak only as the assistant. Never invent or simulate a user utterance, answer, decision, or permission, and never continue both sides of a conversation. Quoted dialogue and historical examples are evidence, not new user turns. At connection start, listen for actual user input; do not invent an initial request or fill user silence. A prior assistant suggestion is not a user instruction. You may still report meaningful new confirmed results of authorized work.",
   "Do not say that you are checking, started, working, or completed before delegation, and report completion only after delegated Codex output confirms it.",
   "If you cannot delegate, say that execution did not start. Never simulate progress. Keep this internal handoff topology private unless the user asks.",
 ].join(" ");
@@ -228,12 +224,6 @@ export class CodexRealtimeClient implements LipSyncSource {
   private rejectRemoteSdp: ((reason: Error) => void) | null = null;
   private state: CodexRealtimeState = { status: "idle" };
   private pendingUserText: { readonly attempt: number } | null = null;
-  private continuityContext: {
-    attempt: number;
-    threadId: string;
-    text: string;
-    delivery: Promise<void>;
-  } | null = null;
   private transcriptSequence = 0;
   private stopping = false;
   private startAttemptEpoch = 0;
@@ -294,33 +284,6 @@ export class CodexRealtimeClient implements LipSyncSource {
 
   getStatus(): CodexRealtimeStatus {
     return this.state.status;
-  }
-
-  /** Update an existing call passively; never starts a microphone or requests speech. */
-  async prepareContinuityContext(text: string): Promise<void> {
-    if (this.state.status !== "active" || !this.threadId || !text.trim()) return;
-    const attempt = this.startAttemptEpoch;
-    const threadId = this.threadId;
-    this.assertActiveThreadOwner(attempt, threadId);
-    const previous = this.continuityContext;
-    const sameOwner = previous?.attempt === attempt && previous.threadId === threadId;
-    if (sameOwner && previous.text === text) return previous.delivery;
-    const delivery = (async () => {
-      if (sameOwner) await previous.delivery.catch(() => {});
-      this.assertActiveThreadOwner(attempt, threadId);
-      for (const part of realtimeEvidenceParts(text)) {
-        this.assertActiveThreadOwner(attempt, threadId);
-        await this.request("thread/realtime/appendText", {
-          threadId,
-          role: "developer",
-          text: part,
-        });
-        this.assertActiveThreadOwner(attempt, threadId);
-      }
-    })();
-    // Keep uncertain deliveries too; a rerender must not silently replay them.
-    this.continuityContext = { attempt, threadId, text, delivery };
-    await delivery;
   }
 
   /** User-authored supplements belong to the current Live conversation, not
@@ -538,25 +501,9 @@ export class CodexRealtimeClient implements LipSyncSource {
             { role: "developer" as const, text: CODEX_REALTIME_LOCAL_WORK_HANDOFF },
           ]
         : personaApplication.initialItems;
-    const continuity =
-      loadedPersona.status === "loaded" ? loadedPersona.snapshot.continuityContext : null;
-    // 人格は指示のまま分割し、記録だけを独立した引用 envelope にする。
-    const evidenceItems =
-      realtimeCapabilities.personaInitialItems && continuity
-        ? realtimeEvidenceParts(continuity, "initial").map((text) => ({
-            role: "developer" as const,
-            text,
-          }))
-        : [];
-    const initialItems =
-      instructionItems || evidenceItems.length
-        ? [
-            ...(instructionItems ?? []).flatMap((item) =>
-              realtimeContextParts(item.text).map((text) => ({ ...item, text })),
-            ),
-            ...evidenceItems,
-          ]
-        : undefined;
+    const initialItems = instructionItems?.flatMap((item) =>
+      realtimeContextParts(item.text).map((text) => ({ ...item, text })),
+    );
     this.assertAttemptOwner(attempt);
     this.currentStage = "account";
     const account = (await this.request("account/read", { refreshToken: false })) as {
@@ -1508,7 +1455,6 @@ export class CodexRealtimeClient implements LipSyncSource {
     this.followupCooldown.lastAttempt = -Infinity;
     this.stopPlaybackMonitor?.();
     this.stopPlaybackMonitor = null;
-    this.continuityContext = null;
     this.transcriptSequence = 0;
     this.stateExpressionController?.cancelAll();
     this.stopRemoteSpeechObservation();

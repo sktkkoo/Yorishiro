@@ -36,7 +36,6 @@ function deferred(): {
 }
 
 class FakeClient implements CodexRealtimeClientLike {
-  readonly prepareContinuityContext = vi.fn(async (_text: string) => {});
   readonly appendUserText = vi.fn(async (_text: string, _language?: "ja" | "en") => {});
   readonly notifyScreenContext = vi.fn(
     async (_capturedAt: string, _availability?: ScreenPointerAvailability) => {},
@@ -516,29 +515,9 @@ describe("useCodexRealtime", () => {
     rerender({ sessionId: "main", available: true });
     conversationExchanges[0]?.(part);
     expect(onConversationExchange).toHaveBeenCalledTimes(1);
-    await expect(result.current.prepareContinuityContext("new persona")).rejects.toThrow(
-      "different persona",
-    );
-    expect(clients[0].prepareContinuityContext).not.toHaveBeenCalled();
     unmount();
     conversationExchanges[0]?.(part);
     expect(onConversationExchange).toHaveBeenCalledTimes(1);
-  });
-
-  it("updates only an existing call and rejects context completion after owner replacement", async () => {
-    const { result, clients, rerender, unmount } = setup([]);
-    await result.current.prepareContinuityContext("idle");
-    expect(clients).toHaveLength(0);
-    await act(async () => result.current.toggle());
-    act(() => clients[0].emit({ status: "active" }));
-    const delivery = deferred();
-    clients[0].prepareContinuityContext.mockReturnValueOnce(delivery.promise);
-    const pending = result.current.prepareContinuityContext("current");
-    rerender({ sessionId: "other", available: true });
-    delivery.resolve();
-    await expect(pending).rejects.toThrow("changed");
-    expect(clients[0].prepareContinuityContext).toHaveBeenCalledExactlyOnceWith("current");
-    unmount();
   });
 
   it("routes speech only from the active voice owner and reads the latest host callback", async () => {
