@@ -234,6 +234,71 @@ describe("shared continuity bridge", () => {
     expect(view.result.current.snapshot?.autoEnabled).toBe(false);
   });
 
+  it.each([
+    "work",
+    "sync",
+    "autonomy",
+  ] as const)("publishes a manual %s bridge failure before invocation and recovers on a later accepted command", async (source) => {
+    native.listen.mockRejectedValueOnce(new Error("Initial subscription failed"));
+    const client = await import("./client");
+    const view = renderHook(() => client.useContinuity(context, false));
+    await waitFor(() => expect(view.result.current.error).toBe("Initial subscription failed"));
+    const operation = () =>
+      source === "work"
+        ? client.retryContinuity(context)
+        : source === "sync"
+          ? client.refreshContinuity(context)
+          : client.setContinuityAutoEnabled(context, false);
+    native.listen.mockRejectedValueOnce(new Error("Recovery subscription failed"));
+    await act(async () => {
+      await expect(operation()).rejects.toThrow("Recovery subscription failed");
+    });
+    expect(native.invoke).not.toHaveBeenCalled();
+    expect(view.result.current.error).toBe("Recovery subscription failed");
+    expect(view.result.current.errorSource).toBe(source);
+    await act(operation);
+    expect(native.listen).toHaveBeenCalledTimes(3);
+    expect(native.invoke).toHaveBeenCalledTimes(1);
+    expect(view.result.current.error).toBeNull();
+    expect(view.result.current.errorSource).toBeNull();
+    expect(view.result.current.snapshot?.revision).toBe(1);
+  });
+
+  it.each([
+    "work",
+    "sync",
+  ] as const)("keeps %s failure through older events, then exposes accepted native errors and clears on an equal-revision acknowledgement", async (source) => {
+    const client = await import("./client");
+    native.invoke.mockResolvedValue({ ...snapshot("yori-ja", 5), autoEnabled: false });
+    const view = renderHook(() => client.useContinuity(context, false));
+    await waitFor(() => expect(view.result.current.snapshot?.revision).toBe(5));
+    const operation = () =>
+      source === "work" ? client.retryContinuity(context) : client.refreshContinuity(context);
+    native.invoke.mockRejectedValueOnce(new Error("Recovery failed"));
+    await act(async () => {
+      await expect(operation()).rejects.toThrow("Recovery failed");
+    });
+    act(() => native.callback?.({ payload: snapshot("yori-ja", 4) }));
+    expect(view.result.current.error).toBe("Recovery failed");
+    expect(view.result.current.errorSource).toBe(source);
+    const accepted = {
+      ...snapshot("yori-ja", 6),
+      phase: "error" as const,
+      error: "New native failure",
+    };
+    act(() => native.callback?.({ payload: accepted }));
+    expect(view.result.current.error).toBeNull();
+    expect(view.result.current.snapshot?.error).toBe("New native failure");
+    native.invoke.mockRejectedValueOnce(new Error("Another recovery failed"));
+    await act(async () => {
+      await expect(operation()).rejects.toThrow("Another recovery failed");
+    });
+    act(() => native.callback?.({ payload: snapshot("yori-ja", 6) }));
+    expect(view.result.current.error).toBeNull();
+    expect(view.result.current.errorSource).toBeNull();
+    expect(view.result.current.snapshot?.error).toBeNull();
+  });
+
   it("forgets the exact memory through native persistence and only accepts the acknowledged snapshot", async () => {
     const client = await import("./client");
     const view = renderHook(() => client.useContinuity(context, false));
