@@ -14,7 +14,9 @@ import { createPortal } from "react-dom";
 import { CONTINUITY_COPY } from "../i18n/continuity";
 import {
   actOnContinuityDraft,
+  type ContinuityErrorSource,
   forgetContinuityUnderstanding,
+  refreshContinuity,
   retryContinuity,
   sendContinuityMessage,
   setContinuityAutoEnabled,
@@ -58,6 +60,10 @@ export interface ContinuityWorkspaceProps {
 interface InputDraft {
   readonly text: string;
   readonly correctionId: string | null;
+}
+interface WorkspaceError {
+  readonly message: string;
+  readonly source: ContinuityErrorSource | "voice";
 }
 const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
 const isBuiltInYori = (id: string) => ["yori-ja", "yori-en"].includes(id);
@@ -117,7 +123,7 @@ function ResidentWorkspace({
     }),
     [personaId, name, personaInstructions, language, cwd, executionBackend, executionSessionId],
   );
-  const { snapshot, error: syncError } = useContinuity(context, open);
+  const { snapshot, error: syncError, errorSource: syncErrorSource } = useContinuity(context, open);
   const piDiagnostics = usePiDiagnostics(cwd, open, executionBackend);
   const [piReadiness, setPiReadiness] = useState({ cwd, ready: executionBackend !== "pi" });
   const onPiReadiness = useCallback((ready: boolean) => setPiReadiness({ cwd, ready }), [cwd]);
@@ -154,12 +160,14 @@ function ResidentWorkspace({
     | { kind: "forget"; entry: ContinuityUnderstanding }
     | null
   >(null);
-  const [localError, setLocalError] = useState<string | null>(null);
+  const [localError, setLocalError] = useState<WorkspaceError | null>(null);
   const [sending, setSending] = useState(false);
   const [actionPending, setActionPending] = useState(false);
   const [voicePending, setVoicePending] = useState(false);
   const [autoPending, setAutoPending] = useState(false);
   const [forgetPending, setForgetPending] = useState(false);
+  const [retryPending, setRetryPending] = useState(false);
+  const retryInFlight = useRef(false);
   const forgetInFlight = useRef(false);
   const autoInFlight = useRef(false);
   const [unread, setUnread] = useState(false);
@@ -192,11 +200,44 @@ function ResidentWorkspace({
     detail?.kind === "forget"
       ? snapshot?.understandings.find((item) => item.id === detail.entry.id)
       : null;
-  const error = localError ?? syncError ?? snapshot?.error ?? conversation?.state.error;
+  const presentedError: WorkspaceError | null =
+    localError ??
+    (syncError
+      ? { message: syncError, source: syncErrorSource ?? "sync" }
+      : snapshot?.error
+        ? { message: snapshot.error, source: "work" }
+        : conversation?.state.error
+          ? { message: conversation.state.error, source: "voice" }
+          : null);
+  const error = presentedError?.message;
+  const workError = presentedError?.source === "work";
+  const syncFailure = presentedError?.source === "sync";
+  const additionalVoiceError =
+    presentedError?.source !== "voice" ? conversation?.state.error : null;
+  const recoveryHint =
+    presentedError && presentedError.source !== "work"
+      ? copy.recovery[presentedError.source]
+      : null;
   const busy =
     snapshot?.phase === "thinking" ||
     snapshot?.phase === "drafting" ||
     snapshot?.phase === "working";
+  const activity =
+    snapshot?.phase === "working"
+      ? copy.working
+      : snapshot?.phase === "drafting"
+        ? copy.drafting
+        : snapshot?.phase === "thinking"
+          ? copy.thinking
+          : !snapshot && !error
+            ? copy.loading
+            : snapshot?.phase === "idle" &&
+                snapshot.autoEnabled === true &&
+                !syncError &&
+                !snapshot.error &&
+                piReady
+              ? copy.idle
+              : null;
   const autoDescription =
     snapshot?.autoEnabled === true
       ? copy.autonomyOn
@@ -288,7 +329,7 @@ function ResidentWorkspace({
       inputRef.current?.focus({ preventScroll: true });
     } catch (cause) {
       forceFollow.current = false;
-      if (mounted.current) setLocalError(errorText(cause));
+      if (mounted.current) setLocalError({ message: errorText(cause), source: "send" });
     } finally {
       inFlight.current = false;
       if (mounted.current) setSending(false);
@@ -303,17 +344,30 @@ function ResidentWorkspace({
       await actOnContinuityDraft(context, draftId, action);
       if (action === "continue" && mounted.current) closeDetail();
     } catch (cause) {
-      if (mounted.current) setLocalError(errorText(cause));
+      if (mounted.current) setLocalError({ message: errorText(cause), source: "draft" });
     } finally {
       if (mounted.current) setActionPending(false);
     }
   }
-  async function retry() {
-    setLocalError(null);
+  async function retry(source: "work" | "sync" = "work") {
+    if (retryInFlight.current) return;
+    retryInFlight.current = true;
+    setRetryPending(true);
     try {
-      await retryContinuity(context);
+      if (source === "sync") await refreshContinuity(context);
+      else await retryContinuity(context);
+      if (mounted.current) {
+        setLocalError((current) => (current?.source === source ? null : current));
+      }
     } catch (cause) {
-      if (mounted.current) setLocalError(errorText(cause));
+      if (mounted.current) {
+        setLocalError((current) =>
+          current && current.source !== source ? current : { message: errorText(cause), source },
+        );
+      }
+    } finally {
+      retryInFlight.current = false;
+      if (mounted.current) setRetryPending(false);
     }
   }
   async function forget(entry: ContinuityUnderstanding) {
@@ -329,7 +383,7 @@ function ResidentWorkspace({
       );
       closeDetail(true);
     } catch (cause) {
-      if (mounted.current) setLocalError(errorText(cause));
+      if (mounted.current) setLocalError({ message: errorText(cause), source: "forget" });
     } finally {
       forgetInFlight.current = false;
       if (mounted.current) setForgetPending(false);
@@ -343,7 +397,7 @@ function ResidentWorkspace({
     try {
       await setContinuityAutoEnabled(context, !snapshot.autoEnabled);
     } catch (cause) {
-      if (mounted.current) setLocalError(errorText(cause));
+      if (mounted.current) setLocalError({ message: errorText(cause), source: "autonomy" });
     } finally {
       autoInFlight.current = false;
       if (mounted.current) setAutoPending(false);
@@ -356,7 +410,7 @@ function ResidentWorkspace({
     try {
       await conversation.onStart();
     } catch (cause) {
-      if (mounted.current) setLocalError(errorText(cause));
+      if (mounted.current) setLocalError({ message: errorText(cause), source: "voice" });
     } finally {
       if (mounted.current) setVoicePending(false);
     }
@@ -549,31 +603,52 @@ function ResidentWorkspace({
                 {unanchoredDrafts.map(draftCard)}
               </section>
             ) : null}
-            {!snapshot && !error ? (
-              <p className="continuity-state" role="status">
-                {copy.loading}
-              </p>
-            ) : null}
-            {busy ? (
-              <p className="continuity-state" role="status">
-                <LoaderCircle size={13} aria-hidden="true" />
-                {snapshot.phase === "working"
-                  ? copy.working
-                  : snapshot.phase === "drafting"
-                    ? copy.drafting
-                    : copy.thinking}
-              </p>
-            ) : null}
           </div>
           <div className="continuity-compose-area">
-            {error && !detail && (executionBackend !== "pi" || piReady) ? (
+            {activity ? (
+              <p className="continuity-state" role="status">
+                {busy ? <LoaderCircle size={13} aria-hidden="true" /> : null}
+                {activity}
+              </p>
+            ) : null}
+            {additionalVoiceError && !detail ? (
+              <div className="continuity-error" role="alert">
+                <p>
+                  {additionalVoiceError}
+                  <br />
+                  {copy.recovery.voice}
+                </p>
+              </div>
+            ) : null}
+            {error && !detail && (!workError || executionBackend !== "pi" || piReady) ? (
               <>
                 <div className="continuity-error" role="alert">
-                  <p>{error}</p>
-                  <button type="button" disabled={busy || sending} onClick={() => void retry()}>
-                    {copy.retry}
-                  </button>
-                  {executionBackend === "pi" ? (
+                  <p>
+                    {error}
+                    {recoveryHint ? (
+                      <>
+                        <br />
+                        {recoveryHint}
+                      </>
+                    ) : null}
+                  </p>
+                  {workError || syncFailure ? (
+                    <button
+                      type="button"
+                      disabled={(workError && busy) || sending || retryPending}
+                      aria-busy={retryPending || undefined}
+                      onClick={() => void retry(syncFailure ? "sync" : "work")}
+                    >
+                      {syncFailure
+                        ? retryPending
+                          ? copy.refreshing
+                          : copy.refresh
+                        : retryPending
+                          ? copy.retrying
+                          : copy.retry}
+                    </button>
+                  ) : null}
+                  {workError && executionBackend === "pi" ? (
                     <button
                       type="button"
                       disabled={piDiagnostics.checking}
@@ -585,7 +660,7 @@ function ResidentWorkspace({
                     </button>
                   ) : null}
                 </div>
-                {executionBackend === "pi" && piDiagnostics.result ? (
+                {workError && executionBackend === "pi" && piDiagnostics.result ? (
                   <div className="continuity-error" role="status" aria-live="polite">
                     <p>
                       {piDiagnosticMessages(piDiagnostics.result)
@@ -810,6 +885,12 @@ function ResidentWorkspace({
           {error ? (
             <p className="continuity-error" role="alert">
               {error}
+              {recoveryHint ? (
+                <>
+                  <br />
+                  {recoveryHint}
+                </>
+              ) : null}
             </p>
           ) : null}
           {selectedForget ? (

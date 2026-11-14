@@ -59,6 +59,181 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 describe("shared continuity bridge", () => {
+  it.each([
+    false,
+    true,
+  ])("ignores a superseded workspace refresh failure while open is %s", async (open) => {
+    const client = await import("./client");
+    const oldRequest = pendingSnapshot();
+    const latest = { ...snapshot("yori-ja", 7), autoEnabled: false };
+    native.invoke.mockImplementation((_command, args) =>
+      args.context.cwd === "/old" ? oldRequest.promise : Promise.resolve(latest),
+    );
+    const view = renderHook(({ cwd }) => client.useContinuity({ ...context, cwd }, open), {
+      initialProps: { cwd: "/old" },
+    });
+    await waitFor(() => expect(native.invoke).toHaveBeenCalledTimes(1));
+    view.rerender({ cwd: "/new" });
+    await waitFor(() => expect(view.result.current.snapshot).toEqual(latest));
+    await act(async () => oldRequest.reject(new Error("Old workspace is unavailable")));
+    expect(view.result.current.snapshot).toEqual(latest);
+    expect(view.result.current.error).toBeNull();
+    expect(view.result.current.errorSource).toBeNull();
+    expect(native.invoke).toHaveBeenCalledTimes(2);
+  });
+
+  it("preserves the current sync error when an obsolete request fails later", async () => {
+    const client = await import("./client");
+    const oldRequest = pendingSnapshot();
+    native.invoke.mockImplementation((_command, args) =>
+      args.context.cwd === "/old"
+        ? oldRequest.promise
+        : Promise.reject(new Error("Current workspace could not sync")),
+    );
+    const view = renderHook(({ cwd }) => client.useContinuity({ ...context, cwd }, false), {
+      initialProps: { cwd: "/old" },
+    });
+    await waitFor(() => expect(native.invoke).toHaveBeenCalledTimes(1));
+    view.rerender({ cwd: "/new" });
+    await waitFor(() => expect(view.result.current.error).toBe("Current workspace could not sync"));
+    expect(view.result.current.errorSource).toBe("sync");
+    await act(async () => oldRequest.reject(new Error("Obsolete failure")));
+    expect(view.result.current.error).toBe("Current workspace could not sync");
+    expect(view.result.current.errorSource).toBe("sync");
+  });
+
+  it("does not repopulate the shared error after a refresh owner unmounts", async () => {
+    const client = await import("./client");
+    const request = pendingSnapshot();
+    native.invoke.mockReturnValueOnce(request.promise);
+    const oldView = renderHook(() => client.useContinuity(context, false));
+    await waitFor(() => expect(native.invoke).toHaveBeenCalledTimes(1));
+    oldView.unmount();
+    await act(async () => request.reject(new Error("Unmounted refresh failed")));
+    native.invoke.mockReturnValueOnce(pendingSnapshot().promise);
+    const reopened = renderHook(() => client.useContinuity(context, false));
+    expect(reopened.result.current.error).toBeNull();
+    expect(reopened.result.current.errorSource).toBeNull();
+  });
+
+  it.each([
+    3, 9,
+  ])("still accepts native snapshots by revision when an old refresh returns revision %s", async (revision) => {
+    const client = await import("./client");
+    const oldRequest = pendingSnapshot();
+    const latest = { ...snapshot("yori-ja", 7), autoEnabled: false };
+    native.invoke.mockImplementation((_command, args) =>
+      args.context.cwd === "/old" ? oldRequest.promise : Promise.resolve(latest),
+    );
+    const view = renderHook(({ cwd }) => client.useContinuity({ ...context, cwd }, false), {
+      initialProps: { cwd: "/old" },
+    });
+    await waitFor(() => expect(native.invoke).toHaveBeenCalledTimes(1));
+    view.rerender({ cwd: "/new" });
+    await waitFor(() => expect(view.result.current.snapshot?.revision).toBe(7));
+    const completed = { ...snapshot("yori-ja", revision), autoEnabled: false };
+    await act(async () => oldRequest.resolve(completed));
+    expect(view.result.current.snapshot?.revision).toBe(Math.max(7, revision));
+    act(() => native.callback?.({ payload: snapshot("yori-ja", 12) }));
+    expect(view.result.current.snapshot?.revision).toBe(12);
+    act(() => native.callback?.({ payload: snapshot("yori-ja", 11) }));
+    expect(view.result.current.snapshot?.revision).toBe(12);
+  });
+
+  it.each([
+    "send",
+    "autonomy",
+  ] as const)("preserves a pending manual %s failure across a workspace change", async (source) => {
+    const client = await import("./client");
+    const oldContext = { ...context, cwd: "/old" };
+    const view = renderHook(({ cwd }) => client.useContinuity({ ...context, cwd }, false), {
+      initialProps: { cwd: "/old" },
+    });
+    await waitFor(() => expect(view.result.current.snapshot?.revision).toBe(1));
+    const request = pendingSnapshot();
+    native.invoke.mockReturnValueOnce(request.promise);
+    const operation =
+      source === "send"
+        ? client.sendContinuityMessage(oldContext, "User's actual message")
+        : client.setContinuityAutoEnabled(oldContext, false);
+    const rejected = expect(operation).rejects.toThrow("Manual operation failed");
+    await waitFor(() => expect(native.invoke).toHaveBeenCalledTimes(2));
+    view.rerender({ cwd: "/new" });
+    await waitFor(() => expect(native.invoke).toHaveBeenCalledTimes(3));
+    await act(async () => {
+      request.reject(new Error("Manual operation failed"));
+      await rejected;
+    });
+    expect(view.result.current.error).toBe("Manual operation failed");
+    expect(view.result.current.errorSource).toBe(source);
+    act(() => native.callback?.({ payload: snapshot("yori-ja", 2) }));
+    expect(view.result.current.error).toBeNull();
+    expect(view.result.current.errorSource).toBeNull();
+  });
+
+  it("reports a current automatic tick failure as work, then a focus refresh failure as sync", async () => {
+    const client = await import("./client");
+    vi.useFakeTimers();
+    const view = renderHook(() => client.useContinuity(context, true));
+    await act(async () => {});
+    native.invoke.mockRejectedValueOnce(new Error("Automatic work could not start"));
+    await act(async () => vi.advanceTimersByTimeAsync(5 * 60 * 1000));
+    expect(view.result.current.error).toBe("Automatic work could not start");
+    expect(view.result.current.errorSource).toBe("work");
+    native.invoke.mockRejectedValueOnce(new Error("Could not refresh current state"));
+    await act(async () => window.dispatchEvent(new Event("focus")));
+    expect(view.result.current.error).toBe("Could not refresh current state");
+    expect(view.result.current.errorSource).toBe("sync");
+  });
+
+  it.each([
+    "send",
+    "draft",
+    "forget",
+    "autonomy",
+    "observation",
+    "work",
+    "sync",
+  ] as const)("preserves the %s error source until an acknowledged snapshot arrives", async (source) => {
+    const client = await import("./client");
+    const view = renderHook(() => client.useContinuity(context, false));
+    await waitFor(() => expect(view.result.current.snapshot?.revision).toBe(1));
+    const operations = {
+      send: () => client.sendContinuityMessage(context, "Unsent text", "memory-1"),
+      draft: () => client.actOnContinuityDraft(context, "draft-1", "continue"),
+      forget: () => client.forgetContinuityUnderstanding(context, "memory-1"),
+      autonomy: () => client.setContinuityAutoEnabled(context, false),
+      observation: () =>
+        client.observeContinuityExchange(context, {
+          userText: "Voice message",
+          assistantText: "",
+          sourceKey: "voice-1",
+        }),
+      work: () => client.retryContinuity(context),
+      sync: () => client.refreshContinuity(context),
+    };
+    native.invoke.mockRejectedValueOnce(new Error("Operation failed"));
+    await act(async () => {
+      await expect(operations[source]()).rejects.toThrow("Operation failed");
+    });
+    expect(view.result.current.errorSource).toBe(source);
+    expect(view.result.current.error).toBe("Operation failed");
+    act(() => native.callback?.({ payload: snapshot("yori-ja", 2) }));
+    expect(view.result.current.errorSource).toBeNull();
+    expect(view.result.current.error).toBeNull();
+  });
+
+  it("reloads status through context sync without sending a retry or changing Off", async () => {
+    const client = await import("./client");
+    native.invoke.mockResolvedValue({ ...snapshot(), autoEnabled: false });
+    const view = renderHook(() => client.useContinuity(context, false));
+    await waitFor(() => expect(view.result.current.snapshot?.autoEnabled).toBe(false));
+    native.invoke.mockClear();
+    await act(() => client.refreshContinuity(context));
+    expect(native.invoke).toHaveBeenCalledExactlyOnceWith("continuity_sync_context", { context });
+    expect(view.result.current.snapshot?.autoEnabled).toBe(false);
+  });
+
   it("forgets the exact memory through native persistence and only accepts the acknowledged snapshot", async () => {
     const client = await import("./client");
     const view = renderHook(() => client.useContinuity(context, false));
