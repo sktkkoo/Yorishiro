@@ -217,12 +217,12 @@ describe("ContinuityWorkspace", () => {
       }),
       true,
     );
-    fireEvent.click(screen.getByRole("button", { name: "いまの理解" }));
-    const aside = screen.getByRole("complementary", { name: "いまの理解" });
-    const details = within(aside).getByText("そう理解した経緯").closest("details");
+    fireEvent.click(screen.getByRole("button", { name: "メモリー" }));
+    const aside = screen.getByRole("complementary", { name: "メモリー" });
+    const details = within(aside).getByText("更新履歴").closest("details");
     if (!details) throw new Error("Missing history");
     expect(details.open).toBe(false);
-    fireEvent.click(within(aside).getByText("そう理解した経緯"));
+    fireEvent.click(within(aside).getByText("更新履歴"));
     expect(details.open).toBe(true);
     expect(details.textContent).toContain("以前の日記の全文");
     expect(details.textContent).toContain("小さな改善を優先する");
@@ -252,9 +252,9 @@ describe("ContinuityWorkspace", () => {
 
   it("sends actual corrections with their identity and retains open history during background updates", async () => {
     const view = render(<ContinuityWorkspace {...props()} />);
-    fireEvent.click(screen.getByRole("button", { name: "いまの理解" }));
-    fireEvent.click(screen.getByText("そう理解した経緯"));
-    const disclosure = screen.getByText("そう理解した経緯").closest("details");
+    fireEvent.click(screen.getByRole("button", { name: "メモリー" }));
+    fireEvent.click(screen.getByText("更新履歴"));
+    const disclosure = screen.getByText("更新履歴").closest("details");
     if (!disclosure) throw new Error("Missing history");
     disclosure.querySelector("summary")?.focus();
     current = { ...current, revision: 2, phase: "thinking" };
