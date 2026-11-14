@@ -47,6 +47,12 @@ import {
   forgetCorrection,
   selectCorrection,
 } from "./continuity-input";
+import {
+  acknowledgeReplyArrival,
+  clearReplyArrivals,
+  createReplyArrivals,
+  reconcileReplyArrivals,
+} from "./continuity-reply-arrivals";
 import { useDraftArrivals } from "./draft-arrivals";
 import { PiSetup } from "./PiSetup";
 import { ResultText } from "./ResultText";
@@ -248,13 +254,17 @@ function ResidentWorkspace({
   const autoInFlight = useRef(false);
   const voiceInFlight = useRef(false);
   const voiceAttempt = useRef(0);
-  const [unread, setUnread] = useState(false);
+  const replyArrivals = useRef(createReplyArrivals());
+  const [unreadIds, setUnreadIds] = useState<readonly string[]>([]);
+  const unread = unreadIds.length > 0;
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const panelRef = useRef<HTMLElement>(null);
   const flowRef = useRef<HTMLDivElement>(null);
   const readingPosition = useRef<ReadingPosition | null>(null);
   const flowNeedsRestore = useRef(false);
   const restoredScrollTop = useRef<number | null>(null);
+  const [messageNavigation, setMessageNavigation] = useState<{ id: string } | null>(null);
+  const appliedMessageNavigation = useRef(messageNavigation);
   const attachFlow = useCallback((flow: HTMLDivElement | null) => {
     if (!flow) return;
     flowRef.current = flow;
@@ -266,8 +276,8 @@ function ResidentWorkspace({
       restoredScrollTop.current = null;
     };
   }, []);
-  const pendingReplyRef = useRef<HTMLElement>(null);
-  const readingReplyId = useRef<string | null>(null);
+  const readingMessageId = useRef<string | null>(null);
+  const readingMessageKind = useRef<"question" | "arrival" | null>(null);
   const bookButtonRef = useRef<HTMLButtonElement>(null);
   const bookCloseRef = useRef<HTMLButtonElement>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -418,46 +428,92 @@ function ResidentWorkspace({
     [snapshot?.drafts],
   );
   useLayoutEffect(() => {
+    const messages = snapshot?.messages;
+    if (messages) {
+      if (
+        readingMessageId.current &&
+        !messages.some(
+          (message) => message.id === readingMessageId.current && message.source !== "legacy",
+        )
+      ) {
+        readingMessageId.current = null;
+        readingMessageKind.current = null;
+      }
+      // 非表示でも履歴の追加・削除を追跡し、読書中の先頭の新着を後続の報告で失わない。
+      replyArrivals.current = reconcileReplyArrivals(
+        replyArrivals.current,
+        messages,
+        (nearBottom.current && !readingMessageId.current) || forceFollow.current,
+      );
+      setUnreadIds(replyArrivals.current.pending);
+    }
     if (!open || !flowRef.current) return;
     const flow = flowRef.current;
-    if (readingReplyId.current !== pendingReply?.id) readingReplyId.current = null;
     const changed = previousMessage.current !== (latestMessage ?? "");
     const draftChanged = previousDraftLayout.current !== draftLayout;
     previousMessage.current = latestMessage ?? "";
     previousDraftLayout.current = draftLayout;
-    // 過去の発言に草案が追加されても、読んでいる行を動かさない。
-    if (!forceFollow.current && !changed && draftChanged && readingPosition.current) {
+    const navigationId =
+      messageNavigation !== appliedMessageNavigation.current ? messageNavigation?.id : null;
+    appliedMessageNavigation.current = messageNavigation;
+    const target = navigationId
+      ? Array.from(flow.querySelectorAll<HTMLElement>(".continuity-message")).find(
+          (message) => message.dataset.readingKey === `message:${navigationId}`,
+        )
+      : null;
+    if (target) {
+      // 新着ボタンの消失で高さが変わった後の座標を使い、末尾への自動 clamp も保護する。
+      flow.scrollTop = Math.min(
+        Math.max(0, flow.scrollHeight - flow.clientHeight),
+        Math.max(
+          0,
+          flow.scrollTop +
+            target.getBoundingClientRect().top -
+            flow.getBoundingClientRect().top -
+            8,
+        ),
+      );
+      restoredScrollTop.current = flow.scrollTop;
+    } else if (!forceFollow.current && !changed && draftChanged && readingPosition.current) {
       restoreReadingPosition(flow, readingPosition.current);
       restoredScrollTop.current = flow.scrollTop;
-    } else if ((nearBottom.current && !readingReplyId.current) || forceFollow.current) {
+    } else if ((nearBottom.current && !readingMessageId.current) || forceFollow.current) {
       flow.scrollTop = flow.scrollHeight;
       forceFollow.current = false;
       nearBottom.current = true;
-      setUnread(false);
-    } else {
-      if (flowNeedsRestore.current && readingPosition.current) {
-        restoreReadingPosition(flow, readingPosition.current);
-        restoredScrollTop.current = flow.scrollTop;
-      }
-      if (changed) setUnread(true);
+    } else if (flowNeedsRestore.current && readingPosition.current) {
+      restoreReadingPosition(flow, readingPosition.current);
+      restoredScrollTop.current = flow.scrollTop;
     }
     flowNeedsRestore.current = false;
     readingPosition.current = captureReadingPosition(flow);
-  }, [open, latestMessage, draftLayout, pendingReply?.id]);
+  }, [open, latestMessage, snapshot?.messages, draftLayout, messageNavigation]);
 
-  function showPendingReply() {
-    const message = pendingReplyRef.current;
+  function clearUnreadReplies() {
+    replyArrivals.current = clearReplyArrivals(replyArrivals.current);
+    setUnreadIds(replyArrivals.current.pending);
+  }
+
+  function showUnreadMessage(messageId: string, kind: "question" | "arrival" = "arrival") {
     const flow = flowRef.current;
-    if (!pendingReply || !message || !flow) return;
-    readingReplyId.current = pendingReply.id;
+    const message = flow
+      ? Array.from(flow.querySelectorAll<HTMLElement>(".continuity-message")).find(
+          (item) => item.dataset.readingKey === `message:${messageId}`,
+        )
+      : null;
+    if (!message || !flow) return;
+    readingMessageId.current = messageId;
+    readingMessageKind.current = kind;
     nearBottom.current = false;
     forceFollow.current = false;
     message.focus({ preventScroll: true });
-    flow.scrollTop = Math.max(
-      0,
-      flow.scrollTop + message.getBoundingClientRect().top - flow.getBoundingClientRect().top - 8,
-    );
-    readingPosition.current = captureReadingPosition(flow);
+    setMessageNavigation({ id: messageId });
+    replyArrivals.current = acknowledgeReplyArrival(replyArrivals.current, messageId);
+    setUnreadIds(replyArrivals.current.pending);
+  }
+
+  function showPendingReply() {
+    if (pendingReply) showUnreadMessage(pendingReply.id, "question");
   }
 
   async function submit() {
@@ -466,7 +522,8 @@ function ResidentWorkspace({
     const completion = composer.send(context);
     if (!completion) return;
     setLocalError(null);
-    readingReplyId.current = null;
+    readingMessageId.current = null;
+    readingMessageKind.current = null;
     forceFollow.current = true;
     inputRef.current?.focus({ preventScroll: true });
     try {
@@ -738,10 +795,14 @@ function ResidentWorkspace({
               if (!flow) return;
               readingPosition.current = captureReadingPosition(flow);
               const restored = restoredScrollTop.current;
-              restoredScrollTop.current = null;
               if (restored === flow.scrollTop) return;
+              restoredScrollTop.current = null;
               nearBottom.current = flow.scrollHeight - flow.scrollTop - flow.clientHeight < 100;
-              if (nearBottom.current && !readingReplyId.current) setUnread(false);
+              if (nearBottom.current && readingMessageKind.current === "arrival") {
+                readingMessageId.current = null;
+                readingMessageKind.current = null;
+              }
+              if (nearBottom.current && !readingMessageId.current) clearUnreadReplies();
             }}
           >
             <div
@@ -758,12 +819,16 @@ function ResidentWorkspace({
                   data-reading-key={`message:${message.id}`}
                   data-role={message.role}
                   id={message.id === pendingReply?.id ? pendingReplyId : undefined}
-                  ref={message.id === pendingReply?.id ? pendingReplyRef : undefined}
-                  tabIndex={message.id === pendingReply?.id ? -1 : undefined}
+                  tabIndex={message.role === "assistant" ? -1 : undefined}
                   aria-label={message.id === pendingReply?.id ? copy.replyRequested : undefined}
                   onBlur={(event) => {
-                    if (!event.currentTarget.contains(event.relatedTarget))
-                      readingReplyId.current = null;
+                    if (
+                      readingMessageId.current === message.id &&
+                      !event.currentTarget.contains(event.relatedTarget)
+                    ) {
+                      readingMessageId.current = null;
+                      readingMessageKind.current = null;
+                    }
                   }}
                 >
                   <div className="continuity-message-meta">
@@ -913,16 +978,7 @@ function ResidentWorkspace({
                   <button
                     type="button"
                     className="continuity-new-reply"
-                    onClick={() => {
-                      readingReplyId.current = null;
-                      const flow = flowRef.current;
-                      if (flow) {
-                        flow.scrollTop = flow.scrollHeight;
-                        readingPosition.current = captureReadingPosition(flow);
-                      }
-                      nearBottom.current = true;
-                      setUnread(false);
-                    }}
+                    onClick={() => showUnreadMessage(unreadIds[0])}
                   >
                     {copy.latest}
                     <ArrowDown size={13} aria-hidden="true" />
