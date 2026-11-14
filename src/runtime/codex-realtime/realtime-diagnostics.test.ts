@@ -65,6 +65,7 @@ describe("realtime diagnostics", () => {
     expect(records[records.length - 1]?.attemptId).toBe("attempt-44");
   });
   it("retains connection evidence when periodic output samples fill the ring", () => {
+    localStorage.setItem("yorishiro:realtime-debug", "1");
     const base = {
       attemptId: "one",
       timestamp: "now",
@@ -79,5 +80,17 @@ describe("realtime diagnostics", () => {
     const records = readRealtimeDiagnostics();
     expect(records).toHaveLength(13);
     expect(records[0].event).toBe("negotiated");
+  });
+  it("does not persist investigative samples without local opt-in", () => {
+    appendRealtimeDiagnostic({
+      attemptId: "one",
+      timestamp: "now",
+      stage: "playback",
+      event: "playback-sample",
+      elapsedMs: 0,
+      retryDecision: "none",
+      terminationRequested: false,
+    });
+    expect(readRealtimeDiagnostics()).toEqual([]);
   });
 });

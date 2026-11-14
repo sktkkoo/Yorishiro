@@ -1,4 +1,5 @@
 import type { PlaybackSample } from "./playback-monitor";
+import { isRealtimeDebugEnabled } from "./realtime-debug";
 
 export type RealtimeConnectionStage =
   | "preflight"
@@ -145,7 +146,7 @@ export function appendRealtimeDiagnostic(
   record: RealtimeDiagnosticRecord,
   storage: Pick<Storage, "getItem" | "setItem"> | null = safeStorage(),
 ): void {
-  if (!storage) return;
+  if (!storage || (record.event === "playback-sample" && !isRealtimeDebugEnabled())) return;
   try {
     const parsed: unknown = JSON.parse(storage.getItem(STORAGE_KEY) ?? "[]");
     const previous = Array.isArray(parsed) ? parsed : [];
