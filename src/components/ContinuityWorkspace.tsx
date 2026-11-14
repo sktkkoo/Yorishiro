@@ -32,6 +32,7 @@ import type {
 } from "../runtime/continuity/types";
 import "./ContinuityWorkspace.css";
 import { PiSetup } from "./PiSetup";
+import { ResultText } from "./ResultText";
 
 export interface ContinuityConversation {
   readonly available: boolean;
@@ -663,7 +664,9 @@ function ResidentWorkspace({
                       {dateText(message.createdAt, language)}
                     </time>
                   </div>
-                  <p>{message.content}</p>
+                  <p>
+                    <ResultText text={message.content} language={language} />
+                  </p>
                   {draftsByMessage.get(message.id)?.map(draftCard)}
                 </article>
               ))}
@@ -1012,7 +1015,9 @@ function ResidentWorkspace({
             </>
           ) : selectedDraft ? (
             <>
-              <div className="continuity-draft-body">{selectedDraft.content}</div>
+              <div className="continuity-draft-body">
+                <ResultText text={selectedDraft.content} language={language} />
+              </div>
               {selectedDraft.reason ? (
                 <details>
                   <summary>{copy.reason}</summary>
