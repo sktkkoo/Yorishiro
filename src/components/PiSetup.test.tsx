@@ -331,15 +331,80 @@ describe("Pi setup", () => {
     );
   });
 
-  it("fails closed on an older or malformed host and hides private errors", async () => {
-    native.invoke.mockRejectedValue("PRIVATE path and token");
-    const ready = vi.fn();
-    render(<PiSetup cwd={null} language="en" onReadinessChange={ready} />);
-    await screen.findByRole("alert");
-    expect(screen.getByRole("alert").textContent).toContain("Please update");
-    expect(document.body.textContent).not.toContain("PRIVATE");
-    expect(screen.queryByRole("button", { name: "Sign in to OpenAI" })).toBeNull();
-    expect(ready).toHaveBeenLastCalledWith(false);
+  describe.each([
+    [
+      "en",
+      "Could not access connection settings. Recheck the connection status.",
+      "Recheck connection status",
+      "Choose a workspace first.",
+      "The autonomous runtime could not be loaded. Update or reinstall the app.",
+      "Model",
+    ],
+    [
+      "ja",
+      "接続設定にアクセスできませんでした。接続状態を再確認してください。",
+      "接続状態を再確認",
+      "先に作業フォルダを選択してください。",
+      "自律実行の実行環境を読み込めません。アプリを更新または再インストールしてください。",
+      "使用するモデル",
+    ],
+  ] as const)("unknown setup guidance in %s", (language, unavailable, retry, workspace, runtime, model) => {
+    it.each([
+      "setup_unavailable",
+      "PRIVATE path and token",
+    ])("shows only a truthful access failure for %s and restores the form on retry", async (failure) => {
+      native.invoke.mockRejectedValueOnce(failure);
+      const ready = vi.fn();
+      render(<PiSetup cwd="selected workspace" language={language} onReadinessChange={ready} />);
+      expect((await screen.findByRole("alert")).textContent).toBe(unavailable);
+      expect(screen.queryByText(workspace)).toBeNull();
+      expect(screen.queryByText(runtime)).toBeNull();
+      expect(document.body.textContent).not.toContain("PRIVATE");
+      expect(screen.queryByRole("combobox")).toBeNull();
+      expect(screen.queryByRole("checkbox")).toBeNull();
+      expect(screen.getAllByRole("button").map((button) => button.textContent)).toEqual([retry]);
+      expect(ready).toHaveBeenLastCalledWith(false);
+      current = { ...initial(), configured: true, authenticated: true, authentication: "present" };
+      await act(async () => fireEvent.click(screen.getByRole("button", { name: retry })));
+      expect(screen.queryByRole("alert")).toBeNull();
+      expect(screen.getByRole("combobox", { name: model })).toBeTruthy();
+      expect(screen.getAllByRole("checkbox").length).toBeGreaterThan(0);
+      expect(ready).toHaveBeenLastCalledWith(true);
+      expect(native.invoke.mock.calls.map(([name]) => name)).toEqual([
+        "continuity_pi_setup_status",
+        "continuity_pi_setup_status",
+      ]);
+    });
+
+    it.each([
+      "runtime_unavailable",
+      "node_invalid",
+      "workspace_unavailable",
+    ] as const)("retains the specific %s diagnostic without inferring the other unknown field", async (code) => {
+      native.invoke.mockRejectedValueOnce(code);
+      render(<PiSetup cwd="selected workspace" language={language} />);
+      const expected = code === "workspace_unavailable" ? workspace : runtime;
+      expect((await screen.findByRole("alert")).textContent).toBe(expected);
+      expect(screen.getAllByText(expected)).toHaveLength(1);
+      expect(screen.queryByText(code === "workspace_unavailable" ? runtime : workspace)).toBeNull();
+      expect(screen.getByRole("button", { name: retry })).toBeTruthy();
+      expect(screen.queryByRole("checkbox")).toBeNull();
+    });
+
+    it.each([
+      null,
+      "runtime_unavailable",
+      "workspace_unavailable",
+    ] as const)("retains explicit false field guidance once with code %s", async (code) => {
+      current = { ...initial(), runtimeReady: false, workspaceAvailable: false, code };
+      const ready = vi.fn();
+      render(<PiSetup cwd="selected workspace" language={language} onReadinessChange={ready} />);
+      await screen.findByRole("button", { name: retry });
+      expect(screen.getAllByText(workspace)).toHaveLength(1);
+      expect(screen.getAllByText(runtime)).toHaveLength(1);
+      expect(screen.queryByRole("checkbox")).toBeNull();
+      expect(ready).toHaveBeenLastCalledWith(false);
+    });
   });
 
   it("refreshes readiness while hidden and retains unsaved edits across manual close", async () => {
