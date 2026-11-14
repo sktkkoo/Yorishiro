@@ -23,8 +23,8 @@ const portrait = {
   pack: { layout: {}, mount: () => ({ dispose() {} }) },
 } satisfies UiPackEntry;
 
-function renderTitleBar(overrides: Partial<Parameters<typeof TitleBar>[0]> = {}) {
-  return render(
+function titleBarElement(overrides: Partial<Parameters<typeof TitleBar>[0]> = {}) {
+  return (
     <TitleBar
       onToggleSidebar={vi.fn()}
       onOpenSettings={vi.fn()}
@@ -36,8 +36,12 @@ function renderTitleBar(overrides: Partial<Parameters<typeof TitleBar>[0]> = {})
       terminalLabel="Terminal"
       settingsShortcutHint="⌘,"
       {...overrides}
-    />,
+    />
   );
+}
+
+function renderTitleBar(overrides: Partial<Parameters<typeof TitleBar>[0]> = {}) {
+  return render(titleBarElement(overrides));
 }
 
 describe("TitleBar View Mode picker", () => {
@@ -270,6 +274,45 @@ describe("TitleBar existing controls", () => {
     const button = screen.getByRole("button", { name: "Stop voice" });
     expect(button.getAttribute("data-microphone-active")).toBe("false");
     expect(button.querySelector(".title-bar-voice-status-dot")).toBeNull();
+  });
+
+  it.each([
+    "idle",
+    "connecting",
+    "error",
+  ] as const)("never reports recording in %s even if capture liveness arrives late", (voiceState) => {
+    renderTitleBar({ voiceAvailable: true, voiceState, voiceMicrophoneActive: true });
+    const button = document.querySelector(".title-bar-voice-button");
+    expect(button?.getAttribute("data-microphone-active")).toBe("false");
+    expect(button?.querySelector(".title-bar-voice-status-dot")).toBeNull();
+  });
+
+  it("clears recording across stop, failure, and reconnect until live capture resumes", () => {
+    const props = {
+      voiceAvailable: true,
+      voiceState: "active" as const,
+      voiceMicrophoneActive: true,
+    };
+    const { rerender, unmount } = renderTitleBar(props);
+    const expectRecording = (recording: boolean) => {
+      const button = document.querySelector(".title-bar-voice-button");
+      expect(button?.getAttribute("data-microphone-active")).toBe(String(recording));
+      expect(Boolean(button?.querySelector(".title-bar-voice-status-dot"))).toBe(recording);
+    };
+    expectRecording(true);
+    for (const voiceState of ["idle", "error", "connecting"] as const) {
+      rerender(titleBarElement({ ...props, voiceState }));
+      expectRecording(false);
+    }
+    rerender(titleBarElement({ ...props, voiceMicrophoneActive: false }));
+    expectRecording(false);
+    rerender(titleBarElement(props));
+    expectRecording(true);
+    rerender(titleBarElement({ ...props, voiceAvailable: false }));
+    expect(document.querySelector(".title-bar-voice-button")).toBeNull();
+    unmount();
+    renderTitleBar({ ...props, voiceState: "idle" });
+    expectRecording(false);
   });
 
   it("exposes the error state for retry with an alert message", () => {

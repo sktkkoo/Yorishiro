@@ -83,6 +83,8 @@ export default function TitleBar({
   activeViewModeId = null,
   onSelectViewMode,
 }: TitleBarProps) {
+  // 切断・再試行後に capture callback が届いても、接続状態を優先して録音表示を消す。
+  const microphoneRecording = voiceState === "active" && voiceMicrophoneActive;
   const permissionKind = getMediaPermissionKind(voiceError);
   const SidebarIcon = sidebarOpen ? PanelLeftClose : PanelLeftOpen;
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -249,7 +251,7 @@ export default function TitleBar({
             type="button"
             className="title-bar-button title-bar-voice-button"
             data-voice-state={voiceState}
-            data-microphone-active={voiceMicrophoneActive}
+            data-microphone-active={microphoneRecording}
             onClick={onToggleVoice}
             disabled={voiceDisabled}
             aria-label={voiceLabel}
@@ -262,7 +264,7 @@ export default function TitleBar({
             ) : (
               <Mic size={15} strokeWidth={1.8} aria-hidden="true" />
             )}
-            {voiceState === "active" && voiceMicrophoneActive ? (
+            {microphoneRecording ? (
               <span className="title-bar-voice-status-dot" aria-hidden="true" />
             ) : null}
           </button>
