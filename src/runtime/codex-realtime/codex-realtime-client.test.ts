@@ -1076,9 +1076,15 @@ describe("CodexRealtimeClient", () => {
     expect(handoff?.text).toContain("even without an explicit request to remember");
     expect(handoff?.text).toContain("before asking the user to repeat known information");
     expect(handoff?.text).toContain(
-      "Do not retrieve memory for every filler or clearly self-contained question",
+      "Do not retrieve memory for every filler or clearly self-contained generic factual question",
     );
     expect(handoff?.text).toContain("without replaying raw stored turns or identifiers");
+    expect(handoff?.text).toContain("even when the user gives no clue that the topic has history");
+    expect(handoff?.text).toContain("Avoid repeating lookups for an unchanged topic");
+    expect(handoff?.text).toContain(
+      "if none is found, continue naturally without forcing a memory reference",
+    );
+    expect(handoff?.text).toContain("not as a reason to speak while the user is idle");
     expect(handoff?.text).toContain("Never invent or simulate a user utterance");
     expect(handoff?.text).toContain("listen for actual user input");
     expect(handoff?.text).toContain("meaningful new confirmed results of authorized work");
