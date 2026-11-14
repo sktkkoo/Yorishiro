@@ -353,7 +353,7 @@ Yorishiro is shaped by daily use, so an outside pair of eyes is genuinely useful
 
 English and Japanese are both fine, and you do not need to fill a template perfectly.
 
-Pull requests are the one exception: they are not accepted yet, and this will be revisited after the pack API and security boundary stabilize. See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
+Small bug fixes, tests, docs, and platform compatibility PRs are welcome directly. Discuss substantial Pack API, security, permissions, IPC, provenance, sandbox, or architecture changes in an Issue first. Source-code PR acceptance does not certify community Pack installation. See [CONTRIBUTING.md](CONTRIBUTING.md) for the review process and pre-1.0 compatibility policy.
 
 ---
 

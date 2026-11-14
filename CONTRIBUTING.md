@@ -11,7 +11,15 @@
 - **Questions, impressions, and packs you made** — please use [Discussions](https://github.com/sktkkoo/Yorishiro/discussions)
 - **Security reports** — see [SECURITY.md](SECURITY.md)
 
-Pull requests are the one exception: they are not accepted yet, and this will be revisited after the pack API and security boundary stabilize.
+Small, self-contained bug fixes, tests, documentation, and platform compatibility fixes may be submitted directly as Pull Requests. Link a related Issue when one exists; an Issue is not required for every small change.
+
+For substantial changes to the Pack API, security, permissions, IPC, provenance, sandboxing, or architecture, discuss the design in an Issue before implementation. Use the [PR template](.github/pull_request_template.md) to explain scope and verification, and consult the [review routing and Pack checklist](docs/contributor-review.md).
+
+Accepting source-code PRs does not enable or certify community Pack installation. Local packs remain trusted code; see [SECURITY.md](SECURITY.md).
+
+### Compatibility before 1.0
+
+The supported authoring surface is documented in [`src/sdk/README.md`](src/sdk/README.md). The Pack API is not frozen at 1.0 compatibility. Changes to supported behavior must describe compatibility impact, document migration when needed, and include appropriate regression coverage. An undocumented internal API is not a supported extension contract.
 
 ### Extension via Packs
 
@@ -21,7 +29,7 @@ Many "I want this feature" or "I want to change the look" requests can be realiz
 
 Yorishiro is released under the [MIT License](LICENSE).
 
-If Pull Requests are accepted in the future, submitted code will be treated as offered under the same MIT License.
+Code submitted in a Pull Request is offered under the same MIT License.
 
 ## For Developers
 
