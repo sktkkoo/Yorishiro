@@ -465,15 +465,8 @@ function ResidentWorkspace({
     try {
       if (source === "sync") await refreshContinuity(context);
       else await retryContinuity(context);
-      if (mounted.current) {
-        setLocalError((current) => (current?.source === source ? null : current));
-      }
-    } catch (cause) {
-      if (mounted.current) {
-        setLocalError((current) =>
-          current && current.source !== source ? current : { message: errorText(cause), source },
-        );
-      }
+    } catch {
+      // 復旧失敗は共有クライアントが保持し、後続の受理済み状態で更新する。
     } finally {
       retryInFlight.current = false;
       if (mounted.current) setRetryPending(false);
