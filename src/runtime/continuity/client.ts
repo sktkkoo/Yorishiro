@@ -65,15 +65,17 @@ async function command(
   name: string,
   context: ContinuityContext,
   args: Record<string, unknown> = {},
-  errorSource: ContinuityErrorSource = "work",
+  errorSource: ContinuityErrorSource | null = "work",
 ): Promise<void> {
   try {
     accept(await invoke<ContinuitySnapshot>(name, { context, ...args }));
   } catch (error) {
-    const value = entry(continuityIdentity(context.personaId));
-    value.error = error instanceof Error ? error.message : String(error);
-    value.errorSource = errorSource;
-    notify(value);
+    if (errorSource !== null) {
+      const value = entry(continuityIdentity(context.personaId));
+      value.error = error instanceof Error ? error.message : String(error);
+      value.errorSource = errorSource;
+      notify(value);
+    }
     throw error;
   }
 }
@@ -239,7 +241,9 @@ export function useContinuity(context: ContinuityContext | null, open: boolean):
       try {
         await ensureBridge();
         if (!canRefresh()) return;
-        await command(name, current, args);
+        // 同期エラーはこのeffectが所有し、現在の文脈である間だけ公開する。
+        // nativeのsnapshotは文脈の切替後もrevision順に受理する。
+        await command(name, current, args, null);
         if (name === "continuity_enter") entered = true;
       } catch (error: unknown) {
         if (cancelled) return;
