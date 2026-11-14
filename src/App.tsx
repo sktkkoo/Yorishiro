@@ -189,7 +189,7 @@ import {
   markPendingRealtimeStart,
   resolveVoiceEntryAction,
 } from "./runtime/codex-realtime/voice-entry";
-import { observeContinuityExchange } from "./runtime/continuity/client";
+import { observeContinuityExchange, useContinuitySnapshot } from "./runtime/continuity/client";
 import {
   continuityExecutionRoute,
   useContinuityExecutionPreference,
@@ -3240,6 +3240,7 @@ function App() {
       continuityExecutionBackend,
     ],
   );
+  const continuitySnapshot = useContinuitySnapshot(continuityContext?.personaId ?? null);
 
   /**
    * VRM file path を local state と localStorage に同時反映する。
@@ -6285,6 +6286,7 @@ function App() {
           ) : null
         }
         continuityActive={continuityOpen}
+        continuityPhase={continuitySnapshot?.phase}
         onToggleContinuity={handleToggleContinuityWorkspace}
         tabs={
           <TabIndicator

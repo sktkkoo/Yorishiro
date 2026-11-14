@@ -599,3 +599,74 @@ describe("shared continuity bridge", () => {
     ]);
   });
 });
+
+describe("read-only continuity snapshots", () => {
+  it("reads cached snapshots without starting a bridge, synchronization, or automatic timers", async () => {
+    const client = await import("./client");
+    vi.useFakeTimers();
+    const view = renderHook<ContinuitySnapshot | null, { personaId: string | null }>(
+      ({ personaId }: { personaId: string | null }) => client.useContinuitySnapshot(personaId),
+      { initialProps: { personaId: "yori-ja" } },
+    );
+    expect(view.result.current).toBeNull();
+    await act(async () => window.dispatchEvent(new Event("focus")));
+    await act(async () => document.dispatchEvent(new Event("visibilitychange")));
+    await act(async () => vi.advanceTimersByTimeAsync(60 * 60 * 1000));
+    view.rerender({ personaId: null });
+    expect(view.result.current).toBeNull();
+    expect(native.invoke).not.toHaveBeenCalled();
+    expect(native.listen).not.toHaveBeenCalled();
+  });
+
+  it("observes background work through the existing owner, including accepted work finishing while Off", async () => {
+    const client = await import("./client");
+    const owner = renderHook(() => client.useContinuity(context, false));
+    await waitFor(() => expect(owner.result.current.snapshot?.revision).toBe(1));
+    const viewer = renderHook(() => client.useContinuitySnapshot("yori-ja"));
+    expect(viewer.result.current?.phase).toBe("idle");
+    expect(native.invoke).toHaveBeenCalledTimes(1);
+    expect(native.listen).toHaveBeenCalledTimes(1);
+    const finishing = { ...snapshot("yori-ja", 2), phase: "working" as const, autoEnabled: false };
+    act(() => native.callback?.({ payload: finishing }));
+    expect(viewer.result.current).toEqual(finishing);
+    owner.unmount();
+    const visibility = vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+    let revision = 3;
+    for (const phase of ["thinking", "drafting", "working", "idle", "error"] as const) {
+      const next = { ...snapshot("yori-ja", revision++), phase, autoEnabled: false };
+      act(() => native.callback?.({ payload: next }));
+      expect(viewer.result.current).toEqual(next);
+    }
+    expect(native.invoke).toHaveBeenCalledTimes(1);
+    expect(native.listen).toHaveBeenCalledTimes(1);
+    visibility.mockRestore();
+  });
+
+  it("changes read-only persona state immediately and shares only the built-in language identity", async () => {
+    const client = await import("./client");
+    const owner = renderHook(() => client.useContinuity(context, false));
+    await waitFor(() => expect(owner.result.current.snapshot?.revision).toBe(1));
+    owner.unmount();
+    const busy = { ...snapshot("yori-ja", 2), phase: "working" as const };
+    act(() => native.callback?.({ payload: busy }));
+    const viewer = renderHook<ContinuitySnapshot | null, { personaId: string | null }>(
+      ({ personaId }: { personaId: string | null }) => client.useContinuitySnapshot(personaId),
+      { initialProps: { personaId: "yori-ja" } },
+    );
+    expect(viewer.result.current).toEqual(busy);
+    viewer.rerender({ personaId: "yori-en" });
+    expect(viewer.result.current).toEqual(busy);
+    viewer.rerender({ personaId: "yori" });
+    expect(viewer.result.current).toBeNull();
+    act(() => native.callback?.({ payload: { ...busy, revision: 3 } }));
+    expect(viewer.result.current).toBeNull();
+    const custom = snapshot("yori", 1);
+    act(() => native.callback?.({ payload: custom }));
+    expect(viewer.result.current).toEqual(custom);
+    viewer.rerender({ personaId: null });
+    act(() => native.callback?.({ payload: { ...busy, personaId: "yori", revision: 4 } }));
+    expect(viewer.result.current).toBeNull();
+    expect(native.invoke).toHaveBeenCalledTimes(1);
+    expect(native.listen).toHaveBeenCalledTimes(1);
+  });
+});
