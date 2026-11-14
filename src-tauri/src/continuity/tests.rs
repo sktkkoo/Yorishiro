@@ -2689,6 +2689,9 @@ fn failed_compaction_keeps_the_original_pending_request_and_user_authority() {
     original.request_id = uuid::Uuid::new_v4().to_string();
     original.target = target.clone().into();
     original.prompt = "x".repeat(200_000);
+    // Length alone is now retrievable; a missing required correction must still
+    // fail atomically without replacing the original pending request.
+    original.correction_ids = vec!["missing-required-correction".into()];
     value.saved.pending_execution = Some(original);
     let before = serde_json::to_value(&value.saved).unwrap();
     assert!(replace_undispatched_context(&mut value, &current, target.into()).is_err());

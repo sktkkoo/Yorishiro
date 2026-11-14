@@ -157,3 +157,86 @@ test("cancelled reads fail before accessing the archive", async () => {
   controller.abort();
   await assert.rejects(f.call(args(), controller.signal), /context_archive_cancelled/);
 });
+
+async function v2Fixture(records) {
+  const f = await fixture();
+  const names = [
+    "messages",
+    "understandings",
+    "drafts",
+    "reflections",
+    "explicitMemories",
+    "forgottenUnderstandings",
+    "terminalReceipts",
+    "state",
+  ];
+  const generation = join(f.directory, `records-${requestId}`);
+  await mkdir(generation, { mode: 0o700 });
+  const manifest = { version: 2, requestId, collections: {} };
+  for (const name of names) {
+    const values = records[name] ?? [];
+    const dir = join(generation, name);
+    await mkdir(dir, { mode: 0o700 });
+    manifest.collections[name] = { totalCount: values.length };
+    for (let index = 0; index < values.length; index++) {
+      const value = values[index];
+      const content = JSON.stringify(value);
+      const preview = [...(value.text ?? value.nextStep ?? "")].slice(0, 160).join("");
+      const row = {
+        itemIndex: index,
+        id: value.id ?? "",
+        preview,
+        previewTruncated: preview.length < (value.text ?? "").length,
+        recordSha256: createHash("sha256").update(content).digest("hex"),
+        totalCharacters: [...content].length,
+      };
+      await writeFile(join(dir, `${index}.json`), content, { mode: 0o600 });
+      await writeFile(join(dir, `${index}.index.json`), JSON.stringify(row), { mode: 0o600 });
+    }
+  }
+  await writeFile(f.path, JSON.stringify(manifest), { mode: 0o600 });
+  return { ...f, generation };
+}
+
+test("v2 index stays bounded, searches pages, and records beyond 16 MiB remain readable", async () => {
+  const huge = {
+    id: "huge",
+    text: `😀${"x".repeat(CONTEXT_ARCHIVE_LIMITS.maxArchiveBytes + 10)}終`,
+  };
+  const records = Array.from({ length: 105 }, (_, i) => ({ id: `m${i}`, text: `記録${i}` }));
+  records.push(huge);
+  const f = await v2Fixture({
+    messages: records,
+    state: [{ nextStep: "続き", pendingCorrectionIds: ["u1"] }],
+  });
+  const index = await f.call({ requestId });
+  assert.equal(index.items.length, 12);
+  assert.equal(index.nextOffset, 12);
+  assert.equal(index.totalCount, 106);
+  assert.ok(JSON.stringify(index).length < 10000);
+  const empty = await f.call({ requestId, query: "huge" });
+  assert.equal(empty.items.length, 0);
+  assert.equal(empty.nextOffset, 100);
+  const found = await f.call({ requestId, query: "huge", offset: empty.nextOffset });
+  assert.equal(found.items[0].itemIndex, 105);
+  const start = await f.call(args({ itemIndex: 105, maxCharacters: 40 }));
+  assert.equal(start.content, [...JSON.stringify(huge)].slice(0, 40).join(""));
+  assert.equal(start.complete, false);
+  const last = await f.call(args({ itemIndex: 105, characterOffset: start.totalCharacters - 8 }));
+  assert.equal(last.content, [...JSON.stringify(huge)].slice(-8).join(""));
+  assert.equal(last.complete, true);
+  assert.equal(last.recordSha256, found.items[0].recordSha256);
+  const state = await f.call(args({ collection: "state" }));
+  assert.deepEqual(JSON.parse(state.content).pendingCorrectionIds, ["u1"]);
+});
+
+test("v2 exact reads reject changed records and unsafe index files", async () => {
+  const f = await v2Fixture({ messages: [{ id: "one", text: "original" }] });
+  const dir = join(f.generation, "messages");
+  await writeFile(join(dir, "0.json"), '{"id":"one","text":"tampered"}');
+  await assert.rejects(f.call(args()), /context_archive_unavailable/);
+  await chmod(join(dir, "0.index.json"), 0o644);
+  await assert.rejects(f.call({ requestId }), /context_archive_unavailable/);
+  await assert.rejects(f.call({ requestId, limit: 21 }), /context_archive_arguments_invalid/);
+  await assert.rejects(f.call(args({ query: "ambiguous" })), /context_archive_arguments_invalid/);
+});

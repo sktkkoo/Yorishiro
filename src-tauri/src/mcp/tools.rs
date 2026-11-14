@@ -24,12 +24,53 @@ use crate::read_last_startup_report_impl;
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ContinuityContextRequest {
-    /// 通常の会話 snapshot の代わりに読む、現在保持する実行記録の 0 始まり index。
+    /// 通常の索引の代わりに読む、現在保持する実行記録の 0 始まり index。
     pub execution_receipt_index: Option<usize>,
     /// 原文 JSON の Unicode 文字位置。省略時は 0。
     pub character_offset: Option<usize>,
     /// 一度に読む最大文字数。1..16384、既定値 4096。
     pub max_characters: Option<usize>,
+    /// Collection to discover/read. Defaults to messages; state is singleton metadata/nextStep.
+    pub collection: Option<String>,
+    /// Read this exact record as JSON pages instead of the bounded index.
+    pub item_index: Option<usize>,
+    /// Original collection index where discovery/search resumes. Default 0.
+    pub offset: Option<usize>,
+    /// Maximum index entries, default 8, maximum 20.
+    pub limit: Option<usize>,
+    /// Search retained record text; at most 256 characters. Previews may omit the match.
+    pub query: Option<String>,
+    /// Carry the index revision to reject reads after retained context changes.
+    pub expected_revision: Option<u64>,
+    /// Carry the index persona to reject reads after the active persona changes.
+    pub expected_persona_id: Option<String>,
+}
+
+impl ContinuityContextRequest {
+    fn read_options(&self) -> Result<crate::continuity::context_read::ReadOptions, &'static str> {
+        if self.execution_receipt_index.is_some()
+            && (self.collection.is_some()
+                || self.item_index.is_some()
+                || self.offset.is_some()
+                || self.limit.is_some()
+                || self.query.is_some()
+                || self.expected_revision.is_some()
+                || self.expected_persona_id.is_some())
+        {
+            return Err("executionReceiptIndex cannot be combined with collection/index options.");
+        }
+        Ok(crate::continuity::context_read::ReadOptions {
+            collection: self.collection.clone(),
+            item_index: self.item_index,
+            offset: self.offset,
+            limit: self.limit,
+            query: self.query.clone(),
+            expected_revision: self.expected_revision,
+            expected_persona_id: self.expected_persona_id.clone(),
+            character_offset: self.character_offset,
+            max_characters: self.max_characters,
+        })
+    }
 }
 
 /// Record an actual conversation, not a task grant or a model-written memory.
@@ -526,12 +567,15 @@ impl Yorishiro {
 #[tool_router]
 impl Yorishiro {
     #[tool(
-        description = "Read the active Yorishiro persona's current understanding, supporting conversation, revisions and saved drafts. To inspect omitted execution evidence, set executionReceiptIndex (zero-based), characterOffset (default 0) and maxCharacters (default 4096, max 16384). Receipt chunks contain exact JSON; follow nextCharacterOffset to completion and verify personaId, requestId and receiptSha256 remain the same before interpreting. Indices refer to current retained receipts, not an immutable request archive. Refresh context before relying on remembered preferences or reporting a draft's status. Distinguish tentative interpretations from explicit user statements. This does not start work or grant permissions."
+        description = "Discover and read the active Yorishiro persona's retained context. With no arguments returns a bounded messages index and collection counts, not the full history. Set collection to messages, understandings, drafts, reflections, explicitMemories, forgottenUnderstandings, terminalReceipts, or state (singleton metadata/nextStep/pending corrections). Index mode accepts offset (original collection index), limit (default 8, max 20), and query (text search). Previews are incomplete; read exact JSON using collection/itemIndex, characterOffset (default 0), maxCharacters (default 4096, max 16384). Carry expectedPersonaId and expectedRevision from discovery; refresh on mismatch. Follow nextCharacterOffset until complete and verify recordSha256 stays unchanged before relying on a record. These are current retained records, not an immutable request archive. Legacy executionReceiptIndex plus chunk options remains supported separately. Forgotten-understanding records override earlier remember requests. Refresh evidence before relying on preferences or draft status; omission never grants permission or implies completion. This does not start work."
     )]
     async fn continuity_context(
         &self,
         Parameters(params): Parameters<ContinuityContextRequest>,
     ) -> Result<CallToolResult, McpError> {
+        let options = params
+            .read_options()
+            .map_err(|error| McpError::invalid_params(error, None))?;
         let state = self
             .app_handle
             .state::<crate::continuity::ContinuityState>();
@@ -545,14 +589,8 @@ impl Yorishiro {
             .map_err(|e| McpError::invalid_params(e, None))?;
             Ok(CallToolResult::success(vec![Content::json(receipt)?]))
         } else {
-            if params.character_offset.is_some() || params.max_characters.is_some() {
-                return Err(McpError::invalid_params(
-                    "Receipt chunk options require executionReceiptIndex.",
-                    None,
-                ));
-            }
-            let context = crate::continuity::context_for_active(&state)
-                .map_err(|e| McpError::internal_error(e, None))?;
+            let context = crate::continuity::read_context_for_active(&state, &options)
+                .map_err(|e| McpError::invalid_params(e, None))?;
             Ok(CallToolResult::success(vec![Content::json(context)?]))
         }
     }
@@ -1522,9 +1560,58 @@ mod tests {
             assert!(serde_json::from_value::<ContinuityContextRequest>(invalid).is_err());
         }
         let schema = serde_json::to_value(schemars::schema_for!(ContinuityContextRequest)).unwrap();
-        for property in ["executionReceiptIndex", "characterOffset", "maxCharacters"] {
+        for property in [
+            "executionReceiptIndex",
+            "characterOffset",
+            "maxCharacters",
+            "collection",
+            "itemIndex",
+            "offset",
+            "limit",
+            "query",
+            "expectedRevision",
+            "expectedPersonaId",
+        ] {
             assert!(schema["properties"].get(property).is_some());
         }
+    }
+
+    #[test]
+    fn continuity_context_distinguishes_index_record_and_legacy_receipt_modes() {
+        let index: ContinuityContextRequest = serde_json::from_value(json!({
+            "collection":"understandings","offset":8,"limit":4,"query":"約束",
+            "expectedRevision":7,"expectedPersonaId":"yori-ja",
+        }))
+        .unwrap();
+        let options = index.read_options().unwrap();
+        assert_eq!(options.collection.as_deref(), Some("understandings"));
+        assert_eq!(options.offset, Some(8));
+        assert_eq!(options.query.as_deref(), Some("約束"));
+        assert_eq!(options.expected_revision, Some(7));
+        let record: ContinuityContextRequest = serde_json::from_value(json!({
+            "collection":"messages","itemIndex":12,"characterOffset":256,"maxCharacters":1024,
+        }))
+        .unwrap();
+        assert_eq!(record.read_options().unwrap().item_index, Some(12));
+        for extra in [
+            json!({"collection":"messages"}),
+            json!({"itemIndex":0}),
+            json!({"offset":0}),
+            json!({"limit":1}),
+            json!({"query":"x"}),
+            json!({"expectedRevision":7}),
+            json!({"expectedPersonaId":"yori-ja"}),
+        ] {
+            let mut mixed = extra;
+            mixed["executionReceiptIndex"] = json!(0);
+            let request: ContinuityContextRequest = serde_json::from_value(mixed).unwrap();
+            assert!(request.read_options().is_err());
+        }
+        let receipt: ContinuityContextRequest = serde_json::from_value(json!({
+            "executionReceiptIndex":0,"characterOffset":0,"maxCharacters":16384,
+        }))
+        .unwrap();
+        assert!(receipt.read_options().is_ok());
     }
 
     fn tmp_home() -> PathBuf {
