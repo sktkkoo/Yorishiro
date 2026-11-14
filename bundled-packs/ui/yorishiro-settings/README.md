@@ -38,6 +38,7 @@ Yorishiro の設定画面。`activeUi` を `"yorishiro-settings"` に一時 swap
 - VRM catalog / bounded thumbnail / file picker / confirmed removal (`list_vrm_avatars` + `read_vrm_thumbnail` + `@tauri-apps/plugin-dialog` + `import_vrm` + `remove_vrm_avatar`)
 - `localStorage["yorishiro:vrm"]` の magic string を直接読んでいる
 - updater / process relaunch、app 固有 i18n、snapshot 表示 helper、language/config policy helper、bundled default scene manifest
+- `SilenceFollowupSettings` のみを言語 props で組み込む実験用の音声設定 widget。開発者フラグと機能個別の opt-in が必要で、明示操作から範囲検証した端末内設定を保存する。設定画面を開くだけでは有効化しない。会話収集・追加推論・実行条件の検査は host が所有し、設定関数や realtime runtime は通常 Pack に公開しない。料金が発生し得る推論の opt-in を一般 SDK にしない理由と監査範囲は `system-settings-privileged-boundary.md` §5 を参照。
 
 以前の `AutonomySettings` widget とその internal import は撤去した。自動作業の mutable client や範囲更新は、設定 Pack にも通常 Pack API にも公開しない。移行の記録は `system-settings-privileged-boundary.md` §4 を参照。
 
