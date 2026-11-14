@@ -1682,6 +1682,130 @@ describe("ContinuityWorkspace", () => {
     expect(native.retryContinuity).not.toHaveBeenCalled();
   });
 
+  it.each([
+    "voice",
+    "send",
+  ] as const)("retains a %s failure alongside later work failure and its own recovery", async (source) => {
+    let sharedWorkError: string | null = null;
+    native.useContinuity.mockImplementation(() => ({
+      snapshot: current,
+      error: sharedWorkError,
+      errorSource: sharedWorkError ? "work" : null,
+    }));
+    native.sendContinuityMessage.mockRejectedValueOnce(new Error("Message was not saved"));
+    const initial: ContinuityWorkspaceProps = {
+      ...props(),
+      language: "en",
+      executionBackend: "pi",
+      conversation: {
+        available: true,
+        state: { status: "idle" },
+        onStart: vi.fn().mockRejectedValue(new Error("Microphone unavailable")),
+        onEnd: vi.fn(),
+        onSetMuted: vi.fn(),
+      },
+    };
+    const view = render(<ContinuityWorkspace {...initial} />);
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Unsent message" } });
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Send" })).toHaveProperty("disabled", false),
+    );
+    await act(async () =>
+      fireEvent.click(
+        screen.getByRole("button", { name: source === "voice" ? "Start talking" : "Send" }),
+      ),
+    );
+    current = {
+      ...current,
+      revision: current.revision + 1,
+      phase: "error",
+      error: "Autonomous work failed",
+    };
+    view.rerender(<ContinuityWorkspace {...initial} />);
+    const operationMessage =
+      source === "voice" ? "Microphone unavailable" : "Message was not saved";
+    expect(screen.getByText("Autonomous work failed")).toBeTruthy();
+    expect(screen.getAllByRole("alert")).toHaveLength(2);
+    expect(screen.getByRole("button", { name: "Check connection" })).toBeTruthy();
+    native.retryContinuity.mockImplementationOnce(async () => {
+      sharedWorkError = "Work recovery failed";
+      throw new Error(sharedWorkError);
+    });
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Retry" })));
+    expect(screen.getAllByText("Work recovery failed")).toHaveLength(1);
+    expect(screen.queryByText("Autonomous work failed")).toBeNull();
+    expect(screen.getAllByRole("alert")).toHaveLength(2);
+    native.retryContinuity.mockImplementationOnce(async () => {
+      sharedWorkError = null;
+      current = { ...current, revision: current.revision + 1, phase: "idle", error: null };
+    });
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Retry" })));
+    expect(screen.getByRole("alert").textContent).toContain(operationMessage);
+    expect(screen.getByRole("alert").textContent).toContain(
+      source === "voice" ? "microphone button" : "use Send",
+    );
+    expect(screen.getByRole("textbox")).toHaveProperty("value", "Unsent message");
+    expect(screen.queryByText("Autonomous work failed")).toBeNull();
+    expect(native.retryContinuity).toHaveBeenCalledTimes(2);
+    expect(native.sendContinuityMessage).toHaveBeenCalledTimes(source === "send" ? 1 : 0);
+  });
+
+  it.each([
+    "work",
+    "sync",
+  ] as const)("marks only pending %s recovery busy while guarding both recovery controls", async (source) => {
+    current = { ...current, phase: "error", error: "Work failed" };
+    native.useContinuity.mockImplementation(() => ({
+      snapshot: current,
+      error: "Status reload failed",
+      errorSource: "sync",
+    }));
+    const pending = pendingVoiceStart();
+    const selected = source === "work" ? native.retryContinuity : native.refreshContinuity;
+    const other = source === "work" ? native.refreshContinuity : native.retryContinuity;
+    selected.mockReturnValueOnce(pending.promise);
+    render(<ContinuityWorkspace {...props()} language="en" />);
+    const chosenButton = screen.getByRole("button", {
+      name: source === "work" ? "Retry" : "Reload status",
+    });
+    const otherLabel = source === "work" ? "Reload status" : "Retry";
+    const otherButton = screen.getByRole("button", { name: otherLabel });
+    act(() => {
+      fireEvent.click(chosenButton);
+      fireEvent.click(otherButton);
+    });
+    expect(
+      screen.getByRole("button", { name: source === "work" ? "Retrying…" : "Reloading…" }),
+    ).toHaveProperty("disabled", true);
+    expect(chosenButton.getAttribute("aria-busy")).toBe("true");
+    expect(screen.getByRole("button", { name: otherLabel })).toHaveProperty("disabled", true);
+    expect(otherButton.hasAttribute("aria-busy")).toBe(false);
+    expect(selected).toHaveBeenCalledTimes(1);
+    expect(other).not.toHaveBeenCalled();
+    await act(async () => pending.resolve());
+  });
+
+  it("suppresses only work recovery while Pi is unavailable, preserving send guidance and input", async () => {
+    native.sendContinuityMessage.mockRejectedValueOnce(new Error("Message was not saved"));
+    const initial = { ...props(), language: "en" as const, executionBackend: "pi" as const };
+    const view = render(<ContinuityWorkspace {...initial} />);
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Keep this input" } });
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Send" })).toHaveProperty("disabled", false),
+    );
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Send" })));
+    current = { ...current, revision: current.revision + 1, phase: "error", error: "Work failed" };
+    setupNative.invoke.mockResolvedValue({ ...piStatus(), configured: false });
+    view.rerender(<ContinuityWorkspace {...initial} />);
+    fireEvent(window, new Event("focus"));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Retry" })).toBeNull());
+    expect(screen.queryByRole("button", { name: "Check connection" })).toBeNull();
+    expect(screen.getByRole("alert").textContent).toContain("Message was not saved");
+    expect(screen.getByRole("alert").textContent).toContain("use Send");
+    expect(screen.queryByText("Work failed")).toBeNull();
+    expect(screen.getByRole("textbox")).toHaveProperty("value", "Keep this input");
+  });
+
   it("keeps failed draft recovery on draft controls after the details close", async () => {
     native.actOnContinuityDraft.mockRejectedValueOnce(new Error("Could not save draft action"));
     const view = render(<ContinuityWorkspace {...props()} language="en" />);

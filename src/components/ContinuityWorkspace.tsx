@@ -9,7 +9,16 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { createPortal } from "react-dom";
 import { CONTINUITY_COPY } from "../i18n/continuity";
 import {
@@ -209,7 +218,7 @@ function ResidentWorkspace({
   const [voicePending, setVoicePending] = useState(false);
   const [autoPending, setAutoPending] = useState(false);
   const [forgetPending, setForgetPending] = useState(false);
-  const [retryPending, setRetryPending] = useState(false);
+  const [retryPending, setRetryPending] = useState<"work" | "sync" | null>(null);
   const retryInFlight = useRef(false);
   const forgetInFlight = useRef(false);
   const autoInFlight = useRef(false);
@@ -262,19 +271,22 @@ function ResidentWorkspace({
     detail?.kind === "forget"
       ? snapshot?.understandings.find((item) => item.id === detail.entry.id)
       : null;
-  const presentedError: WorkspaceError | null =
-    localError ??
-    (composer.error ? { message: composer.error, source: "send" } : null) ??
-    (syncError
-      ? { message: syncError, source: syncErrorSource ?? "sync" }
+  const workFailure: WorkspaceError | null =
+    syncError && syncErrorSource === "work"
+      ? { message: syncError, source: "work" }
       : snapshot?.error
         ? { message: snapshot.error, source: "work" }
-        : conversation?.state.error
-          ? { message: conversation.state.error, source: "voice" }
-          : null);
+        : null;
+  const operationError: WorkspaceError | null =
+    localError ??
+    (composer.error ? { message: composer.error, source: "send" } : null) ??
+    (syncError && syncErrorSource !== "work"
+      ? { message: syncError, source: syncErrorSource ?? "sync" }
+      : conversation?.state.error
+        ? { message: conversation.state.error, source: "voice" }
+        : null);
+  const presentedError = operationError ?? workFailure;
   const error = presentedError?.message;
-  const workError = presentedError?.source === "work";
-  const syncFailure = presentedError?.source === "sync";
   const additionalVoiceError =
     presentedError?.source !== "voice" ? conversation?.state.error : null;
   const recoveryHint =
@@ -315,14 +327,16 @@ function ResidentWorkspace({
     ? snapshot?.understandings.find((item) => item.id === draft.correctionId)
     : null;
   const showVoiceError = Boolean(additionalVoiceError && !detail);
-  const showWorkspaceError = Boolean(
-    error && !detail && (!workError || executionBackend !== "pi" || piReady),
-  );
+  const feedbackErrors = detail
+    ? []
+    : [operationError, executionBackend !== "pi" || piReady ? workFailure : null].filter(
+        (failure): failure is WorkspaceError => failure !== null,
+      );
   const hasFeedback = Boolean(
     activity ||
       pendingReply ||
       showVoiceError ||
-      showWorkspaceError ||
+      feedbackErrors.length ||
       unread ||
       draft.correctionId,
   );
@@ -448,7 +462,7 @@ function ResidentWorkspace({
   async function retry(source: "work" | "sync" = "work") {
     if (retryInFlight.current) return;
     retryInFlight.current = true;
-    setRetryPending(true);
+    setRetryPending(source);
     try {
       if (source === "sync") await refreshContinuity(context);
       else await retryContinuity(context);
@@ -456,7 +470,7 @@ function ResidentWorkspace({
       // 復旧失敗は共有クライアントが保持し、後続の受理済み状態で更新する。
     } finally {
       retryInFlight.current = false;
-      if (mounted.current) setRetryPending(false);
+      if (mounted.current) setRetryPending(null);
     }
   }
   async function forget(entry: ContinuityUnderstanding) {
@@ -757,57 +771,63 @@ function ResidentWorkspace({
                     </p>
                   </div>
                 ) : null}
-                {showWorkspaceError ? (
-                  <>
-                    <div className="continuity-error" role="alert">
-                      <p>
-                        {error}
-                        {recoveryHint ? (
-                          <>
-                            <br />
-                            {recoveryHint}
-                          </>
-                        ) : null}
-                      </p>
-                      {workError || syncFailure ? (
-                        <button
-                          type="button"
-                          disabled={(workError && busy) || sending || retryPending}
-                          aria-busy={retryPending || undefined}
-                          onClick={() => void retry(syncFailure ? "sync" : "work")}
-                        >
-                          {syncFailure
-                            ? retryPending
-                              ? copy.refreshing
-                              : copy.refresh
-                            : retryPending
-                              ? copy.retrying
-                              : copy.retry}
-                        </button>
-                      ) : null}
-                      {workError && executionBackend === "pi" ? (
-                        <button
-                          type="button"
-                          disabled={piDiagnostics.checking}
-                          onClick={() => void piDiagnostics.check()}
-                        >
-                          {piDiagnostics.checking
-                            ? copy.piDiagnostics.checking
-                            : copy.piDiagnostics.check}
-                        </button>
-                      ) : null}
-                    </div>
-                    {workError && executionBackend === "pi" && piDiagnostics.result ? (
-                      <div className="continuity-error" role="status" aria-live="polite">
+                {feedbackErrors.map((failure) => {
+                  const workError = failure.source === "work";
+                  const syncFailure = failure.source === "sync";
+                  const pending = retryPending === failure.source;
+                  const hint = failure.source === "work" ? null : copy.recovery[failure.source];
+                  return (
+                    <Fragment key={failure.source}>
+                      <div className="continuity-error" role="alert">
                         <p>
-                          {piDiagnosticMessages(piDiagnostics.result)
-                            .map((message) => copy.piDiagnostics[message])
-                            .join("\n")}
+                          {failure.message}
+                          {hint ? (
+                            <>
+                              <br />
+                              {hint}
+                            </>
+                          ) : null}
                         </p>
+                        {workError || syncFailure ? (
+                          <button
+                            type="button"
+                            disabled={(workError && busy) || sending || retryPending !== null}
+                            aria-busy={pending || undefined}
+                            onClick={() => void retry(syncFailure ? "sync" : "work")}
+                          >
+                            {syncFailure
+                              ? pending
+                                ? copy.refreshing
+                                : copy.refresh
+                              : pending
+                                ? copy.retrying
+                                : copy.retry}
+                          </button>
+                        ) : null}
+                        {workError && executionBackend === "pi" ? (
+                          <button
+                            type="button"
+                            disabled={piDiagnostics.checking}
+                            onClick={() => void piDiagnostics.check()}
+                          >
+                            {piDiagnostics.checking
+                              ? copy.piDiagnostics.checking
+                              : copy.piDiagnostics.check}
+                          </button>
+                        ) : null}
                       </div>
-                    ) : null}
-                  </>
-                ) : null}
+                      {workError && executionBackend === "pi" && piDiagnostics.result ? (
+                        <div className="continuity-error" role="status" aria-live="polite">
+                          <p>
+                            {piDiagnosticMessages(piDiagnostics.result)
+                              .map((message) => copy.piDiagnostics[message])
+                              .join("\n")}
+                          </p>
+                        </div>
+                      ) : null}
+                    </Fragment>
+                  );
+                })}
                 {unread ? (
                   <button
                     type="button"
