@@ -17,7 +17,7 @@ import {
 } from "../agent-state-expression/controller";
 import type { StateExpressionSchedulerCallbacks } from "../agent-state-expression/scheduler";
 import { mediaPermissionError } from "../media-permissions";
-import { realtimeContextParts } from "./context-items";
+import { realtimeContextParts, realtimeEvidenceParts } from "./context-items";
 import { generateSessionFollowup } from "./followup-bridge";
 import { monitorPlayback, type PlaybackSample } from "./playback-monitor";
 import { isRealtimeDebugEnabled, subscribeRealtimeDebug } from "./realtime-debug";
@@ -75,6 +75,8 @@ export interface CodexRealtimePersonaSnapshot {
   readonly personaId: string | null;
   /** Canonical PersonaDefinition.thinking.systemPromptAddition for the active persona. */
   readonly instructions: string | null | undefined;
+  /** 会話の記録は人格指示と混ぜず、引用された証拠として別途渡す。 */
+  readonly continuityContext?: string | null;
 }
 
 export type CodexRealtimePersonaApplicationStatus =
@@ -306,9 +308,7 @@ export class CodexRealtimeClient implements LipSyncSource {
     const delivery = (async () => {
       if (sameOwner) await previous.delivery.catch(() => {});
       this.assertActiveThreadOwner(attempt, threadId);
-      const prefix =
-        "Host context refresh only. Do not greet, speak, or start work because this arrived. Use this latest conversation context when relevant to the user's next turn.\n";
-      for (const part of realtimeContextParts(text, prefix)) {
+      for (const part of realtimeEvidenceParts(text)) {
         this.assertActiveThreadOwner(attempt, threadId);
         await this.request("thread/realtime/appendText", {
           threadId,
@@ -526,19 +526,37 @@ export class CodexRealtimeClient implements LipSyncSource {
     });
     this.assertAttemptOwner(attempt);
     this.notify("initialized", {});
-    const personaApplication = await this.preparePersonaApplication(
-      realtimeCapabilities,
-      await personaSnapshot,
-    );
+    const loadedPersona = await personaSnapshot;
+    this.assertAttemptOwner(attempt);
+    const personaApplication = this.preparePersonaApplication(realtimeCapabilities, loadedPersona);
     // Keep Codex's backing-executor prompt intact. This supplemental Live-side item only
     // corrects routing decisions made before a request is handed to that executor.
-    const initialItems =
+    const instructionItems =
       realtimeCapabilities.personaInitialItems && this.personaPromptMode !== "replace"
         ? [
             ...(personaApplication.initialItems ?? []),
             { role: "developer" as const, text: CODEX_REALTIME_LOCAL_WORK_HANDOFF },
           ]
         : personaApplication.initialItems;
+    const continuity =
+      loadedPersona.status === "loaded" ? loadedPersona.snapshot.continuityContext : null;
+    // 人格は指示のまま分割し、記録だけを独立した引用 envelope にする。
+    const evidenceItems =
+      realtimeCapabilities.personaInitialItems && continuity
+        ? realtimeEvidenceParts(continuity, "initial").map((text) => ({
+            role: "developer" as const,
+            text,
+          }))
+        : [];
+    const initialItems =
+      instructionItems || evidenceItems.length
+        ? [
+            ...(instructionItems ?? []).flatMap((item) =>
+              realtimeContextParts(item.text).map((text) => ({ ...item, text })),
+            ),
+            ...evidenceItems,
+          ]
+        : undefined;
     this.assertAttemptOwner(attempt);
     this.currentStage = "account";
     const account = (await this.request("account/read", { refreshToken: false })) as {
@@ -1002,13 +1020,8 @@ export class CodexRealtimeClient implements LipSyncSource {
           : { model: "gpt-live-1-codex" }),
         voice,
         includeStartupContext: startupContextIncluded,
-        ...(initialItems
-          ? {
-              initialItems: initialItems.flatMap((item) =>
-                realtimeContextParts(item.text).map((text) => ({ ...item, text })),
-              ),
-            }
-          : {}),
+        // 証拠 envelope をここで再分割すると引用境界を壊すため、そのまま送る。
+        ...(initialItems ? { initialItems } : {}),
         ...(prompt ? { prompt } : {}),
         ...(disableDelegationAckFiller ? { delegationAckFiller: false } : {}),
         transport: { type: "webrtc", sdp },

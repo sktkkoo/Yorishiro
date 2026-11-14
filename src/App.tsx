@@ -4297,7 +4297,8 @@ function App() {
       const continuity = await readVoiceContinuityPrompt(personaId).catch(() => "");
       return {
         personaId,
-        instructions: [instructions, continuity].filter(Boolean).join("\n\n") || null,
+        instructions,
+        continuityContext: continuity || null,
       };
     },
     personaPromptMode: "supplemental",
