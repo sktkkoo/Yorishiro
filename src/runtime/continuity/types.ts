@@ -65,6 +65,8 @@ export interface ContinuitySnapshot {
   /** Native-owned setting. Missing on older hosts means the control is unavailable. */
   readonly autoEnabled?: boolean;
   readonly revision: number;
+  /** 保存版が同じでも、ホスト内で後から公開された表示状態を優先するための順序。 */
+  readonly publicationSequence?: number;
   readonly phase: "idle" | "thinking" | "drafting" | "working" | "error";
   readonly messages: readonly ContinuityMessage[];
   readonly understandings: readonly ContinuityUnderstanding[];
@@ -74,6 +76,8 @@ export interface ContinuitySnapshot {
   readonly explicitMemories?: readonly ContinuityExplicitMemory[];
   readonly forgottenUnderstandings?: readonly ContinuityForgottenUnderstanding[];
   readonly error: string | null;
+  /** 自動再確認が可能になる最も早い時刻。実行開始の確約ではなく、旧ホストでは省略される。 */
+  readonly automaticRetryAt?: number | null;
   readonly lastObservedAt: number | null;
   /** Absent in older saved snapshots; null means quietly wait. */
   readonly nextStep?: string | null;

@@ -261,6 +261,7 @@ fn session() -> Session {
         last_periodic_at: None,
         auto_driver_started: false,
         auto_driver_active: false,
+        publication_sequence: 0,
         followup_steps: BTreeSet::new(),
     }
 }
@@ -2571,6 +2572,167 @@ fn pi_failure_backoff_is_persisted_bounded_and_does_not_hot_loop() {
     assert!(value.queued);
     assert!(!value.queued_automatically);
     assert!(queued_work_allowed(&value));
+}
+
+fn waiting_for_automatic_recovery() -> Session {
+    let mut value = session();
+    value.saved.auto_enabled = true;
+    value.saved.snapshot.auto_enabled = true;
+    value.auto_driver_active = true;
+    value.context = Some(context());
+    value.saved.snapshot.phase = "error".into();
+    value.saved.snapshot.error = Some("Worker unavailable".into());
+    value.saved.retry_not_before = Some(1234);
+    value
+}
+
+#[test]
+fn automatic_recovery_metadata_requires_live_eligible_error_state() {
+    let mut value = waiting_for_automatic_recovery();
+    // 過去の境界も次の定期確認の下限であり、driver の spawn 前の応答でも示す。
+    assert!(!value.auto_driver_started);
+    assert_eq!(ui_snapshot(&mut value).automatic_retry_at, Some(1234));
+    type RecoveryCase = (&'static str, fn(&mut Session));
+    let cases: &[RecoveryCase] = &[
+        ("off", |value| value.saved.auto_enabled = false),
+        ("inactive", |value| value.auto_driver_active = false),
+        ("no context", |value| value.context = None),
+        ("idle", |value| value.saved.snapshot.phase = "idle".into()),
+        ("no error", |value| value.saved.snapshot.error = None),
+        ("running", |value| value.running = true),
+        ("queued", |value| value.queued = true),
+        ("blocked", |value| value.saved.execution_blocked = true),
+        ("no deadline", |value| value.saved.retry_not_before = None),
+    ];
+    for (name, change) in cases {
+        let mut value = waiting_for_automatic_recovery();
+        change(&mut value);
+        assert_eq!(ui_snapshot(&mut value).automatic_retry_at, None, "{name}");
+    }
+}
+
+#[test]
+fn automatic_recovery_metadata_preserves_accepted_target_across_context_changes() {
+    let mut value = waiting_for_automatic_recovery();
+    let mut work = pending_work(&value);
+    work.target = pi_test_target(std::path::Path::new("/original")).into();
+    work.dispatch_attempted = true;
+    value.saved.pending_execution = Some(work);
+    let mut current = context();
+    current.execution_backend = Some(ExecutionBackend::Codex);
+    current.cwd = Some("/different".into());
+    value.context = Some(current);
+    assert_eq!(ui_snapshot(&mut value).automatic_retry_at, Some(1234));
+    assert!(matches!(
+        value.saved.pending_execution.as_ref().unwrap().target,
+        ExecutionTarget::Pi(_)
+    ));
+}
+
+#[test]
+fn automatic_recovery_metadata_survives_noop_checks_and_clears_on_explicit_actions() {
+    let mut value = waiting_for_automatic_recovery();
+    let deadline = now() + 600_000;
+    value.saved.retry_not_before = Some(deadline);
+    value.auto_driver_active = false;
+    sync_context(&mut value, context());
+    let initial = ui_snapshot(&mut value);
+    assert_eq!(initial.automatic_retry_at, Some(deadline));
+    assert!(!queue_periodic(&mut value, context(), deadline - 1));
+    let revision = value.saved.snapshot.revision;
+    assert_eq!(
+        queue_followup(&mut value, context(), revision),
+        Advance::Unchanged
+    );
+    let unchanged = ui_snapshot(&mut value);
+    assert_eq!(unchanged.snapshot.revision, initial.snapshot.revision);
+    assert_eq!(unchanged.automatic_retry_at, Some(deadline));
+    assert!(unchanged.publication_sequence > initial.publication_sequence);
+    queue_explicit_retry(&mut value, context());
+    assert_eq!(ui_snapshot(&mut value).automatic_retry_at, None);
+    assert!(value.queued);
+
+    let mut value = waiting_for_automatic_recovery();
+    set_auto_enabled(&mut value, context(), false);
+    assert_eq!(ui_snapshot(&mut value).automatic_retry_at, None);
+    assert!(!value.saved.auto_enabled);
+}
+
+#[test]
+fn releasing_the_execution_owner_publishes_the_new_wait_without_a_revision_change() {
+    let mut value = waiting_for_automatic_recovery();
+    value.running = true;
+    value.running_automatically = true;
+    let before = ui_snapshot(&mut value);
+    assert_eq!(before.automatic_retry_at, None);
+    let released = release_execution_owner(&mut value).expect("newly visible wait");
+    assert_eq!(released.automatic_retry_at, Some(1234));
+    assert_eq!(released.snapshot.revision, before.snapshot.revision);
+    assert!(released.publication_sequence > before.publication_sequence);
+    assert!(!value.running);
+    assert!(!value.running_automatically);
+    assert!(release_execution_owner(&mut value).is_none());
+}
+
+#[test]
+fn persona_selection_retracts_only_a_previously_visible_recovery_wait() {
+    let mut sessions = BTreeMap::from([
+        (
+            storage::identity("yori-ja").to_string(),
+            waiting_for_automatic_recovery(),
+        ),
+        (storage::identity("other").to_string(), session()),
+    ]);
+    assert!(select_auto_identity(&mut sessions, "yori-en").is_empty());
+    let before = ui_snapshot(sessions.get_mut(&storage::identity("yori-ja")).unwrap());
+    let changes = select_auto_identity(&mut sessions, "other");
+    assert_eq!(changes.len(), 1);
+    assert_eq!(changes[0].snapshot.persona_id, "yori-ja");
+    assert_eq!(changes[0].automatic_retry_at, None);
+    assert!(changes[0].publication_sequence > before.publication_sequence);
+    assert_eq!(changes[0].snapshot.revision, before.snapshot.revision);
+    assert!(select_auto_identity(&mut sessions, "other").is_empty());
+    let previous = sessions.get(&storage::identity("yori-ja")).unwrap();
+    assert!(previous.saved.auto_enabled);
+    assert_eq!(previous.saved.retry_not_before, Some(1234));
+}
+
+#[test]
+fn recovery_metadata_is_outbound_only_and_restored_state_starts_inactive() {
+    let mut value = waiting_for_automatic_recovery();
+    value.saved.auto_context = value.context.clone();
+    let before = serde_json::to_value(&value.saved).unwrap();
+    let outbound = serde_json::to_value(ui_snapshot(&mut value)).unwrap();
+    assert_eq!(outbound["automaticRetryAt"], 1234);
+    assert_eq!(outbound["personaId"], "yori-ja");
+    assert!(outbound.get("snapshot").is_none());
+    assert_eq!(serde_json::to_value(&value.saved).unwrap(), before);
+    assert!(before["snapshot"].get("automaticRetryAt").is_none());
+    assert!(before["snapshot"].get("publicationSequence").is_none());
+    assert_eq!(outbound["publicationSequence"], 1);
+    assert!(
+        !reason_prompt(&value.saved.snapshot, &context(), "retry", &[])
+            .unwrap()
+            .contains("automaticRetryAt")
+    );
+    assert!(
+        !reason_prompt(&value.saved.snapshot, &context(), "retry", &[])
+            .unwrap()
+            .contains("publicationSequence")
+    );
+    let home = tempfile::tempdir().unwrap();
+    storage::save(home.path(), &value.saved).unwrap();
+    let mut restored = session();
+    restored.saved = storage::load(home.path(), "yori-ja").unwrap();
+    restored.context = restored.saved.auto_context.clone();
+    assert_eq!(ui_snapshot(&mut restored).automatic_retry_at, None);
+    restored.auto_driver_active = true;
+    assert_eq!(ui_snapshot(&mut restored).automatic_retry_at, Some(1234));
+    restored.saved.snapshot.error = None;
+    assert_eq!(
+        serde_json::to_value(ui_snapshot(&mut restored)).unwrap()["automaticRetryAt"],
+        serde_json::Value::Null
+    );
 }
 
 #[test]

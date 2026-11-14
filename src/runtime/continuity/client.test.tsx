@@ -60,6 +60,89 @@ afterEach(() => {
 });
 describe("shared continuity bridge", () => {
   it.each([
+    "status",
+    "retry",
+  ] as const)("does not restore an obsolete wait from a delayed %s response at the same revision", async (source) => {
+    const client = await import("./client");
+    const waiting: ContinuitySnapshot = {
+      ...snapshot("yori-ja", 5),
+      phase: "error",
+      error: "Worker unavailable",
+      automaticRetryAt: 1000,
+      publicationSequence: 10,
+    };
+    native.invoke.mockResolvedValue(waiting);
+    const view = renderHook(({ cwd }) => client.useContinuity({ ...context, cwd }, false), {
+      initialProps: { cwd: "/before" },
+    });
+    await waitFor(() => expect(view.result.current.snapshot).toEqual(waiting));
+    const request = pendingSnapshot();
+    native.invoke.mockReturnValueOnce(request.promise);
+    let completion: Promise<void> | undefined;
+    if (source === "status") view.rerender({ cwd: "/after" });
+    else
+      act(() => {
+        completion = client.retryContinuity(context);
+      });
+    await waitFor(() => expect(native.invoke).toHaveBeenCalledTimes(2));
+    const released = { ...waiting, automaticRetryAt: null, publicationSequence: 12 };
+    act(() => native.callback?.({ payload: released }));
+    expect(view.result.current.snapshot).toEqual(released);
+    native.invoke.mockRejectedValueOnce(new Error("Message could not be saved"));
+    await act(async () => {
+      await client.sendContinuityMessage(context, "Keep this request").catch(() => undefined);
+    });
+    await act(async () => {
+      request.resolve({ ...waiting, publicationSequence: 11 });
+      await completion;
+    });
+    expect(view.result.current.snapshot).toEqual(released);
+    expect(view.result.current.error).toBe("Message could not be saved");
+    const scheduledAgain = { ...waiting, automaticRetryAt: 2000, publicationSequence: 14 };
+    act(() => native.callback?.({ payload: scheduledAgain }));
+    act(() => native.callback?.({ payload: { ...released, publicationSequence: 13 } }));
+    expect(view.result.current.snapshot).toEqual(scheduledAgain);
+  });
+
+  it("keeps saved revision primary and accepts legacy or unorderable equal-revision publications", async () => {
+    const client = await import("./client");
+    const initial = { ...snapshot("yori-ja", 5), publicationSequence: 10 };
+    native.invoke.mockResolvedValue(initial);
+    const view = renderHook(() => client.useContinuity(context, false));
+    await waitFor(() => expect(view.result.current.snapshot).toEqual(initial));
+    act(() =>
+      native.callback?.({ payload: { ...initial, revision: 4, publicationSequence: 100 } }),
+    );
+    expect(view.result.current.snapshot).toEqual(initial);
+    const newerRevision = { ...initial, revision: 6, publicationSequence: 1 };
+    act(() => native.callback?.({ payload: newerRevision }));
+    expect(view.result.current.snapshot).toEqual(newerRevision);
+    for (const publicationSequence of [
+      undefined,
+      NaN,
+      Infinity,
+      -1,
+      1.5,
+      Number.MAX_SAFE_INTEGER + 1,
+    ]) {
+      const valid = { ...newerRevision, publicationSequence: 10 };
+      act(() => native.callback?.({ payload: valid }));
+      const unorderable = { ...newerRevision, publicationSequence };
+      act(() => native.callback?.({ payload: unorderable }));
+      expect(view.result.current.snapshot).toEqual(unorderable);
+      act(() => native.callback?.({ payload: newerRevision }));
+      expect(view.result.current.snapshot).toEqual(newerRevision);
+    }
+    native.invoke.mockRejectedValueOnce(new Error("Work retry failed"));
+    await act(async () => {
+      await client.retryContinuity(context).catch(() => undefined);
+    });
+    expect(view.result.current.error).toBe("Work retry failed");
+    act(() => native.callback?.({ payload: newerRevision }));
+    expect(view.result.current.error).toBeNull();
+  });
+
+  it.each([
     false,
     true,
   ])("ignores a superseded workspace refresh failure while open is %s", async (open) => {
