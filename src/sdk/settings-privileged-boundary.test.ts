@@ -30,6 +30,7 @@ describe("system settings privileged boundary", () => {
     );
 
     expect(privilegedImports).toEqual([
+      "../../../src/components/SilenceFollowupSettings",
       "../../../src/i18n/strings",
       "../../../src/runtime/history/describe-snapshot",
       "../../../src/runtime/language/language",
@@ -66,15 +67,18 @@ describe("system settings privileged boundary", () => {
     expect(source).not.toContain("src/sdk/");
   });
 
-  it("keeps Auto workspace ownership out of the settings pack", async () => {
+  it("allows only the reviewed voice settings widget and keeps autonomous work in the host", async () => {
     const source = await readSettingsSource();
     expect(
       importedModuleIds(source).filter((moduleId) => moduleId.includes("/src/components/")),
-    ).toEqual([]);
+    ).toEqual(["../../../src/components/SilenceFollowupSettings"]);
     expect(source).not.toContain("src/runtime/autonomy/");
+    expect(source).not.toContain("src/runtime/continuity/");
+    expect(source).not.toContain("src/runtime/codex-realtime/");
 
-    // This is an app-release exception, not a new capability for UI pack code.
+    // 同梱 widget の例外であり、通常の UI Pack に設定や実行の権限を公開しない。
     const sdk = await readFile(join(import.meta.dirname, "ui-pack.d.ts"), "utf8");
     expect(sdk).not.toMatch(/\b(?:setAutonomyEnabled|saveAutonomyContract|AutonomySettings)\b/);
+    expect(sdk).not.toMatch(/\b(?:SilenceFollowupSettings|writeSilenceFollowupSettings)\b/);
   });
 });
