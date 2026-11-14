@@ -3102,3 +3102,243 @@ fn earlier_receipts_remain_readable_in_exact_unicode_chunks_without_mutation() {
     assert!(end["nextCharacterOffset"].is_null());
     assert_eq!(serde_json::to_value(&value.saved).unwrap(), before);
 }
+
+fn forgetting_session() -> Session {
+    let mut value = session();
+    user(
+        &mut value.saved.snapshot,
+        "shared",
+        "Two independently useful preferences",
+    );
+    user(&mut value.saved.snapshot, "revised", "A revised preference");
+    user(
+        &mut value.saved.snapshot,
+        "latest",
+        "Current entrusted work",
+    );
+    apply(&mut value.saved.snapshot, response(json!({
+        "reply":"","understandings":[update("memory", "Original private value", "shared"), update("sibling", "Independent preference", "shared")],
+        "drafts":[],"reflection":"Mixed derived summary","nextStep":null
+    })), "external", &[]).unwrap();
+    apply(
+        &mut value.saved.snapshot,
+        response(json!({
+            "reply":"","understandings":[update("memory", "Revised private value", "revised")],
+            "drafts":[],"reflection":"Revised derived summary","nextStep":null
+        })),
+        "external",
+        &[],
+    )
+    .unwrap();
+    value.saved.snapshot.reflections.push(Reflection {
+        id: "independent-reflection".into(),
+        content: "Independent derived context".into(),
+        source_ids: vec!["shared".into()],
+        understanding_ids: vec!["sibling".into()],
+        created_at: 1,
+    });
+    value.committed = value.saved.clone();
+    value
+}
+
+#[test]
+fn forget_removes_only_selected_memory_and_linked_summaries_without_compacting_conversation() {
+    let mut value = forgetting_session();
+    let original_messages = serde_json::to_value(&value.saved.snapshot.messages).unwrap();
+    let original_sibling = serde_json::to_value(&value.saved.snapshot.understandings[1]).unwrap();
+    value
+        .saved
+        .retired_message_ids
+        .extend(["shared".into(), "revised".into()]);
+    value.saved.pending_correction_ids = vec!["memory".into(), "sibling".into()];
+    let directory = tempfile::tempdir().unwrap();
+    let snapshot = forget_understanding_with_save(&mut value, "memory", now(), |candidate| {
+        storage::save(directory.path(), candidate)
+    })
+    .unwrap();
+    assert_eq!(snapshot.understandings.len(), 1);
+    assert_eq!(
+        serde_json::to_value(&snapshot.understandings[0]).unwrap(),
+        original_sibling
+    );
+    assert_eq!(
+        serde_json::to_value(&snapshot.messages).unwrap(),
+        original_messages
+    );
+    assert_eq!(snapshot.reflections.len(), 1);
+    assert_eq!(snapshot.reflections[0].id, "independent-reflection");
+    assert_eq!(
+        snapshot.forgotten_understandings[0].source_ids,
+        ["revised", "shared"]
+    );
+    assert_eq!(value.saved.pending_correction_ids, ["sibling"]);
+    let tombstones = serde_json::to_string(&snapshot.forgotten_understandings).unwrap();
+    assert!(!tombstones.contains("private value"));
+    assert_eq!(
+        serde_json::to_value(storage::load(directory.path(), "yori-ja").unwrap()).unwrap(),
+        serde_json::to_value(&value.saved).unwrap()
+    );
+    let revision = snapshot.revision;
+    assert_eq!(
+        forget_understanding_with_save(&mut value, "memory", now(), |_| panic!(
+            "Repeated forget must not save"
+        ))
+        .unwrap()
+        .revision,
+        revision
+    );
+    assert!(
+        forget_understanding_with_save(&mut value, "unknown", now(), |_| panic!(
+            "Unknown memory must not save"
+        ))
+        .is_err()
+    );
+    value.saved.pending_correction_ids.clear();
+    assert_eq!(
+        retention::compact(&mut value.saved, now(), false, false).removed_messages,
+        1
+    );
+    assert!(value
+        .saved
+        .snapshot
+        .messages
+        .iter()
+        .all(|message| message.id != "revised"));
+}
+
+#[test]
+fn failed_forget_save_leaves_memory_and_accepted_work_exactly_unchanged() {
+    let mut value = forgetting_session();
+    value.running = true;
+    value.queued = true;
+    value.epoch = 42;
+    let token = CancellationToken::new();
+    value.cancel = Some(token.clone());
+    let mut work = pending_work(&value);
+    work.dispatch_attempted = true;
+    work.correction_ids = vec!["memory".into()];
+    work.request_payload = Some("Exact accepted payload".into());
+    value.saved.pending_execution = Some(work);
+    value.saved.pending_correction_ids = vec!["memory".into()];
+    value.committed = value.saved.clone();
+    let before = serde_json::to_value(&value.saved).unwrap();
+    let error =
+        forget_understanding_with_save(&mut value, "memory", now(), |_| Err("disk full".into()))
+            .unwrap_err();
+    assert_eq!(error, "disk full");
+    assert_eq!(serde_json::to_value(&value.saved).unwrap(), before);
+    assert_eq!(serde_json::to_value(&value.committed).unwrap(), before);
+    assert!(value.running && value.queued);
+    assert_eq!(value.epoch, 42);
+    assert!(!token.is_cancelled());
+    forget_understanding_with_save(&mut value, "memory", now(), |_| Ok(())).unwrap();
+    assert_eq!(
+        serde_json::to_value(&value.saved.pending_execution).unwrap(),
+        before["pendingExecution"]
+    );
+    assert!(value.running && value.queued);
+    assert_eq!(value.epoch, 42);
+    assert!(!token.is_cancelled());
+}
+
+#[test]
+fn stale_completed_work_cannot_recreate_forgotten_memory_or_reflection_after_restart() {
+    let mut value = forgetting_session();
+    let mut work = pending_work(&value);
+    work.correction_ids = vec!["memory".into()];
+    value.saved.pending_execution = Some(work.clone());
+    let directory = tempfile::tempdir().unwrap();
+    forget_understanding_with_save(&mut value, "memory", now(), |candidate| {
+        storage::save(directory.path(), candidate)
+    })
+    .unwrap();
+    value.saved = storage::load(directory.path(), "yori-ja").unwrap();
+    let result = response(json!({
+        "reply":"Completed actual work","replyKind":"report","workStatus":"idle",
+        "understandings":[update("memory", "Stale private value", "revised"),
+            update("new-name", "Same forgotten fact under a new ID", "shared"),
+            update("sibling", "Legitimate independent revision", "shared"),
+            update("new-memory", "New independently grounded fact", "latest")],
+        "drafts":[],"reflection":"Mixed summary containing the forgotten fact","nextStep":null
+    }));
+    apply_execution(&mut value, result, &work, true).unwrap();
+    assert_eq!(
+        value
+            .saved
+            .snapshot
+            .understandings
+            .iter()
+            .map(|item| item.id.as_str())
+            .collect::<Vec<_>>(),
+        ["sibling", "new-memory"]
+    );
+    assert_eq!(
+        value.saved.snapshot.understandings[0].value,
+        "Legitimate independent revision"
+    );
+    assert_eq!(value.saved.snapshot.reflections.len(), 1);
+    assert_eq!(
+        value.saved.snapshot.messages.last().unwrap().content,
+        "Completed actual work"
+    );
+    assert!(value
+        .saved
+        .snapshot
+        .forgotten_understandings
+        .iter()
+        .any(|item| item.understanding_id == "memory"));
+}
+
+#[test]
+fn text_result_after_forget_ignores_stale_correction_and_keeps_explicit_request_provenance() {
+    let mut value = forgetting_session();
+    value.saved.snapshot.explicit_memories.push(ExplicitMemory {
+        request_message_id: "shared".into(),
+        source_ids: vec!["shared".into(), "revised".into()],
+    });
+    let original = serde_json::to_value(&value.saved.snapshot.explicit_memories).unwrap();
+    forget_understanding_with_save(&mut value, "memory", now(), |_| Ok(())).unwrap();
+    apply_completed(
+        &mut value,
+        response(json!({
+            "reply":"","understandings":[update("memory", "Old fact", "revised")],
+            "drafts":[],"reflection":"Old fact again","nextStep":null
+        })),
+        &context(),
+        "external",
+        &["memory".into()],
+    )
+    .unwrap();
+    assert_eq!(value.saved.snapshot.understandings.len(), 1);
+    assert_eq!(
+        serde_json::to_value(&value.saved.snapshot.explicit_memories).unwrap(),
+        original
+    );
+    assert_eq!(value.saved.snapshot.reflections.len(), 1);
+}
+
+#[test]
+fn recovery_never_restores_a_forgotten_correction_from_immutable_work() {
+    for route in ["terminal", "handoff", "off"] {
+        let mut value = forgetting_session();
+        let mut work = pending_work(&value);
+        work.correction_ids = vec!["memory".into(), "sibling".into()];
+        value.saved.pending_execution = Some(work.clone());
+        forget_understanding_with_save(&mut value, "memory", now(), |_| Ok(())).unwrap();
+        match route {
+            "terminal" => retire_terminal_execution(
+                &mut value,
+                &work,
+                terminal_turn(TerminalStatus::Interrupted),
+            )
+            .unwrap(),
+            "handoff" => detach_undispatched_intent(&mut value).unwrap(),
+            "off" => {
+                value.queued_automatically = true;
+                set_auto_enabled(&mut value, context(), false);
+            }
+            _ => unreachable!(),
+        }
+        assert_eq!(value.saved.pending_correction_ids, ["sibling"], "{route}");
+    }
+}

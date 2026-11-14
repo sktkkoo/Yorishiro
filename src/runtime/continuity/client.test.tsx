@@ -59,6 +59,35 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 describe("shared continuity bridge", () => {
+  it("forgets the exact memory through native persistence and only accepts the acknowledged snapshot", async () => {
+    const client = await import("./client");
+    const view = renderHook(() => client.useContinuity(context, false));
+    await waitFor(() => expect(view.result.current.snapshot?.revision).toBe(1));
+    native.invoke.mockRejectedValueOnce(new Error("Could not save deletion"));
+    await act(async () => {
+      await expect(client.forgetContinuityUnderstanding(context, "memory-1")).rejects.toThrow(
+        "Could not save deletion",
+      );
+    });
+    expect(view.result.current.snapshot?.revision).toBe(1);
+    expect(view.result.current.error).toBe("Could not save deletion");
+    const acknowledged = {
+      ...snapshot("yori-ja", 2),
+      forgottenUnderstandings: [
+        { understandingId: "memory-1", sourceIds: ["user-1"], forgottenAt: 100 },
+      ],
+    };
+    native.invoke.mockResolvedValueOnce(acknowledged);
+    await act(() => client.forgetContinuityUnderstanding(context, "memory-1"));
+    expect(native.invoke).toHaveBeenLastCalledWith("continuity_forget_understanding", {
+      context,
+      understandingId: "memory-1",
+    });
+    expect(view.result.current.snapshot).toEqual(acknowledged);
+    expect(view.result.current.error).toBeNull();
+    view.unmount();
+  });
+
   it("stops automatic timers while Off, keeps context sync, and explicitly enables through native", async () => {
     const client = await import("./client");
     vi.useFakeTimers();

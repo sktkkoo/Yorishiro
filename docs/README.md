@@ -13,7 +13,7 @@
 | Yorishiro が何を目指しているか知りたい | [`philosophy/PHILOSOPHY.ja.md`](philosophy/PHILOSOPHY.ja.md) |
 | TypeScript 側のどこに何があるか知りたい | [`../src/README.md`](../src/README.md) |
 | Rust 側のどこに何があるか知りたい | [`../src-tauri/README.md`](../src-tauri/README.md) |
-| ジャーナルの会話・記憶の保持条件、音声／実行 context、更新頻度を確認したい | [`decisions/continuity-retention.md`](decisions/continuity-retention.md) |
+| ジャーナルの会話・記憶の保持条件、メモリーの削除、音声／実行 context、更新頻度を確認したい | [`decisions/continuity-retention.md`](decisions/continuity-retention.md) |
 | Pack を書きたい | [`../src/sdk/README.md`](../src/sdk/README.md) |
 | Local TSX Packで使えるimport・asset・version制約を確認したい | [`decisions/local-source-authoring-contract.md`](decisions/local-source-authoring-contract.md) |
 | GitHub 等で共有された pack を手動導入したい | [`decisions/scene-execution-sandbox.md`](decisions/scene-execution-sandbox.md) |
@@ -101,7 +101,7 @@ Source code 内で参照するときは：
 | `claude_screen_sharing.rs` | Claudeの起動・会話に紐づく最新画像のメモリ保持、hook通知、MCP取得 | [decisions/claude-screen-sharing.md](decisions/claude-screen-sharing.md) |
 | `pty.rs` | Legacy PTY facade / per-instance dynamic-port hook server | 同上 |
 | `sessions/` | Per-session PTY lifecycle / registry / shell wrapper / terminal agent adapter | 同上 |
-| `continuity/` | persona ごとの会話・仕事の永続化、明示的な記憶の原文保護、出典を保護した整理、実行 context の予算、保存形式の移行 | [decisions/continuity-retention.md](decisions/continuity-retention.md) |
+| `continuity/` | persona ごとの会話・仕事の永続化、明示的な記憶の原文保護、メモリー削除と再登録防止、出典を保護した整理、実行 context の予算、保存形式の移行 | [decisions/continuity-retention.md](decisions/continuity-retention.md) |
 | `mcp/` | MCP 1.5 server (18743 preferred / per-instance endpoint) / pack diagnostics + self-referential tools | 同上 |
 | User layer commands | `~/.yorishiro/` の watch / atomic write / pack scan | 同上 |
 

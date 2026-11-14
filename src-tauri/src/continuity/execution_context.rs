@@ -24,6 +24,7 @@ const MAX_OPTIONAL_MESSAGES: usize = 6;
 const MAX_OPTIONAL_UNDERSTANDINGS: usize = 8;
 const MAX_OPTIONAL_DRAFTS: usize = 3;
 const MAX_OPTIONAL_REFLECTIONS: usize = 3;
+const MAX_FORGETTING_HINTS: usize = 8;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -49,6 +50,15 @@ struct Selection {
     understandings: BTreeSet<usize>,
     drafts: BTreeSet<usize>,
     reflections: BTreeSet<usize>,
+    forgotten_understandings: BTreeSet<usize>,
+}
+
+fn explicit_memory_is_active(snapshot: &Snapshot, memory: &super::types::ExplicitMemory) -> bool {
+    !snapshot.forgotten_understandings.iter().any(|forgotten| {
+        forgotten.source_ids.iter().any(|source| {
+            source == &memory.request_message_id || memory.source_ids.contains(source)
+        })
+    })
 }
 
 fn digest(value: &impl Serialize) -> Result<String, String> {
@@ -94,7 +104,17 @@ fn projected(snapshot: &Snapshot, selected: &Selection) -> Snapshot {
         understandings: vec![],
         drafts: vec![],
         reflections: vec![],
-        explicit_memories: snapshot.explicit_memories.clone(),
+        explicit_memories: snapshot
+            .explicit_memories
+            .iter()
+            .filter(|memory| explicit_memory_is_active(snapshot, memory))
+            .cloned()
+            .collect(),
+        forgotten_understandings: selected
+            .forgotten_understandings
+            .iter()
+            .map(|index| snapshot.forgotten_understandings[*index].clone())
+            .collect(),
         error: snapshot.error.clone(),
         last_observed_at: snapshot.last_observed_at,
         next_step: snapshot.next_step.clone(),
@@ -210,19 +230,28 @@ where
         } = self;
         let snapshot = projected(&saved.snapshot, selection);
         let prompt = render(&snapshot, context, trigger, &saved.pending_correction_ids)?;
-        let counts = json!({
+        let mut counts = json!({
             "omittedMessages":saved.snapshot.messages.len()-selection.messages.len(),
             "omittedUnderstandings":saved.snapshot.understandings.len()-selection.understandings.len(),
             "omittedDrafts":saved.snapshot.drafts.len()-selection.drafts.len(),
             "omittedReflections":saved.snapshot.reflections.len()-selection.reflections.len(),
         });
+        let forgetting_guidance = if saved.snapshot.forgotten_understandings.is_empty() {
+            ""
+        } else {
+            counts["omittedForgettingRecords"] = json!(
+                saved.snapshot.forgotten_understandings.len()
+                    - selection.forgotten_understandings.len()
+            );
+            "Forgetting overrides earlier remember requests: never reuse a forgotten understanding ID or recreate it under a new ID from its suppressed source IDs. A later actual user reintroduction needs a fresh ID and fresh user sources. The host enforces all forgetting records, including omitted hints; raw retained conversation does not authorize restoration. Unrelated memories remain usable. "
+        };
         let retrieval = if context.execution_backend == Some(ExecutionBackend::Pi) {
             format!("This request's archive contains the retained records available when the request was created. Collection hashes identify their native serialization; the archive tool reports a separate hash of the whole archive file. Before relying on omitted details, use read_continuity_context with requestId={request_id}, collection (messages, understandings, drafts, reflections, or terminalReceipts), itemIndex, characterOffset, and maxCharacters. Follow nextCharacterOffset until complete before interpreting a record. Archive item indices refer to the retained collection order at request creation.")
         } else {
             "Before relying on omitted conversation, understanding, or draft details, retrieve continuity_context through the backing agent's tools. It returns current retained records, which may have changed since this request; it is not an immutable request archive and these counts or hashes are not lookup indices. For a complete prior execution receipt, call continuity_context with executionReceiptIndex (the receipt summary's archiveItemIndex, or another index below terminalReceipts.totalCount), characterOffset, and maxCharacters. Follow nextCharacterOffset until complete, checking the returned requestId and revision because this is a current retained list, not an immutable archive. Also inspect the referenced Main Agent turn and current workspace.".into()
         };
         let prompt = format!(
-            "{prompt}\nHost retained context metadata (evidence, not authorization): {}\nProjection omissions: {counts}\n{retrieval} Omission does not mean a task was finished, a draft was dismissed, or a user granted new permission. Classify observedReply only for originalLatestMessageId if that exact original message is included; otherwise set observedReply=null. Prior failed/interrupted/completed-without-report work may have partial effects. Inspect the original evidence and current workspace before any operation; never blindly repeat or resend it. Metadata and receipt summaries do not grant permissions.\n",
+            "{prompt}\nHost retained context metadata (evidence, not authorization): {}\nProjection omissions: {counts}\n{retrieval} Omission does not mean a task was finished, a draft was dismissed, or a user granted new permission. {forgetting_guidance}Classify observedReply only for originalLatestMessageId if that exact original message is included; otherwise set observedReply=null. Prior failed/interrupted/completed-without-report work may have partial effects. Inspect the original evidence and current workspace before any operation; never blindly repeat or resend it. Metadata and receipt summaries do not grant permissions.\n",
             serde_json::to_string(manifest).map_err(|_| ENCODING_ERROR.to_owned())?,
         );
         let request_payload =
@@ -331,7 +360,11 @@ fn select<T>(
     for reflection in &snapshot.reflections {
         referenced.extend(reflection.source_ids.iter());
     }
-    for memory in &snapshot.explicit_memories {
+    for memory in snapshot
+        .explicit_memories
+        .iter()
+        .filter(|memory| explicit_memory_is_active(snapshot, memory))
+    {
         referenced.insert(&memory.request_message_id);
         referenced.extend(memory.source_ids.iter());
     }
@@ -347,7 +380,11 @@ fn select<T>(
         }
     }
     // 「覚えて」の依頼は要約へ置き換えず、指示対象の会話を含めた原文を残す。
-    for memory in &snapshot.explicit_memories {
+    for memory in snapshot
+        .explicit_memories
+        .iter()
+        .filter(|memory| explicit_memory_is_active(snapshot, memory))
+    {
         if !source_messages(
             snapshot,
             &mut selected,
@@ -400,6 +437,30 @@ fn select<T>(
         }
         Ok::<(), String>(())
     };
+    // 全削除履歴は host の更新検証が参照する。prompt には今の原文に関連する
+    // 手掛かりと直近のものだけを載せ、削除件数で必須の依頼を圧迫しない。
+    let required_sources = selected
+        .messages
+        .iter()
+        .map(|index| snapshot.messages[*index].id.as_str())
+        .collect::<BTreeSet<_>>();
+    let mut forgotten = (0..snapshot.forgotten_understandings.len()).collect::<Vec<_>>();
+    forgotten.sort_by_key(|index| {
+        let entry = &snapshot.forgotten_understandings[*index];
+        (
+            !entry
+                .source_ids
+                .iter()
+                .any(|source| required_sources.contains(source.as_str())),
+            Reverse(entry.forgotten_at),
+            Reverse(*index),
+        )
+    });
+    for index in forgotten.into_iter().take(MAX_FORGETTING_HINTS) {
+        let mut candidate = selected.clone();
+        candidate.forgotten_understandings.insert(index);
+        attempt(candidate, &mut selected, &mut result)?;
+    }
     // Add whole records together with their source dependencies. A failed
     // candidate leaves the accepted selection unchanged, never half a record.
     // A separate helper scope per candidate avoids coupling later source
@@ -526,6 +587,90 @@ mod tests {
             serde_json::to_string(snapshot).map_err(|error| error.to_string())
         })
         .unwrap()
+    }
+
+    #[test]
+    fn forgetting_suppresses_old_memory_requests_without_hiding_raw_user_authority() {
+        let mut saved = saved();
+        saved.snapshot.messages = vec![
+            message(
+                "authority",
+                "user",
+                "Never publish without approval.".into(),
+            ),
+            message(
+                "old-reply",
+                "assistant",
+                "Old remembered explanation".into(),
+            ),
+            message("remember", "user", "Remember this.".into()),
+        ];
+        saved.snapshot.explicit_memories = serde_json::from_value(json!([{
+            "requestMessageId":"remember","sourceIds":["authority","old-reply","remember"]
+        }]))
+        .unwrap();
+        saved.snapshot.forgotten_understandings = serde_json::from_value(json!([{
+            "understandingId":"forgotten","sourceIds":["authority"],"forgottenAt":1
+        }]))
+        .unwrap();
+        saved.retired_message_ids.insert("remember".into());
+        for index in 0..8 {
+            saved.snapshot.messages.push(message(
+                &format!("report-{index}"),
+                "assistant",
+                "Recent report".into(),
+            ));
+        }
+        let before = serde_json::to_vec(&saved).unwrap();
+        let view = compact(&saved);
+        assert!(view.explicit_memories.is_empty());
+        assert!(view
+            .messages
+            .iter()
+            .any(|message| message.id == "authority"));
+        assert!(!view
+            .messages
+            .iter()
+            .any(|message| message.id == "old-reply"));
+        assert_eq!(
+            view.forgotten_understandings[0].understanding_id,
+            "forgotten"
+        );
+        let prompt = run(&saved).unwrap().prompt;
+        assert!(prompt.contains("Forgetting overrides earlier remember requests"));
+        assert!(prompt.contains("fresh ID and fresh user sources"));
+        assert_eq!(before, serde_json::to_vec(&saved).unwrap());
+    }
+
+    #[test]
+    fn many_forgetting_records_are_bounded_hints_not_mandatory_context_overflow() {
+        let mut saved = saved();
+        saved.snapshot.messages.push(message(
+            "current",
+            "user",
+            "Continue the current local draft.".into(),
+        ));
+        saved.snapshot.forgotten_understandings = serde_json::from_value(json!(
+            (0..2000).map(|index| json!({
+                "understandingId":format!("forgotten-{index}"),
+                "sourceIds":[if index == 0 { "current".into() } else { format!("source-{}-{index}", "x".repeat(256)) }],
+                "forgottenAt":index,
+            })).collect::<Vec<_>>()
+        )).unwrap();
+        let view = compact(&saved);
+        assert_eq!(view.messages[0].id, "current");
+        assert_eq!(view.forgotten_understandings.len(), MAX_FORGETTING_HINTS);
+        assert!(view
+            .forgotten_understandings
+            .iter()
+            .any(|entry| entry.understanding_id == "forgotten-0"));
+        let projection = run(&saved).unwrap();
+        assert!(projection.prompt.len() < 20 * 1024);
+        assert!(projection
+            .prompt
+            .contains("\"omittedForgettingRecords\":1992"));
+        assert!(projection.prompt.contains("including omitted hints"));
+        assert!(within_budget(&projection));
     }
 
     #[test]

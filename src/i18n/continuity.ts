@@ -2,7 +2,6 @@ export const CONTINUITY_COPY = {
   ja: {
     autonomy: "自律実行",
     autonomyOn: "ウィンドウを閉じても自律実行を続けます。",
-    autonomyOff: "自律実行はOffです。",
     autonomyFinishing: "進行中の作業が完了したら停止します。",
     conversation: "との会話",
     close: "ターミナルに戻る",
@@ -14,6 +13,12 @@ export const CONTINUITY_COPY = {
     unverified: "未確認",
     emptyUnderstanding: "まだ記録はありません。",
     correct: "訂正する",
+    forget: "忘れる",
+    forgetTitle: "このメモリーを忘れますか？",
+    forgetScope: "このメモリーと更新履歴を削除します。この操作では元の会話は削除しません。",
+    forgetExistingContext: "会話中のAIにすでに渡した内容は消去されません。",
+    forgetting: "削除中…",
+    cancelForget: "キャンセル",
     correction: "訂正",
     cancelCorrection: "訂正をやめる",
     source: "このときの会話",
@@ -60,7 +65,6 @@ export const CONTINUITY_COPY = {
   en: {
     autonomy: "Autonomous execution",
     autonomyOn: "Autonomous work continues when this window is closed.",
-    autonomyOff: "Autonomous execution is Off.",
     autonomyFinishing: "The current work will finish before stopping.",
     conversation: " conversation",
     close: "Back to terminal",
@@ -72,6 +76,14 @@ export const CONTINUITY_COPY = {
     unverified: "Unverified",
     emptyUnderstanding: "Nothing recorded yet.",
     correct: "Correct",
+    forget: "Forget",
+    forgetTitle: "Forget this memory?",
+    forgetScope:
+      "This deletes the memory and its revision history. It does not delete the original conversation.",
+    forgetExistingContext:
+      "Content already sent to an AI in an ongoing conversation is not erased.",
+    forgetting: "Deleting…",
+    cancelForget: "Cancel",
     correction: "Correction",
     cancelCorrection: "Cancel correction",
     source: "View conversation",

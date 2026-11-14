@@ -31,6 +31,101 @@ function evidence(prompt: string) {
 beforeEach(() => vi.resetAllMocks());
 
 describe("bounded voice continuity", () => {
+  it("suppresses earlier remember requests from all forgotten sources while retaining conversation and unrelated memories", () => {
+    const value: ContinuitySnapshot = {
+      ...snapshot(),
+      messages: [
+        {
+          id: "old-source",
+          role: "user",
+          source: "voice",
+          content: "Keep my local drafts private",
+          createdAt: 1,
+        },
+        {
+          id: "remember",
+          role: "user",
+          source: "voice",
+          content: "Please remember this",
+          createdAt: 2,
+        },
+        {
+          id: "other-source",
+          role: "user",
+          source: "voice",
+          content: "朝は日本語で短く",
+          createdAt: 3,
+        },
+      ],
+      explicitMemories: [
+        { requestMessageId: "remember", sourceIds: ["old-source", "remember"] },
+        { requestMessageId: "other-source", sourceIds: ["other-source"] },
+      ],
+      understandings: [
+        {
+          id: "other",
+          title: "Language",
+          value: "Japanese",
+          certainty: "confirmed",
+          sourceIds: ["other-source"],
+          updatedAt: 1,
+          revisions: [],
+        },
+      ],
+      forgottenUnderstandings: Array.from({ length: 30 }, (_, index) => ({
+        understandingId: `forgotten-${index}`,
+        sourceIds: [index === 0 ? "old-source" : `source-${index}`],
+        forgottenAt: index,
+      })),
+    };
+    const before = JSON.stringify(value);
+    const prompt = voiceContinuityPrompt(value);
+    const data = evidence(prompt);
+    expect(
+      data.explicitMemories.map((memory: { requestMessageId: string }) => memory.requestMessageId),
+    ).toEqual(["other-source"]);
+    expect(data.suppressedExplicitMemoryCount).toBe(1);
+    expect(data.conversation.map((message: { id: string }) => message.id)).toContain("old-source");
+    expect(data.understandings[0].id).toBe("other");
+    expect(data.forgottenUnderstandings).toHaveLength(8);
+    expect(
+      data.forgottenUnderstandings.map((item: { understandingId: string }) => item.understandingId),
+    ).not.toContain("forgotten-0");
+    expect(data.omitted.forgottenUnderstandings).toBe(22);
+    expect(prompt).toContain("Forgetting overrides earlier requests to remember");
+    expect(prompt).toContain("fresh ID and fresh actual user sources");
+    expect(new TextEncoder().encode(prompt).length).toBeLessThanOrEqual(
+      MAX_VOICE_CONTINUITY_UTF8_BYTES,
+    );
+    expect(JSON.stringify(value)).toBe(before);
+  });
+
+  it("does not let oversized forgetting metadata overflow ordinary context or remove the newest request", () => {
+    const value: ContinuitySnapshot = {
+      ...snapshot(),
+      messages: [
+        {
+          id: "latest",
+          role: "user",
+          source: "conversation",
+          content: "The latest actual request",
+          createdAt: 1,
+        },
+      ],
+      forgottenUnderstandings: [
+        { understandingId: "forgotten", sourceIds: ["large".repeat(8000)], forgottenAt: 1 },
+      ],
+    };
+    const prompt = voiceContinuityPrompt(value);
+    expect(new TextEncoder().encode(prompt).length).toBeLessThanOrEqual(
+      MAX_VOICE_CONTINUITY_UTF8_BYTES,
+    );
+    expect(prompt).toContain("The latest actual request");
+    expect(evidence(prompt).forgottenUnderstandings).toEqual([]);
+    expect(evidence(prompt).omitted.forgottenUnderstandings).toBe(1);
+    expect(prompt).toContain("including omitted ones");
+  });
+
   it("includes an explicit memory's original request and context without expanding the recent conversation window", () => {
     const value: ContinuitySnapshot = {
       ...snapshot(),

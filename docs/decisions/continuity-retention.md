@@ -37,6 +37,18 @@ native 側は、次の条件を満たす発言だけを保存時に取り除く�
 
 処理中・待機中・復旧待ちの仕事がある場合は、会話の削減自体を延期する。`running` / `queued`、`pending_execution`、訂正待ち、trigger、次の作業、error / blocked / recovery / stagnation の状態を確認する。受理済み処理は `message_count` を発言配列の境界として使っているため、途中で配列を縮めない。保存に失敗した場合は、整理前を含む直前の確定状態へ戻す。
 
+## メモリーを忘れる操作
+
+メモリー一覧の「忘れる」（英語では `Forget`）は、確認後に選択した保存済みメモリーを取り除く操作である。対象の understanding のタイトル・値・改訂履歴を削除し、その ID に直接関連する reflection も削除する。reflection が複数のメモリーをまとめている場合は、削除対象の内容だけを推測して切り出さず、その reflection 全体を取り除く。他のメモリー、元の会話、草案、明示的な記憶依頼の参照は保持する。
+
+再登録を防ぐため、`Snapshot.forgottenUnderstandings` に `{understandingId, sourceIds, forgottenAt}` を保存する。内容は削除したメモリーの ID、現行値と改訂履歴の出典、操作時刻だけである。削除したタイトルや値を tombstone にコピーしない。同じメモリー ID の再登録と、削除対象の source ID を使った新しいメモリー ID の登録を抑止する。一方、すでに存在する別のメモリーは、同じ出典を参照していても維持し、その更新を一律に止めない。これは ID・出典に基づく再登録防止であり、同じ意味の内容をあらゆる経路から検出する仕組みではない。後でユーザーが改めて伝えた情報は、新しい実際の発言を根拠に、新しい ID のメモリーとして登録しうる。
+
+この保存では通常の会話 retention を同時に実行せず、「忘れる」を押した結果として元の会話を削除しない。ただし、tombstone の source ID は原文を永久保存する pin ではない。後の通常保存では、元の会話が整理済みで他の保護対象に含まれなければ、30 日・200 件の保持方針に従って削減されうる。既存の明示的な記憶依頼による pin は、別の保護対象として残る。
+
+受理済み prompt / payload と実行 archive は書き換えない。処理中の返答から削除したメモリーが復活しないよう、返答適用時にも現在の tombstone を確認する。新しい context の明示的な記憶表示では、削除した出典に関わる pin の再提示を抑止するが、元会話や他のメモリー・草案に同じ情報が残ることはある。prompt に載せる削除記録のヒントは最大 8 件で、既存の byte 予算に入るものだけを選ぶ。大きなヒントや残りの件数を省略しても、保存済みの全 tombstone による host 側の登録抑止は継続する。
+
+「忘れる」自体はモデルの推論・発話 turn や新しい自律処理を開始しない。表示と新しい context は既存の更新経路で更新し、接続中の Live には context 更新の通信が発生しうる。既存の自律処理や定期判断を停止する操作でもない。接続中の AI へすでに送った情報、Claude / Codex / Pi の履歴、旧 journal、保存済みの実行証拠は消去しない。特に Live の context 更新は追記であり、過去に送信した内容の消去ではない。「完全に忘れる」「二度と話題にしない」という保証にはしない。確認画面では、保存済みメモリーの削除と元会話・送信済み履歴の保持を区別して伝える。
+
 ## 音声へ渡す context
 
 [`voice-continuity.ts`](../../src/core/global-prompt/voice-continuity.ts) は、保持済みの snapshot から次の候補を選ぶ。
@@ -98,12 +110,14 @@ Pi / Codex には保持件数・hash・上限付きの直近 receipt 概要も�
 
 実行 context の 96 KiB prompt / 256 KiB submit 制限も token 数ではない。一つの continuity 処理にはツール利用や retry による複数のモデル応答が含まれうる。Pi の durable SQLite にはモデルごとの `usage` が残る一方、native の `WorkRun` は token usage を持たない。現状は「記憶整理だけ」の使用量・費用を分離して計測していない。SDK の価格表による推計を、請求額や OAuth 契約の課金額と同一視しない。
 
-## disk v2：終了済み処理の対象情報を重複排除
+## disk v2 / v3：対象情報の重複排除と削除状態の保護
+
+削除状態を持たない保存は disk v2、tombstone を持つ保存は disk v3 とする。v3 を扱わない旧 binary が削除状態を捨てて記憶を復活させないよう、version の不一致で読み込みを拒否させる。読み込み側は v1 / v2 / v3 を扱い、v3 の tombstone も in-memory の `Saved` へ復元する。
 
 `storage.rs` は保存時だけ `terminalReceipts[].target` を `terminalReceiptTargets` の辞書へ集約し、各 receipt に `targetIndex` を保存する。同じ完全な target だけを共有し、権限・runtime・workspace・generation 等の field を捨てない。読み込み時には展開して従来の `Saved` を復元する。実行層の API と in-memory の version は変えない。
 
-- 旧 disk v1 を読み込める。形式変換のためだけに読み込み時の書き換えは行わず、次の正常保存で v2 にする。既存の旧 `autoEnabled` 設定の補完が保存を伴う場合も、その保存から v2 になる。
-- **v2 を保存したファイルは旧 binary では読めない。** 旧 loader は version 不一致または receipt の形式不一致で拒否する。自動 downgrade は行わない。
+- 旧 disk v1 を読み込める。形式変換のためだけに読み込み時の書き換えは行わず、次の正常保存で tombstone の有無に応じて v2 または v3 にする。既存の旧 `autoEnabled` 設定の補完が保存を伴う場合も、その保存から v2 になる。
+- **v2 または v3 のファイルは、その version を扱わない旧 binary では読めない。** 旧 loader は version 不一致または receipt の形式不一致で拒否する。自動 downgrade は行わない。
 - 不正な index、範囲外参照、inline target と index の併存、未参照の辞書要素、壊れた target は拒否する。
 - `BufWriter` → 明示 flush → fsync → atomic rename を維持する。変換や保存に失敗しても元ファイルを上書きしない。
 - `pending_execution` の target、受理済み prompt / payload、request ごとの context archive は変更しない。
@@ -117,21 +131,22 @@ Pi / Codex には保持件数・hash・上限付きの直近 receipt 概要も�
 - 終了した実行記録の単純削除：世代番号・重複防止・復旧証拠の契約を先に分離する必要がある。
 - context の上限を保存の上限として扱うこと：表示の省略と原文の保持を混同する。
 
-今回の整理は、全保存領域の容量管理、過去の Pi session DB の削除、使用量の請求集計を実装するものではない。今後の容量上限は、復旧・世代番号・ユーザーが指定した記憶の解除手段を含めて別に設計する。
+今回の整理は、全保存領域の容量管理、過去の Pi session DB の削除、使用量の請求集計を実装するものではない。今後の容量上限は、復旧・世代番号・今回のメモリー削除とは別の原文削除・記憶 pin の解除を含めて別に設計する。
 
 ## 実装と検証
 
+- [`continuity/forgetting.rs`](../../src-tauri/src/continuity/forgetting.rs)：メモリーと直接関連する振り返りの削除、出典に基づく再登録防止。
 - [`continuity/explicit_memory.rs`](../../src-tauri/src/continuity/explicit_memory.rs)：明示的な記憶依頼と参照候補の原文保護。
 - [`continuity/execution_context.rs`](../../src-tauri/src/continuity/execution_context.rs)：必須の根拠を守る実行 context の選択と byte 予算。
 - [`continuity/retention.rs`](../../src-tauri/src/continuity/retention.rs)：削減条件と出典保護。
 - [`continuity/mod.rs`](../../src-tauri/src/continuity/mod.rs)：モデル返答の検証、判断 trigger、保存・rollback。
-- [`continuity/storage.rs`](../../src-tauri/src/continuity/storage.rs)：v1 / v2 の移行、対象辞書、atomic save。
+- [`continuity/storage.rs`](../../src-tauri/src/continuity/storage.rs)：v1 / v2 / v3 の移行、対象辞書、atomic save。
 - [`voice-continuity.ts`](../../src/core/global-prompt/voice-continuity.ts)：音声と terminal bootstrap が共有する短い表示の予算。
 - [`journal-fragment.ts`](../../src/core/global-prompt/journal-fragment.ts)：独立した journal の global prompt への追加。
 - [`runtime/pi-worker/protocol.mjs`](../../runtime/pi-worker/protocol.mjs)：Pi harness と複数 turn の実行境界。
 - [runtime-frame-budget.md](runtime-frame-budget.md)：保存の同期 write による停止の原因と、その修正。
 
-回帰確認は `cargo test --manifest-path src-tauri/Cargo.toml continuity::` と `npx vitest run src/core/global-prompt/voice-continuity.test.ts`。期限・件数の境界、出典と未完了処理の保護、不正な整理 ID、保存失敗の rollback、明示的な記憶依頼の検出と原文保護、実行 context の必須情報・byte 予算・経路別の取得契約、target 全 field の往復、壊れた辞書の拒否、音声の UTF-8 予算と省略表示を確認する。個人の会話本文や使用量の集計は fixture / 設計記録へ転記しない。
+回帰確認は `cargo test --manifest-path src-tauri/Cargo.toml continuity::` と `npx vitest run src/core/global-prompt/voice-continuity.test.ts`。期限・件数の境界、出典と未完了処理の保護、不正な整理 ID、保存失敗の rollback、明示的な記憶依頼の検出と原文保護、実行 context の必須情報・byte 予算・経路別の取得契約、target 全 field の往復、壊れた辞書の拒否、音声の UTF-8 予算と省略表示を確認する。「忘れる」の確認・取消・失敗時の再試行、保存失敗の原状維持、処理中／再起動後の復活防止、元会話の保持と後日の通常整理、disk v3 と旧 version の境界、削除記録が多い場合の表示予算も確認する。個人の会話本文や使用量の集計は fixture / 設計記録へ転記しない。
 
 ### 保存の CPU 計測
 
@@ -148,3 +163,5 @@ Pi / Codex には保持件数・hash・上限付きの直近 receipt 概要も�
 
 - 2026-11-14：レビュー済み発言だけの整理、明示的な記憶依頼の原文保護、音声と実行 context の上限、disk v2 の可逆な target 辞書化を記録。
 - 2026-11-14：利用者向け名称を「ジャーナル」のまま継続し、同機能の改善として扱う方針を確定。将来廃止する対象を従来の日記保存実装として明確化。
+
+- 2026-11-14：メモリーの「忘れる」を、保存済み記憶の削除と出典に基づく再登録防止として定義。元会話・実行履歴・送信済み情報との境界を明記。

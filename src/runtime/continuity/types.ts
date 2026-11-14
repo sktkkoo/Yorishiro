@@ -54,6 +54,12 @@ export interface ContinuityExplicitMemory {
   readonly requestMessageId: string;
   readonly sourceIds: readonly string[];
 }
+export interface ContinuityForgottenUnderstanding {
+  /** 削除した内容の本文を保存し直さず、同じ根拠からの再生成を防ぐ参照だけ残す。 */
+  readonly understandingId: string;
+  readonly sourceIds: readonly string[];
+  readonly forgottenAt: number;
+}
 export interface ContinuitySnapshot {
   readonly personaId: string;
   /** Native-owned setting. Missing on older hosts means the control is unavailable. */
@@ -66,6 +72,7 @@ export interface ContinuitySnapshot {
   readonly reflections: readonly ContinuityReflection[];
   /** 古い保存データやホストでは省略される。 */
   readonly explicitMemories?: readonly ContinuityExplicitMemory[];
+  readonly forgottenUnderstandings?: readonly ContinuityForgottenUnderstanding[];
   readonly error: string | null;
   readonly lastObservedAt: number | null;
   /** Absent in older saved snapshots; null means quietly wait. */

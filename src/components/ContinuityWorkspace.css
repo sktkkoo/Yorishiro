@@ -341,8 +341,16 @@
   font-size: 9px;
   margin-block: 7px;
 }
-.continuity-understanding-entry > .continuity-text-button {
+.continuity-memory-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
   margin-top: 8px;
+}
+.continuity-forget-scope {
+  margin-block: 18px 8px;
+  font-size: 12px;
+  line-height: 1.7;
 }
 .continuity-understanding-history {
   margin-top: 12px;
