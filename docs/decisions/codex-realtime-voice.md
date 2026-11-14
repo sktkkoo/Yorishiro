@@ -525,3 +525,36 @@ Automated coverage verifies monitor isolation, interruption recovery, teardown,
 late callbacks, and reconnect boundaries. A physical two-process reproduction
 and an established cause of the reported device-level silence are still pending;
 this work does not claim the original symptom has been conclusively reproduced.
+
+## Long-session lip-sync timing investigation (#88)
+
+Only after the explicit local `yorishiro:realtime-debug` opt-in described above,
+periodic playback samples also record `outputTiming`: `contextTimeSeconds`,
+`performanceNowMs`, and, where available, `baseLatencySeconds`,
+`outputLatencySeconds`, `outputContextTimeSeconds`, `outputPerformanceTimeMs`.
+Unsupported/non-finite latency or timestamp fields are omitted; zero is preserved
+as an actual reported value. This instrumentation does not delay the analyser,
+change mouth values, or introduce a fixed offset. API latency estimates and the
+output timestamp describe browser clocks, not a measured acoustic/display delay.
+
+Use the local `yorishiro.codex-realtime.diagnostics.v1` storage ring (or
+`readRealtimeDiagnostics()` during development). Save samples promptly when drift
+is visible: only the latest 12 periodic samples are retained. Do not merge context
+clocks across attempts or app instances; compare their attempt IDs and wall-clock
+timestamps, and treat a reconnect/context reset as a new measurement sequence.
+
+For each available route (built-in, wired, Bluetooth), record elapsed session time,
+OS/device route, WebView/app version, and Codex version/auth mode. Periodically
+compare mouth movement with audible speech during a long session; when drift
+recurs, capture a short synchronized screen/audio recording with consent and save
+the nearby timing samples. Note whether uninterrupted speech, user interruption,
+response replacement, mute/unmute, output-route changes, reconnect-only, or full
+restart alters the observation. No conversation recording is made automatically.
+
+A finding should include the observed lead/lag, the measurement method, timing
+samples before/after the change, and whether reconnect or restart helped. The
+analyser precedes the output device; its signal alone cannot establish physical
+synchronization. Current automated tests cover unsupported timing APIs, clock
+reset, playback interruption/teardown, and existing mouth/expression composition.
+The original transient drift remains an unconfirmed field observation until an
+extended physical playback comparison supplies measurements.

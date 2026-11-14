@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
+import * as outputTiming from "./output-timing";
 import { monitorPlayback } from "./playback-monitor";
 import { setRealtimeDebugEnabled } from "./realtime-debug";
 
@@ -7,6 +8,7 @@ function setup(debug = true) {
   setRealtimeDebugEnabled(debug);
   const context = Object.assign(new EventTarget(), {
     state: "running",
+    currentTime: 10,
     resume: vi.fn(async () => {
       context.state = "running";
     }),
@@ -47,10 +49,12 @@ function setup(debug = true) {
 afterEach(() => {
   setRealtimeDebugEnabled(false);
   vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 describe("playback monitor", () => {
   it("does not poll or store output evidence by default but still recovers playback", async () => {
     vi.useFakeTimers();
+    const timing = vi.spyOn(outputTiming, "captureOutputTiming");
     const value = setup(false);
     expect(vi.getTimerCount()).toBe(0);
     value.context.state = "interrupted";
@@ -58,6 +62,7 @@ describe("playback monitor", () => {
     await vi.advanceTimersByTimeAsync(20_000);
     expect(value.context.resume).toHaveBeenCalledOnce();
     expect(value.peer.getStats).not.toHaveBeenCalled();
+    expect(timing).not.toHaveBeenCalled();
     expect(value.onSample).not.toHaveBeenCalled();
     expect(vi.getTimerCount()).toBe(0);
     value.stop();
@@ -101,6 +106,7 @@ describe("playback monitor", () => {
     await vi.waitFor(() => expect(value.onSample).toHaveBeenCalledOnce());
     expect(value.onSample).toHaveBeenCalledWith({
       contextState: "running",
+      outputTiming: expect.objectContaining({ contextTimeSeconds: 10 }),
       gain: 0.3,
       analyserSignal: true,
       liveRemoteTracks: 1,
