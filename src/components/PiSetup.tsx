@@ -56,6 +56,7 @@ const COPY = {
       "以前の開発用設定があります。操作権限を確認して保存すると、アプリ同梱の実行環境へ切り替えます。",
     runtime: "自律実行の実行環境を読み込めません。アプリを更新または再インストールしてください。",
     retry: "接続状態を再確認",
+    checking: "接続状態を確認しています…",
     retryHint: "ログインや実行環境の状態を更新します。設定の変更は保存されません。",
     failed: "ログインまたは設定に失敗しました。もう一度お試しください。",
     timeout: "ログインが時間切れになりました。もう一度開始してください。",
@@ -98,6 +99,7 @@ const COPY = {
       "Earlier development settings are present. Review permissions and save to switch to the runtime included with the app.",
     runtime: "The autonomous runtime could not be loaded. Update or reinstall the app.",
     retry: "Recheck connection status",
+    checking: "Checking connection status…",
     retryHint: "Refresh sign-in and runtime status. This does not save changes to your settings.",
     failed: "Sign-in or setup failed. Please try again.",
     timeout: "Sign-in timed out. Start it again when ready.",
@@ -360,11 +362,14 @@ export function PiSetup({
           )}
           <button
             type="button"
-            disabled={setup.busy || setup.loading}
+            disabled={setup.busy || setup.loading || setup.checking}
+            aria-busy={setup.checking || undefined}
             aria-describedby={`${id}-refresh-hint`}
             onClick={() => void setup.refresh()}
           >
-            {copy.retry}
+            <span role={setup.checking ? "status" : undefined}>
+              {setup.checking ? copy.checking : copy.retry}
+            </span>
           </button>
           <p id={`${id}-refresh-hint`}>{copy.retryHint}</p>
         </div>

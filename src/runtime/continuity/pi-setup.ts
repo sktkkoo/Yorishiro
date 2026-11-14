@@ -173,38 +173,77 @@ export function usePiSetup(cwd: string | null) {
   const [statusCwd, setStatusCwd] = useState<string | null | undefined>(undefined);
   const [error, setError] = useState<PiSetupCode | null>(null);
   const [loading, setLoading] = useState(true);
+  const [checkingCwd, setCheckingCwd] = useState<string | null | undefined>(undefined);
   const [busy, setBusy] = useState(false);
   const mounted = useRef(false);
   const request = useRef(0);
+  const statusFlight = useRef<{
+    sequence: number;
+    invalidated: boolean;
+    promise: Promise<void>;
+  } | null>(null);
   const inFlight = useRef(false);
   const currentCwd = useRef(cwd);
   currentCwd.current = cwd;
-  const refresh = useCallback(async () => {
-    const sequence = ++request.current;
-    try {
-      const next = await setupStatus(cwd);
-      if (mounted.current && sequence === request.current) {
-        setStatus(next);
-        setStatusCwd(cwd);
-        setError(null);
+  const refresh = useCallback(
+    (invalidate = false): Promise<void> => {
+      if (!mounted.current || currentCwd.current !== cwd) return Promise.resolve();
+      const pending = statusFlight.current;
+      if (pending && pending.sequence === request.current) {
+        if (invalidate) pending.invalidated = true;
+        return pending.promise;
       }
-    } catch (cause) {
-      if (mounted.current && sequence === request.current) setError(failure(cause));
-    } finally {
-      if (mounted.current && sequence === request.current) setLoading(false);
-    }
-  }, [cwd]);
+      const flight = {
+        sequence: ++request.current,
+        invalidated: false,
+        promise: Promise.resolve(),
+      };
+      statusFlight.current = flight;
+      setCheckingCwd(cwd);
+      setError(null);
+      const isCurrent = () =>
+        mounted.current && currentCwd.current === cwd && flight.sequence === request.current;
+      flight.promise = (async () => {
+        try {
+          do {
+            flight.invalidated = false;
+            try {
+              const next = await setupStatus(cwd);
+              if (isCurrent() && !flight.invalidated) {
+                setStatus(next);
+                setStatusCwd(cwd);
+                setError(null);
+              }
+            } catch (cause) {
+              if (isCurrent() && !flight.invalidated) setError(failure(cause));
+            }
+            // 設定・ログイン変更後の確認はまとめて再実行し、変更前の結果を採用しない。
+          } while (isCurrent() && flight.invalidated);
+        } finally {
+          if (isCurrent()) {
+            statusFlight.current = null;
+            setCheckingCwd(undefined);
+            setLoading(false);
+          }
+        }
+      })();
+      return flight.promise;
+    },
+    [cwd],
+  );
   useEffect(() => {
     mounted.current = true;
     setLoading(true);
     setStatus(null);
+    setError(null);
     void refresh();
-    const focus = () => void refresh();
+    const focus = () => void refresh(true);
     window.addEventListener("focus", focus);
     window.addEventListener("yorishiro:pi-configured", focus);
     return () => {
       mounted.current = false;
       ++request.current;
+      statusFlight.current = null;
       window.removeEventListener("focus", focus);
       window.removeEventListener("yorishiro:pi-configured", focus);
     };
@@ -219,7 +258,7 @@ export function usePiSetup(cwd: string | null) {
         .then((login) => {
           if (disposed || !mounted.current) return;
           setStatus((current) => (current ? { ...current, login } : current));
-          if (!loginActive(login)) void refresh();
+          if (!loginActive(login)) void refresh(true);
         })
         .catch((cause) => {
           if (!disposed && mounted.current) setError(failure(cause));
@@ -230,21 +269,27 @@ export function usePiSetup(cwd: string | null) {
       window.clearInterval(timer);
     };
   }, [phase, refresh]);
-  const action = useCallback(async (command: string) => {
-    if (inFlight.current) return;
-    inFlight.current = true;
-    setBusy(true);
-    setError(null);
-    try {
-      const login = await loginCommand(command);
-      if (mounted.current) setStatus((current) => (current ? { ...current, login } : current));
-    } catch (cause) {
-      if (mounted.current) setError(failure(cause));
-    } finally {
-      inFlight.current = false;
-      if (mounted.current) setBusy(false);
-    }
-  }, []);
+  const action = useCallback(
+    async (command: string) => {
+      if (inFlight.current) return;
+      inFlight.current = true;
+      setBusy(true);
+      setError(null);
+      try {
+        const login = await loginCommand(command);
+        if (mounted.current) {
+          setStatus((current) => (current ? { ...current, login } : current));
+          void refresh(true);
+        }
+      } catch (cause) {
+        if (mounted.current) setError(failure(cause));
+      } finally {
+        inFlight.current = false;
+        if (mounted.current) setBusy(false);
+      }
+    },
+    [refresh],
+  );
   const save = useCallback(
     async (settings: PiSettings): Promise<boolean> => {
       if (inFlight.current) return false;
@@ -274,6 +319,7 @@ export function usePiSetup(cwd: string | null) {
     status: currentStatus,
     error,
     loading,
+    checking: checkingCwd === cwd,
     busy,
     refresh,
     save,
