@@ -227,7 +227,7 @@
   gap: 8px;
   color: var(--yorishiro-fg-dim);
   font-size: 11px;
-  margin-block: 16px;
+  margin-block: 0 10px;
 }
 .continuity-state svg,
 .continuity-composer button:disabled > .lucide-loader-circle {

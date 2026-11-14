@@ -173,6 +173,138 @@ afterEach(() => {
 
 describe("ContinuityWorkspace", () => {
   it.each([
+    ["ja", "考えています", "草案を作成中", "作業中", "待機中"],
+    ["en", "Thinking", "Preparing a draft", "Working", "Idle"],
+  ] as const)("keeps native activity beside the composer in %s, including work finishing while Off", (language, thinking, drafting, working, idle) => {
+    const view = render(<ContinuityWorkspace {...props()} language={language} />);
+    const state = screen.getByRole("status");
+    expect(state.textContent).toBe(idle);
+    expect(state.closest(".continuity-compose-area")).not.toBeNull();
+    expect(state.closest(".continuity-flow")).toBeNull();
+    expect(state.querySelector("svg")).toBeNull();
+    for (const [phase, label] of [
+      ["thinking", thinking],
+      ["drafting", drafting],
+      ["working", working],
+    ] as const) {
+      for (const autoEnabled of [true, false]) {
+        current = { ...current, phase, autoEnabled };
+        view.rerender(<ContinuityWorkspace {...props()} language={language} />);
+        expect(screen.getAllByRole("status")).toHaveLength(1);
+        expect(screen.getByRole("status").textContent).toBe(label);
+        expect(screen.getByRole("status").querySelector("svg")).not.toBeNull();
+      }
+    }
+    current = { ...current, phase: "idle", autoEnabled: false };
+    view.rerender(<ContinuityWorkspace {...props()} language={language} />);
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(native.retryContinuity).not.toHaveBeenCalled();
+    expect(native.setContinuityAutoEnabled).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    "ja",
+    "en",
+  ] as const)("shows loading outside the conversation until native state arrives in %s", (language) => {
+    native.useContinuity.mockReturnValue({ snapshot: null, error: null });
+    const view = render(<ContinuityWorkspace {...props()} language={language} />);
+    expect(screen.getByRole("status").textContent).toBe(
+      language === "ja" ? "読み込み中" : "Loading",
+    );
+    expect(screen.getByRole("status").closest(".continuity-flow")).toBeNull();
+    native.useContinuity.mockReturnValue({ snapshot: null, error: "Could not load state" });
+    view.rerender(<ContinuityWorkspace {...props()} language={language} />);
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.getByRole("alert").textContent).toContain("Could not load state");
+  });
+
+  it("does not call an errored or unknown execution state idle", () => {
+    const view = render(<ContinuityWorkspace {...props()} language="en" />);
+    for (const state of [
+      { ...snapshot(), phase: "error" as const },
+      { ...snapshot(), error: "Could not finish work" },
+      { ...snapshot(), autoEnabled: undefined },
+    ]) {
+      current = state;
+      view.rerender(<ContinuityWorkspace {...props()} language="en" />);
+      expect(screen.queryByRole("status")).toBeNull();
+    }
+    native.useContinuity.mockReturnValue({ snapshot: snapshot(), error: "Could not sync state" });
+    view.rerender(<ContinuityWorkspace {...props()} language="en" />);
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.getByRole("alert").textContent).toContain("Could not sync state");
+  });
+
+  it("waits for Pi setup before showing idle, while still showing accepted work", async () => {
+    let finish!: (value: ReturnType<typeof piStatus>) => void;
+    setupNative.invoke.mockImplementation(
+      () =>
+        new Promise<ReturnType<typeof piStatus>>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const view = render(<ContinuityWorkspace {...props()} language="en" executionBackend="pi" />);
+    expect(screen.queryByText("Idle")).toBeNull();
+    await act(async () => finish(piStatus()));
+    await screen.findByText("Idle");
+    setupNative.invoke.mockResolvedValue({ ...piStatus(), configured: false });
+    view.rerender(
+      <ContinuityWorkspace {...props()} language="en" executionBackend="pi" cwd="/other" />,
+    );
+    expect(screen.queryByText("Idle")).toBeNull();
+    await screen.findByText("Check connection settings");
+    current = { ...current, phase: "working", autoEnabled: false };
+    view.rerender(
+      <ContinuityWorkspace {...props()} language="en" executionBackend="pi" cwd="/other" />,
+    );
+    expect(screen.getByRole("status").textContent).toBe("Working");
+    expect(native.retryContinuity).not.toHaveBeenCalled();
+  });
+
+  it("updates activity without scrolling older replies, losing input, or clearing unread replies", () => {
+    const view = render(<ContinuityWorkspace {...props()} language="en" />);
+    const flow = screen.getByRole("log").closest(".continuity-flow") as HTMLElement;
+    Object.defineProperties(flow, {
+      scrollHeight: { configurable: true, value: 1600 },
+      clientHeight: { configurable: true, value: 400 },
+    });
+    flow.scrollTop = 300;
+    fireEvent.scroll(flow);
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Still composing" } });
+    current = { ...current, phase: "working", revision: 2 };
+    view.rerender(<ContinuityWorkspace {...props()} language="en" />);
+    expect(screen.getByRole("status").textContent).toBe("Working");
+    expect(flow.scrollTop).toBe(300);
+    expect(screen.queryByRole("button", { name: "New reply" })).toBeNull();
+    current = {
+      ...current,
+      revision: 3,
+      messages: [
+        ...current.messages,
+        {
+          id: "new-reply",
+          role: "assistant",
+          content: "A completed result",
+          createdAt: now + 2,
+          source: "conversation",
+        },
+      ],
+    };
+    view.rerender(<ContinuityWorkspace {...props()} language="en" />);
+    expect(screen.getByRole("button", { name: "New reply" })).toBeTruthy();
+    current = { ...current, phase: "idle", revision: 4 };
+    view.rerender(<ContinuityWorkspace {...props()} language="en" />);
+    expect(screen.getByRole("status").textContent).toBe("Idle");
+    expect(flow.scrollTop).toBe(300);
+    expect(screen.getByRole("button", { name: "New reply" })).toBeTruthy();
+    expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe("Still composing");
+    expect(native.sendContinuityMessage).not.toHaveBeenCalled();
+    expect(native.actOnContinuityDraft).not.toHaveBeenCalled();
+    expect(native.retryContinuity).not.toHaveBeenCalled();
+    expect(native.setContinuityAutoEnabled).not.toHaveBeenCalled();
+  });
+
+  it.each([
     ["ja", "設定", "メモリー", "設定を閉じる", "設定を保存して自律実行に使用"],
     ["en", "Settings", "Memories", "Close settings", "Save and use for autonomous execution"],
   ] as const)("opens compact settings beside memories and saves without enabling autonomy in %s", async (language, settings, memories, close, save) => {
