@@ -18,7 +18,6 @@ import {
   forgetContinuityUnderstanding,
   refreshContinuity,
   retryContinuity,
-  sendContinuityMessage,
   setContinuityAutoEnabled,
   useContinuity,
 } from "../runtime/continuity/client";
@@ -31,15 +30,13 @@ import type {
   ContinuityUnderstanding,
 } from "../runtime/continuity/types";
 import "./ContinuityWorkspace.css";
+import { continuityComposerIdentity, useContinuityComposer } from "./continuity-composer";
 import {
   activeContinuityInput,
   cancelCorrection,
   editContinuityInput,
-  finishContinuityInput,
   forgetCorrection,
-  readContinuityInput,
   selectCorrection,
-  serializeContinuityInput,
 } from "./continuity-input";
 import { PiSetup } from "./PiSetup";
 import { ResultText } from "./ResultText";
@@ -114,17 +111,6 @@ function restoreReadingPosition(flow: HTMLDivElement, position: ReadingPosition)
 }
 const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
 const isBuiltInYori = (id: string) => ["yori-ja", "yori-en"].includes(id);
-const storagePersona = (id: string) => (isBuiltInYori(id) ? "builtin:yori" : `custom:${id}`);
-const inputKey = (id: string) =>
-  `yorishiro.continuity.input.${encodeURIComponent(storagePersona(id))}`;
-function readInput(id: string) {
-  try {
-    return readContinuityInput(localStorage.getItem(inputKey(id)));
-  } catch {
-    // 保存領域が使えなくても、ネイティブの会話記録へ影響させない。
-  }
-  return readContinuityInput(null);
-}
 const dateText = (date: number, language: "ja" | "en") =>
   new Intl.DateTimeFormat(language, {
     month: "short",
@@ -145,7 +131,7 @@ function latestPendingReply(messages: readonly ContinuityMessage[]): ContinuityM
 
 /** Persona-scoped UI state; native work is independent of this view's visibility. */
 export function ContinuityWorkspace(props: ContinuityWorkspaceProps) {
-  return <ResidentWorkspace key={storagePersona(props.personaId)} {...props} />;
+  return <ResidentWorkspace key={continuityComposerIdentity(props.personaId)} {...props} />;
 }
 
 function ResidentWorkspace({
@@ -203,7 +189,8 @@ function ResidentWorkspace({
     if (settingsOpenRef.current) settingsButtonRef.current?.focus();
     setSettingsOpen(false);
   }, [cwd, personaId, executionBackend]);
-  const [inputDrafts, setInputDrafts] = useState(() => readInput(personaId));
+  const composer = useContinuityComposer(personaId, open);
+  const { input: inputDrafts, updateInput: setInputDrafts, sending } = composer;
   const draft = {
     text: activeContinuityInput(inputDrafts).text,
     correctionId: inputDrafts.target.id,
@@ -218,7 +205,6 @@ function ResidentWorkspace({
   const detailRef = useRef(detail);
   detailRef.current = detail;
   const [localError, setLocalError] = useState<WorkspaceError | null>(null);
-  const [sending, setSending] = useState(false);
   const [actionPending, setActionPending] = useState(false);
   const [voicePending, setVoicePending] = useState(false);
   const [autoPending, setAutoPending] = useState(false);
@@ -255,7 +241,6 @@ function ResidentWorkspace({
   const forgetCancelRef = useRef<HTMLButtonElement>(null);
   const dialogOpener = useRef<HTMLElement | null>(null);
   const composing = useRef(false);
-  const inFlight = useRef(false);
   const mounted = useRef(true);
   const nearBottom = useRef(true);
   const forceFollow = useRef(false);
@@ -279,6 +264,7 @@ function ResidentWorkspace({
       : null;
   const presentedError: WorkspaceError | null =
     localError ??
+    (composer.error ? { message: composer.error, source: "send" } : null) ??
     (syncError
       ? { message: syncError, source: syncErrorSource ?? "sync" }
       : snapshot?.error
@@ -348,13 +334,6 @@ function ResidentWorkspace({
     };
   }, []);
   useEffect(() => {
-    try {
-      localStorage.setItem(inputKey(personaId), serializeContinuityInput(inputDrafts));
-    } catch {
-      /* Native conversation is still durable. */
-    }
-  }, [inputDrafts, personaId]);
-  useEffect(() => {
     if (open && !previouslyVisible.current) panelRef.current?.focus({ preventScroll: true });
     if (!open) composing.current = false;
     previouslyVisible.current = open;
@@ -382,7 +361,7 @@ function ResidentWorkspace({
     setDetail(null);
     setInputDrafts((current) => forgetCorrection(current, detail.entry.id));
     bookCloseRef.current?.focus({ preventScroll: true });
-  }, [open, detail, snapshot, forgetPending]);
+  }, [open, detail, snapshot, forgetPending, setInputDrafts]);
   const latestMessage = snapshot?.messages[snapshot.messages.length - 1]?.id;
   const latestDraft = snapshot?.drafts
     .map((item) => `${item.id}:${item.updatedAt}:${item.status}`)
@@ -425,32 +404,28 @@ function ResidentWorkspace({
 
   async function submit() {
     if (executionBackend === "pi" && !piReady) return;
-    const text = draft.text.trim();
-    if (!text || composing.current || inFlight.current) return;
-    inFlight.current = true;
-    setSending(true);
+    if (composing.current) return;
+    const completion = composer.send(context);
+    if (!completion) return;
     setLocalError(null);
-    const submitted = inputDrafts;
     readingReplyId.current = null;
     forceFollow.current = true;
     inputRef.current?.focus({ preventScroll: true });
     try {
-      await sendContinuityMessage(context, text, draft.correctionId ?? undefined);
-      if (!mounted.current) return;
-      setInputDrafts((current) => finishContinuityInput(current, submitted));
-    } catch (cause) {
+      await completion;
+    } catch {
       forceFollow.current = false;
-      if (mounted.current) setLocalError({ message: errorText(cause), source: "send" });
-    } finally {
-      inFlight.current = false;
-      if (mounted.current) setSending(false);
     }
+  }
+  function clearLocalError() {
+    setLocalError(null);
+    composer.clearError();
   }
   async function act(draftId: string, action: "continue" | "dismiss") {
     if (action === "continue" && executionBackend === "pi" && !piReady) return;
     if (actionPending) return;
     setActionPending(true);
-    setLocalError(null);
+    clearLocalError();
     const submittedDetail = detail;
     const submittedDialog = dialogRef.current;
     try {
@@ -488,7 +463,7 @@ function ResidentWorkspace({
     if (forgetInFlight.current) return;
     forgetInFlight.current = true;
     setForgetPending(true);
-    setLocalError(null);
+    clearLocalError();
     try {
       await forgetContinuityUnderstanding(context, entry.id);
       if (!mounted.current) return;
@@ -505,7 +480,7 @@ function ResidentWorkspace({
     if (autoInFlight.current || typeof snapshot?.autoEnabled !== "boolean") return;
     autoInFlight.current = true;
     setAutoPending(true);
-    setLocalError(null);
+    clearLocalError();
     try {
       await setContinuityAutoEnabled(context, !snapshot.autoEnabled);
     } catch (cause) {
@@ -542,7 +517,7 @@ function ResidentWorkspace({
     conversation?.onEnd();
   }
   function showDetail(value: NonNullable<typeof detail>) {
-    setLocalError(null);
+    clearLocalError();
     dialogOpener.current =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setDetail(value);
