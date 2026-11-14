@@ -13,6 +13,7 @@ interface Entry {
   value: { snapshot: ContinuitySnapshot | null; error: string | null };
 }
 const entries = new Map<string, Entry>();
+const observationTails = new Map<string, Promise<void>>();
 const empty = { snapshot: null, error: null };
 let unlisten: UnlistenFn | null = null;
 let bridge: Promise<void> | null = null;
@@ -84,7 +85,19 @@ export function observeContinuityExchange(
     readonly sourceKey: string;
   },
 ): Promise<void> {
-  return command("continuity_observe_native", context, exchange);
+  // 音声の transcript callback は await しない。native の非同期 command が
+  // mutex を取る順序に依存せず、同じ保存先への発言を受信順で記録する。
+  const key = continuityIdentity(context.personaId);
+  const previous = observationTails.get(key);
+  const run = () => command("continuity_observe_native", context, exchange);
+  const result = previous ? previous.then(run) : run();
+  const cleanup = () => {
+    if (observationTails.get(key) === tail) observationTails.delete(key);
+  };
+  // 呼び出し元には失敗を返すが、後続の発言まで失敗させない。
+  const tail = result.then(cleanup, cleanup);
+  observationTails.set(key, tail);
+  return result;
 }
 export function retryContinuity(context: ContinuityContext): Promise<void> {
   return ensureBridge().then(() => command("continuity_retry", context));

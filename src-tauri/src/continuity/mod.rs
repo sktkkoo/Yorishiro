@@ -518,7 +518,9 @@ pub async fn continuity_pi_diagnostics(
     pi_diagnostics::managed_probe(&app, &home()?, cwd.as_deref()).await
 }
 
-#[tauri::command]
+// 履歴の保存・読み込みと同じ Mutex を待つ command は UI thread に載せない。
+// 同期関数のまま async dispatch し、状態の直列化・永続化後の応答を維持する。
+#[tauri::command(async)]
 pub fn continuity_status(
     state: State<'_, ContinuityState>,
     persona_id: String,
@@ -542,7 +544,7 @@ fn sync_context(session: &mut Session, context: Context) -> Snapshot {
     session.saved.snapshot.clone()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn continuity_sync_context(
     app: AppHandle,
     window: Window,
@@ -577,7 +579,7 @@ pub fn continuity_sync_context(
     Ok(snapshot)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn continuity_enter(
     app: AppHandle,
     window: Window,
@@ -677,7 +679,7 @@ fn set_auto_enabled(session: &mut Session, context: Context, enabled: bool) {
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn continuity_set_auto_enabled(
     app: AppHandle,
     window: Window,
@@ -731,7 +733,7 @@ pub fn continuity_set_auto_enabled(
     Ok(snapshot)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn continuity_advance(
     app: AppHandle,
     window: Window,
@@ -761,7 +763,7 @@ pub fn continuity_advance(
     Ok(snapshot)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn continuity_tick(
     app: AppHandle,
     window: Window,
@@ -790,7 +792,7 @@ pub fn continuity_tick(
     Ok(snapshot)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn continuity_send(
     app: AppHandle,
     window: Window,
@@ -840,7 +842,7 @@ fn send(
     start(app, state, context.persona_id);
     Ok(snapshot)
 }
-#[tauri::command]
+#[tauri::command(async)]
 pub fn continuity_draft_action(
     app: AppHandle,
     window: Window,
@@ -890,7 +892,7 @@ pub fn continuity_draft_action(
     start(app, state.inner().clone(), context.persona_id);
     Ok(snapshot)
 }
-#[tauri::command]
+#[tauri::command(async)]
 pub fn continuity_retry(
     app: AppHandle,
     window: Window,
@@ -2431,7 +2433,7 @@ pub fn observe_active(
         "external",
     )
 }
-#[tauri::command]
+#[tauri::command(async)]
 pub fn continuity_observe_native(
     app: AppHandle,
     window: Window,

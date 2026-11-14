@@ -31,6 +31,15 @@ function snapshot(personaId = "yori-ja", revision = 1): ContinuitySnapshot {
     lastObservedAt: 1,
   };
 }
+function pendingSnapshot() {
+  let resolve!: (value: ContinuitySnapshot) => void;
+  let reject!: (reason: Error) => void;
+  const promise = new Promise<ContinuitySnapshot>((done, fail) => {
+    resolve = done;
+    reject = fail;
+  });
+  return { promise, resolve, reject };
+}
 beforeEach(() => {
   vi.resetModules();
   native.invoke.mockReset();
@@ -488,5 +497,76 @@ describe("shared continuity bridge", () => {
       ...exchange,
     });
     view.unmount();
+  });
+
+  it("records voice fragments in arrival order across built-in language aliases", async () => {
+    const client = await import("./client");
+    const first = pendingSnapshot();
+    const second = pendingSnapshot();
+    native.invoke.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    const exchange = (sourceKey: string) => ({ userText: sourceKey, assistantText: "", sourceKey });
+    const one = client.observeContinuityExchange(context, exchange("one"));
+    const two = client.observeContinuityExchange(
+      { ...context, personaId: "yori-en", language: "en" },
+      exchange("two"),
+    );
+    expect(native.invoke).toHaveBeenCalledTimes(1);
+    first.resolve(snapshot("yori-ja", 1));
+    await one;
+    await waitFor(() => expect(native.invoke).toHaveBeenCalledTimes(2));
+
+    // 最初の完了で、新しい待機列の末尾まで削除してはいけない。
+    const three = client.observeContinuityExchange(context, exchange("three"));
+    await Promise.resolve();
+    expect(native.invoke).toHaveBeenCalledTimes(2);
+    second.resolve(snapshot("yori-en", 2));
+    await Promise.all([two, three]);
+    expect(native.invoke.mock.calls.map(([name, args]) => [name, args.sourceKey])).toEqual([
+      ["continuity_observe_native", "one"],
+      ["continuity_observe_native", "two"],
+      ["continuity_observe_native", "three"],
+    ]);
+  });
+
+  it("does not make another persona wait for an outstanding voice observation", async () => {
+    const client = await import("./client");
+    const pending = pendingSnapshot();
+    native.invoke.mockReturnValueOnce(pending.promise);
+    const exchange = { userText: "First", assistantText: "", sourceKey: "voice:one" };
+    const first = client.observeContinuityExchange(context, exchange);
+    const customContext = { ...context, personaId: "yori" };
+    await client.observeContinuityExchange(customContext, exchange);
+    expect(native.invoke).toHaveBeenCalledTimes(2);
+    expect(native.invoke).toHaveBeenLastCalledWith("continuity_observe_native", {
+      context: customContext,
+      ...exchange,
+    });
+    pending.resolve(snapshot());
+    await first;
+  });
+
+  it("reports a failed observation, continues queued fragments, and releases the idle queue", async () => {
+    const client = await import("./client");
+    const pending = pendingSnapshot();
+    native.invoke.mockReturnValueOnce(pending.promise);
+    const exchange = (sourceKey: string) => ({ userText: sourceKey, assistantText: "", sourceKey });
+    const first = client.observeContinuityExchange(context, exchange("failed"));
+    const rejected = expect(first).rejects.toThrow("Could not save");
+    const second = client.observeContinuityExchange(context, exchange("next"));
+    expect(native.invoke).toHaveBeenCalledTimes(1);
+    pending.reject(new Error("Could not save"));
+    await rejected;
+    await second;
+    expect(native.invoke).toHaveBeenCalledTimes(2);
+
+    // 完了済み Promise を保存し続けず、次の単独観測は直ちに開始できる。
+    const third = client.observeContinuityExchange(context, exchange("later"));
+    expect(native.invoke).toHaveBeenCalledTimes(3);
+    await third;
+    expect(native.invoke.mock.calls.map(([, args]) => args.sourceKey)).toEqual([
+      "failed",
+      "next",
+      "later",
+    ]);
   });
 });
