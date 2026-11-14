@@ -898,6 +898,7 @@ describe("ContinuityWorkspace", () => {
     );
     current = { ...current, autoEnabled: false };
     const view = render(<ContinuityWorkspace {...props()} />);
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "通常の書きかけ" } });
     fireEvent.click(screen.getByRole("button", { name: "メモリー" }));
     fireEvent.click(screen.getByRole("button", { name: "訂正する" }));
     expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe("体験全体から考える");
@@ -930,8 +931,43 @@ describe("ContinuityWorkspace", () => {
       "細かな改善より、体験全体から考えてほしい",
     );
     expect(screen.queryByRole("button", { name: "訂正をやめる" })).toBeNull();
-    expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe("");
+    expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe("通常の書きかけ");
     expect(document.activeElement).toBe(screen.getByRole("button", { name: "メモリーを閉じる" }));
+  });
+
+  it("forgetting an inactive correction preserves the current correction and normal draft", async () => {
+    current = {
+      ...current,
+      understandings: [
+        ...current.understandings,
+        {
+          ...current.understandings[0],
+          id: "preference-2",
+          title: "Second memory",
+          value: "Memory B",
+        },
+      ],
+    };
+    render(<ContinuityWorkspace {...props()} language="en" />);
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Normal draft" } });
+    fireEvent.click(screen.getByRole("button", { name: "Memories" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Correct" })[0]);
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Edited A" } });
+    fireEvent.click(screen.getByRole("button", { name: "Memories" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Correct" })[1]);
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Edited B" } });
+    fireEvent.click(screen.getByRole("button", { name: "Memories" }));
+    fireEvent.click(screen.getByRole("button", { name: "Forget · 進め方" }));
+    await act(async () =>
+      fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Forget" })),
+    );
+    expect(screen.getByRole("textbox")).toHaveProperty("value", "Edited B");
+    const saved = JSON.parse(
+      localStorage.getItem("yorishiro.continuity.input.builtin%3Ayori") ?? "null",
+    );
+    expect(saved.corrections).toEqual({ "preference-2": "Edited B" });
+    fireEvent.click(screen.getByRole("button", { name: "Cancel correction" }));
+    expect(screen.getByRole("textbox")).toHaveProperty("value", "Normal draft");
   });
 
   it("keeps a failed forget visible and allows retry without starting autonomous work", async () => {
@@ -1093,6 +1129,114 @@ describe("ContinuityWorkspace", () => {
       "preference-1",
     );
     expect(input.value).toBe("");
+  });
+
+  it("keeps normal and per-memory drafts across switching, cancellation, persistence and persona changes", async () => {
+    current = {
+      ...current,
+      understandings: [
+        ...current.understandings,
+        {
+          ...current.understandings[0],
+          id: "preference-2",
+          title: "Second memory",
+          value: "Memory B",
+        },
+      ],
+    };
+    const initial = { ...props(), language: "en" as const };
+    const choose = (title: string) => {
+      fireEvent.click(screen.getByRole("button", { name: "Memories" }));
+      const card = screen.getByRole("heading", { name: title }).closest("article");
+      if (!card) throw new Error("Missing memory");
+      fireEvent.click(within(card).getByRole("button", { name: "Correct" }));
+    };
+    const view = render(<ContinuityWorkspace {...initial} />);
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Unsent normal request" } });
+    choose("進め方");
+    expect(screen.getByRole("textbox")).toHaveProperty("value", "体験全体から考える");
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Edited A" } });
+    choose("Second memory");
+    expect(screen.getByRole("textbox")).toHaveProperty("value", "Memory B");
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "" } });
+    choose("進め方");
+    expect(screen.getByRole("textbox")).toHaveProperty("value", "Edited A");
+    fireEvent.click(screen.getByRole("button", { name: "Cancel correction" }));
+    expect(screen.getByRole("textbox")).toHaveProperty("value", "Unsent normal request");
+    view.unmount();
+    const remounted = render(<ContinuityWorkspace {...initial} personaId="another-persona" />);
+    expect(screen.getByRole("textbox")).toHaveProperty("value", "");
+    remounted.rerender(<ContinuityWorkspace {...initial} personaId="yori-en" />);
+    expect(screen.getByRole("textbox")).toHaveProperty("value", "Unsent normal request");
+    choose("Second memory");
+    expect(screen.getByRole("textbox")).toHaveProperty("value", "");
+    expect(screen.getByRole("button", { name: "Send" })).toHaveProperty("disabled", true);
+    choose("進め方");
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Send" })));
+    expect(native.sendContinuityMessage).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ personaId: "yori-en" }),
+      "Edited A",
+      "preference-1",
+    );
+    expect(screen.getByRole("textbox")).toHaveProperty("value", "Unsent normal request");
+    expect(screen.queryByRole("button", { name: "Cancel correction" })).toBeNull();
+    choose("進め方");
+    expect(screen.getByRole("textbox")).toHaveProperty("value", "体験全体から考える");
+  });
+
+  it("does not exit a correction reselected during delayed send completion", async () => {
+    const pending = pendingVoiceStart();
+    native.sendContinuityMessage.mockReturnValueOnce(pending.promise);
+    current = {
+      ...current,
+      understandings: [
+        ...current.understandings,
+        {
+          ...current.understandings[0],
+          id: "preference-2",
+          title: "Second memory",
+          value: "Memory B",
+        },
+      ],
+    };
+    render(<ContinuityWorkspace {...props()} language="en" />);
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Normal draft" } });
+    const choose = (index: number) => {
+      fireEvent.click(screen.getByRole("button", { name: "Memories" }));
+      fireEvent.click(screen.getAllByRole("button", { name: "Correct" })[index]);
+    };
+    choose(0);
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Submitted A" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    choose(1);
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Newer B" } });
+    choose(0);
+    await act(async () => pending.resolve());
+    expect(screen.getByRole("textbox")).toHaveProperty("value", "Submitted A");
+    expect(screen.getByRole("button", { name: "Cancel correction" })).toBeTruthy();
+    choose(1);
+    expect(screen.getByRole("textbox")).toHaveProperty("value", "Newer B");
+    fireEvent.click(screen.getByRole("button", { name: "Cancel correction" }));
+    expect(screen.getByRole("textbox")).toHaveProperty("value", "Normal draft");
+  });
+
+  it("retains a failed correction for retry and restores the normal draft after success", async () => {
+    native.sendContinuityMessage.mockRejectedValueOnce(new Error("Could not save correction"));
+    render(<ContinuityWorkspace {...props()} language="en" />);
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Normal draft" } });
+    fireEvent.click(screen.getByRole("button", { name: "Memories" }));
+    fireEvent.click(screen.getByRole("button", { name: "Correct" }));
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Edited correction" } });
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Send" })));
+    expect(screen.getByRole("textbox")).toHaveProperty("value", "Edited correction");
+    expect(screen.getByRole("alert").textContent).toContain("Could not save correction");
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Send" })));
+    expect(native.sendContinuityMessage).toHaveBeenLastCalledWith(
+      expect.anything(),
+      "Edited correction",
+      "preference-1",
+    );
+    expect(screen.getByRole("textbox")).toHaveProperty("value", "Normal draft");
   });
 
   it("leaves IME and a newer draft intact while an earlier send is being acknowledged", async () => {

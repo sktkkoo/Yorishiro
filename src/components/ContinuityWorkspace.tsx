@@ -31,6 +31,16 @@ import type {
   ContinuityUnderstanding,
 } from "../runtime/continuity/types";
 import "./ContinuityWorkspace.css";
+import {
+  activeContinuityInput,
+  cancelCorrection,
+  editContinuityInput,
+  finishContinuityInput,
+  forgetCorrection,
+  readContinuityInput,
+  selectCorrection,
+  serializeContinuityInput,
+} from "./continuity-input";
 import { PiSetup } from "./PiSetup";
 import { ResultText } from "./ResultText";
 
@@ -57,10 +67,6 @@ export interface ContinuityWorkspaceProps {
   readonly executionSessionId?: string | null;
   readonly onClose: () => void;
   readonly conversation?: ContinuityConversation;
-}
-interface InputDraft {
-  readonly text: string;
-  readonly correctionId: string | null;
 }
 interface WorkspaceError {
   readonly message: string;
@@ -111,19 +117,13 @@ const isBuiltInYori = (id: string) => ["yori-ja", "yori-en"].includes(id);
 const storagePersona = (id: string) => (isBuiltInYori(id) ? "builtin:yori" : `custom:${id}`);
 const inputKey = (id: string) =>
   `yorishiro.continuity.input.${encodeURIComponent(storagePersona(id))}`;
-function readInput(id: string): InputDraft {
+function readInput(id: string) {
   try {
-    const value = JSON.parse(localStorage.getItem(inputKey(id)) ?? "null");
-    if (
-      value &&
-      typeof value.text === "string" &&
-      (value.correctionId === null || typeof value.correctionId === "string")
-    )
-      return { text: value.text, correctionId: value.correctionId };
+    return readContinuityInput(localStorage.getItem(inputKey(id)));
   } catch {
-    // Unavailable or old browser draft storage does not affect native records.
+    // 保存領域が使えなくても、ネイティブの会話記録へ影響させない。
   }
-  return { text: "", correctionId: null };
+  return readContinuityInput(null);
 }
 const dateText = (date: number, language: "ja" | "en") =>
   new Intl.DateTimeFormat(language, {
@@ -203,7 +203,11 @@ function ResidentWorkspace({
     if (settingsOpenRef.current) settingsButtonRef.current?.focus();
     setSettingsOpen(false);
   }, [cwd, personaId, executionBackend]);
-  const [draft, setDraft] = useState<InputDraft>(() => readInput(personaId));
+  const [inputDrafts, setInputDrafts] = useState(() => readInput(personaId));
+  const draft = {
+    text: activeContinuityInput(inputDrafts).text,
+    correctionId: inputDrafts.target.id,
+  };
   const [understandingOpen, setUnderstandingOpen] = useState(false);
   const [detail, setDetail] = useState<
     | { kind: "draft"; id: string }
@@ -333,11 +337,11 @@ function ResidentWorkspace({
   }, []);
   useEffect(() => {
     try {
-      localStorage.setItem(inputKey(personaId), JSON.stringify(draft));
+      localStorage.setItem(inputKey(personaId), serializeContinuityInput(inputDrafts));
     } catch {
       /* Native conversation is still durable. */
     }
-  }, [draft, personaId]);
+  }, [inputDrafts, personaId]);
   useEffect(() => {
     if (open && !previouslyVisible.current) panelRef.current?.focus({ preventScroll: true });
     if (!open) composing.current = false;
@@ -364,9 +368,7 @@ function ResidentWorkspace({
       return;
     dialogRef.current?.close();
     setDetail(null);
-    setDraft((current) =>
-      current.correctionId === detail.entry.id ? { text: "", correctionId: null } : current,
-    );
+    setInputDrafts((current) => forgetCorrection(current, detail.entry.id));
     bookCloseRef.current?.focus({ preventScroll: true });
   }, [open, detail, snapshot, forgetPending]);
   const latestMessage = snapshot?.messages[snapshot.messages.length - 1]?.id;
@@ -416,14 +418,14 @@ function ResidentWorkspace({
     inFlight.current = true;
     setSending(true);
     setLocalError(null);
-    const submitted = draft;
+    const submitted = inputDrafts;
     readingReplyId.current = null;
     forceFollow.current = true;
     inputRef.current?.focus({ preventScroll: true });
     try {
       await sendContinuityMessage(context, text, draft.correctionId ?? undefined);
       if (!mounted.current) return;
-      setDraft((current) => (current === submitted ? { text: "", correctionId: null } : current));
+      setInputDrafts((current) => finishContinuityInput(current, submitted));
     } catch (cause) {
       forceFollow.current = false;
       if (mounted.current) setLocalError({ message: errorText(cause), source: "send" });
@@ -485,9 +487,7 @@ function ResidentWorkspace({
     try {
       await forgetContinuityUnderstanding(context, entry.id);
       if (!mounted.current) return;
-      setDraft((current) =>
-        current.correctionId === entry.id ? { text: "", correctionId: null } : current,
-      );
+      setInputDrafts((current) => forgetCorrection(current, entry.id));
       closeDetail(true);
     } catch (cause) {
       if (mounted.current) setLocalError({ message: errorText(cause), source: "forget" });
@@ -555,7 +555,7 @@ function ResidentWorkspace({
     bookButtonRef.current?.focus({ preventScroll: true });
   }
   function correct(entry: ContinuityUnderstanding) {
-    setDraft((current) => ({ text: current.text || entry.value, correctionId: entry.id }));
+    setInputDrafts((current) => selectCorrection(current, entry.id, entry.value));
     setUnderstandingOpen(false);
     inputRef.current?.focus({ preventScroll: true });
   }
@@ -851,7 +851,7 @@ function ResidentWorkspace({
                   type="button"
                   className="continuity-icon"
                   aria-label={copy.cancelCorrection}
-                  onClick={() => setDraft((current) => ({ ...current, correctionId: null }))}
+                  onClick={() => setInputDrafts(cancelCorrection)}
                 >
                   <X size={13} aria-hidden="true" />
                 </button>
@@ -876,7 +876,7 @@ function ResidentWorkspace({
                 placeholder={`${name}${copy.message}`}
                 onChange={(event) => {
                   const text = event.currentTarget.value;
-                  setDraft((current) => ({ ...current, text }));
+                  setInputDrafts((current) => editContinuityInput(current, text));
                 }}
                 onCompositionStart={() => {
                   composing.current = true;
