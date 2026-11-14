@@ -1,6 +1,9 @@
+import { captureOutputTiming, type OutputTimingSample } from "./output-timing";
+
 /** Numeric/state-only output evidence. Never includes SDP, transcripts, track IDs or device labels. */
 export interface PlaybackSample {
   readonly contextState: string;
+  readonly outputTiming: OutputTimingSample;
   readonly gain: number;
   readonly analyserSignal: boolean;
   readonly liveRemoteTracks: number;
@@ -53,6 +56,7 @@ export function monitorPlayback(options: PlaybackMonitorOptions): () => void {
     const tracks = stream.getAudioTracks();
     options.onSample({
       contextState: state(),
+      outputTiming: captureOutputTiming(context),
       gain: options.gain(),
       analyserSignal: options.hasSignal(),
       liveRemoteTracks: tracks.filter((track) => track.readyState === "live").length,

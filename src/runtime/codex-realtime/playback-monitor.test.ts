@@ -5,6 +5,7 @@ import { monitorPlayback } from "./playback-monitor";
 function setup() {
   const context = Object.assign(new EventTarget(), {
     state: "running",
+    currentTime: 10,
     resume: vi.fn(async () => {
       context.state = "running";
     }),
@@ -68,6 +69,7 @@ describe("playback monitor", () => {
     await vi.waitFor(() => expect(value.onSample).toHaveBeenCalledOnce());
     expect(value.onSample).toHaveBeenCalledWith({
       contextState: "running",
+      outputTiming: expect.objectContaining({ contextTimeSeconds: 10 }),
       gain: 0.3,
       analyserSignal: true,
       liveRemoteTracks: 1,
