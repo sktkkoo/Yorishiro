@@ -43,6 +43,8 @@ export interface CodexRealtimeState {
   readonly microphoneActive?: boolean;
   /** True only when Yorishiro deliberately disabled the local microphone track. */
   readonly microphoneMuted?: boolean;
+  /** デバイス側の入力中断。ユーザーのミュート意図とは独立して保持する。 */
+  readonly microphoneInterrupted?: boolean;
   readonly error?: string;
 }
 
@@ -441,6 +443,7 @@ export class CodexRealtimeClient implements LipSyncSource {
           billing: result.billing,
           microphoneActive: this.isMicrophoneCaptureActive(),
           ...(this.microphoneMuted ? { microphoneMuted: true } : {}),
+          ...(!this.isMicrophoneCaptureAvailable() ? { microphoneInterrupted: true } : {}),
         });
         this.onPersonaApplication?.(result.personaApplication);
         return;
@@ -1238,17 +1241,24 @@ export class CodexRealtimeClient implements LipSyncSource {
     if (!this.isAttemptOwner(attempt) || this.state.status !== "active") return;
     const microphoneActive = this.isMicrophoneCaptureActive();
     const microphoneMuted = this.microphoneMuted ? true : undefined;
+    const microphoneInterrupted = !this.isMicrophoneCaptureAvailable() ? true : undefined;
     if (
       this.state.microphoneActive === microphoneActive &&
-      this.state.microphoneMuted === microphoneMuted
+      this.state.microphoneMuted === microphoneMuted &&
+      this.state.microphoneInterrupted === microphoneInterrupted
     ) {
       return;
     }
-    const { microphoneMuted: _previousMicrophoneMuted, ...state } = this.state;
+    const {
+      microphoneMuted: _previousMicrophoneMuted,
+      microphoneInterrupted: _previousMicrophoneInterrupted,
+      ...state
+    } = this.state;
     this.setState({
       ...state,
       microphoneActive,
       ...(microphoneMuted ? { microphoneMuted } : {}),
+      ...(microphoneInterrupted ? { microphoneInterrupted } : {}),
     });
   }
 
@@ -1258,6 +1268,13 @@ export class CodexRealtimeClient implements LipSyncSource {
     return microphone
       .getAudioTracks()
       .some((track) => track.readyState === "live" && track.enabled && !track.muted);
+  }
+
+  private isMicrophoneCaptureAvailable(): boolean {
+    return (
+      this.microphone?.active === true &&
+      this.microphone.getAudioTracks().some((track) => track.readyState === "live" && !track.muted)
+    );
   }
 
   private clearMicrophoneLivenessObservers(): void {

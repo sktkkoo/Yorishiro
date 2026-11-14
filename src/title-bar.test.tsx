@@ -315,6 +315,50 @@ describe("TitleBar existing controls", () => {
     expectRecording(false);
   });
 
+  it("keeps mute and disconnect accessible as separate controls", () => {
+    const onToggleMicrophoneMute = vi.fn();
+    const onToggleVoice = vi.fn();
+    renderTitleBar({
+      voiceAvailable: true,
+      voiceState: "active",
+      voiceMicrophoneActive: true,
+      voiceMicrophoneMuted: true,
+      voiceMuteLabel: "Unmute microphone (⌘⇧M)",
+      voiceInputStatusLabel: "Microphone muted",
+      voiceLabel: "End voice",
+      onToggleMicrophoneMute,
+      onToggleVoice,
+    });
+    const mute = screen.getByRole("button", { name: "Unmute microphone (⌘⇧M)" });
+    expect(mute.getAttribute("aria-pressed")).toBe("true");
+    expect(mute.title).toBe("Unmute microphone (⌘⇧M)");
+    expect(mute.querySelector(".lucide-mic-off")).not.toBeNull();
+    expect(mute.querySelector(".title-bar-voice-status-dot")).toBeNull();
+    expect(screen.getByRole("status").textContent).toBe("Microphone muted");
+    fireEvent.click(mute);
+    expect(onToggleMicrophoneMute).toHaveBeenCalledOnce();
+    expect(onToggleVoice).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "End voice" }));
+    expect(onToggleVoice).toHaveBeenCalledOnce();
+  });
+
+  it("shows interruption separately from user mute", () => {
+    renderTitleBar({
+      voiceAvailable: true,
+      voiceState: "active",
+      voiceMicrophoneActive: false,
+      voiceMicrophoneMuted: false,
+      voiceMuteLabel: "Mute microphone",
+      voiceInputStatusLabel: "Microphone unavailable",
+      onToggleMicrophoneMute: vi.fn(),
+    });
+    const mute = screen.getByRole("button", { name: "Mute microphone" });
+    expect(mute.getAttribute("aria-pressed")).toBe("false");
+    expect(mute.querySelector(".lucide-mic")).not.toBeNull();
+    expect(mute.querySelector(".title-bar-voice-status-dot")).toBeNull();
+    expect(screen.getByRole("status").textContent).toBe("Microphone unavailable");
+  });
+
   it("exposes the error state for retry with an alert message", () => {
     renderTitleBar({
       voiceAvailable: true,

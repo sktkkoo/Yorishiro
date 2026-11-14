@@ -1732,6 +1732,7 @@ describe("CodexRealtimeClient", () => {
     const client = new CodexRealtimeClient("main-session");
     const first = client.start();
     const second = client.start();
+    client.setMicrophoneMuted(true);
 
     await vi.advanceTimersByTimeAsync(500);
     await Promise.all([first, second]);
@@ -1739,6 +1740,7 @@ describe("CodexRealtimeClient", () => {
     expect(ensureAudioContextRunning).toHaveBeenCalledTimes(2);
     expect(bridge.connect).toHaveBeenCalledTimes(1);
     expect(client.getStatus()).toBe("active");
+    expect(microphoneTrack.enabled).toBe(false);
     client.stop();
   });
 
@@ -1873,6 +1875,7 @@ describe("CodexRealtimeClient", () => {
       status: "active",
       billing: "subscription",
       microphoneActive: false,
+      microphoneInterrupted: true,
     });
     expect(microphoneTrack.stop).not.toHaveBeenCalled();
 
@@ -1890,6 +1893,8 @@ describe("CodexRealtimeClient", () => {
     const states: CodexRealtimeState[] = [];
     const client = new CodexRealtimeClient("main-session", (state) => states.push(state));
     await client.start();
+    const peer = FakePeerConnection.latest;
+    const before = [...bridge.sent];
 
     client.setMicrophoneMuted(true);
 
@@ -1902,6 +1907,8 @@ describe("CodexRealtimeClient", () => {
       microphoneMuted: true,
     });
     expect(microphoneTrack.stop).not.toHaveBeenCalled();
+    expect(peer?.close).not.toHaveBeenCalled();
+    expect(bridge.disconnect).not.toHaveBeenCalled();
 
     client.setMicrophoneMuted(false);
 
@@ -1911,7 +1918,67 @@ describe("CodexRealtimeClient", () => {
       billing: "subscription",
       microphoneActive: true,
     });
+    expect(FakePeerConnection.latest).toBe(peer);
+    expect(bridge.sent).toEqual(before);
+    expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(1);
     client.stop();
+  });
+
+  it("keeps user mute through device interruption and recovery without unmuting", async () => {
+    const states: CodexRealtimeState[] = [];
+    const client = new CodexRealtimeClient("main-session", (state) => states.push(state));
+    await client.start();
+    client.setMicrophoneMuted(true);
+    microphoneTrack.setMuted(true);
+    expect(states[states.length - 1]).toMatchObject({
+      microphoneMuted: true,
+      microphoneInterrupted: true,
+      microphoneActive: false,
+    });
+    microphoneTrack.setMuted(false);
+    expect(states[states.length - 1]).toMatchObject({
+      microphoneMuted: true,
+      microphoneActive: false,
+    });
+    expect(states[states.length - 1]?.microphoneInterrupted).toBeUndefined();
+    expect(microphoneTrack.enabled).toBe(false);
+    microphoneTrack.end();
+    expect(client.getStatus()).toBe("error");
+    expect(FakePeerConnection.latest?.close).toHaveBeenCalledOnce();
+    client.stop();
+  });
+
+  it("applies mute chosen before capture resolves and releases muted tracks on stop", async () => {
+    let resolveCapture!: (stream: MediaStream) => void;
+    vi.mocked(navigator.mediaDevices.getUserMedia).mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveCapture = resolve;
+      }),
+    );
+    const states: CodexRealtimeState[] = [];
+    const client = new CodexRealtimeClient("main-session", (state) => states.push(state));
+    const start = client.start();
+    await vi.waitFor(() => expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalled());
+    client.setMicrophoneMuted(true);
+    resolveCapture(new FakeMediaStream([microphoneTrack]) as unknown as MediaStream);
+    await start;
+    expect(microphoneTrack.enabled).toBe(false);
+    expect(states[states.length - 1]).toMatchObject({
+      status: "active",
+      microphoneMuted: true,
+      microphoneActive: false,
+    });
+    for (let i = 0; i < 3; i++) {
+      client.setMicrophoneMuted(false);
+      client.setMicrophoneMuted(true);
+    }
+    expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(1);
+    client.stop();
+    expect(microphoneTrack.stop).toHaveBeenCalledOnce();
+    microphoneTrack.setMuted(true);
+    microphoneTrack.setMuted(false);
+    expect(states[states.length - 1]?.status).toBe("idle");
+    expect(microphoneTrack.enabled).toBe(false);
   });
 
   it("tears down the live conversation when its last microphone track ends", async () => {
@@ -2044,6 +2111,12 @@ describe("CodexRealtimeClient", () => {
     FakePeerConnection.latest?.dispatchEvent(trackEvent);
     await vi.waitFor(() => expect(audioContext.createGain).toHaveBeenCalledOnce());
     expect(gainParam.value).toBe(0.3);
+    client.setMicrophoneMuted(true);
+    expect(microphoneTrack.enabled).toBe(false);
+    expect(gainParam.value).toBe(0.3);
+    expect(source.disconnect).not.toHaveBeenCalled();
+    expect(outputGain.disconnect).not.toHaveBeenCalled();
+    client.setMicrophoneMuted(false);
     getVoiceVolumeStore().set(0);
 
     expect(source.connect).toHaveBeenCalledWith(analyser);
