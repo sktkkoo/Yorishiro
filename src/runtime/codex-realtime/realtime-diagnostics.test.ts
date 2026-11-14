@@ -1,12 +1,14 @@
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, it } from "vitest";
+import { setRealtimeDebugEnabled } from "./realtime-debug";
 import {
   appendRealtimeDiagnostic,
   classifyRealtimeFailure,
   readRealtimeDiagnostics,
   realtimeDiagnosticCode,
 } from "./realtime-diagnostics";
+import { automaticRealtimeModel } from "./realtime-model";
 
 describe("realtime diagnostics", () => {
   beforeEach(() => localStorage.clear());
@@ -45,6 +47,30 @@ describe("realtime diagnostics", () => {
     expect(
       classifyRealtimeFailure(new Error("Codex thread was not loaded in time"), "thread-discovery"),
     ).toEqual({ category: "timeout", retryable: true });
+  });
+
+  it("does not persist investigative model records or metadata unless local debug is enabled", () => {
+    const record = {
+      attemptId: "local",
+      timestamp: "2026-11-14",
+      stage: "realtime-start" as const,
+      event: "model-reported" as const,
+      elapsedMs: 1,
+      retryDecision: "none" as const,
+      terminationRequested: false,
+      model: automaticRealtimeModel("0.169.0", "chatgpt"),
+    };
+    appendRealtimeDiagnostic(record);
+    expect(readRealtimeDiagnostics()).toEqual([]);
+    appendRealtimeDiagnostic({ ...record, event: "negotiated" });
+    expect(readRealtimeDiagnostics()).toHaveLength(1);
+    expect(readRealtimeDiagnostics()[0]).not.toHaveProperty("model");
+    setRealtimeDebugEnabled(true);
+    appendRealtimeDiagnostic(record);
+    expect(readRealtimeDiagnostics()[1]?.model).toEqual(record.model);
+    setRealtimeDebugEnabled(false);
+    appendRealtimeDiagnostic(record);
+    expect(readRealtimeDiagnostics()).toHaveLength(2);
   });
 
   it("persists only a bounded ring of sanitized structured records", () => {

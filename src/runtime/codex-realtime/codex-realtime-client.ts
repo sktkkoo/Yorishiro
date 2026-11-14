@@ -19,6 +19,7 @@ import type { StateExpressionSchedulerCallbacks } from "../agent-state-expressio
 import { mediaPermissionError } from "../media-permissions";
 import { realtimeContextParts } from "./context-items";
 import { monitorPlayback, type PlaybackSample } from "./playback-monitor";
+import { isRealtimeDebugEnabled, subscribeRealtimeDebug } from "./realtime-debug";
 import {
   appendRealtimeDiagnostic,
   classifyRealtimeFailure,
@@ -26,6 +27,12 @@ import {
   type RealtimeConnectionStage,
   realtimeDiagnosticCode,
 } from "./realtime-diagnostics";
+import {
+  automaticRealtimeModel,
+  isRealtimeModelRejection,
+  observeRealtimeModel,
+  type RealtimeModelDiagnostic,
+} from "./realtime-model";
 import type { ScreenPointerAvailability } from "./screen-observation";
 import { screenCaptureNotice, screenPointerPreferenceNotice } from "./screen-sharing-prompts";
 import { isCodexVoiceRejectionMessage } from "./voice-rejection";
@@ -152,7 +159,6 @@ interface PendingRequest {
 const RPC_TIMEOUT_MS = 15_000;
 const THREAD_DISCOVERY_TIMEOUT_MS = 8_000;
 export const DEFAULT_CODEX_REALTIME_VOICE = "sol";
-const CODEX_REALTIME_V3_MODEL = "gpt-live-1-codex";
 const CODEX_REALTIME_LOCAL_WORK_HANDOFF = [
   "You are the realtime conversational surface of the same local Codex work session, not a standalone chat screen.",
   "When the user asks for an action, local work, or current-state inspection, you must create a delegation to the backing Codex agent; conversation alone is not execution.",
@@ -227,6 +233,8 @@ export class CodexRealtimeClient implements LipSyncSource {
   private currentAttemptId = "";
   private currentAttemptStartedAt = 0;
   private currentStage: RealtimeConnectionStage = "preflight";
+  private modelDiagnostic: RealtimeModelDiagnostic | null = null;
+  private stopModelInvestigation: (() => void) | null = null;
   private readonly stateExpressionController: RealtimeStateExpressionController | null;
   private readonly onUserSpeechStarted: (() => void | Promise<void>) | null;
   private readonly observedUserSpeechIds = new Set<string>();
@@ -434,6 +442,7 @@ export class CodexRealtimeClient implements LipSyncSource {
       this.currentAttemptId = createRealtimeAttemptId();
       this.currentAttemptStartedAt = Date.now();
       this.currentStage = "preflight";
+      this.modelDiagnostic = null;
       this.recordDiagnostic("started", "none");
       try {
         const result = await this.performStartAttempt(attempt, personaSnapshot);
@@ -530,6 +539,12 @@ export class CodexRealtimeClient implements LipSyncSource {
           : null;
     if (!billing)
       throw new Error("Voice requires Codex to be signed in with ChatGPT or an API key.");
+    this.modelDiagnostic = isRealtimeDebugEnabled()
+      ? automaticRealtimeModel(
+          realtimeCapabilities.appServerVersion,
+          billing === "subscription" ? "chatgpt" : "apiKey",
+        )
+      : null;
     if (billing === "api") this.setState({ status: "connecting", billing });
     this.currentStage = "thread-discovery";
     const threadId = await this.waitForLoadedThread(attempt);
@@ -827,7 +842,41 @@ export class CodexRealtimeClient implements LipSyncSource {
       track.enabled = !this.microphoneMuted;
       peer.addTrack(track, microphone);
     }
-    this.eventChannel = peer.createDataChannel("oai-events");
+    const eventChannel = peer.createDataChannel("oai-events");
+    this.eventChannel = eventChannel;
+    if (this.modelDiagnostic)
+      eventChannel.onmessage = (event) => {
+        if (
+          !isRealtimeDebugEnabled() ||
+          !this.isAttemptOwner(attempt) ||
+          this.peer !== peer ||
+          this.eventChannel !== eventChannel ||
+          !this.modelDiagnostic ||
+          typeof event.data !== "string" ||
+          event.data.length > 64 * 1024
+        )
+          return;
+        try {
+          const observed = observeRealtimeModel(this.modelDiagnostic, JSON.parse(event.data));
+          if (observed) {
+            this.modelDiagnostic = observed;
+            this.recordDiagnostic("model-reported", "none");
+          }
+        } catch {
+          // 不正な形式や対象外のイベントで音声再生を止めない。
+        }
+      };
+
+    if (this.modelDiagnostic) {
+      this.stopModelInvestigation = subscribeRealtimeDebug(() => {
+        if (!isRealtimeDebugEnabled()) {
+          eventChannel.onmessage = null;
+          this.modelDiagnostic = null;
+          this.stopModelInvestigation?.();
+          this.stopModelInvestigation = null;
+        }
+      });
+    }
 
     this.currentStage = "webrtc-offer";
     const offer = await peer.createOffer();
@@ -924,14 +973,18 @@ export class CodexRealtimeClient implements LipSyncSource {
     this.acceptRemoteSdp = acceptRemoteSdp;
     this.rejectRemoteSdp = rejectRemoteSdp;
     try {
+      if (!isRealtimeDebugEnabled()) this.modelDiagnostic = null;
       await this.request("thread/realtime/start", {
         threadId,
         outputModality: "audio",
         version: "v3",
-        // OpenAI's documented workaround for Codex 0.149.x: its default v3 model is no
-        // longer accepted by ChatGPT-authenticated realtime, despite the misleading
-        // `session.model` rejection. The override belongs at thread/realtime/start top level.
-        model: CODEX_REALTIME_V3_MODEL,
+        // 通常利用は従来のモデル指定を維持する。ローカル調査を明示的に
+        // 有効化した接続だけ、確認済みの既定値・設定に Auto を委ねる。
+        ...(this.modelDiagnostic
+          ? this.modelDiagnostic.requestedModel
+            ? { model: this.modelDiagnostic.requestedModel }
+            : {}
+          : { model: "gpt-live-1-codex" }),
         voice,
         includeStartupContext: startupContextIncluded,
         ...(initialItems
@@ -947,6 +1000,22 @@ export class CodexRealtimeClient implements LipSyncSource {
       });
       this.assertAttemptOwner(attempt, peer);
       return await withTimeout(remoteSdp, RPC_TIMEOUT_MS, "Codex realtime SDP answer timed out");
+    } catch (error) {
+      if (
+        this.isAttemptOwner(attempt) &&
+        this.peer === peer &&
+        isRealtimeDebugEnabled() &&
+        this.modelDiagnostic &&
+        isRealtimeModelRejection(error)
+      ) {
+        this.modelDiagnostic = { ...this.modelDiagnostic, outcome: "rejected" };
+        const request =
+          this.modelDiagnostic.requestedModel ?? "the Codex server default/configured model";
+        throw new Error(
+          `Realtime model request (${request}) was rejected. No alternate model was tried. ${error instanceof Error ? error.message : ""}`,
+        );
+      }
+      throw error;
     } finally {
       if (this.acceptRemoteSdp === acceptRemoteSdp) this.acceptRemoteSdp = null;
       if (this.rejectRemoteSdp === rejectRemoteSdp) this.rejectRemoteSdp = null;
@@ -1352,7 +1421,14 @@ export class CodexRealtimeClient implements LipSyncSource {
   }
 
   private recordDiagnostic(
-    event: "started" | "negotiated" | "failed" | "remote-error" | "closed" | "playback-sample",
+    event:
+      | "started"
+      | "negotiated"
+      | "model-reported"
+      | "failed"
+      | "remote-error"
+      | "closed"
+      | "playback-sample",
     retryDecision: "none" | "scheduled" | "exhausted",
     error?: unknown,
     category?: Parameters<typeof appendRealtimeDiagnostic>[0]["category"],
@@ -1375,10 +1451,13 @@ export class CodexRealtimeClient implements LipSyncSource {
           ? undefined
           : realtimeDiagnosticCode(category, this.currentStage),
       appVersion: APP_VERSION,
+      ...(isRealtimeDebugEnabled() && this.modelDiagnostic ? { model: this.modelDiagnostic } : {}),
     });
   }
 
   private disposeResources(finalMessage?: string): void {
+    this.stopModelInvestigation?.();
+    this.stopModelInvestigation = null;
     this.stopPlaybackMonitor?.();
     this.stopPlaybackMonitor = null;
     this.continuityContext = null;
