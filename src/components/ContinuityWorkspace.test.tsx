@@ -24,6 +24,7 @@ const native = vi.hoisted(() => ({
   sendContinuityMessage: vi.fn(),
   actOnContinuityDraft: vi.fn(),
   retryContinuity: vi.fn(),
+  refreshContinuity: vi.fn(),
   setContinuityAutoEnabled: vi.fn(),
   forgetContinuityUnderstanding: vi.fn(),
 }));
@@ -140,6 +141,7 @@ beforeEach(() => {
   native.sendContinuityMessage.mockResolvedValue(undefined);
   native.actOnContinuityDraft.mockResolvedValue(undefined);
   native.retryContinuity.mockResolvedValue(undefined);
+  native.refreshContinuity.mockResolvedValue(undefined);
   native.setContinuityAutoEnabled.mockResolvedValue(undefined);
   native.forgetContinuityUnderstanding.mockResolvedValue(undefined);
   Object.defineProperty(HTMLDialogElement.prototype, "showModal", {
@@ -603,23 +605,184 @@ describe("ContinuityWorkspace", () => {
     expect((input as HTMLTextAreaElement).value).toBe("次の言葉");
   });
 
-  it("retains failed input and shows a real retry error without inventing a reply", async () => {
+  it.each([
+    ["ja", "送る", "再試行", "入力内容を確認して、送信ボタンからもう一度送ってください。"],
+    ["en", "Send", "Retry", "Review your message and use Send to try again."],
+  ] as const)("recovers failed %s messages through Send, preserving the actual input", async (language, send, retry, hint) => {
     native.sendContinuityMessage.mockRejectedValueOnce(new Error("モデルに接続できません"));
-    render(<ContinuityWorkspace {...props()} />);
+    render(<ContinuityWorkspace {...props()} language={language} />);
     const input = screen.getByRole("textbox") as HTMLTextAreaElement;
     fireEvent.change(input, { target: { value: "相談したいこと" } });
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "送る" }));
+      fireEvent.click(screen.getByRole("button", { name: send }));
     });
     expect(input.value).toBe("相談したいこと");
     expect(screen.getByRole("alert").textContent).toContain("モデルに接続できません");
+    expect(screen.getByRole("alert").textContent).toContain(hint);
+    expect(screen.queryByRole("button", { name: retry })).toBeNull();
     expect(screen.getByRole("log").textContent).not.toContain("相談したいこと");
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "再試行" }));
+      fireEvent.click(screen.getByRole("button", { name: send }));
     });
-    expect(native.retryContinuity).toHaveBeenCalledExactlyOnceWith(
+    expect(native.retryContinuity).not.toHaveBeenCalled();
+    expect(native.sendContinuityMessage).toHaveBeenCalledTimes(2);
+    expect(native.sendContinuityMessage).toHaveBeenLastCalledWith(
       expect.objectContaining({ personaId: "yori-ja" }),
+      "相談したいこと",
+      undefined,
     );
+    expect(input.value).toBe("");
+  });
+
+  it.each([
+    "ja",
+    "en",
+  ] as const)("keeps failed On/Off changes visible without work retry when Pi is unavailable in %s", async (language) => {
+    setupNative.invoke.mockResolvedValue({ ...piStatus(), configured: false });
+    native.setContinuityAutoEnabled.mockRejectedValueOnce(new Error("Could not save switch"));
+    render(<ContinuityWorkspace {...props()} language={language} executionBackend="pi" />);
+    await waitFor(() =>
+      expect(screen.getByRole("switch").getAttribute("aria-checked")).toBe("true"),
+    );
+    await act(async () => fireEvent.click(screen.getByRole("switch")));
+    expect(screen.getByRole("alert").textContent).toContain("Could not save switch");
+    expect(screen.getByRole("alert").textContent).toContain(
+      language === "ja" ? "上部のスイッチ" : "switch above",
+    );
+    expect(screen.getByRole("switch").getAttribute("aria-checked")).toBe("true");
+    expect(
+      screen.queryByRole("button", { name: language === "ja" ? "再試行" : "Retry" }),
+    ).toBeNull();
+    await act(async () => fireEvent.click(screen.getByRole("switch")));
+    expect(native.setContinuityAutoEnabled).toHaveBeenCalledTimes(2);
+    expect(native.setContinuityAutoEnabled).toHaveBeenLastCalledWith(expect.anything(), false);
+    expect(native.retryContinuity).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    "send",
+    "draft",
+    "forget",
+    "autonomy",
+    "observation",
+  ] as const)("retains %s recovery guidance for errors from the shared client", async (errorSource) => {
+    native.useContinuity.mockImplementation(() => ({
+      snapshot: current,
+      error: "Operation failed",
+      errorSource,
+    }));
+    setupNative.invoke.mockResolvedValue({ ...piStatus(), configured: false });
+    render(<ContinuityWorkspace {...props()} language="en" executionBackend="pi" />);
+    await waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toContain("Operation failed"),
+    );
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Reload status" })).toBeNull();
+    if (errorSource === "observation")
+      expect(screen.getByRole("alert").textContent).toContain("could not be recorded");
+    expect(native.retryContinuity).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    "rejected",
+    "state",
+  ] as const)("keeps %s voice failures visible without retrying work while Pi is unavailable", async (failure) => {
+    current = { ...current, phase: "error", error: "Pi is not configured" };
+    setupNative.invoke.mockResolvedValue({ ...piStatus(), configured: false });
+    const onStart = vi.fn().mockRejectedValue(new Error("Microphone unavailable"));
+    render(
+      <ContinuityWorkspace
+        {...props()}
+        language="en"
+        executionBackend="pi"
+        conversation={{
+          available: true,
+          state:
+            failure === "state"
+              ? { status: "error", error: "Microphone unavailable" }
+              : { status: "idle" },
+          onStart,
+          onEnd: vi.fn(),
+          onSetMuted: vi.fn(),
+        }}
+      />,
+    );
+    if (failure === "rejected")
+      await act(async () => fireEvent.click(screen.getByRole("button", { name: "Start talking" })));
+    await waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toContain("Microphone unavailable"),
+    );
+    expect(screen.getByRole("alert").textContent).toContain("microphone button");
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    expect(native.retryContinuity).not.toHaveBeenCalled();
+  });
+
+  it("keeps failed draft recovery on draft controls after the details close", async () => {
+    native.actOnContinuityDraft.mockRejectedValueOnce(new Error("Could not save draft action"));
+    render(<ContinuityWorkspace {...props()} language="en" />);
+    fireEvent.click(screen.getByRole("button", { name: "Open draft" }));
+    await act(async () =>
+      fireEvent.click(screen.getByRole("button", { name: "Continue thinking" })),
+    );
+    expect(screen.getByRole("alert").textContent).toContain("choose the action again");
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.getByRole("alert").textContent).toContain("Could not save draft action");
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    expect(native.retryContinuity).not.toHaveBeenCalled();
+  });
+
+  it("guards pending work retries and keeps a failed retry available", async () => {
+    current = { ...current, phase: "error", error: "Worker unavailable" };
+    let reject!: (reason: Error) => void;
+    native.retryContinuity.mockReturnValueOnce(
+      new Promise<void>((_resolve, fail) => {
+        reject = fail;
+      }),
+    );
+    render(<ContinuityWorkspace {...props()} language="en" />);
+    const button = screen.getByRole("button", { name: "Retry" });
+    act(() => {
+      fireEvent.click(button);
+      expect(button).toHaveProperty("disabled", false);
+      fireEvent.click(button);
+    });
+    expect(native.retryContinuity).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "Retrying…" })).toHaveProperty("disabled", true);
+    expect(button.getAttribute("aria-busy")).toBe("true");
+    await act(async () => reject(new Error("Retry failed")));
+    expect(screen.getByRole("alert").textContent).toContain("Retry failed");
+    expect(screen.getByRole("button", { name: "Retry" })).toHaveProperty("disabled", false);
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Retry" })));
+    expect(native.retryContinuity).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole("alert").textContent).not.toContain("Retry failed");
+  });
+
+  it("reloads a failed synchronization while Pi is unavailable without explicitly retrying work", async () => {
+    current = { ...current, phase: "working" };
+    native.useContinuity.mockImplementation(() => ({
+      snapshot: current,
+      error: "Status unavailable",
+      errorSource: "sync",
+    }));
+    setupNative.invoke.mockResolvedValue({ ...piStatus(), configured: false });
+    let reject!: (error: Error) => void;
+    native.refreshContinuity.mockReturnValueOnce(
+      new Promise<void>((_resolve, fail) => {
+        reject = fail;
+      }),
+    );
+    render(<ContinuityWorkspace {...props()} language="en" executionBackend="pi" />);
+    await waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toContain("Status unavailable"),
+    );
+    expect(screen.getByRole("button", { name: "Reload status" })).toHaveProperty("disabled", false);
+    act(() => fireEvent.click(screen.getByRole("button", { name: "Reload status" })));
+    expect(screen.getByRole("button", { name: "Reloading…" })).toHaveProperty("disabled", true);
+    await act(async () => reject(new Error("Still unavailable")));
+    expect(screen.getByRole("alert").textContent).toContain("Still unavailable");
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Reload status" })));
+    expect(native.refreshContinuity).toHaveBeenCalledTimes(2);
+    expect(native.retryContinuity).not.toHaveBeenCalled();
   });
 
   it("opens exact draft content safely and dispatches actions for that draft", async () => {

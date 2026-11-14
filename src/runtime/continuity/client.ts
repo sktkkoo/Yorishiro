@@ -6,15 +6,26 @@ import type { ContinuityContext, ContinuitySnapshot } from "./types";
 export function continuityIdentity(id: string): string {
   return id === "yori-ja" || id === "yori-en" ? "builtin:yori" : `custom:${id}`;
 }
-interface Entry {
+export type ContinuityErrorSource =
+  | "send"
+  | "draft"
+  | "forget"
+  | "autonomy"
+  | "observation"
+  | "sync"
+  | "work";
+interface ContinuityValue {
   snapshot: ContinuitySnapshot | null;
   error: string | null;
+  errorSource: ContinuityErrorSource | null;
+}
+interface Entry extends ContinuityValue {
   listeners: Set<() => void>;
-  value: { snapshot: ContinuitySnapshot | null; error: string | null };
+  value: ContinuityValue;
 }
 const entries = new Map<string, Entry>();
 const observationTails = new Map<string, Promise<void>>();
-const empty = { snapshot: null, error: null };
+const empty = { snapshot: null, error: null, errorSource: null };
 let unlisten: UnlistenFn | null = null;
 let bridge: Promise<void> | null = null;
 function entry(key: string): Entry {
@@ -26,7 +37,7 @@ function entry(key: string): Entry {
   return value;
 }
 function notify(value: Entry): void {
-  value.value = { snapshot: value.snapshot, error: value.error };
+  value.value = { snapshot: value.snapshot, error: value.error, errorSource: value.errorSource };
   for (const listener of value.listeners) listener();
 }
 function accept(snapshot: ContinuitySnapshot): void {
@@ -34,6 +45,7 @@ function accept(snapshot: ContinuitySnapshot): void {
   if (value.snapshot && value.snapshot.revision > snapshot.revision) return;
   value.snapshot = snapshot;
   value.error = null;
+  value.errorSource = null;
   notify(value);
 }
 async function ensureBridge(): Promise<void> {
@@ -53,12 +65,14 @@ async function command(
   name: string,
   context: ContinuityContext,
   args: Record<string, unknown> = {},
+  errorSource: ContinuityErrorSource = "work",
 ): Promise<void> {
   try {
     accept(await invoke<ContinuitySnapshot>(name, { context, ...args }));
   } catch (error) {
     const value = entry(continuityIdentity(context.personaId));
     value.error = error instanceof Error ? error.message : String(error);
+    value.errorSource = errorSource;
     notify(value);
     throw error;
   }
@@ -68,20 +82,20 @@ export function sendContinuityMessage(
   text: string,
   correctionId?: string,
 ): Promise<void> {
-  return command("continuity_send", context, { text, correctionId: correctionId ?? null });
+  return command("continuity_send", context, { text, correctionId: correctionId ?? null }, "send");
 }
 export function actOnContinuityDraft(
   context: ContinuityContext,
   draftId: string,
   action: "continue" | "dismiss",
 ): Promise<void> {
-  return command("continuity_draft_action", context, { draftId, action });
+  return command("continuity_draft_action", context, { draftId, action }, "draft");
 }
 export function forgetContinuityUnderstanding(
   context: ContinuityContext,
   understandingId: string,
 ): Promise<void> {
-  return command("continuity_forget_understanding", context, { understandingId });
+  return command("continuity_forget_understanding", context, { understandingId }, "forget");
 }
 export function observeContinuityExchange(
   context: ContinuityContext,
@@ -95,7 +109,7 @@ export function observeContinuityExchange(
   // mutex を取る順序に依存せず、同じ保存先への発言を受信順で記録する。
   const key = continuityIdentity(context.personaId);
   const previous = observationTails.get(key);
-  const run = () => command("continuity_observe_native", context, exchange);
+  const run = () => command("continuity_observe_native", context, exchange, "observation");
   const result = previous ? previous.then(run) : run();
   const cleanup = () => {
     if (observationTails.get(key) === tail) observationTails.delete(key);
@@ -108,11 +122,16 @@ export function observeContinuityExchange(
 export function retryContinuity(context: ContinuityContext): Promise<void> {
   return ensureBridge().then(() => command("continuity_retry", context));
 }
+export function refreshContinuity(context: ContinuityContext): Promise<void> {
+  return ensureBridge().then(() => command("continuity_sync_context", context, {}, "sync"));
+}
 export function setContinuityAutoEnabled(
   context: ContinuityContext,
   enabled: boolean,
 ): Promise<void> {
-  return ensureBridge().then(() => command("continuity_set_auto_enabled", context, { enabled }));
+  return ensureBridge().then(() =>
+    command("continuity_set_auto_enabled", context, { enabled }, "autonomy"),
+  );
 }
 export function useContinuity(context: ContinuityContext | null, open: boolean): Entry["value"] {
   const id = context ? continuityIdentity(context.personaId) : null;
@@ -225,6 +244,8 @@ export function useContinuity(context: ContinuityContext | null, open: boolean):
       } catch (error: unknown) {
         if (cancelled) return;
         target.error = error instanceof Error ? error.message : String(error);
+        target.errorSource =
+          name === "continuity_enter" || name === "continuity_sync_context" ? "sync" : "work";
         notify(target);
       } finally {
         requestInFlight = false;

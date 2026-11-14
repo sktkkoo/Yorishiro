@@ -59,6 +59,54 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 describe("shared continuity bridge", () => {
+  it.each([
+    "send",
+    "draft",
+    "forget",
+    "autonomy",
+    "observation",
+    "work",
+    "sync",
+  ] as const)("preserves the %s error source until an acknowledged snapshot arrives", async (source) => {
+    const client = await import("./client");
+    const view = renderHook(() => client.useContinuity(context, false));
+    await waitFor(() => expect(view.result.current.snapshot?.revision).toBe(1));
+    const operations = {
+      send: () => client.sendContinuityMessage(context, "Unsent text", "memory-1"),
+      draft: () => client.actOnContinuityDraft(context, "draft-1", "continue"),
+      forget: () => client.forgetContinuityUnderstanding(context, "memory-1"),
+      autonomy: () => client.setContinuityAutoEnabled(context, false),
+      observation: () =>
+        client.observeContinuityExchange(context, {
+          userText: "Voice message",
+          assistantText: "",
+          sourceKey: "voice-1",
+        }),
+      work: () => client.retryContinuity(context),
+      sync: () => client.refreshContinuity(context),
+    };
+    native.invoke.mockRejectedValueOnce(new Error("Operation failed"));
+    await act(async () => {
+      await expect(operations[source]()).rejects.toThrow("Operation failed");
+    });
+    expect(view.result.current.errorSource).toBe(source);
+    expect(view.result.current.error).toBe("Operation failed");
+    act(() => native.callback?.({ payload: snapshot("yori-ja", 2) }));
+    expect(view.result.current.errorSource).toBeNull();
+    expect(view.result.current.error).toBeNull();
+  });
+
+  it("reloads status through context sync without sending a retry or changing Off", async () => {
+    const client = await import("./client");
+    native.invoke.mockResolvedValue({ ...snapshot(), autoEnabled: false });
+    const view = renderHook(() => client.useContinuity(context, false));
+    await waitFor(() => expect(view.result.current.snapshot?.autoEnabled).toBe(false));
+    native.invoke.mockClear();
+    await act(() => client.refreshContinuity(context));
+    expect(native.invoke).toHaveBeenCalledExactlyOnceWith("continuity_sync_context", { context });
+    expect(view.result.current.snapshot?.autoEnabled).toBe(false);
+  });
+
   it("forgets the exact memory through native persistence and only accepts the acknowledged snapshot", async () => {
     const client = await import("./client");
     const view = renderHook(() => client.useContinuity(context, false));
