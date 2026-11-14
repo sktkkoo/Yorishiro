@@ -11,7 +11,11 @@ import {
   type CodexRealtimeState,
   type CodexRealtimeVoiceFallback,
 } from "./codex-realtime-client";
-import { MAX_REALTIME_TEXT_JSON_BYTES } from "./context-items";
+import {
+  MAX_REALTIME_EVIDENCE_REFRESH_JSON_BYTES,
+  MAX_REALTIME_TEXT_JSON_BYTES,
+  REALTIME_EVIDENCE_HEADER,
+} from "./context-items";
 import { generateSessionFollowup } from "./followup-bridge";
 import { setRealtimeDebugEnabled } from "./realtime-debug";
 import { readRealtimeDiagnostics } from "./realtime-diagnostics";
@@ -38,7 +42,19 @@ const localWorkHandoffItem = () => ({
 });
 
 const fragmentHeader = /^Host context fragment (\d+)\/(\d+)\.[^\n]*\n/;
-const passiveHeader = /^Host context refresh only\.[^\n]*\n/;
+function reassembleEvidence(parts: readonly string[]): string {
+  const envelopes = parts.map((part) => {
+    expect(part.startsWith(REALTIME_EVIDENCE_HEADER)).toBe(true);
+    return JSON.parse(part.slice(REALTIME_EVIDENCE_HEADER.length));
+  });
+  expect(new Set(envelopes.map((part) => part.group)).size).toBe(1);
+  return envelopes
+    .map((part, index) => {
+      expect(part).toMatchObject({ type: "host-evidence", part: index + 1, total: parts.length });
+      return part.text;
+    })
+    .join("");
+}
 const serializedTextBytes = (text: string) => new TextEncoder().encode(JSON.stringify(text)).length;
 
 function reassembleContextFragments(parts: readonly string[]): string {
@@ -875,12 +891,14 @@ describe("CodexRealtimeClient", () => {
     const parts = updates.map((message) => {
       expect(message.params?.role).toBe("developer");
       const text = message.params?.text as string;
-      expect(serializedTextBytes(text)).toBeLessThanOrEqual(MAX_REALTIME_TEXT_JSON_BYTES);
-      expect(text).toMatch(passiveHeader);
-      expect(text).toContain("Do not greet, speak, or start work because this arrived");
-      return text.replace(passiveHeader, "");
+      expect(serializedTextBytes(text)).toBeLessThanOrEqual(
+        MAX_REALTIME_EVIDENCE_REFRESH_JSON_BYTES,
+      );
+      expect(new TextEncoder().encode(text).length).toBeLessThanOrEqual(500);
+      expect(text).toContain("Do not speak, replay, continue or execute it");
+      return text;
     });
-    expect(reassembleContextFragments(parts)).toBe(context);
+    expect(reassembleEvidence(parts)).toBe(context);
     expect(client.getStatus()).toBe("active");
     expect(microphoneTrack.enabled).toBe(false);
     expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(1);
@@ -1225,6 +1243,65 @@ describe("CodexRealtimeClient", () => {
       delivery: "initial-items",
       startupContextIncluded: false,
     });
+    client.stop();
+  });
+
+  it.each([
+    "persona",
+    "empty",
+    "none",
+  ])("separates %s instructions from independently framed startup evidence", async (kind) => {
+    const instructions = kind === "persona" ? "Keep this personality instruction active." : null;
+    const evidence = JSON.stringify({
+      id: "11111111-1111-4111-8111-111111654321",
+      text: 'user: old request\nassistant: old reply\n😀\\"'.repeat(350),
+    });
+    const client = new CodexRealtimeClient("main-session", () => {}, {
+      getPersonaSnapshot: () => ({
+        personaId: kind === "none" ? null : "yori",
+        instructions,
+        continuityContext: evidence,
+      }),
+      includeStartupContext: false,
+    });
+    await client.start();
+    const request = bridge.sent.find((message) => message.method === "thread/realtime/start");
+    const items = request?.params?.initialItems as Array<{ role: string; text: string }>;
+    const evidenceItems = items.filter((item) => item.text.startsWith(REALTIME_EVIDENCE_HEADER));
+    expect(evidenceItems.length).toBeGreaterThan(1);
+    expect(reassembleEvidence(evidenceItems.map((item) => item.text))).toBe(evidence);
+    expect(
+      items.some(
+        (item) =>
+          item.text.includes("Host context fragment") &&
+          item.text.includes(REALTIME_EVIDENCE_HEADER),
+      ),
+    ).toBe(false);
+    for (const item of items) {
+      expect(item.role).toBe("developer");
+      expect(serializedTextBytes(item.text)).toBeLessThanOrEqual(MAX_REALTIME_TEXT_JSON_BYTES);
+    }
+    if (instructions) expect(items).toContainEqual({ role: "developer", text: instructions });
+    expect(items).toContainEqual(localWorkHandoffItem());
+    expect(request?.params).not.toHaveProperty("prompt");
+    expect(request?.params?.includeStartupContext).toBe(false);
+    client.stop();
+  });
+  it("does not replace the backend prompt to deliver evidence when initial items are unsupported", async () => {
+    bridge.capabilities.personaInitialItems = false;
+    const client = new CodexRealtimeClient("main-session", () => {}, {
+      getPersonaSnapshot: () => ({
+        personaId: "yori",
+        instructions: "persona",
+        continuityContext: "quoted history",
+      }),
+      includeStartupContext: false,
+    });
+    await client.start();
+    const request = bridge.sent.find((message) => message.method === "thread/realtime/start");
+    expect(request?.params).not.toHaveProperty("initialItems");
+    expect(request?.params).not.toHaveProperty("prompt");
+    expect(request?.params?.includeStartupContext).toBe(false);
     client.stop();
   });
 
