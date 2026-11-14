@@ -11,6 +11,7 @@ import {
   type CodexRealtimeVoiceFallback,
 } from "./codex-realtime-client";
 import { MAX_REALTIME_TEXT_JSON_BYTES } from "./context-items";
+import { setRealtimeDebugEnabled } from "./realtime-debug";
 import { readRealtimeDiagnostics } from "./realtime-diagnostics";
 
 interface FakeChannel<T> {
@@ -350,6 +351,130 @@ describe("CodexRealtimeClient", () => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
     FakePeerConnection.latest = null;
+  });
+
+  it.each([
+    "chatgpt",
+    "apiKey",
+  ])("keeps ordinary %s connections unchanged with investigation disabled", async (auth) => {
+    bridge.accountType = auth;
+    bridge.capabilities.appServerVersion = "0.169.0";
+    const client = new CodexRealtimeClient("main-session");
+    await client.start();
+    expect(
+      bridge.sent.find((message) => message.method === "thread/realtime/start")?.params?.model,
+    ).toBe("gpt-live-1-codex");
+    expect(FakePeerConnection.latest?.channel.onmessage).toBeNull();
+    expect(
+      readRealtimeDiagnostics().every(
+        (record) => record.model === undefined && record.event !== "model-reported",
+      ),
+    ).toBe(true);
+    client.stop();
+  });
+
+  it("stops model investigation immediately when local debug is disabled and restores ordinary requests next connection", async () => {
+    setRealtimeDebugEnabled(true);
+    bridge.capabilities.appServerVersion = "0.169.0";
+    const client = new CodexRealtimeClient("main-session");
+    await client.start();
+    const channel = FakePeerConnection.latest?.channel;
+    const inFlightHandler = channel?.onmessage;
+    setRealtimeDebugEnabled(false);
+    expect(channel?.onmessage).toBeNull();
+    const before = JSON.stringify(readRealtimeDiagnostics());
+    inFlightHandler?.({
+      data: JSON.stringify({
+        type: "session.created",
+        session: { model: "ignored-after-disable" },
+      }),
+    });
+    expect(JSON.stringify(readRealtimeDiagnostics())).toBe(before);
+    client.stop();
+    expect(JSON.stringify(readRealtimeDiagnostics())).toBe(before);
+    await client.start();
+    expect(readRealtimeDiagnostics().slice(-1)[0]).not.toHaveProperty("model");
+    const starts = bridge.sent.filter((message) => message.method === "thread/realtime/start");
+    expect(starts[starts.length - 1]?.params?.model).toBe("gpt-live-1-codex");
+    expect(FakePeerConnection.latest?.channel.onmessage).toBeNull();
+    client.stop();
+  });
+
+  it.each([
+    "chatgpt",
+    "apiKey",
+  ])("uses Auto with the server model on 0.169 for %s and reports only observed model identity", async (auth) => {
+    setRealtimeDebugEnabled(true);
+    bridge.accountType = auth;
+    bridge.capabilities.appServerVersion = "0.169.0";
+    const client = new CodexRealtimeClient("main-session");
+    await client.start();
+    const start = bridge.sent.find((message) => message.method === "thread/realtime/start");
+    expect(start?.params).not.toHaveProperty("model");
+    expect(readRealtimeDiagnostics().slice(-1)[0]?.model).toMatchObject({
+      selection: "auto",
+      policy: "server-default",
+      requestedModel: null,
+      effectiveModel: null,
+      outcome: "unreported",
+      authMode: auth,
+      appServerVersion: "0.169.0",
+      protocol: "v3",
+      namedSelectionAvailable: false,
+    });
+    const channel = FakePeerConnection.latest?.channel;
+    channel?.onmessage?.({
+      data: JSON.stringify({
+        type: "session.created",
+        session: {
+          model: "server-reported-model",
+          instructions: "PRIVATE PERSONA",
+          api_key: "PRIVATE KEY",
+        },
+      }),
+    });
+    expect(readRealtimeDiagnostics().slice(-1)[0]).toMatchObject({
+      event: "model-reported",
+      model: {
+        effectiveModel: "server-reported-model",
+        effectiveModelSource: "session-event",
+        outcome: "reported",
+      },
+    });
+    expect(JSON.stringify(readRealtimeDiagnostics())).not.toContain("PRIVATE");
+    client.stop();
+    const stopped = JSON.stringify(readRealtimeDiagnostics());
+    channel?.onmessage?.({
+      data: JSON.stringify({ type: "session.updated", session: { model: "stale-model" } }),
+    });
+    expect(JSON.stringify(readRealtimeDiagnostics())).toBe(stopped);
+    await client.start();
+    expect(readRealtimeDiagnostics().slice(-1)[0]?.model?.effectiveModel).toBeNull();
+    channel?.onmessage?.({
+      data: JSON.stringify({ type: "session.created", session: { model: "stale-after-restart" } }),
+    });
+    expect(readRealtimeDiagnostics().slice(-1)[0]?.model?.effectiveModel).toBeNull();
+    client.stop();
+  });
+
+  it.each([
+    "chatgpt",
+    "apiKey",
+  ])("reports rejected Auto requests for %s without trying another model", async (auth) => {
+    setRealtimeDebugEnabled(true);
+    bridge.accountType = auth;
+    bridge.capabilities.appServerVersion = "0.169.0";
+    bridge.realtimeStartVersionRemoteErrors = { v3: "The configured model is not available" };
+    const client = new CodexRealtimeClient("main-session");
+    await expect(client.start()).rejects.toThrow("No alternate model was tried");
+    expect(
+      bridge.sent.filter((message) => message.method === "thread/realtime/start"),
+    ).toHaveLength(1);
+    expect(readRealtimeDiagnostics().slice(-1)[0]?.model).toMatchObject({
+      authMode: auth,
+      outcome: "rejected",
+      effectiveModel: null,
+    });
   });
 
   it("joins the loaded TUI thread through realtime v3 WebRTC and releases the microphone", async () => {

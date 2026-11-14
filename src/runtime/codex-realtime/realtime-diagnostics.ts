@@ -1,5 +1,6 @@
 import type { PlaybackSample } from "./playback-monitor";
 import { isRealtimeDebugEnabled } from "./realtime-debug";
+import type { RealtimeModelDiagnostic } from "./realtime-model";
 
 export type RealtimeConnectionStage =
   | "preflight"
@@ -35,6 +36,7 @@ export interface RealtimeDiagnosticRecord {
   readonly event:
     | "started"
     | "negotiated"
+    | "model-reported"
     | "failed"
     | "remote-error"
     | "closed"
@@ -49,6 +51,7 @@ export interface RealtimeDiagnosticRecord {
   /** Privacy-safe, finite diagnostic identifier. Never contains a server error message. */
   readonly code?: RealtimeDiagnosticCode;
   readonly appVersion?: string;
+  readonly model?: RealtimeModelDiagnostic;
 }
 
 const STORAGE_KEY = "yorishiro.codex-realtime.diagnostics.v1";
@@ -146,11 +149,18 @@ export function appendRealtimeDiagnostic(
   record: RealtimeDiagnosticRecord,
   storage: Pick<Storage, "getItem" | "setItem"> | null = safeStorage(),
 ): void {
-  if (!storage || (record.event === "playback-sample" && !isRealtimeDebugEnabled())) return;
+  const debugEnabled = isRealtimeDebugEnabled();
+  if (
+    !storage ||
+    (!debugEnabled && (record.event === "playback-sample" || record.event === "model-reported"))
+  )
+    return;
+  // 接続イベント自体は従来どおり残すが、調査用モデル情報は無効化後に保存しない。
+  const persistedRecord = debugEnabled ? record : { ...record, model: undefined };
   try {
     const parsed: unknown = JSON.parse(storage.getItem(STORAGE_KEY) ?? "[]");
     const previous = Array.isArray(parsed) ? parsed : [];
-    const records = [...previous, record];
+    const records = [...previous, persistedRecord];
     // Periodic output samples must not evict the connection/failure timeline.
     let samples = records.filter((entry) => entry?.event === "playback-sample").length;
     const retained = records.filter((entry) => {
