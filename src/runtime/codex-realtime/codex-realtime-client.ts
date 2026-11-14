@@ -18,6 +18,7 @@ import {
 import type { StateExpressionSchedulerCallbacks } from "../agent-state-expression/scheduler";
 import { mediaPermissionError } from "../media-permissions";
 import { realtimeContextParts } from "./context-items";
+import { monitorPlayback, type PlaybackSample } from "./playback-monitor";
 import {
   appendRealtimeDiagnostic,
   classifyRealtimeFailure,
@@ -191,6 +192,7 @@ export class CodexRealtimeClient implements LipSyncSource {
   private microphoneMuted = false;
   private microphoneLivenessCleanups: Array<() => void> = [];
   private remoteStream: MediaStream | null = null;
+  private stopPlaybackMonitor: (() => void) | null = null;
   private remoteSource: MediaStreamAudioSourceNode | null = null;
   private analyserNode: AnalyserNode | null = null;
   private outputGainNode: GainNode | null = null;
@@ -970,6 +972,24 @@ export class CodexRealtimeClient implements LipSyncSource {
         });
         this.lipSync = new LipSyncAnalyser(analyser);
         this.startRemoteSpeechObservation(attempt);
+        const peer = this.peer;
+        if (peer)
+          this.stopPlaybackMonitor = monitorPlayback({
+            context,
+            stream,
+            peer,
+            gain: () => outputGain.gain.value,
+            hasSignal: () => this.lipSync?.hasSignal() ?? false,
+            onSample: (sample) => {
+              if (this.isAttemptOwner(attempt))
+                this.recordDiagnostic("playback-sample", "none", undefined, undefined, sample);
+            },
+            onFailure: (error) => {
+              if (!this.isAttemptOwner(attempt)) return;
+              this.currentStage = "playback";
+              this.failActiveAttempt(attempt, error, "unknown");
+            },
+          });
       })
       .catch((error) => {
         if (!this.isAttemptOwner(attempt)) return;
@@ -1315,15 +1335,17 @@ export class CodexRealtimeClient implements LipSyncSource {
   }
 
   private recordDiagnostic(
-    event: "started" | "negotiated" | "failed" | "remote-error" | "closed",
+    event: "started" | "negotiated" | "failed" | "remote-error" | "closed" | "playback-sample",
     retryDecision: "none" | "scheduled" | "exhausted",
     error?: unknown,
     category?: Parameters<typeof appendRealtimeDiagnostic>[0]["category"],
+    playback?: PlaybackSample,
   ): void {
     appendRealtimeDiagnostic({
       attemptId: this.currentAttemptId,
       timestamp: new Date().toISOString(),
-      stage: this.currentStage,
+      stage: playback ? "playback" : this.currentStage,
+      playback,
       event,
       category,
       elapsedMs: Math.max(0, Date.now() - this.currentAttemptStartedAt),
@@ -1340,6 +1362,8 @@ export class CodexRealtimeClient implements LipSyncSource {
   }
 
   private disposeResources(finalMessage?: string): void {
+    this.stopPlaybackMonitor?.();
+    this.stopPlaybackMonitor = null;
     this.continuityContext = null;
     this.transcriptSequence = 0;
     this.stateExpressionController?.cancelAll();

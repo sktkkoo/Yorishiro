@@ -471,3 +471,57 @@ experience を失う。
   制約、手動承認との競合、実機未検証を明記。
 
 音声イベント仕様: [GPT Live transcript deltas](https://developers.openai.com/api/docs/guides/live-conversations#transcript-deltas)
+
+## Multi-instance output investigation (#138)
+
+Each WebView owns its audio context. GPT Live owns its source, analyser, gain,
+volume subscription, and playback monitor; stopping that client disconnects its
+nodes and observers without closing the WebView's shared context. There is no
+intentional cross-process exclusive voice owner. Concurrent OS/device behavior
+still needs measurement rather than a fabricated application lock.
+
+The playback monitor attempts one resume while an output context is suspended or
+interrupted (including foreground/gesture recovery), and coalesces overlapping
+attempts. A failed resume or closed context ends the affected voice connection
+with an actionable reconnect message, instead of keeping microphone input active
+with a known unusable output. Reconnecting recreates closed contexts through the
+existing audio-context helper. Cleanup invalidates pending monitor callbacks.
+
+Output investigation is **off by default**, including in release builds. With
+it off, no sampling timer, `getStats` call, output timing measurement, or output
+sample storage runs. Ordinary connection/failure records and functional output
+recovery remain unchanged. This has not been released by creating this PR.
+
+A developer can explicitly enable it in that local WebView's DevTools console:
+
+```js
+localStorage.setItem("yorishiro:realtime-debug", "1");
+window.dispatchEvent(new Event("yorishiro:realtime-debug-changed"));
+```
+
+Disable immediately (pending samples are discarded and polling stops):
+
+```js
+localStorage.removeItem("yorishiro:realtime-debug");
+window.dispatchEvent(new Event("yorishiro:realtime-debug-changed"));
+```
+
+Read `localStorage.getItem("yorishiro:realtime-debug")` to inspect the setting.
+This is a local development flag, never a synced preference or Pack setting.
+It does not upload diagnostics. Storage-unavailable environments stay disabled.
+With explicit opt-in, the existing local diagnostic ring includes at most 12
+periodic output samples (every five seconds; 40 total records). Samples distinguish inbound audio
+RTP bytes/packets, remote track liveness/mute, analyser signal, gain, and context
+state. They do not store transcripts, PCM, SDP, network addresses, device labels,
+or track identifiers. Missing WebRTC stats remain unavailable, not zero. Analyser
+signal and a running context do **not** prove sound reached a physical speaker.
+
+Validation protocol: record the commit, OS, Codex version/auth mode, and output
+route; compare A active → B start against A stop → B start, then B voice reconnect.
+Capture both instances' diagnostic rings before closing/restarting either app.
+Compare increasing inbound counters, analyser activity, gain, and context state
+with actual audible speech. Repeat after changing output routes where available.
+Automated coverage verifies monitor isolation, interruption recovery, teardown,
+late callbacks, and reconnect boundaries. A physical two-process reproduction
+and an established cause of the reported device-level silence are still pending;
+this work does not claim the original symptom has been conclusively reproduced.
