@@ -19,7 +19,11 @@ vi.mock("../../components/PiSetup", () => ({
   },
 }));
 vi.mock("./client", () => ({
-  useContinuity: () => ({ snapshot: null, error: "Existing worker is unavailable" }),
+  useContinuity: () => ({
+    snapshot: null,
+    error: "Existing worker is unavailable",
+    errorSource: "work",
+  }),
   retryContinuity: native.retry,
   sendContinuityMessage: vi.fn(),
   actOnContinuityDraft: vi.fn(),
