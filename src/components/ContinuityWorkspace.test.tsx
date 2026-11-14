@@ -4,6 +4,19 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ContinuitySnapshot } from "../runtime/continuity/types";
 import { ContinuityWorkspace, type ContinuityWorkspaceProps } from "./ContinuityWorkspace";
+import { createDraftArrivalStore } from "./draft-arrivals";
+
+const arrivalStore = vi.hoisted(() => ({
+  current: null as ReturnType<typeof createDraftArrivalStore> | null,
+}));
+vi.mock("./draft-arrivals", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./draft-arrivals")>();
+  return {
+    ...actual,
+    useDraftArrivals: (personaId: string, drafts: ContinuitySnapshot["drafts"] | null) =>
+      actual.useDraftArrivals(personaId, drafts, arrivalStore.current ?? undefined),
+  };
+});
 
 const setupNative = vi.hoisted(() => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/core", () => setupNative);
@@ -176,6 +189,7 @@ const props = (): ContinuityWorkspaceProps => ({
   onClose: vi.fn(),
 });
 beforeEach(() => {
+  arrivalStore.current = createDraftArrivalStore();
   current = snapshot();
   vi.mocked(openUrl).mockReset().mockResolvedValue(undefined);
   setupNative.invoke.mockReset();
@@ -617,6 +631,206 @@ describe("ContinuityWorkspace", () => {
     view.rerender(<ContinuityWorkspace {...props()} language="en" />);
     expect(screen.queryByRole("button", { name: "New reply" })).toBeNull();
     expect(screen.getByRole("button", { name: "View question" })).toBeTruthy();
+  });
+
+  it("offers a silent draft directly without moving the reading anchor or losing input", () => {
+    const layout = readingLayout();
+    const initial = { ...props(), language: "en" as const };
+    const view = render(<ContinuityWorkspace {...initial} />);
+    readingFlow().scrollTop = 750;
+    fireEvent.scroll(readingFlow());
+    const input = screen.getByRole("textbox");
+    fireEvent.change(input, { target: { value: "Keep my unfinished request" } });
+    current = {
+      ...current,
+      drafts: [
+        ...current.drafts,
+        { ...current.drafts[0], id: "silent", title: "Silent result", sourceIds: ["user-1"] },
+      ],
+    };
+    layout.items.set("message:reply-1", { top: 850, height: 700 });
+    layout.items.set("draft:draft-1", { top: 1350, height: 200 });
+    layout.height += 250;
+    view.rerender(<ContinuityWorkspace {...initial} />);
+    expect(readingFlow().scrollTop).toBe(1000);
+    expect(screen.queryByRole("button", { name: "New reply" })).toBeNull();
+    const cue = screen.getByRole("button", { name: "New draft · Silent result" });
+    const announcement = document.querySelector(".continuity-draft-announcements");
+    expect(announcement?.getAttribute("aria-live")).toBe("polite");
+    expect(announcement?.getAttribute("aria-relevant")).toBe("additions");
+    expect(announcement?.textContent).toBe("New draft · Silent result");
+    const announcedVersion = announcement?.firstElementChild;
+    current = {
+      ...current,
+      drafts: current.drafts.map((item) =>
+        item.id === "silent" ? { ...item, content: "Latest silent body" } : item,
+      ),
+    };
+    view.rerender(<ContinuityWorkspace {...initial} />);
+    expect(announcement?.firstElementChild).not.toBe(announcedVersion);
+    expect(announcement?.textContent).toBe("New draft · Silent result");
+    cue.focus();
+    fireEvent.click(cue);
+    expect(screen.getByRole("dialog").textContent).toContain("Silent result");
+    expect(screen.getByRole("dialog").textContent).toContain("Latest silent body");
+    expect(screen.queryByRole("button", { name: "New draft · Silent result" })).toBeNull();
+    expect(announcement?.textContent).toBe("");
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Close" }));
+    expect(document.activeElement).toBe(input);
+    expect(input).toHaveProperty("value", "Keep my unfinished request");
+    expect(readingFlow().scrollTop).toBe(1000);
+    expect(native.actOnContinuityDraft).not.toHaveBeenCalled();
+    expect(native.sendContinuityMessage).not.toHaveBeenCalled();
+  });
+
+  it("keeps updated drafts pending until their current body is opened and refreshes pending titles without churn", () => {
+    const initial = { ...props(), language: "en" as const };
+    const view = render(<ContinuityWorkspace {...initial} />);
+    const original = current.drafts[0];
+    current = { ...current, drafts: [{ ...original, title: "Renamed only", updatedAt: now + 9 }] };
+    view.rerender(<ContinuityWorkspace {...initial} />);
+    expect(screen.queryByRole("button", { name: /Updated draft/ })).toBeNull();
+    current = {
+      ...current,
+      drafts: [
+        { ...current.drafts[0], content: "First changed body" },
+        { ...original, id: "new-draft", title: "Second result", content: "Second body" },
+      ],
+    };
+    view.rerender(<ContinuityWorkspace {...initial} />);
+    expect(screen.getByRole("button", { name: "Updated draft · Renamed only" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "New draft · Second result" })).toBeTruthy();
+    expect(document.querySelector(".continuity-draft-announcements")?.textContent).not.toContain(
+      "First changed body",
+    );
+    const card = screen.getAllByRole("button", { name: "Open draft" })[0];
+    card.focus();
+    fireEvent.click(card);
+    expect(screen.queryByRole("button", { name: /Updated draft/ })).toBeNull();
+    current = {
+      ...current,
+      drafts: [
+        { ...current.drafts[0], content: "Changed while already open" },
+        { ...current.drafts[1], title: "Latest second title", updatedAt: now + 20 },
+      ],
+    };
+    view.rerender(<ContinuityWorkspace {...initial} />);
+    expect(screen.getByRole("dialog").textContent).toContain("Changed while already open");
+    expect(screen.getByRole("button", { name: "Updated draft · Renamed only" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "New draft · Latest second title" })).toBeTruthy();
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Close" }));
+    expect(document.activeElement).toBe(card);
+    fireEvent.click(screen.getByRole("button", { name: "Updated draft · Renamed only" }));
+    expect(screen.queryByRole("button", { name: /Updated draft/ })).toBeNull();
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Close" }));
+    current = {
+      ...current,
+      drafts: [
+        {
+          ...current.drafts[0],
+          reason: "Different reason",
+          sourceIds: ["user-1"],
+          updatedAt: now + 50,
+        },
+      ],
+    };
+    view.rerender(<ContinuityWorkspace {...initial} />);
+    expect(screen.queryByRole("button", { name: /(?:New|Updated) draft ·/ })).toBeNull();
+  });
+
+  it("retains hidden draft cues through persona remounts and builtin language aliases", () => {
+    const initial = { ...props(), language: "en" as const };
+    const view = render(<ContinuityWorkspace {...initial} />);
+    view.rerender(<ContinuityWorkspace {...initial} open={false} />);
+    current = {
+      ...current,
+      drafts: [...current.drafts, { ...current.drafts[0], id: "hidden", title: "Hidden result" }],
+    };
+    view.rerender(<ContinuityWorkspace {...initial} open={false} />);
+    const yori = current;
+    current = { ...snapshot(), personaId: "other", drafts: [] };
+    view.rerender(<ContinuityWorkspace {...initial} personaId="other" />);
+    expect(screen.queryByRole("button", { name: /New draft/ })).toBeNull();
+    current = { ...current, drafts: [{ ...yori.drafts[0], id: "other", title: "Other result" }] };
+    view.rerender(<ContinuityWorkspace {...initial} personaId="other" />);
+    expect(screen.getByRole("button", { name: "New draft · Other result" })).toBeTruthy();
+    current = yori;
+    native.useContinuity.mockImplementation(() => ({ snapshot: null, error: null }));
+    view.rerender(<ContinuityWorkspace {...initial} personaId="yori-en" language="ja" />);
+    expect(screen.queryByRole("button", { name: /新しい草案 ·/ })).toBeNull();
+    native.useContinuity.mockImplementation(() => ({ snapshot: current, error: null }));
+    view.rerender(<ContinuityWorkspace {...initial} personaId="yori-en" language="ja" />);
+    expect(screen.getByRole("button", { name: "新しい草案 · Hidden result" })).toBeTruthy();
+    expect(document.querySelector(".continuity-draft-announcements")?.textContent).toBe(
+      "新しい草案 · Hidden result",
+    );
+    expect(screen.queryByRole("button", { name: /Other result/ })).toBeNull();
+    current = {
+      ...current,
+      drafts: current.drafts.map((item) =>
+        item.id === "hidden" ? { ...item, status: "dismissed" as const } : item,
+      ),
+    };
+    view.rerender(<ContinuityWorkspace {...initial} personaId="yori-en" language="ja" />);
+    expect(screen.queryByRole("button", { name: /新しい草案 ·/ })).toBeNull();
+    expect(native.actOnContinuityDraft).not.toHaveBeenCalled();
+  });
+
+  it("restores a near-bottom reading anchor for a hidden draft-only arrival without a generic reply cue", () => {
+    const layout = readingLayout();
+    current = {
+      ...current,
+      messages: [...current.messages, { ...pendingQuestion("last"), replyKind: "report" }],
+    };
+    layout.items.set("message:last", { top: 1400, height: 500 });
+    const initial = { ...props(), language: "en" as const };
+    const view = render(<ContinuityWorkspace {...initial} />);
+    readingFlow().scrollTop = 1550;
+    fireEvent.scroll(readingFlow());
+    view.rerender(<ContinuityWorkspace {...initial} open={false} />);
+    current = {
+      ...current,
+      drafts: [
+        ...current.drafts,
+        { ...current.drafts[0], id: "hidden", title: "Hidden result", sourceIds: ["user-1"] },
+      ],
+    };
+    layout.items.set("message:last", { top: 1650, height: 500 });
+    layout.height = 2250;
+    view.rerender(<ContinuityWorkspace {...initial} open={false} />);
+    view.rerender(<ContinuityWorkspace {...initial} />);
+    expect(readingFlow().scrollTop).toBe(1800);
+    expect(screen.getByRole("button", { name: "New draft · Hidden result" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "New reply" })).toBeNull();
+    current = {
+      ...current,
+      messages: [...current.messages, { ...pendingQuestion("next"), replyKind: "report" }],
+    };
+    layout.height += 200;
+    view.rerender(<ContinuityWorkspace {...initial} />);
+    expect(readingFlow().scrollTop).toBe(2450);
+  });
+
+  it("keeps draft attention independent from new replies and the pending question", () => {
+    readingLayout();
+    current = { ...current, messages: [...current.messages, pendingQuestion()] };
+    const initial = { ...props(), language: "en" as const };
+    const view = render(<ContinuityWorkspace {...initial} />);
+    readingFlow().scrollTop = 750;
+    fireEvent.scroll(readingFlow());
+    current = {
+      ...current,
+      messages: [...current.messages, { ...pendingQuestion("report"), replyKind: "report" }],
+      drafts: [{ ...current.drafts[0], content: "Updated result body" }],
+    };
+    view.rerender(<ContinuityWorkspace {...initial} />);
+    expect(screen.getByRole("button", { name: "New reply" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "View question" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /Updated draft ·/ }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Close" }));
+    expect(screen.getByRole("button", { name: "New reply" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "View question" })).toBeTruthy();
+    expect(readingFlow().scrollTop).toBe(750);
   });
 
   it("restores the message being read after hidden arrivals and reflow, without adopting a lower visible draft", () => {
