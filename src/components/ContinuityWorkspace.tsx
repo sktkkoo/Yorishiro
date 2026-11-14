@@ -222,6 +222,22 @@ function ResidentWorkspace({
     snapshot?.phase === "thinking" ||
     snapshot?.phase === "drafting" ||
     snapshot?.phase === "working";
+  const activity =
+    snapshot?.phase === "working"
+      ? copy.working
+      : snapshot?.phase === "drafting"
+        ? copy.drafting
+        : snapshot?.phase === "thinking"
+          ? copy.thinking
+          : !snapshot && !error
+            ? copy.loading
+            : snapshot?.phase === "idle" &&
+                snapshot.autoEnabled === true &&
+                !syncError &&
+                !snapshot.error &&
+                piReady
+              ? copy.idle
+              : null;
   const autoDescription =
     snapshot?.autoEnabled === true
       ? copy.autonomyOn
@@ -587,23 +603,14 @@ function ResidentWorkspace({
                 {unanchoredDrafts.map(draftCard)}
               </section>
             ) : null}
-            {!snapshot && !error ? (
-              <p className="continuity-state" role="status">
-                {copy.loading}
-              </p>
-            ) : null}
-            {busy ? (
-              <p className="continuity-state" role="status">
-                <LoaderCircle size={13} aria-hidden="true" />
-                {snapshot.phase === "working"
-                  ? copy.working
-                  : snapshot.phase === "drafting"
-                    ? copy.drafting
-                    : copy.thinking}
-              </p>
-            ) : null}
           </div>
           <div className="continuity-compose-area">
+            {activity ? (
+              <p className="continuity-state" role="status">
+                {busy ? <LoaderCircle size={13} aria-hidden="true" /> : null}
+                {activity}
+              </p>
+            ) : null}
             {additionalVoiceError && !detail ? (
               <div className="continuity-error" role="alert">
                 <p>
