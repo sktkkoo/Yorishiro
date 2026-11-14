@@ -1,5 +1,5 @@
 use super::types::{Certainty, Message, Saved, Snapshot, Understanding};
-use std::io::{Read, Write};
+use std::io::{BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 
 pub fn identity(id: &str) -> String {
@@ -209,9 +209,97 @@ pub fn save(home: &Path, saved: &Saved) -> Result<(), String> {
             .set_permissions(std::fs::Permissions::from_mode(0o600))
             .map_err(|e| e.to_string())?;
     }
-    serde_json::to_writer_pretty(temp.as_file_mut(), saved).map_err(|e| e.to_string())?;
-    temp.flush().map_err(|e| e.to_string())?;
+    write_saved(temp.as_file_mut(), saved)?;
     temp.as_file().sync_all().map_err(|e| e.to_string())?;
     temp.persist(path).map_err(|e| e.to_string())?;
     Ok(())
+}
+
+fn write_saved(writer: impl Write, saved: &Saved) -> Result<(), String> {
+    // pretty serializer は句読点や escape ごとに write するため、File に直接渡すと
+    // 長い会話で数十万回の syscall が発生する。明示的に flush してから呼び出し元で
+    // fsync / atomic rename を行い、buffer の書き込み失敗も保存失敗として扱う。
+    let mut writer = BufWriter::new(writer);
+    serde_json::to_writer_pretty(&mut writer, saved).map_err(|e| e.to_string())?;
+    writer.flush().map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io;
+
+    #[derive(Default)]
+    struct CountingWriter {
+        bytes: Vec<u8>,
+        writes: usize,
+    }
+
+    impl Write for CountingWriter {
+        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+            self.writes += 1;
+            self.bytes.extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn long_conversation_is_written_in_batches_without_changing_saved_bytes() {
+        let home = tempfile::tempdir().unwrap();
+        let mut saved = load(home.path(), "yori-ja").unwrap();
+        for index in 0..1500 {
+            saved.snapshot.messages.push(Message {
+                id: format!("message-{index}"),
+                role: "user".into(),
+                content: "会話の記録\n\"quoted\"\\path\t".repeat(32),
+                created_at: index,
+                source: "voice".into(),
+                reply_kind: None,
+            });
+        }
+        let expected = serde_json::to_vec_pretty(&saved).unwrap();
+        assert!(expected.len() > 1_000_000);
+        let mut writer = CountingWriter::default();
+        write_saved(&mut writer, &saved).unwrap();
+        assert_eq!(writer.bytes, expected);
+        assert!(
+            writer.writes < expected.len() / 4096,
+            "conversation serialization issued {} writes for {} bytes",
+            writer.writes,
+            expected.len()
+        );
+    }
+
+    #[test]
+    fn buffered_write_and_flush_errors_are_reported() {
+        struct FailingWriter {
+            fail_write: bool,
+        }
+        impl Write for FailingWriter {
+            fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+                if self.fail_write {
+                    Err(io::Error::other("write failed"))
+                } else {
+                    Ok(bytes.len())
+                }
+            }
+            fn flush(&mut self) -> io::Result<()> {
+                Err(io::Error::other("flush failed"))
+            }
+        }
+        let home = tempfile::tempdir().unwrap();
+        let saved = load(home.path(), "yori-ja").unwrap();
+        assert_eq!(
+            write_saved(FailingWriter { fail_write: true }, &saved),
+            Err("write failed".into())
+        );
+        assert_eq!(
+            write_saved(FailingWriter { fail_write: false }, &saved),
+            Err("flush failed".into())
+        );
+    }
 }

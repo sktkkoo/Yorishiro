@@ -3,7 +3,7 @@
 > このファイルは「**ターミナルや Yori の motion が一拍固まる**」「**voice / attention / scene の最適化で何を削ってよいか迷う**」「**GC や per-frame 負荷を health check したい**」時に読む。対象：dev / AI。
 
 **Status**: active
-**Last updated**: 2026-07-05
+**Last updated**: 2026-11-14
 
 ## TL;DR
 
@@ -211,6 +211,36 @@ Tauri / Chrome DevTools の Performance recording で、少なくとも次の 3 
 - profiling の合格条件は「何もしていない」ことではない。毎 frame の生理的 motion と attention cue は走ってよい。問題は、毎 frame で不要な memory churn / publish churn を起こすこと。
 - large perf refactor は、unit test だけでは完了扱いにしない。最低限、Performance recording で idle / folder click / speech playback を確認する。
 
+## 会話保存による native UI thread 停止 — 2026-11-14 調査記録
+
+- 観測: 会話や入力の後に avatar が一瞬固まる。追加確認では Enter 直後ではなく、その後の会話中に停止した。
+- 比較元: `16901749`。稼働中の macOS debug build、`simple-room`、sidebar 280px、motion intensity 0.95。avatar SHA-256 は `739a1515cffe09c17a535eb52a11f88640fc7728b86b9e4c74f00c353437b7cd`。
+- native wall-clock の composed-motion 記録で、同じ recorded unit の継続中に約 1.1 秒、user-speaking → assistant-responding / speaking で 2.199–2.314 秒の frame stall を確認した。再現操作でも 2.301 / 2.283 秒を記録した。
+- 停止中の native sample は main thread の `continuity_observe_native → observe → persist → storage::save → serde_json::to_writer_pretty` を捕捉した。motion matcher や clip の切り替えではなく、同期 IPC command のファイル保存が UI thread を占有していた。
+- 保存 JSON 約 2.12 MB を内容非表示・自動削除の一時ファイルへ書く比較では、直接 File へ serialize すると 562,079 write / 1,116–1,140 ms、8 KiB `BufWriter` では 261 write / 50–60 ms（各 3 回、flush と fsync を含む）。これは保存部分の計測で、修正版アプリの frame-time 計測ではない。
+
+対処は `BufWriter` の明示 flush 後に既存の fsync / atomic rename を行い、同じ continuity Mutex を取得する全 command を Tauri の async dispatch に移す。read command も UI thread に残すと background save の lock 待ちで停止するため、同じ境界に置く。同期関数の async dispatch は Tokio worker 上で動き、専用 blocking pool ではない。既存の mutation / persist / rollback の排他範囲は維持する。音声の確定発言は persona ごとに順番に送信し、非同期 dispatch による記録順の逆転を防ぐ。
+
+保存内容・保存期間・会話や記憶の参照契約は変更しない。履歴全体を書き直す方式は残るため、履歴増大時の保存コストは別途残る。保持方針や追記型ストレージへの移行は、この停止の修正とは別の判断にする。
+
+### 保存範囲の見直し方針（合意済み、実装は別変更）
+
+2026-11-14 のユーザー確認により、まず保存方法の修正を commit / push / PR まで進め、何を保存するかはその後に再検討する。現状は会話履歴に自動削減の上限がなく、使用に伴って容量が増える。
+
+- 最近の会話は件数・期間で制限する方向を検討する。具体的な上限値は未決定。
+- 長く保持する候補は、好み・重要な約束・訂正と、その判断を確かめるために必要な元発言。すべての発言を無期限に保存すること自体を要件にしない。
+- 進行中の依頼や草案、その出典を失わない条件も併せて決める。保存量の削減と、音声 AI へ渡す context の上限は別の問題として扱う。
+- 今回は保持内容・削除処理を変更しない。既存履歴の整理方法と移行方針は、次の検討で明示する。
+
+| 評価対象 | 修正前の証拠 | 修正後の検証範囲 |
+| --- | --- | --- |
+| Frame delivery | 上記 native sample と frame-stall 記録 | 保存ベンチと UI thread からの dispatch 分離。修正版 native app の同条件計測は pending |
+| 保存の正確性 | 既存の JSON / atomic replacement | 長い合成会話の byte 一致、write 回数、write / flush 失敗の回帰テスト |
+| 会話順序 | 同期 IPC の呼び出し | persona ごとの順序・保存失敗後の継続・persona 間の独立性を回帰テスト |
+| Acting / pose / continuity / rhythm / intensity | 今回は変更しない | normal-speed の full-body / terminal 比較は未観測。見た目の自然さを合格とは扱わない |
+
+ローカル調査 artifact: `/tmp/yorishiro-avatar-native-interaction-sample.txt`、`/tmp/yorishiro-avatar-interaction-sample.txt`、`/tmp/yorishiro-storage-bench.rs`。個人の履歴本文は repository に保存しない。回帰確認は `cargo test --manifest-path src-tauri/Cargo.toml continuity::` と `npx vitest run src/runtime/continuity/client.test.tsx src/components/ContinuityWorkspace.test.tsx`。次の確認は修正版を起動し、同じ会話・Enter・割り込みで native sample と frame-stall を比較する。
+
 ## 関連 reference
 
 - 実装 commit: `f97444a8`（`Reduce runtime stutter and frame allocations`）
@@ -223,6 +253,7 @@ Tauri / Chrome DevTools の Performance recording で、少なくとも次の 3 
 
 ## 改訂履歴
 
+- 2026-11-14: 会話保存の unbuffered write と native UI thread 停止の実測、buffering / async command dispatch の対処、未実施の visual acceptance を記録。
 - 2026-07-05: folder 切替の live state transition を却下し、curtain reload 維持に戻す。live respawn は agent 自動起動と project-scoped state（project root / scene-per-project / perception）を壊すため、workspace 切替は frame budget の対象外と明記。
 - 2026-07-05: TTS synth result を raw channel にし、PCM WAV の JS per-sample decode を fallback に下げる判断を追記。
 - 2026-07-05: Body の beat / micro-expression / eye refocus hot path で、低頻度でも render-loop 内に残る配列・event object 生成を再利用へ寄せる判断を追記。
