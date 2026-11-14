@@ -230,7 +230,7 @@ fn write_saved(writer: impl Write, saved: &Saved) -> Result<(), String> {
 
 const FORMAT_ERROR: &str = "Unsupported or invalid continuity storage format";
 
-/// disk v2 だけで終了済み receipt の同一 target を共有する。実行中の target や
+/// disk v2/v3 上だけで終了済み receipt の同一 target を共有する。実行中の target や
 /// request payload は触らず、実行層には従来どおり完全な Saved を渡す。
 fn encode_saved(saved: &Saved) -> Result<Value, String> {
     if saved.version != 1 {
@@ -254,15 +254,31 @@ fn encode_saved(saved: &Saved) -> Result<Value, String> {
     }
     object.insert("terminalReceiptTargets".into(), dictionary.into());
     // 旧 binary は version 検査で拒否し、圧縮された receipt を誤って保存し直さない。
-    object.insert("version".into(), 2.into());
+    // 忘却記録を知らない旧 binary が読み捨てて再保存することを version で防ぐ。
+    let disk_version = if saved.snapshot.forgotten_understandings.is_empty() {
+        2
+    } else {
+        3
+    };
+    object.insert("version".into(), disk_version.into());
     Ok(value)
 }
 
 fn decode_saved(mut value: Value) -> Result<Value, String> {
     let object = value.as_object_mut().ok_or(FORMAT_ERROR)?;
+    let has_forgetting = match object
+        .get("snapshot")
+        .and_then(|snapshot| snapshot.get("forgottenUnderstandings"))
+    {
+        None => false,
+        Some(value) => !value.as_array().ok_or(FORMAT_ERROR)?.is_empty(),
+    };
     match object.get("version").and_then(Value::as_u64) {
-        Some(1) if !object.contains_key("terminalReceiptTargets") => return Ok(value),
-        Some(2) => (),
+        Some(1) if !has_forgetting && !object.contains_key("terminalReceiptTargets") => {
+            return Ok(value)
+        }
+        Some(2) if !has_forgetting => (),
+        Some(3) if has_forgetting => (),
         _ => return Err(FORMAT_ERROR.into()),
     }
     let dictionary = object
@@ -539,5 +555,71 @@ mod tests {
         saved.version = 99;
         assert!(save(home.path(), &saved).is_err());
         assert_eq!(std::fs::read(&path).unwrap(), previous);
+    }
+
+    #[test]
+    fn forgetting_upgrades_legacy_storage_and_cannot_be_read_as_version_two() {
+        for initial_version in [1, 2] {
+            let home = tempfile::tempdir().unwrap();
+            let mut saved = load(home.path(), "yori-ja").unwrap();
+            saved.snapshot.messages.push(Message {
+                id: "source".into(),
+                role: "user".into(),
+                content: "Original retained conversation".into(),
+                created_at: 1,
+                source: "conversation".into(),
+                reply_kind: None,
+            });
+            saved.snapshot.understandings.push(Understanding {
+                id: "memory".into(),
+                title: "Memory".into(),
+                value: "Private remembered value".into(),
+                certainty: Certainty::Confirmed,
+                source_ids: vec!["source".into()],
+                updated_at: 1,
+                revisions: vec![],
+            });
+            let legacy = if initial_version == 1 {
+                serde_json::to_value(&saved).unwrap()
+            } else {
+                encode_saved(&saved).unwrap()
+            };
+            let path = state_path(home.path(), "yori-ja");
+            std::fs::write(&path, serde_json::to_vec(&legacy).unwrap()).unwrap();
+            let mut reopened = load(home.path(), "yori-ja").unwrap();
+            super::super::forgetting::remove(&mut reopened, "memory", 42).unwrap();
+            save(home.path(), &reopened).unwrap();
+            let encoded: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+            assert_eq!(encoded["version"], 3);
+            assert_eq!(
+                encoded["snapshot"]["forgottenUnderstandings"][0]["understandingId"],
+                "memory"
+            );
+            assert!(!serde_json::to_string(&encoded)
+                .unwrap()
+                .contains("Private remembered value"));
+            assert_eq!(
+                serde_json::to_value(load(home.path(), "yori-ja").unwrap()).unwrap(),
+                serde_json::to_value(&reopened).unwrap()
+            );
+            // 旧 loader は version 1/2 だけを受け入れるため、忘却記録を読み捨てられない。
+            assert!(!matches!(encoded["version"].as_u64(), Some(1 | 2)));
+            let mut downgraded = encoded.clone();
+            downgraded["version"] = 2.into();
+            assert!(decode_saved(downgraded).is_err());
+            let mut stripped = encoded.clone();
+            stripped["snapshot"]
+                .as_object_mut()
+                .unwrap()
+                .remove("forgottenUnderstandings");
+            assert!(decode_saved(stripped).is_err());
+            let mut malformed = encoded;
+            malformed["snapshot"]["forgottenUnderstandings"] =
+                serde_json::json!([{"understandingId":"memory"}]);
+            let bytes = serde_json::to_vec(&malformed).unwrap();
+            std::fs::write(&path, &bytes).unwrap();
+            assert!(load(home.path(), "yori-ja").is_err());
+            assert_eq!(std::fs::read(&path).unwrap(), bytes);
+        }
     }
 }

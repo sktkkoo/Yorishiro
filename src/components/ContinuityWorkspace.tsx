@@ -1,9 +1,10 @@
-import { ArrowDown, ArrowUp, BookOpen, LoaderCircle, Mic, MicOff, X } from "lucide-react";
+import { ArrowDown, ArrowUp, BookOpen, LoaderCircle, Mic, MicOff, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { CONTINUITY_COPY } from "../i18n/continuity";
 import {
   actOnContinuityDraft,
+  forgetContinuityUnderstanding,
   retryContinuity,
   sendContinuityMessage,
   setContinuityAutoEnabled,
@@ -114,13 +115,18 @@ function ResidentWorkspace({
   const [draft, setDraft] = useState<InputDraft>(() => readInput(personaId));
   const [understandingOpen, setUnderstandingOpen] = useState(false);
   const [detail, setDetail] = useState<
-    { kind: "draft"; id: string } | { kind: "source"; ids: readonly string[] } | null
+    | { kind: "draft"; id: string }
+    | { kind: "source"; ids: readonly string[] }
+    | { kind: "forget"; entry: ContinuityUnderstanding }
+    | null
   >(null);
   const [localError, setLocalError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [actionPending, setActionPending] = useState(false);
   const [voicePending, setVoicePending] = useState(false);
   const [autoPending, setAutoPending] = useState(false);
+  const [forgetPending, setForgetPending] = useState(false);
+  const forgetInFlight = useRef(false);
   const autoInFlight = useRef(false);
   const [unread, setUnread] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -129,6 +135,7 @@ function ResidentWorkspace({
   const bookButtonRef = useRef<HTMLButtonElement>(null);
   const bookCloseRef = useRef<HTMLButtonElement>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const forgetCancelRef = useRef<HTMLButtonElement>(null);
   const dialogOpener = useRef<HTMLElement | null>(null);
   const composing = useRef(false);
   const inFlight = useRef(false);
@@ -145,11 +152,23 @@ function ResidentWorkspace({
   const autoDescriptionId = `${id}-autonomy-description`;
   const selectedDraft =
     detail?.kind === "draft" ? snapshot?.drafts.find((item) => item.id === detail.id) : null;
+  const selectedForget =
+    detail?.kind === "forget"
+      ? snapshot?.understandings.find((item) => item.id === detail.entry.id)
+      : null;
   const error = localError ?? syncError ?? snapshot?.error ?? conversation?.state.error;
   const busy =
     snapshot?.phase === "thinking" ||
     snapshot?.phase === "drafting" ||
     snapshot?.phase === "working";
+  const autoDescription =
+    snapshot?.autoEnabled === true
+      ? copy.autonomyOn
+      : snapshot?.autoEnabled === false
+        ? busy
+          ? copy.autonomyFinishing
+          : null
+        : copy.loading;
   const callActive = conversation?.state.status === "active";
   const callConnecting = conversation?.state.status === "connecting";
   const correction = draft.correctionId
@@ -179,8 +198,27 @@ function ResidentWorkspace({
   }, [understandingOpen, open]);
   useEffect(() => {
     const modal = dialogRef.current;
-    if (open && detail && modal && !modal.open) modal.showModal();
+    if (open && detail && modal && !modal.open) {
+      modal.showModal();
+      if (detail.kind === "forget") forgetCancelRef.current?.focus({ preventScroll: true });
+    }
   }, [open, detail]);
+  useEffect(() => {
+    if (
+      !open ||
+      detail?.kind !== "forget" ||
+      !snapshot ||
+      snapshot.understandings.some((item) => item.id === detail.entry.id) ||
+      forgetPending
+    )
+      return;
+    dialogRef.current?.close();
+    setDetail(null);
+    setDraft((current) =>
+      current.correctionId === detail.entry.id ? { text: "", correctionId: null } : current,
+    );
+    bookCloseRef.current?.focus({ preventScroll: true });
+  }, [open, detail, snapshot, forgetPending]);
   const latestMessage = snapshot?.messages[snapshot.messages.length - 1]?.id;
   const latestDraft = snapshot?.drafts
     .map((item) => `${item.id}:${item.updatedAt}:${item.status}`)
@@ -242,6 +280,25 @@ function ResidentWorkspace({
       if (mounted.current) setLocalError(errorText(cause));
     }
   }
+  async function forget(entry: ContinuityUnderstanding) {
+    if (forgetInFlight.current) return;
+    forgetInFlight.current = true;
+    setForgetPending(true);
+    setLocalError(null);
+    try {
+      await forgetContinuityUnderstanding(context, entry.id);
+      if (!mounted.current) return;
+      setDraft((current) =>
+        current.correctionId === entry.id ? { text: "", correctionId: null } : current,
+      );
+      closeDetail(true);
+    } catch (cause) {
+      if (mounted.current) setLocalError(errorText(cause));
+    } finally {
+      forgetInFlight.current = false;
+      if (mounted.current) setForgetPending(false);
+    }
+  }
   async function toggleAutonomy() {
     if (autoInFlight.current || typeof snapshot?.autoEnabled !== "boolean") return;
     autoInFlight.current = true;
@@ -269,14 +326,18 @@ function ResidentWorkspace({
     }
   }
   function showDetail(value: NonNullable<typeof detail>) {
+    setLocalError(null);
     dialogOpener.current =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setDetail(value);
   }
-  function closeDetail() {
+  function closeDetail(forgotten = false) {
+    if (forgetInFlight.current && !forgotten) return;
     dialogRef.current?.close();
     setDetail(null);
-    dialogOpener.current?.focus({ preventScroll: true });
+    if (forgotten || !dialogOpener.current?.isConnected) {
+      bookCloseRef.current?.focus({ preventScroll: true });
+    } else dialogOpener.current.focus({ preventScroll: true });
   }
   function closeUnderstanding() {
     setUnderstandingOpen(false);
@@ -351,7 +412,7 @@ function ResidentWorkspace({
               className="continuity-autonomy-switch"
               aria-label={copy.autonomy}
               aria-checked={snapshot?.autoEnabled === true}
-              aria-describedby={autoDescriptionId}
+              aria-describedby={autoDescription ? autoDescriptionId : undefined}
               aria-busy={autoPending || undefined}
               disabled={autoPending || typeof snapshot?.autoEnabled !== "boolean"}
               onClick={() => void toggleAutonomy()}
@@ -366,15 +427,7 @@ function ResidentWorkspace({
                 : copy.loading}
             </button>
           </div>
-          <p id={autoDescriptionId}>
-            {snapshot?.autoEnabled === true
-              ? copy.autonomyOn
-              : snapshot?.autoEnabled === false
-                ? busy
-                  ? copy.autonomyFinishing
-                  : copy.autonomyOff
-                : copy.loading}
-          </p>
+          {autoDescription ? <p id={autoDescriptionId}>{autoDescription}</p> : null}
         </div>
         <button
           type="button"
@@ -644,13 +697,24 @@ function ResidentWorkspace({
                   language={language}
                   onSource={(ids) => showDetail({ kind: "source", ids })}
                 />
-                <button
-                  type="button"
-                  className="continuity-text-button"
-                  onClick={() => correct(entry)}
-                >
-                  {copy.correct}
-                </button>
+                <div className="continuity-memory-actions">
+                  <button
+                    type="button"
+                    className="continuity-text-button"
+                    onClick={() => correct(entry)}
+                  >
+                    {copy.correct}
+                  </button>
+                  <button
+                    type="button"
+                    className="continuity-text-button"
+                    aria-label={`${copy.forget} · ${entry.title}`}
+                    onClick={() => showDetail({ kind: "forget", entry })}
+                  >
+                    <Trash2 size={13} aria-hidden="true" />
+                    {copy.forget}
+                  </button>
+                </div>
               </article>
             ))
           )}
@@ -661,18 +725,23 @@ function ResidentWorkspace({
           className="continuity-detail"
           ref={dialogRef}
           aria-labelledby={dialogTitleId}
+          aria-describedby={selectedForget ? `${dialogTitleId}-scope` : undefined}
+          aria-busy={forgetPending || undefined}
           onCancel={(event) => {
             event.preventDefault();
             closeDetail();
           }}
         >
           <header>
-            <h2 id={dialogTitleId}>{selectedDraft?.title ?? copy.source}</h2>
+            <h2 id={dialogTitleId}>
+              {detail.kind === "forget" ? copy.forgetTitle : (selectedDraft?.title ?? copy.source)}
+            </h2>
             <button
               type="button"
               className="continuity-icon"
               aria-label={copy.closeDetail}
-              onClick={closeDetail}
+              disabled={forgetPending}
+              onClick={() => closeDetail()}
             >
               <X size={17} aria-hidden="true" />
             </button>
@@ -682,7 +751,33 @@ function ResidentWorkspace({
               {error}
             </p>
           ) : null}
-          {selectedDraft ? (
+          {selectedForget ? (
+            <>
+              <h3>{selectedForget.title}</h3>
+              <p className="continuity-draft-body">{selectedForget.value}</p>
+              <p id={`${dialogTitleId}-scope`} className="continuity-forget-scope">
+                {copy.forgetScope}
+              </p>
+              <p className="continuity-muted">{copy.forgetExistingContext}</p>
+              <div className="continuity-detail-actions">
+                <button
+                  type="button"
+                  ref={forgetCancelRef}
+                  disabled={forgetPending}
+                  onClick={() => closeDetail()}
+                >
+                  {copy.cancelForget}
+                </button>
+                <button
+                  type="button"
+                  disabled={forgetPending}
+                  onClick={() => void forget(selectedForget)}
+                >
+                  {forgetPending ? copy.forgetting : copy.forget}
+                </button>
+              </div>
+            </>
+          ) : selectedDraft ? (
             <>
               <div className="continuity-draft-body">{selectedDraft.content}</div>
               {selectedDraft.reason ? (

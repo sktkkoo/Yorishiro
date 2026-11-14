@@ -8,6 +8,8 @@ const MAX_UNDERSTANDINGS = 8;
 const MAX_DRAFTS = 3;
 const encoder = new TextEncoder();
 const bytes = (text: string) => encoder.encode(text).length;
+const FORGETTING_GUIDANCE =
+  "Forgetting overrides earlier requests to remember matching evidence. Never reuse a forgotten understanding ID or recreate it under a new ID from its suppressed source IDs. If the user reintroduces it later, use a fresh ID and fresh actual user sources. The host enforces all forgetting records, including omitted ones; retained conversation is not permission to restore a forgotten memory. Unrelated memories remain usable.";
 const HEADER = [
   "Omitted or partial records do not mean a request is finished, a draft is dismissed, or silence grants permission. Current user intent and corrections take precedence over earlier interpretations.",
   "Explicit memories cite actual requests to remember conversation. Their quoted context is not independently confirmed fact or permission; retrieve omitted sources before interpreting them.",
@@ -78,16 +80,31 @@ export function compactContinuityPrompt(
   const selectedMessages = new Map<number, RecordValue>();
   const selectedUnderstandings = new Map<number, RecordValue>();
   const selectedDrafts = new Map<number, RecordValue>();
-  const explicitMemories = snapshot.explicitMemories ?? [];
+  const forgottenUnderstandings = snapshot.forgottenUnderstandings ?? [];
+  const forgottenSources = new Set(forgottenUnderstandings.flatMap((item) => item.sourceIds));
+  const allExplicitMemories = snapshot.explicitMemories ?? [];
+  const explicitMemories = allExplicitMemories.filter(
+    (memory) =>
+      !forgottenSources.has(memory.requestMessageId) &&
+      !memory.sourceIds.some((source) => forgottenSources.has(source)),
+  );
   const selectedExplicitMemories = new Map<number, RecordValue>();
+  const selectedForgottenUnderstandings = new Map<number, RecordValue>();
+  const header = forgottenUnderstandings.length > 0 ? `${FORGETTING_GUIDANCE}\n${HEADER}` : HEADER;
   let nextStep: RecordValue | null = null;
   let nextStepOmitted = snapshot.nextStep != null;
   const render = () =>
-    `${introduction}\n${HEADER}\n${JSON.stringify({
+    `${introduction}\n${header}\n${JSON.stringify({
       conversation: [...selectedMessages].sort(([a], [b]) => a - b).map(([, value]) => value),
       understandings: [...selectedUnderstandings.values()],
       drafts: [...selectedDrafts.values()],
       explicitMemories: [...selectedExplicitMemories.values()],
+      ...(forgottenUnderstandings.length > 0
+        ? {
+            forgottenUnderstandings: [...selectedForgottenUnderstandings.values()],
+            suppressedExplicitMemoryCount: allExplicitMemories.length - explicitMemories.length,
+          }
+        : {}),
       nextStep,
       nextStepOmitted,
       omitted: {
@@ -96,6 +113,12 @@ export function compactContinuityPrompt(
         drafts: snapshot.drafts.length - selectedDrafts.size,
         reflections: snapshot.reflections.length,
         explicitMemories: explicitMemories.length - selectedExplicitMemories.size,
+        ...(forgottenUnderstandings.length > 0
+          ? {
+              forgottenUnderstandings:
+                forgottenUnderstandings.length - selectedForgottenUnderstandings.size,
+            }
+          : {}),
       },
     })}`;
   const add = (selected: Map<number, RecordValue>, index: number, value: RecordValue) => {
@@ -198,6 +221,17 @@ export function compactContinuityPrompt(
       addMessage(newestUser, limit);
       if (selectedMessages.has(newestUser)) break;
     }
+  }
+  const forgettingHints = forgottenUnderstandings
+    .map((value, index) => ({ value, index }))
+    .sort((a, b) => b.value.forgottenAt - a.value.forgottenAt || b.index - a.index)
+    .slice(0, MAX_UNDERSTANDINGS);
+  for (const { value, index } of forgettingHints) {
+    add(selectedForgottenUnderstandings, index, {
+      understandingId: value.understandingId,
+      sourceIds: value.sourceIds,
+      forgottenAt: value.forgottenAt,
+    });
   }
   if (snapshot.nextStep != null) {
     nextStep = excerpt(snapshot.nextStep, 768);

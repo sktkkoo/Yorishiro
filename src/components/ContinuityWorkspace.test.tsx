@@ -10,6 +10,7 @@ const native = vi.hoisted(() => ({
   actOnContinuityDraft: vi.fn(),
   retryContinuity: vi.fn(),
   setContinuityAutoEnabled: vi.fn(),
+  forgetContinuityUnderstanding: vi.fn(),
 }));
 vi.mock("../runtime/continuity/client", () => native);
 
@@ -123,6 +124,7 @@ beforeEach(() => {
   native.actOnContinuityDraft.mockResolvedValue(undefined);
   native.retryContinuity.mockResolvedValue(undefined);
   native.setContinuityAutoEnabled.mockResolvedValue(undefined);
+  native.forgetContinuityUnderstanding.mockResolvedValue(undefined);
   Object.defineProperty(HTMLDialogElement.prototype, "showModal", {
     configurable: true,
     value: function (this: HTMLDialogElement) {
@@ -151,6 +153,137 @@ afterEach(() => {
 });
 
 describe("ContinuityWorkspace", () => {
+  it.each([
+    "ja",
+    "en",
+  ] as const)("shows Off on the %s switch without repeating an idle Off sentence", (language) => {
+    current = { ...current, autoEnabled: false };
+    const view = render(<ContinuityWorkspace {...props()} language={language} />);
+    const control = screen.getByRole("switch");
+    expect(control.getAttribute("aria-checked")).toBe("false");
+    expect(control.textContent).toContain("Off");
+    expect(control.hasAttribute("aria-describedby")).toBe(false);
+    expect(screen.queryByText("自律実行はOffです。")).toBeNull();
+    expect(screen.queryByText("Autonomous execution is Off.")).toBeNull();
+    current = { ...current, phase: "working" };
+    view.rerender(<ContinuityWorkspace {...props()} language={language} />);
+    const description = control.getAttribute("aria-describedby");
+    expect(description).toBeTruthy();
+    expect(document.getElementById(description ?? "")?.textContent).toBe(
+      language === "ja"
+        ? "進行中の作業が完了したら停止します。"
+        : "The current work will finish before stopping.",
+    );
+  });
+
+  it.each([
+    ["ja", "メモリー", "忘れる", "キャンセル"],
+    ["en", "Memories", "Forget", "Cancel"],
+  ] as const)("confirms memory-only forgetting accessibly in %s and allows cancellation", (language, memories, forget, cancel) => {
+    current = { ...current, autoEnabled: false };
+    render(<ContinuityWorkspace {...props()} language={language} />);
+    fireEvent.click(screen.getByRole("button", { name: memories }));
+    const opener = screen.getByRole("button", { name: `${forget} · 進め方` });
+    opener.focus();
+    fireEvent.click(opener);
+    const dialog = screen.getByRole("dialog");
+    expect(dialog.getAttribute("aria-labelledby")).toBeTruthy();
+    expect(dialog.getAttribute("aria-describedby")).toBeTruthy();
+    expect(dialog.textContent).toContain("体験全体から考える");
+    expect(dialog.textContent).toContain(
+      language === "ja" ? "元の会話は削除しません" : "does not delete the original conversation",
+    );
+    expect(dialog.textContent).toContain(
+      language === "ja" ? "すでに渡した内容は消去されません" : "already sent to an AI",
+    );
+    expect(document.activeElement).toBe(within(dialog).getByRole("button", { name: cancel }));
+    fireEvent.click(within(dialog).getByRole("button", { name: cancel }));
+    expect(native.forgetContinuityUnderstanding).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(document.activeElement).toBe(opener);
+  });
+
+  it("waits for confirmed forgetting once, preserves conversation, clears the deleted correction and restores focus", async () => {
+    let finish!: () => void;
+    native.forgetContinuityUnderstanding.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    current = { ...current, autoEnabled: false };
+    const view = render(<ContinuityWorkspace {...props()} />);
+    fireEvent.click(screen.getByRole("button", { name: "メモリー" }));
+    fireEvent.click(screen.getByRole("button", { name: "訂正する" }));
+    expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe("体験全体から考える");
+    fireEvent.click(screen.getByRole("button", { name: "メモリー" }));
+    fireEvent.click(screen.getByRole("button", { name: "忘れる · 進め方" }));
+    const dialog = screen.getByRole("dialog");
+    const confirm = within(dialog).getByRole("button", { name: "忘れる" });
+    fireEvent.click(confirm);
+    fireEvent.click(confirm);
+    expect(native.forgetContinuityUnderstanding).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ personaId: "yori-ja" }),
+      "preference-1",
+    );
+    expect(current.understandings).toHaveLength(1);
+    expect(within(dialog).getByRole("button", { name: "削除中…" }).hasAttribute("disabled")).toBe(
+      true,
+    );
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    expect(screen.getByRole("dialog")).toBe(dialog);
+    const messages = current.messages;
+    await act(async () => {
+      current = { ...current, revision: 2, understandings: [] };
+      finish();
+    });
+    view.rerender(<ContinuityWorkspace {...props()} />);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByRole("button", { name: "忘れる · 進め方" })).toBeNull();
+    expect(current.messages).toBe(messages);
+    expect(screen.getByRole("log").textContent).toContain(
+      "細かな改善より、体験全体から考えてほしい",
+    );
+    expect(screen.queryByRole("button", { name: "訂正をやめる" })).toBeNull();
+    expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe("");
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "メモリーを閉じる" }));
+  });
+
+  it("keeps a failed forget visible and allows retry without starting autonomous work", async () => {
+    native.forgetContinuityUnderstanding.mockRejectedValueOnce(new Error("保存できません"));
+    render(<ContinuityWorkspace {...props()} />);
+    fireEvent.click(screen.getByRole("button", { name: "メモリー" }));
+    fireEvent.click(screen.getByRole("button", { name: "忘れる · 進め方" }));
+    const dialog = screen.getByRole("dialog");
+    await act(async () => fireEvent.click(within(dialog).getByRole("button", { name: "忘れる" })));
+    expect(within(dialog).getByRole("alert").textContent).toContain("保存できません");
+    expect(current.understandings).toHaveLength(1);
+    await act(async () => fireEvent.click(within(dialog).getByRole("button", { name: "忘れる" })));
+    expect(native.forgetContinuityUnderstanding).toHaveBeenCalledTimes(2);
+    expect(native.sendContinuityMessage).not.toHaveBeenCalled();
+    expect(native.retryContinuity).not.toHaveBeenCalled();
+    expect(native.setContinuityAutoEnabled).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("shows concurrent edits in the forget confirmation and closes safely if the memory disappears", () => {
+    const view = render(<ContinuityWorkspace {...props()} />);
+    fireEvent.click(screen.getByRole("button", { name: "メモリー" }));
+    fireEvent.click(screen.getByRole("button", { name: "忘れる · 進め方" }));
+    current = {
+      ...current,
+      revision: 2,
+      understandings: current.understandings.map((item) => ({ ...item, value: "更新後の内容" })),
+    };
+    view.rerender(<ContinuityWorkspace {...props()} />);
+    expect(screen.getByRole("dialog").textContent).toContain("更新後の内容");
+    current = { ...current, revision: 3, understandings: [] };
+    view.rerender(<ContinuityWorkspace {...props()} />);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(native.forgetContinuityUnderstanding).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "メモリーを閉じる" }));
+  });
+
   it("changes autonomous execution through the native setting and preserves Off on reopening", async () => {
     let finish!: () => void;
     native.setContinuityAutoEnabled.mockImplementationOnce(
@@ -217,12 +350,12 @@ describe("ContinuityWorkspace", () => {
       }),
       true,
     );
-    fireEvent.click(screen.getByRole("button", { name: "いまの理解" }));
-    const aside = screen.getByRole("complementary", { name: "いまの理解" });
-    const details = within(aside).getByText("そう理解した経緯").closest("details");
+    fireEvent.click(screen.getByRole("button", { name: "メモリー" }));
+    const aside = screen.getByRole("complementary", { name: "メモリー" });
+    const details = within(aside).getByText("更新履歴").closest("details");
     if (!details) throw new Error("Missing history");
     expect(details.open).toBe(false);
-    fireEvent.click(within(aside).getByText("そう理解した経緯"));
+    fireEvent.click(within(aside).getByText("更新履歴"));
     expect(details.open).toBe(true);
     expect(details.textContent).toContain("以前の日記の全文");
     expect(details.textContent).toContain("小さな改善を優先する");
@@ -252,9 +385,9 @@ describe("ContinuityWorkspace", () => {
 
   it("sends actual corrections with their identity and retains open history during background updates", async () => {
     const view = render(<ContinuityWorkspace {...props()} />);
-    fireEvent.click(screen.getByRole("button", { name: "いまの理解" }));
-    fireEvent.click(screen.getByText("そう理解した経緯"));
-    const disclosure = screen.getByText("そう理解した経緯").closest("details");
+    fireEvent.click(screen.getByRole("button", { name: "メモリー" }));
+    fireEvent.click(screen.getByText("更新履歴"));
+    const disclosure = screen.getByText("更新履歴").closest("details");
     if (!disclosure) throw new Error("Missing history");
     disclosure.querySelector("summary")?.focus();
     current = { ...current, revision: 2, phase: "thinking" };

@@ -77,6 +77,12 @@ export function actOnContinuityDraft(
 ): Promise<void> {
   return command("continuity_draft_action", context, { draftId, action });
 }
+export function forgetContinuityUnderstanding(
+  context: ContinuityContext,
+  understandingId: string,
+): Promise<void> {
+  return command("continuity_forget_understanding", context, { understandingId });
+}
 export function observeContinuityExchange(
   context: ContinuityContext,
   exchange: {

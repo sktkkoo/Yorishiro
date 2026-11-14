@@ -94,6 +94,14 @@ pub struct ExplicitMemory {
     pub request_message_id: String,
     pub source_ids: Vec<String>,
 }
+/// 忘れたメモリーを同じ根拠から自動再生成しないための記録。本文は保持しない。
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ForgottenUnderstanding {
+    pub understanding_id: String,
+    pub source_ids: Vec<String>,
+    pub forgotten_at: u64,
+}
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Snapshot {
@@ -105,6 +113,8 @@ pub struct Snapshot {
     pub messages: Vec<Message>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub explicit_memories: Vec<ExplicitMemory>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub forgotten_understandings: Vec<ForgottenUnderstanding>,
     pub understandings: Vec<Understanding>,
     pub drafts: Vec<Draft>,
     pub reflections: Vec<Reflection>,
@@ -122,6 +132,7 @@ impl Snapshot {
             phase: "idle".into(),
             messages: vec![],
             explicit_memories: vec![],
+            forgotten_understandings: vec![],
             understandings: vec![],
             drafts: vec![],
             reflections: vec![],
