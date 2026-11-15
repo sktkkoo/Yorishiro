@@ -9,7 +9,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { CONTINUITY_COPY } from "../i18n/continuity";
 import {
@@ -65,6 +65,46 @@ interface InputDraft {
 interface WorkspaceError {
   readonly message: string;
   readonly source: ContinuityErrorSource | "voice";
+}
+interface ReadingPosition {
+  readonly key: string | null;
+  readonly offset: number;
+  readonly scrollTop: number;
+}
+function captureReadingPosition(flow: HTMLDivElement): ReadingPosition {
+  const viewport = flow.getBoundingClientRect();
+  const visible = Array.from(flow.querySelectorAll<HTMLElement>("[data-reading-key]")).filter(
+    (element) => {
+      const bounds = element.getBoundingClientRect();
+      return bounds.bottom > viewport.top && bounds.top < viewport.bottom;
+    },
+  );
+  const first = visible[0];
+  // 読書位置の上端にある草案を優先し、下端に少し見える草案へは基準を移さない。
+  const anchor =
+    visible.find(
+      (element) =>
+        element !== first &&
+        first?.contains(element) &&
+        element.getBoundingClientRect().top <= viewport.top,
+    ) ?? first;
+  return {
+    key: anchor?.dataset.readingKey ?? null,
+    offset: anchor ? anchor.getBoundingClientRect().top - viewport.top : 0,
+    scrollTop: flow.scrollTop,
+  };
+}
+function restoreReadingPosition(flow: HTMLDivElement, position: ReadingPosition) {
+  const anchor = Array.from(flow.querySelectorAll<HTMLElement>("[data-reading-key]")).find(
+    (element) => element.dataset.readingKey === position.key,
+  );
+  const top = anchor
+    ? flow.scrollTop +
+      anchor.getBoundingClientRect().top -
+      flow.getBoundingClientRect().top -
+      position.offset
+    : position.scrollTop;
+  flow.scrollTop = Math.min(Math.max(0, top), Math.max(0, flow.scrollHeight - flow.clientHeight));
 }
 const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
 const isBuiltInYori = (id: string) => ["yori-ja", "yori-en"].includes(id);
@@ -189,6 +229,20 @@ function ResidentWorkspace({
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const panelRef = useRef<HTMLElement>(null);
   const flowRef = useRef<HTMLDivElement>(null);
+  const readingPosition = useRef<ReadingPosition | null>(null);
+  const flowNeedsRestore = useRef(false);
+  const restoredScrollTop = useRef<number | null>(null);
+  const attachFlow = useCallback((flow: HTMLDivElement | null) => {
+    if (!flow) return;
+    flowRef.current = flow;
+    flowNeedsRestore.current = true;
+    // ref の解放時は DOM がまだ接続されており、非表示になる直前の位置を測れる。
+    return () => {
+      readingPosition.current = captureReadingPosition(flow);
+      flowRef.current = null;
+      restoredScrollTop.current = null;
+    };
+  }, []);
   const pendingReplyRef = useRef<HTMLElement>(null);
   const readingReplyId = useRef<string | null>(null);
   const bookButtonRef = useRef<HTMLButtonElement>(null);
@@ -320,17 +374,25 @@ function ResidentWorkspace({
     .map((item) => `${item.id}:${item.updatedAt}:${item.status}`)
     .join("|");
   const latestArrival = `${latestMessage ?? ""}:${latestDraft ?? ""}`;
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!open || !flowRef.current) return;
+    const flow = flowRef.current;
     if (readingReplyId.current !== pendingReply?.id) readingReplyId.current = null;
     const changed = previousMessage.current !== latestArrival;
     previousMessage.current = latestArrival;
     if ((nearBottom.current && !readingReplyId.current) || forceFollow.current) {
-      flowRef.current.scrollTop = flowRef.current.scrollHeight;
+      flow.scrollTop = flow.scrollHeight;
       forceFollow.current = false;
       nearBottom.current = true;
       setUnread(false);
-    } else if (changed) setUnread(true);
+    } else {
+      if (flowNeedsRestore.current && readingPosition.current) {
+        restoreReadingPosition(flow, readingPosition.current);
+        restoredScrollTop.current = flow.scrollTop;
+      }
+      if (changed) setUnread(true);
+    }
+    flowNeedsRestore.current = false;
   }, [open, latestArrival, pendingReply?.id]);
 
   function showPendingReply() {
@@ -502,6 +564,7 @@ function ResidentWorkspace({
       <article
         key={item.id}
         className="continuity-draft"
+        data-reading-key={`draft:${item.id}`}
         data-dismissed={item.status === "dismissed"}
       >
         <h3>{item.title}</h3>
@@ -629,10 +692,13 @@ function ResidentWorkspace({
           ) : null}
           <div
             className="continuity-flow"
-            ref={flowRef}
+            ref={attachFlow}
             onScroll={() => {
               const flow = flowRef.current;
               if (!flow) return;
+              const restored = restoredScrollTop.current;
+              restoredScrollTop.current = null;
+              if (restored === flow.scrollTop) return;
               nearBottom.current = flow.scrollHeight - flow.scrollTop - flow.clientHeight < 100;
               if (nearBottom.current && !readingReplyId.current) setUnread(false);
             }}
@@ -648,6 +714,7 @@ function ResidentWorkspace({
                 <article
                   key={message.id}
                   className="continuity-message"
+                  data-reading-key={`message:${message.id}`}
                   data-role={message.role}
                   id={message.id === pendingReply?.id ? pendingReplyId : undefined}
                   ref={message.id === pendingReply?.id ? pendingReplyRef : undefined}
