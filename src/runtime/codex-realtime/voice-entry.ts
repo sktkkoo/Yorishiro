@@ -47,6 +47,31 @@ export async function resolveVoiceEntryAction({
     : { kind: "confirm-switch", agent: target };
 }
 
+/** 非同期の接続先調査が終わっても、取り消された開始操作から接続や案内を再開しない。 */
+export async function runVoiceEntryPreflight({
+  activeAgent,
+  listAgents,
+  resolveCommandPath,
+  signal,
+  onStart,
+  onOffer,
+}: {
+  readonly activeAgent: string;
+  readonly listAgents: () => Promise<readonly AgentDescriptor[]>;
+  readonly resolveCommandPath: (command: string) => Promise<string | null>;
+  readonly signal: AbortSignal;
+  readonly onStart: () => Promise<void>;
+  readonly onOffer: (action: Exclude<VoiceEntryAction, { readonly kind: "start" }>) => void;
+}): Promise<void> {
+  if (signal.aborted) return;
+  const agents = await listAgents().catch(() => []);
+  if (signal.aborted) return;
+  const action = await resolveVoiceEntryAction({ activeAgent, agents, resolveCommandPath });
+  if (signal.aborted) return;
+  if (action.kind === "start") await onStart();
+  else onOffer(action);
+}
+
 export function markPendingRealtimeStart(storage: Storage = sessionStorage): void {
   try {
     storage.setItem(PENDING_REALTIME_START_KEY, "1");

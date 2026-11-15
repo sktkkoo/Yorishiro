@@ -186,7 +186,7 @@ import {
   isVoiceEntryAvailable,
   markPendingContinuityConversation,
   markPendingRealtimeStart,
-  resolveVoiceEntryAction,
+  runVoiceEntryPreflight,
 } from "./runtime/codex-realtime/voice-entry";
 import { observeContinuityExchange, useContinuitySnapshot } from "./runtime/continuity/client";
 import {
@@ -2794,6 +2794,8 @@ function App() {
     readonly mode: VoiceEntryDialogMode;
     readonly targetAgentId: string | null;
   } | null>(null);
+  const voiceEntryAttemptRef = useRef<AbortController | null>(null);
+  useEffect(() => () => voiceEntryAttemptRef.current?.abort(), []);
   const [pendingRealtimeStart] = useState(() => consumePendingRealtimeStart());
   const pendingRealtimeStartRef = useRef(pendingRealtimeStart);
   const [defaultSpec, setDefaultSpec] = useState<SpawnSpec | null>(null);
@@ -4406,6 +4408,9 @@ function App() {
   }, [codexRealtimeState.status, mainSessionReplacing, voiceReconnectPending]);
 
   const handleToggleVoice = useCallback(async () => {
+    voiceEntryAttemptRef.current?.abort();
+    const attempt = new AbortController();
+    voiceEntryAttemptRef.current = attempt;
     if (!mainAgentAvailable) return;
     if (isConversationTransitionActive(mainConversationTransitionGateRef.current)) return;
     if (voiceReconnectPending) {
@@ -4418,18 +4423,18 @@ function App() {
       return;
     }
 
-    const action = await resolveVoiceEntryAction({
+    await runVoiceEntryPreflight({
       activeAgent: terminalAgent,
-      agents: await listSupportedAgents().catch(() => []),
+      listAgents: listSupportedAgents,
       resolveCommandPath: (command) => resolveCommandPath({ command }),
-    });
-    if (action.kind === "start") {
-      await toggleCodexRealtime();
-      return;
-    }
-    setVoiceEntryDialog({
-      mode: action.kind === "confirm-switch" ? "switch" : "setup",
-      targetAgentId: action.agent?.id ?? null,
+      signal: attempt.signal,
+      onStart: toggleCodexRealtime,
+      onOffer: (action) => {
+        setVoiceEntryDialog({
+          mode: action.kind === "confirm-switch" ? "switch" : "setup",
+          targetAgentId: action.agent?.id ?? null,
+        });
+      },
     });
   }, [
     codexVoiceAvailable,
@@ -4467,6 +4472,7 @@ function App() {
       await handleToggleVoice();
       return;
     }
+    voiceEntryAttemptRef.current?.abort();
     microphoneControl.setMuted(false);
     await toggleCodexRealtime();
   }, [
@@ -4479,6 +4485,8 @@ function App() {
 
   const handleCloseContinuityWorkspace = useCallback(() => {
     if (pendingContinuityVoiceStartRef.current) {
+      voiceEntryAttemptRef.current?.abort();
+      setVoiceEntryDialog(null);
       pendingContinuityVoiceStartRef.current = false;
       pendingRealtimeStartRef.current = false;
     }
@@ -4486,6 +4494,8 @@ function App() {
   }, [continuityOpen, selectContinuityWorkspace]);
 
   const handleEndContinuityConversation = useCallback(() => {
+    voiceEntryAttemptRef.current?.abort();
+    setVoiceEntryDialog(null);
     pendingContinuityVoiceStartRef.current = false;
     pendingRealtimeStartRef.current = false;
     setVoiceReconnectPending(false);
@@ -4876,6 +4886,7 @@ function App() {
   );
 
   const handleVoiceEntryCancel = useCallback(() => {
+    voiceEntryAttemptRef.current?.abort();
     pendingContinuityVoiceStartRef.current = false;
     setVoiceEntryDialog(null);
   }, []);
@@ -4883,14 +4894,17 @@ function App() {
   const handleVoiceEntryConfirmSwitch = useCallback(() => {
     if (voiceEntryDialog?.mode !== "switch" || voiceEntryDialog.targetAgentId === null) return;
     const targetAgentId = voiceEntryDialog.targetAgentId;
+    const attempt = voiceEntryAttemptRef.current;
     setVoiceEntryDialog(null);
     void switchMainAgent(targetAgentId, () => {
+      if (attempt?.signal.aborted) return;
       if (pendingContinuityVoiceStartRef.current) markPendingContinuityConversation();
       else markPendingRealtimeStart();
     });
   }, [switchMainAgent, voiceEntryDialog]);
 
   const handleVoiceEntryOpenSettings = useCallback(() => {
+    voiceEntryAttemptRef.current?.abort();
     pendingContinuityVoiceStartRef.current = false;
     setVoiceEntryDialog(null);
     if (getUiRegistry().getActiveUi()?.id !== SETTINGS_PACK_ID) {
