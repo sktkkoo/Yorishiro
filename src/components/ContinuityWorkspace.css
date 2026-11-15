@@ -277,6 +277,16 @@
   color: var(--yorishiro-fg-dim);
   font-size: 11px;
 }
+.continuity-draft-arrival {
+  margin-bottom: 8px;
+}
+.continuity-draft-arrival .continuity-text-button {
+  max-width: 100%;
+  text-align: start;
+}
+.continuity-draft-arrival svg {
+  flex: none;
+}
 .continuity-message[tabindex="-1"]:focus {
   outline: 2px solid var(--yorishiro-fg-dim);
   outline-offset: 3px;
