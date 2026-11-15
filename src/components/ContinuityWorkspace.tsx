@@ -170,6 +170,8 @@ function ResidentWorkspace({
     | { kind: "forget"; entry: ContinuityUnderstanding }
     | null
   >(null);
+  const detailRef = useRef(detail);
+  detailRef.current = detail;
   const [localError, setLocalError] = useState<WorkspaceError | null>(null);
   const [sending, setSending] = useState(false);
   const [actionPending, setActionPending] = useState(false);
@@ -352,11 +354,11 @@ function ResidentWorkspace({
     const submitted = draft;
     readingReplyId.current = null;
     forceFollow.current = true;
+    inputRef.current?.focus({ preventScroll: true });
     try {
       await sendContinuityMessage(context, text, draft.correctionId ?? undefined);
       if (!mounted.current) return;
       setDraft((current) => (current === submitted ? { text: "", correctionId: null } : current));
-      inputRef.current?.focus({ preventScroll: true });
     } catch (cause) {
       forceFollow.current = false;
       if (mounted.current) setLocalError({ message: errorText(cause), source: "send" });
@@ -370,9 +372,19 @@ function ResidentWorkspace({
     if (actionPending) return;
     setActionPending(true);
     setLocalError(null);
+    const submittedDetail = detail;
+    const submittedDialog = dialogRef.current;
     try {
       await actOnContinuityDraft(context, draftId, action);
-      if (action === "continue" && mounted.current) closeDetail();
+      // 同じ草案でも、閉じ直しや画面の再表示後は別の閲覧として扱う。
+      if (
+        action === "continue" &&
+        mounted.current &&
+        detailRef.current === submittedDetail &&
+        dialogRef.current === submittedDialog &&
+        submittedDialog?.open
+      )
+        closeDetail();
     } catch (cause) {
       if (mounted.current) setLocalError({ message: errorText(cause), source: "draft" });
     } finally {
