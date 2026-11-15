@@ -27,7 +27,6 @@ export interface CodexRealtimeClientLike extends LipSyncSource {
   notifyScreenContext?(capturedAt: string, availability?: ScreenPointerAvailability): Promise<void>;
   notifyScreenPointersEnabled?(enabled: boolean): Promise<void>;
   appendUserText?(text: string, language?: "ja" | "en"): Promise<void>;
-  prepareContinuityContext?(text: string): Promise<void>;
 }
 
 export type CodexRealtimeClientFactory = (
@@ -134,7 +133,6 @@ interface UseCodexRealtimeResult {
   readonly stop: () => void;
   readonly toggle: () => Promise<void>;
   readonly setMicrophoneMuted: (muted: boolean) => void;
-  readonly prepareContinuityContext: (text: string) => Promise<void>;
   readonly trackQuickChatPrompt: (prompt: string) => Promise<string | null>;
   readonly getLipSyncSource: () => LipSyncSource;
 }
@@ -624,37 +622,6 @@ export function useCodexRealtime({
     await start();
   }, [start, stop]);
 
-  const prepareContinuityContext = useCallback(
-    async (text: string): Promise<void> => {
-      const client = clientRef.current;
-      const tracker = threadTrackerRef.current;
-      const threadId = tracker?.getCurrentThreadId() ?? null;
-      const assertOwner = () => {
-        if (
-          renderedOwnerRef.current.sessionId !== sessionId ||
-          !renderedOwnerRef.current.available ||
-          conversationOwnerKeyRef.current !== conversationOwnerKey ||
-          clientRef.current !== client ||
-          threadTrackerRef.current !== tracker ||
-          (screenThreadId !== null && threadId !== screenThreadId) ||
-          (tracker?.getCurrentThreadId() ?? null) !== threadId
-        )
-          throw new Error("The conversation changed before the context update completed.");
-      };
-      assertOwner();
-      if (!client || client.getStatus() !== "active") return;
-      if (clientConversationOwnerKeyRef.current !== conversationOwnerKey)
-        throw new Error("The active voice belongs to a different persona.");
-      if (!client.prepareContinuityContext)
-        throw new Error("This voice connection cannot refresh conversation context.");
-      await client.prepareContinuityContext(text);
-      assertOwner();
-      if (client.getStatus() !== "active")
-        throw new Error("The voice conversation stopped during the context update.");
-    },
-    [sessionId, conversationOwnerKey, screenThreadId],
-  );
-
   const setMicrophoneMuted = useCallback((muted: boolean) => {
     clientRef.current?.setMicrophoneMuted(muted);
   }, []);
@@ -829,7 +796,6 @@ export function useCodexRealtime({
     stop,
     toggle,
     setMicrophoneMuted,
-    prepareContinuityContext,
     trackQuickChatPrompt,
     getLipSyncSource,
   };

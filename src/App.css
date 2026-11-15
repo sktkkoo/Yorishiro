@@ -502,7 +502,12 @@ html[data-rounded-view] body {
   opacity: 1;
 }
 
-.title-bar-voice-status-dot {
+.title-bar-continuity-button {
+  position: relative;
+}
+
+.title-bar-voice-status-dot,
+.title-bar-continuity-status-dot {
   position: absolute;
   right: 3px;
   bottom: 3px;

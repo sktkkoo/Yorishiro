@@ -1,7 +1,7 @@
 # System settings UI の privileged boundary
 
 **Status**: active
-**Last updated**: 2026-10-31
+**Last updated**: 2026-11-14
 
 ## TL;DR
 
@@ -38,6 +38,7 @@ permission / isolation 設計が必要であり、この decision だけでは�
 | updater / process relaunch | network update、署名検証、app replace、再起動 | system-only。Pack API にしない |
 | `src/components/RestoreConfirmDialog` | app-level modal / reload UX | settings からの直接 import を除去。`ctx.history.restore()` の host-owned confirmation として維持し、Pack 向け component ABI にしない |
 | Auto workspace | 目的・対象の委任、音声／文字の相談、結果の判断 | `src/components/AutoWorkspace` を App host が所有。旧 `AutonomySettings` と設定 Pack の component import は撤去。mutable autonomy API は SDK に昇格しない |
+| `src/components/SilenceFollowupSettings` | 端末内の実験用音声設定 | 言語だけを渡す同梱 widget として限定監査。会話収集・追加推論の opt-in と実行は host が所有し、設定書き込み API を通常 Pack へ公開しない。詳細は §5 |
 | `src/i18n/strings` | app 固有 settings / recovery 文言 | system content。汎用 SDK にしない |
 | `src/runtime/history/describe-snapshot` | app 固有の snapshot 表示文言 | system presentation。history 操作自体は `ctx.history` へ公開 |
 | `src/runtime/language/language` | app language の optimistic UI 解決 | system presentation helper。設定値の正本は `ctx.app.getConfig()` / `setLanguage()` |
@@ -66,12 +67,13 @@ code から raw Tauri opener / IPC へ到達できる現状の authority を狭�
 ### 4. 自動作業は App host が所有する（2026-10-31）
 
 Auto の入口と作業画面はタイトルバーと `AutoWorkspace` に集約する。設定 Pack から
-`AutonomySettings` を取り除き、app component を組み込む例外を終了した。設定 Pack の
+`AutonomySettings` を取り除き、自動作業用の app component を組み込む例外を終了した。設定 Pack の
 raw IPC allowlist は拡張しない。自動作業の開始・停止・契約・共有ドラフト・操作の承認は
 App host と native boundary の責務であり、通常 SDK に公開しない。
 
-`settings-privileged-boundary.test.ts` は設定 Pack に app component import と
-`runtime/autonomy` import がないことを検査する。音声の接続・切断と画面の開閉は実行権限を変更しない。
+`settings-privileged-boundary.test.ts` は §5 の音声設定 widget 以外の app component import と、
+`runtime/autonomy` / `runtime/continuity` / `runtime/codex-realtime` の直接 import がないことを検査する。
+音声の接続・切断と画面の開閉は自動作業の実行権限を変更しない。
 委任と承認の現行契約は [auto-workspace.md](auto-workspace.md) と
 [autonomous-document-work.md](autonomous-document-work.md) に記載する。
 
@@ -101,6 +103,31 @@ conformance test は唯一の component import を名前で固定し、raw IPC a
 への未公開を検査する。widget の動作 test では、未合意の On が実行を開始しないこと、
 Off が停止を呼ぶこと、既存 scope の On が toggle だけを送ること、失敗を On/Off の成功と
 表示しないことを確認する。
+
+### 5. 実験用の音声設定 widget の追加監査（2026-11-14）
+
+[無音後の声かけ実験](realtime-silence-reengagement.md)で導入済みの
+`src/components/SilenceFollowupSettings` だけを、system-owned settings の例外として記録する。
+実装追加時に漏れていた allowlist と監査文書を整合させるもので、runtime 権限、Tauri permission、
+raw IPC allowlist、public SDK は変更しない。
+
+- props は表示言語だけ。設定 Pack は会話本文、実行対象、権限、書き込み callback を渡さない。
+- mount は端末内の設定読み取りと購読だけを行う。設定画面を開くだけでは opt-in を書き込まない。
+- 開発者フラグが有効な環境にのみ表示し、機能個別の opt-in は既定で無効。保存はユーザーの
+  checkbox / number input 操作から行い、真偽値と範囲検証した時間だけを localStorage に保持する。
+  共有設定や Pack export に含めない。保存失敗は widget 内に表示する。
+- widget と設定保存 module は native command を呼ばない。会話収集、推論要求、タイマー、
+  接続・版・ミュート等の検査は host の realtime client が所有する。
+
+この設定は音声会話の一時収集と、料金が発生し得る追加推論への端末別 opt-in を変更する。
+汎用の表示設定として SDK に昇格すると、通常 Pack にこの opt-in を変更する入口を与える。
+Pack ごとの permission / user approval 設計がない現在は、アプリと同じ review・release 単位の
+widget に閉じ、設定保存関数や realtime runtime を Pack capability として公開しない。
+開発者フラグや localStorage は、同じ realm の悪意ある code を隔離する sandbox ではない。
+
+conformance test は component の完全な import path を一件だけ許可し、その他の internal import と
+raw IPC の既存リストを維持する。component / 設定保存テストは通常時の非表示、二段階の opt-in、
+設定値の範囲、無効化の即時反映を確認する。ライブ音声の受け入れ状況は上記の実験文書を参照する。
 
 ## なぜそう決めたか
 
@@ -151,6 +178,7 @@ external link、既に確認 UX を内蔵する history は host-mediated capabi
 
 ## 改訂履歴
 
+- 2026-11-14: `SilenceFollowupSettings` の既存実装を限定監査し、唯一の音声設定 widget import として記録。raw IPC、runtime 権限、通常 Pack の SDK は変更しない。
 - 2026-10-31: 自動作業を App host の `AutoWorkspace` へ移し、設定 Pack の `AutonomySettings` import と widget 例外を撤去。通常 Pack の authority は拡張しない。
 - 2026-10-24: 自動作業 On/Off 用 `AutonomySettings` だけを host-owned widget として追加監査。raw IPC allowlist と通常 Pack の公開面は維持。
 - 2026-08-12: Fable review を反映。same-realm では SDK validation が sandbox/enforcement ではないこと、文書化だけの最小案を採らなかった理由、opener narrow 化の follow-up を明記。
