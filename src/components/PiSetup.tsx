@@ -1,5 +1,5 @@
 import { X } from "lucide-react";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import {
   loginActive,
   type PiCommandPreset,
@@ -123,6 +123,13 @@ export function PiSetup({
   const { status } = setup;
   const callbacks = useRef({ onConfigured, onClose });
   callbacks.current = { onConfigured, onClose };
+  const opening = useRef<{ readonly cwd: string | null } | null>(null);
+  useLayoutEffect(() => {
+    opening.current = open ? { cwd } : null;
+    return () => {
+      opening.current = null;
+    };
+  }, [open, cwd]);
   const closeRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (open) closeRef.current?.focus();
@@ -199,6 +206,7 @@ export function PiSetup({
     );
   };
   const save = async () => {
+    const submittedOpening = opening.current;
     const saved = await setup.save({
       version: 2,
       enabled: true,
@@ -211,7 +219,8 @@ export function PiSetup({
       dirty.current = false;
       modelDirty.current = false;
       callbacks.current.onConfigured?.();
-      callbacks.current.onClose?.();
+      // 保存は反映し、閉じる操作だけを保存開始時から継続中の表示に限定する。
+      if (submittedOpening && opening.current === submittedOpening) callbacks.current.onClose?.();
     }
   };
   const canSave =

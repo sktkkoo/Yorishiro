@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PiSetupStatus } from "../runtime/continuity/pi-setup";
 import { PiSetup } from "./PiSetup";
@@ -464,17 +465,87 @@ describe("Pi setup", () => {
     );
   });
 
+  it.each([
+    "hidden",
+    "reopened",
+    "unmounted",
+  ] as const)("does not close an interrupted opening after a delayed save while %s", async (destination) => {
+    current = { ...initial(), authenticated: true, authentication: "present" };
+    let finish!: (value: PiSetupStatus) => void;
+    native.invoke.mockImplementation((name) =>
+      name === "continuity_pi_setup_save"
+        ? new Promise<PiSetupStatus>((resolve) => {
+            finish = resolve;
+          })
+        : Promise.resolve(current),
+    );
+    const onClose = vi.fn(() => screen.getByRole("button", { name: "Open settings" }).focus());
+    const onConfigured = vi.fn();
+    const ready = vi.fn();
+    const renderSetup = (open: boolean) => (
+      <StrictMode>
+        <button type="button">Open settings</button>
+        <PiSetup
+          cwd="workspace fixture"
+          language="en"
+          open={open}
+          onClose={onClose}
+          onConfigured={onConfigured}
+          onReadinessChange={ready}
+        />
+      </StrictMode>
+    );
+    const view = render(renderSetup(true));
+    const save = await screen.findByRole("button", {
+      name: "Save and use for autonomous execution",
+    });
+    await waitFor(() => expect(save).toHaveProperty("disabled", false));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Create and change files" }));
+    fireEvent.click(save);
+    fireEvent.click(screen.getByRole("button", { name: "Close settings" }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+    onClose.mockClear();
+    view.rerender(renderSetup(false));
+    if (destination === "reopened") view.rerender(renderSetup(true));
+    if (destination === "unmounted") view.unmount();
+    const focus = document.activeElement;
+    await act(async () => {
+      current = {
+        ...current,
+        configured: true,
+        permissions: { read: true, write: true, commands: [] },
+      };
+      finish(current);
+    });
+    expect(onClose).not.toHaveBeenCalled();
+    expect(onConfigured).toHaveBeenCalledTimes(destination === "unmounted" ? 0 : 1);
+    if (destination !== "unmounted") expect(ready).toHaveBeenLastCalledWith(true);
+    if (destination === "reopened") {
+      expect(document.activeElement).toBe(focus);
+      expect(screen.getByRole("button", { name: "Close settings" })).toBeTruthy();
+      expect(screen.getByRole("checkbox", { name: "Create and change files" })).toHaveProperty(
+        "checked",
+        true,
+      );
+    }
+    expect(
+      native.invoke.mock.calls.filter(([name]) => name === "continuity_pi_setup_save"),
+    ).toHaveLength(1);
+  });
+
   it("keeps failed saves open and closes only after successful saving", async () => {
     current = { ...current, authenticated: true, authentication: "present" };
     const onClose = vi.fn();
     const onConfigured = vi.fn();
     render(
-      <PiSetup
-        cwd="workspace fixture"
-        language="en"
-        onClose={onClose}
-        onConfigured={onConfigured}
-      />,
+      <StrictMode>
+        <PiSetup
+          cwd="workspace fixture"
+          language="en"
+          onClose={onClose}
+          onConfigured={onConfigured}
+        />
+      </StrictMode>,
     );
     const save = await screen.findByRole("button", {
       name: "Save and use for autonomous execution",
