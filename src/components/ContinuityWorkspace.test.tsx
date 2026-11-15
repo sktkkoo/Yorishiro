@@ -226,6 +226,115 @@ afterEach(() => {
 });
 
 describe("ContinuityWorkspace", () => {
+  it.each([
+    ["en", "Status and notices", "Send"],
+    ["ja", "状態とお知らせ", "送る"],
+  ] as const)("keeps complete %s errors in a keyboard-focusable region outside the message form", async (language, label, send) => {
+    const reason = Array.from(
+      { length: 20 },
+      (_, index) => `Step ${index}: ${"x".repeat(20)}`,
+    ).join("\n");
+    current = { ...current, phase: "error", error: reason };
+    render(<ContinuityWorkspace {...props()} language={language} />);
+    const feedback = screen.getByRole("region", { name: label });
+    expect(feedback.tabIndex).toBe(0);
+    feedback.focus();
+    expect(document.activeElement).toBe(feedback);
+    expect(feedback.hasAttribute("aria-live")).toBe(false);
+    expect(within(feedback).getByRole("alert").querySelector("p")?.textContent).toBe(reason);
+    const input = screen.getByRole("textbox");
+    const button = screen.getByRole("button", { name: send });
+    expect(feedback.contains(input)).toBe(false);
+    expect(feedback.contains(button)).toBe(false);
+    fireEvent.change(input, { target: { value: "Actual message" } });
+    await act(async () => fireEvent.click(button));
+    expect(native.sendContinuityMessage).toHaveBeenCalledExactlyOnceWith(
+      expect.anything(),
+      "Actual message",
+      undefined,
+    );
+    expect(native.retryContinuity).not.toHaveBeenCalled();
+  });
+
+  it("groups simultaneous errors, diagnostics, reply navigation and correction context together", async () => {
+    current = {
+      ...current,
+      phase: "error",
+      error: "Work failure",
+      messages: [...current.messages, pendingQuestion()],
+    };
+    setupNative.invoke.mockImplementation(async (name) => {
+      if (name === "continuity_pi_diagnostics") throw new Error("configuration_missing");
+      return piStatus();
+    });
+    const initial: ContinuityWorkspaceProps = {
+      ...props(),
+      language: "en",
+      executionBackend: "pi",
+      conversation: {
+        available: true,
+        state: { status: "error", error: "Voice failure" },
+        onStart: vi.fn(),
+        onEnd: vi.fn(),
+        onSetMuted: vi.fn(),
+      },
+    };
+    const view = render(<ContinuityWorkspace {...initial} />);
+    await screen.findByRole("button", { name: "Check connection" });
+    await act(async () =>
+      fireEvent.click(screen.getByRole("button", { name: "Check connection" })),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Memories" }));
+    fireEvent.click(screen.getByRole("button", { name: "Correct" }));
+    const flow = readingFlow();
+    Object.defineProperties(flow, {
+      scrollHeight: { configurable: true, value: 1600 },
+      clientHeight: { configurable: true, value: 400 },
+    });
+    flow.scrollTop = 100;
+    fireEvent.scroll(flow);
+    current = {
+      ...current,
+      messages: [...current.messages, { ...pendingQuestion("new-report"), replyKind: "report" }],
+    };
+    view.rerender(<ContinuityWorkspace {...initial} />);
+    const feedback = screen.getByRole("region", { name: "Status and notices" });
+    expect(within(feedback).getAllByRole("alert")).toHaveLength(2);
+    expect(feedback.textContent).toContain("Work failure");
+    expect(feedback.textContent).toContain("Voice failure");
+    expect(within(feedback).getByRole("status").textContent).toContain(
+      "Pi connection settings are missing.",
+    );
+    for (const name of [
+      "View question",
+      "New reply",
+      "Cancel correction",
+      "Retry",
+      "Check connection",
+    ])
+      expect(within(feedback).getByRole("button", { name })).toBeTruthy();
+    expect(feedback.contains(screen.getByRole("textbox"))).toBe(false);
+    expect(native.retryContinuity).not.toHaveBeenCalled();
+    expect(native.sendContinuityMessage).not.toHaveBeenCalled();
+  });
+
+  it("does not leave an empty focusable feedback region when notices are absent or suppressed", async () => {
+    current = { ...current, autoEnabled: false };
+    const view = render(<ContinuityWorkspace {...props()} language="en" />);
+    expect(screen.queryByRole("region", { name: "Status and notices" })).toBeNull();
+    current = { ...current, phase: "error", error: "Work failure" };
+    view.rerender(<ContinuityWorkspace {...props()} language="en" />);
+    expect(screen.getByRole("region", { name: "Status and notices" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Open draft" }));
+    expect(screen.queryByRole("region", { name: "Status and notices" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    setupNative.invoke.mockResolvedValue({ ...piStatus(), configured: false });
+    view.rerender(<ContinuityWorkspace {...props()} language="en" executionBackend="pi" />);
+    await waitFor(() =>
+      expect(screen.queryByRole("region", { name: "Status and notices" })).toBeNull(),
+    );
+  });
+
   it("opens literal report and draft result links without submitting or changing autonomous work", async () => {
     const report = "PR: https://github.com/team/repo/pull/12。\nReady for review.";
     const draft = "Details:\nhttps://example.com/result_(one).";
