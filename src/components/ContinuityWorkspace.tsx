@@ -129,6 +129,28 @@ const dateText = (date: number, language: "ja" | "en") =>
     minute: "2-digit",
   }).format(new Date(date));
 
+function automaticRecheckTime(snapshot: ContinuitySnapshot | null, language: "ja" | "en") {
+  const timestamp = snapshot?.automaticRetryAt;
+  if (
+    snapshot?.phase !== "error" ||
+    snapshot.autoEnabled !== true ||
+    !snapshot.error ||
+    typeof timestamp !== "number" ||
+    !Number.isSafeInteger(timestamp) ||
+    timestamp <= 0
+  )
+    return null;
+  const date = new Date(timestamp);
+  if (!Number.isFinite(date.getTime())) return null;
+  // 時刻を過ぎても次のホスト確認を待つ場合があるため、開始時刻や残り秒数とは扱わない。
+  return {
+    dateTime: date.toISOString(),
+    label: new Intl.DateTimeFormat(language, { dateStyle: "medium", timeStyle: "medium" }).format(
+      date,
+    ),
+  };
+}
+
 function latestPendingReply(messages: readonly ContinuityMessage[]): ContinuityMessage | null {
   for (let index = messages.length - 1; index >= 0; index--) {
     const message = messages[index];
@@ -280,6 +302,7 @@ function ResidentWorkspace({
       : snapshot?.error
         ? { message: snapshot.error, source: "work" }
         : null;
+  const automaticRecheck = automaticRecheckTime(snapshot, language);
   const operationError: WorkspaceError | null =
     localError ??
     (composer.error ? { message: composer.error, source: "send" } : null) ??
@@ -833,6 +856,16 @@ function ResidentWorkspace({
                             <>
                               <br />
                               {hint}
+                            </>
+                          ) : null}
+                          {workError && automaticRecheck ? (
+                            <>
+                              <br />
+                              {copy.automaticRecheckAfter}
+                              <time dateTime={automaticRecheck.dateTime}>
+                                {automaticRecheck.label}
+                              </time>
+                              {copy.automaticRecheckHint}
                             </>
                           ) : null}
                         </p>

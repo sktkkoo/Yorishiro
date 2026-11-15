@@ -46,6 +46,7 @@ struct Session {
     last_periodic_at: Option<u64>,
     auto_driver_started: bool,
     auto_driver_active: bool,
+    publication_sequence: u64,
     followup_steps: BTreeSet<String>,
 }
 fn now() -> u64 {
@@ -94,6 +95,7 @@ fn ensure<'a>(
                 last_periodic_at: None,
                 auto_driver_started: false,
                 auto_driver_active: false,
+                publication_sequence: 0,
                 followup_steps: BTreeSet::new(),
             },
         );
@@ -115,7 +117,39 @@ fn validate_context(context: &Context) -> Result<(), String> {
     }
     Ok(())
 }
-fn persist(session: &mut Session) -> Result<Snapshot, String> {
+fn automatic_retry_at(session: &Session) -> Option<u64> {
+    (session.saved.auto_enabled
+        && session.auto_driver_active
+        && session.context.is_some()
+        && session.saved.snapshot.phase == "error"
+        && session.saved.snapshot.error.is_some()
+        && !session.running
+        && !session.queued
+        && !session.saved.execution_blocked)
+        .then_some(session.saved.retry_not_before)
+        .flatten()
+}
+
+/// 同じロック内の状態から、保存もモデル入力への流用もしない応答を作る。
+fn ui_snapshot(session: &mut Session) -> UiSnapshot {
+    session.publication_sequence = session.publication_sequence.saturating_add(1);
+    UiSnapshot {
+        snapshot: session.saved.snapshot.clone(),
+        automatic_retry_at: automatic_retry_at(session),
+        publication_sequence: session.publication_sequence,
+    }
+}
+
+/// 実行所有者を解放した後で初めて確定する再確認待ちを通知する。
+fn release_execution_owner(session: &mut Session) -> Option<UiSnapshot> {
+    let previous = automatic_retry_at(session);
+    session.queued = false;
+    session.running = false;
+    session.running_automatically = false;
+    (previous != automatic_retry_at(session)).then(|| ui_snapshot(session))
+}
+
+fn persist(session: &mut Session) -> Result<UiSnapshot, String> {
     retention::compact(&mut session.saved, now(), session.running, session.queued);
     session.saved.snapshot.auto_enabled = session.saved.auto_enabled;
     session.saved.snapshot.revision += 1;
@@ -127,9 +161,9 @@ fn persist(session: &mut Session) -> Result<Snapshot, String> {
         return Err(error);
     }
     session.committed = session.saved.clone();
-    Ok(session.saved.snapshot.clone())
+    Ok(ui_snapshot(session))
 }
-fn emit(app: &AppHandle, snapshot: &Snapshot) {
+fn emit(app: &AppHandle, snapshot: &UiSnapshot) {
     let _ = app.emit("continuity:changed", snapshot);
 }
 fn append(session: &mut Session, role: &str, content: String, source: &str) -> String {
@@ -303,10 +337,15 @@ fn activate_auto_driver(session: &mut Session) -> bool {
     true
 }
 
-fn select_auto_identity(sessions: &mut BTreeMap<String, Session>, persona_id: &str) {
+fn select_auto_identity(
+    sessions: &mut BTreeMap<String, Session>,
+    persona_id: &str,
+) -> Vec<UiSnapshot> {
     let selected = storage::identity(persona_id);
+    let mut changed = Vec::new();
     for (identity, session) in sessions.iter_mut() {
         if identity != &selected {
+            let was_waiting = automatic_retry_at(session).is_some();
             session.auto_driver_active = false;
             // Accepted work can finish, but a merely queued automatic judgment
             // must not dispatch after another persona became current.
@@ -319,8 +358,12 @@ fn select_auto_identity(sessions: &mut BTreeMap<String, Session>, persona_id: &s
                 session.queued = false;
                 session.saved.pending_trigger = None;
             }
+            if was_waiting {
+                changed.push(ui_snapshot(session));
+            }
         }
     }
+    changed
 }
 
 fn resume_enabled_work(session: &mut Session, context: &Context, context_changed: bool) -> bool {
@@ -417,7 +460,7 @@ fn start_auto_driver(app: AppHandle, state: ContinuityState, persona_id: &str) {
                 }
             };
             if let Some(snapshot) = published {
-                let persona_id = snapshot.persona_id.clone();
+                let persona_id = snapshot.snapshot.persona_id.clone();
                 emit(&app, &snapshot);
                 start(app.clone(), state.clone(), persona_id);
             }
@@ -530,11 +573,8 @@ pub async fn continuity_pi_diagnostics(
 pub fn continuity_status(
     state: State<'_, ContinuityState>,
     persona_id: String,
-) -> Result<Snapshot, String> {
-    Ok(ensure(&mut *lock(&state)?, &persona_id)?
-        .saved
-        .snapshot
-        .clone())
+) -> Result<UiSnapshot, String> {
+    Ok(ui_snapshot(ensure(&mut *lock(&state)?, &persona_id)?))
 }
 
 fn sync_context(session: &mut Session, context: Context) -> Snapshot {
@@ -556,19 +596,21 @@ pub fn continuity_sync_context(
     window: Window,
     state: State<'_, ContinuityState>,
     context: Context,
-) -> Result<Snapshot, String> {
+) -> Result<UiSnapshot, String> {
     check_window(&window)?;
     validate_context(&context)?;
     let snapshot = {
         let mut sessions = lock(&state)?;
         ensure(&mut sessions, &context.persona_id)?;
-        select_auto_identity(&mut sessions, &context.persona_id);
+        for changed in select_auto_identity(&mut sessions, &context.persona_id) {
+            emit(&app, &changed);
+        }
         let session = ensure(&mut sessions, &context.persona_id)?;
         let previous_step = session.saved.snapshot.next_step.clone();
         let previous_trigger = session.saved.pending_trigger.clone();
         let previous_context = session.saved.auto_context.clone();
         let restoring = session.saved.auto_enabled && !session.auto_driver_active;
-        let snapshot = sync_context(session, context.clone());
+        sync_context(session, context.clone());
         if restoring
             || previous_step != session.saved.snapshot.next_step
             || previous_trigger != session.saved.pending_trigger
@@ -576,7 +618,7 @@ pub fn continuity_sync_context(
         {
             persist(session)?
         } else {
-            snapshot
+            ui_snapshot(session)
         }
     };
     emit(&app, &snapshot);
@@ -591,13 +633,15 @@ pub fn continuity_enter(
     window: Window,
     state: State<'_, ContinuityState>,
     context: Context,
-) -> Result<Snapshot, String> {
+) -> Result<UiSnapshot, String> {
     check_window(&window)?;
     validate_context(&context)?;
     let snapshot = {
         let mut sessions = lock(&state)?;
         ensure(&mut sessions, &context.persona_id)?;
-        select_auto_identity(&mut sessions, &context.persona_id);
+        for changed in select_auto_identity(&mut sessions, &context.persona_id) {
+            emit(&app, &changed);
+        }
         let session = ensure(&mut sessions, &context.persona_id)?;
         session.auto_driver_active = session.saved.auto_enabled;
         if session.saved.auto_enabled {
@@ -618,7 +662,7 @@ pub fn continuity_enter(
         {
             persist(session)?
         } else {
-            session.saved.snapshot.clone()
+            ui_snapshot(session)
         }
     };
     emit(&app, &snapshot);
@@ -694,13 +738,15 @@ pub fn continuity_set_auto_enabled(
     state: State<'_, ContinuityState>,
     context: Context,
     enabled: bool,
-) -> Result<Snapshot, String> {
+) -> Result<UiSnapshot, String> {
     check_window(&window)?;
     validate_context(&context)?;
     let snapshot = {
         let mut sessions = lock(&state)?;
         ensure(&mut sessions, &context.persona_id)?;
-        select_auto_identity(&mut sessions, &context.persona_id);
+        for changed in select_auto_identity(&mut sessions, &context.persona_id) {
+            emit(&app, &changed);
+        }
         let session = ensure(&mut sessions, &context.persona_id)?;
         let active = session.auto_driver_active;
         let queued = session.queued;
@@ -748,7 +794,7 @@ pub fn continuity_advance(
     state: State<'_, ContinuityState>,
     context: Context,
     revision: u64,
-) -> Result<Snapshot, String> {
+) -> Result<UiSnapshot, String> {
     check_window(&window)?;
     validate_context(&context)?;
     let snapshot = {
@@ -756,7 +802,7 @@ pub fn continuity_advance(
         let session = ensure(&mut sessions, &context.persona_id)?;
         let attempted = session.followup_steps.clone();
         if queue_followup(session, context.clone(), revision) == Advance::Unchanged {
-            return Ok(session.saved.snapshot.clone());
+            return Ok(ui_snapshot(session));
         }
         match persist(session) {
             Ok(snapshot) => snapshot,
@@ -777,7 +823,7 @@ pub fn continuity_tick(
     window: Window,
     state: State<'_, ContinuityState>,
     context: Context,
-) -> Result<Snapshot, String> {
+) -> Result<UiSnapshot, String> {
     check_window(&window)?;
     validate_context(&context)?;
     let snapshot = {
@@ -785,7 +831,7 @@ pub fn continuity_tick(
         let session = ensure(&mut sessions, &context.persona_id)?;
         let previous_tick = session.last_periodic_at;
         if !queue_periodic(session, context.clone(), now()) {
-            return Ok(session.saved.snapshot.clone());
+            return Ok(ui_snapshot(session));
         }
         match persist(session) {
             Ok(snapshot) => snapshot,
@@ -808,7 +854,7 @@ pub fn continuity_send(
     context: Context,
     text: String,
     correction_id: Option<String>,
-) -> Result<Snapshot, String> {
+) -> Result<UiSnapshot, String> {
     check_window(&window)?;
     send(app, state.inner().clone(), context, text, correction_id)
 }
@@ -818,7 +864,7 @@ fn send(
     context: Context,
     text: String,
     correction_id: Option<String>,
-) -> Result<Snapshot, String> {
+) -> Result<UiSnapshot, String> {
     validate_context(&context)?;
     if text.trim().is_empty() {
         return Err("Enter a message".into());
@@ -877,7 +923,7 @@ pub fn continuity_forget_understanding(
     state: State<'_, ContinuityState>,
     context: Context,
     understanding_id: String,
-) -> Result<Snapshot, String> {
+) -> Result<UiSnapshot, String> {
     check_window(&window)?;
     validate_context(&context)?;
     let home = home()?;
@@ -886,7 +932,8 @@ pub fn continuity_forget_understanding(
         let session = ensure(&mut sessions, &context.persona_id)?;
         forget_understanding_with_save(session, &understanding_id, now(), |candidate| {
             storage::save(&home, candidate)
-        })?
+        })?;
+        ui_snapshot(session)
     };
     emit(&app, &snapshot);
     Ok(snapshot)
@@ -899,7 +946,7 @@ pub fn continuity_draft_action(
     context: Context,
     draft_id: String,
     action: String,
-) -> Result<Snapshot, String> {
+) -> Result<UiSnapshot, String> {
     check_window(&window)?;
     validate_context(&context)?;
     if !["continue", "dismiss"].contains(&action.as_str()) {
@@ -947,14 +994,14 @@ pub fn continuity_retry(
     window: Window,
     state: State<'_, ContinuityState>,
     context: Context,
-) -> Result<Snapshot, String> {
+) -> Result<UiSnapshot, String> {
     check_window(&window)?;
     validate_context(&context)?;
     let snapshot = {
         let mut sessions = lock(&state)?;
         let session = ensure(&mut sessions, &context.persona_id)?;
         if session.running {
-            return Ok(session.saved.snapshot.clone());
+            return Ok(ui_snapshot(session));
         }
         queue_explicit_retry(session, context.clone());
         persist(session)?
@@ -1037,16 +1084,15 @@ fn start(app: AppHandle, state: ContinuityState, persona_id: String) {
                     return;
                 };
                 if !session.queued || !queued_work_allowed(session) {
-                    session.queued = false;
-                    session.running = false;
-                    session.running_automatically = false;
+                    let released = release_execution_owner(session);
                     // 実行中は配列位置と入力 snapshot を保護し、終了後にだけ整理する。
                     if retention::compact(&mut session.saved, now(), false, false).removed_messages
                         > 0
                     {
-                        if let Ok(snapshot) = persist(session) {
-                            emit(&app, &snapshot);
-                        }
+                        let snapshot = persist(session).unwrap_or_else(|_| ui_snapshot(session));
+                        emit(&app, &snapshot);
+                    } else if let Some(snapshot) = released {
+                        emit(&app, &snapshot);
                     }
                     return;
                 }
@@ -1259,7 +1305,7 @@ fn start(app: AppHandle, state: ContinuityState, persona_id: String) {
                     Err(error) => {
                         session.saved.snapshot.phase = "error".into();
                         session.saved.snapshot.error = Some(error);
-                        session.saved.snapshot.clone()
+                        ui_snapshot(session)
                     }
                 }
             };
@@ -2616,6 +2662,7 @@ pub fn observe_active(
         source_key,
         "external",
     )
+    .map(|response| response.snapshot)
 }
 #[tauri::command(async)]
 pub fn continuity_observe_native(
@@ -2626,7 +2673,7 @@ pub fn continuity_observe_native(
     user_text: String,
     assistant_text: String,
     source_key: String,
-) -> Result<Snapshot, String> {
+) -> Result<UiSnapshot, String> {
     check_window(&window)?;
     observe(
         app,
@@ -2651,7 +2698,7 @@ fn observe(
     assistant_text: String,
     source_key: String,
     source: &str,
-) -> Result<Snapshot, String> {
+) -> Result<UiSnapshot, String> {
     validate_context(&context)?;
     if source_key.trim().is_empty() || source_key.len() > 512 || user_text.trim().is_empty() {
         return Err("An actual exchange and stable source key are required".into());
@@ -2664,7 +2711,7 @@ fn observe(
             if previous != &fingerprint {
                 return Err("The same source key referred to a different exchange".into());
             }
-            return Ok(session.saved.snapshot.clone());
+            return Ok(ui_snapshot(session));
         }
         session.saved.observed_keys.insert(source_key, fingerprint);
         append(session, "user", user_text, source);
