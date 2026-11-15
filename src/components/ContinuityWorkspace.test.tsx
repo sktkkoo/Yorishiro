@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ContinuitySnapshot } from "../runtime/continuity/types";
@@ -6,6 +7,7 @@ import { ContinuityWorkspace, type ContinuityWorkspaceProps } from "./Continuity
 
 const setupNative = vi.hoisted(() => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/core", () => setupNative);
+vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: vi.fn() }));
 const piStatus = () => ({
   runtimeReady: true,
   configured: true,
@@ -143,6 +145,7 @@ const props = (): ContinuityWorkspaceProps => ({
 });
 beforeEach(() => {
   current = snapshot();
+  vi.mocked(openUrl).mockReset().mockResolvedValue(undefined);
   setupNative.invoke.mockReset();
   setupNative.invoke.mockResolvedValue(piStatus());
   const stored = new Map<string, string>();
@@ -191,6 +194,61 @@ afterEach(() => {
 });
 
 describe("ContinuityWorkspace", () => {
+  it("opens literal report and draft result links without submitting or changing autonomous work", async () => {
+    const report = "PR: https://github.com/team/repo/pull/12。\nReady for review.";
+    const draft = "Details:\nhttps://example.com/result_(one).";
+    current = {
+      ...current,
+      messages: [{ ...current.messages[2], content: report, replyKind: "report" }],
+      drafts: [{ ...current.drafts[0], content: draft }],
+    };
+    render(<ContinuityWorkspace {...props()} language="en" />);
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Unsent reply" } });
+    const reportLink = screen.getByRole("link", { name: "https://github.com/team/repo/pull/12" });
+    expect(reportLink.closest("p")?.textContent).toBe(report);
+    expect(openUrl).not.toHaveBeenCalled();
+    await act(async () => fireEvent.click(reportLink));
+    fireEvent.click(screen.getByRole("button", { name: "Open draft" }));
+    const dialog = screen.getByRole("dialog");
+    const draftLink = within(dialog).getByRole("link", {
+      name: "https://example.com/result_(one)",
+    });
+    expect(draftLink.closest(".continuity-draft-body")?.textContent).toBe(draft);
+    await act(async () => fireEvent.click(draftLink));
+    expect(openUrl).toHaveBeenNthCalledWith(1, "https://github.com/team/repo/pull/12");
+    expect(openUrl).toHaveBeenNthCalledWith(2, "https://example.com/result_(one)");
+    expect((dialog as HTMLDialogElement).open).toBe(true);
+    expect(screen.getByRole("textbox")).toHaveProperty("value", "Unsent reply");
+    for (const command of [
+      native.sendContinuityMessage,
+      native.actOnContinuityDraft,
+      native.retryContinuity,
+      native.refreshContinuity,
+      native.setContinuityAutoEnabled,
+      native.forgetContinuityUnderstanding,
+    ])
+      expect(command).not.toHaveBeenCalled();
+  });
+
+  it("keeps opener failure feedback separate from existing work errors and retries the same URL", async () => {
+    current = {
+      ...current,
+      phase: "error",
+      error: "Worker unavailable",
+      messages: [{ ...current.messages[2], content: "Result: https://example.com/report。" }],
+    };
+    vi.mocked(openUrl).mockRejectedValueOnce(new Error("Opener unavailable"));
+    render(<ContinuityWorkspace {...props()} language="en" />);
+    const link = screen.getByRole("link", { name: "https://example.com/report" });
+    await act(async () => fireEvent.click(link));
+    expect(screen.getByText("Worker unavailable")).toBeTruthy();
+    expect(screen.getByText("Could not open the link. Try it again or copy the URL.")).toBeTruthy();
+    await act(async () => fireEvent.click(link));
+    expect(screen.getByText("Worker unavailable")).toBeTruthy();
+    expect(screen.queryByText("Could not open the link. Try it again or copy the URL.")).toBeNull();
+    expect(openUrl).toHaveBeenCalledTimes(2);
+    expect(native.retryContinuity).not.toHaveBeenCalled();
+  });
   it.each([
     ["ja", "考えています", "草案を作成中", "作業中", "待機中"],
     ["en", "Thinking", "Preparing a draft", "Working", "Idle"],

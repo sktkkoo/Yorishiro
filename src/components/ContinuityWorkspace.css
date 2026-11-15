@@ -190,6 +190,21 @@
 .continuity-message > p {
   white-space: pre-wrap;
 }
+
+.continuity-result-link {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  overflow-wrap: anywhere;
+}
+.continuity-result-link:hover {
+  color: var(--yorishiro-accent);
+}
+.continuity-result-link-error {
+  display: block;
+  color: var(--yorishiro-fg-dim);
+  font-size: 11px;
+}
 .continuity-message[data-role="user"] {
   border-left: 2px solid var(--continuity-line);
   padding-left: 16px;
