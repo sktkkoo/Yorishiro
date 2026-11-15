@@ -119,7 +119,6 @@ import { createSubsystemLog, DevLog, type DevLogEntry } from "./core/dev-log";
 import { collectGlobalPrompt } from "./core/global-prompt";
 import { registerContinuityFragment } from "./core/global-prompt/continuity-fragment";
 import { registerEnvironmentFragment } from "./core/global-prompt/environment-fragment";
-import { readVoiceContinuityPrompt } from "./core/global-prompt/voice-continuity";
 import { registerVoiceFragment } from "./core/global-prompt/voice-fragment";
 import { createLogAPI, LogBridge } from "./core/log-bridge";
 import { Perception } from "./core/perception";
@@ -189,13 +188,12 @@ import {
   markPendingRealtimeStart,
   resolveVoiceEntryAction,
 } from "./runtime/codex-realtime/voice-entry";
-import { observeContinuityExchange } from "./runtime/continuity/client";
+import { observeContinuityExchange, useContinuitySnapshot } from "./runtime/continuity/client";
 import {
   continuityExecutionRoute,
   useContinuityExecutionPreference,
 } from "./runtime/continuity/execution-routing";
 import type { ContinuityContext } from "./runtime/continuity/types";
-import { useContinuityVoiceContext } from "./runtime/continuity/use-continuity-voice-context";
 import { EventBus, type EventBusLogger } from "./runtime/event-bus";
 import { createExternalAttachController } from "./runtime/external-attach";
 import { collectHealthReport } from "./runtime/health-check";
@@ -3240,6 +3238,7 @@ function App() {
       continuityExecutionBackend,
     ],
   );
+  const continuitySnapshot = useContinuitySnapshot(continuityContext?.personaId ?? null);
 
   /**
    * VRM file path を local state と localStorage に同時反映する。
@@ -4246,7 +4245,6 @@ function App() {
     shareScreenObservation,
     notifyScreenPointersEnabled,
     getLipSyncSource: getCodexRealtimeLipSyncSource,
-    prepareContinuityContext,
   } = useCodexRealtime({
     sessionId: tabState.mainSessionId,
     available: codexVoiceAvailable,
@@ -4289,14 +4287,13 @@ function App() {
       });
       return candidates.map((candidate) => candidate.voice);
     },
-    getPersonaSnapshot: async () => {
+    getPersonaSnapshot: () => {
       const personaId = personaRegistry.getActivePersonaId();
       const instructions =
         personaRegistry.getActivePersona()?.thinking?.systemPromptAddition ?? null;
-      const continuity = await readVoiceContinuityPrompt(personaId).catch(() => "");
       return {
         personaId,
-        instructions: [instructions, continuity].filter(Boolean).join("\n\n") || null,
+        instructions,
       };
     },
     personaPromptMode: "supplemental",
@@ -4374,16 +4371,6 @@ function App() {
       }),
     [microphoneControl, isMac],
   );
-
-  const handleContinuityContextError = useCallback((error: unknown) => {
-    setContinuityAudioError(error instanceof Error ? error.message : String(error));
-  }, []);
-  useContinuityVoiceContext({
-    personaId: continuityContext?.personaId ?? null,
-    active: codexRealtimeState.status === "active",
-    prepareContext: prepareContinuityContext,
-    onError: handleContinuityContextError,
-  });
 
   useEffect(() => {
     if (
@@ -6285,6 +6272,7 @@ function App() {
           ) : null
         }
         continuityActive={continuityOpen}
+        continuityPhase={continuitySnapshot?.phase}
         onToggleContinuity={handleToggleContinuityWorkspace}
         tabs={
           <TabIndicator

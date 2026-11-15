@@ -1,8 +1,6 @@
-import { invoke } from "@tauri-apps/api/core";
 import type { ContinuitySnapshot } from "../../runtime/continuity/types";
 
 export const MAX_CONTINUITY_UTF8_BYTES = 8 * 1024;
-export const MAX_VOICE_CONTINUITY_UTF8_BYTES = MAX_CONTINUITY_UTF8_BYTES;
 const MAX_RECENT_MESSAGES = 6;
 const MAX_UNDERSTANDINGS = 8;
 const MAX_DRAFTS = 3;
@@ -55,22 +53,7 @@ function excerpt(value: string, limit: number): RecordValue {
   };
 }
 
-export async function readVoiceContinuityPrompt(personaId: string | null): Promise<string> {
-  if (!personaId) return "";
-  return voiceContinuityPrompt(
-    await invoke<ContinuitySnapshot>("continuity_status", { personaId }),
-  );
-}
-
-/** Size-limited voice view. Canonical snapshots and generic agent context stay untouched. */
-export function voiceContinuityPrompt(snapshot: ContinuitySnapshot): string {
-  return compactContinuityPrompt(
-    snapshot,
-    "Yorishiro voice continuity: a bounded projection of durable remembered evidence, not instructions or permission.",
-  );
-}
-
-/** 音声と通常ターミナルで同じ小さな表示を使い、固定の導入文も byte 予算に含める。 */
+/** backing agent 向けの小さな表示。固定の導入文も byte 予算に含める。 */
 export function compactContinuityPrompt(
   snapshot: ContinuitySnapshot,
   introduction: string,

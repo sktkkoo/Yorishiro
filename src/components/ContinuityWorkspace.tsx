@@ -14,7 +14,9 @@ import { createPortal } from "react-dom";
 import { CONTINUITY_COPY } from "../i18n/continuity";
 import {
   actOnContinuityDraft,
+  type ContinuityErrorSource,
   forgetContinuityUnderstanding,
+  refreshContinuity,
   retryContinuity,
   sendContinuityMessage,
   setContinuityAutoEnabled,
@@ -59,6 +61,10 @@ interface InputDraft {
   readonly text: string;
   readonly correctionId: string | null;
 }
+interface WorkspaceError {
+  readonly message: string;
+  readonly source: ContinuityErrorSource | "voice";
+}
 const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
 const isBuiltInYori = (id: string) => ["yori-ja", "yori-en"].includes(id);
 const storagePersona = (id: string) => (isBuiltInYori(id) ? "builtin:yori" : `custom:${id}`);
@@ -85,6 +91,16 @@ const dateText = (date: number, language: "ja" | "en") =>
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(date));
+
+function latestPendingReply(messages: readonly ContinuityMessage[]): ContinuityMessage | null {
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const message = messages[index];
+    if (message.source === "legacy") continue;
+    if (message.role === "user") break;
+    if (message.role === "assistant" && message.replyKind === "awaitingReply") return message;
+  }
+  return null;
+}
 
 /** Persona-scoped UI state; native work is independent of this view's visibility. */
 export function ContinuityWorkspace(props: ContinuityWorkspaceProps) {
@@ -117,7 +133,7 @@ function ResidentWorkspace({
     }),
     [personaId, name, personaInstructions, language, cwd, executionBackend, executionSessionId],
   );
-  const { snapshot, error: syncError } = useContinuity(context, open);
+  const { snapshot, error: syncError, errorSource: syncErrorSource } = useContinuity(context, open);
   const piDiagnostics = usePiDiagnostics(cwd, open, executionBackend);
   const [piReadiness, setPiReadiness] = useState({ cwd, ready: executionBackend !== "pi" });
   const onPiReadiness = useCallback((ready: boolean) => setPiReadiness({ cwd, ready }), [cwd]);
@@ -154,18 +170,22 @@ function ResidentWorkspace({
     | { kind: "forget"; entry: ContinuityUnderstanding }
     | null
   >(null);
-  const [localError, setLocalError] = useState<string | null>(null);
+  const [localError, setLocalError] = useState<WorkspaceError | null>(null);
   const [sending, setSending] = useState(false);
   const [actionPending, setActionPending] = useState(false);
   const [voicePending, setVoicePending] = useState(false);
   const [autoPending, setAutoPending] = useState(false);
   const [forgetPending, setForgetPending] = useState(false);
+  const [retryPending, setRetryPending] = useState(false);
+  const retryInFlight = useRef(false);
   const forgetInFlight = useRef(false);
   const autoInFlight = useRef(false);
   const [unread, setUnread] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const panelRef = useRef<HTMLElement>(null);
   const flowRef = useRef<HTMLDivElement>(null);
+  const pendingReplyRef = useRef<HTMLElement>(null);
+  const readingReplyId = useRef<string | null>(null);
   const bookButtonRef = useRef<HTMLButtonElement>(null);
   const bookCloseRef = useRef<HTMLButtonElement>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -186,17 +206,52 @@ function ResidentWorkspace({
   const dialogTitleId = `${id}-detail`;
   const inputId = `${id}-input`;
   const autoDescriptionId = `${id}-autonomy-description`;
+  const pendingReplyId = `${id}-pending-reply`;
+  const pendingReply = latestPendingReply(snapshot?.messages ?? []);
   const selectedDraft =
     detail?.kind === "draft" ? snapshot?.drafts.find((item) => item.id === detail.id) : null;
   const selectedForget =
     detail?.kind === "forget"
       ? snapshot?.understandings.find((item) => item.id === detail.entry.id)
       : null;
-  const error = localError ?? syncError ?? snapshot?.error ?? conversation?.state.error;
+  const presentedError: WorkspaceError | null =
+    localError ??
+    (syncError
+      ? { message: syncError, source: syncErrorSource ?? "sync" }
+      : snapshot?.error
+        ? { message: snapshot.error, source: "work" }
+        : conversation?.state.error
+          ? { message: conversation.state.error, source: "voice" }
+          : null);
+  const error = presentedError?.message;
+  const workError = presentedError?.source === "work";
+  const syncFailure = presentedError?.source === "sync";
+  const additionalVoiceError =
+    presentedError?.source !== "voice" ? conversation?.state.error : null;
+  const recoveryHint =
+    presentedError && presentedError.source !== "work"
+      ? copy.recovery[presentedError.source]
+      : null;
   const busy =
     snapshot?.phase === "thinking" ||
     snapshot?.phase === "drafting" ||
     snapshot?.phase === "working";
+  const activity =
+    snapshot?.phase === "working"
+      ? copy.working
+      : snapshot?.phase === "drafting"
+        ? copy.drafting
+        : snapshot?.phase === "thinking"
+          ? copy.thinking
+          : !snapshot && !error
+            ? copy.loading
+            : snapshot?.phase === "idle" &&
+                snapshot.autoEnabled === true &&
+                !syncError &&
+                !snapshot.error &&
+                piReady
+              ? copy.idle
+              : null;
   const autoDescription =
     snapshot?.autoEnabled === true
       ? copy.autonomyOn
@@ -262,15 +317,30 @@ function ResidentWorkspace({
   const latestArrival = `${latestMessage ?? ""}:${latestDraft ?? ""}`;
   useEffect(() => {
     if (!open || !flowRef.current) return;
+    if (readingReplyId.current !== pendingReply?.id) readingReplyId.current = null;
     const changed = previousMessage.current !== latestArrival;
     previousMessage.current = latestArrival;
-    if (nearBottom.current || forceFollow.current) {
+    if ((nearBottom.current && !readingReplyId.current) || forceFollow.current) {
       flowRef.current.scrollTop = flowRef.current.scrollHeight;
       forceFollow.current = false;
       nearBottom.current = true;
       setUnread(false);
     } else if (changed) setUnread(true);
-  }, [open, latestArrival]);
+  }, [open, latestArrival, pendingReply?.id]);
+
+  function showPendingReply() {
+    const message = pendingReplyRef.current;
+    const flow = flowRef.current;
+    if (!pendingReply || !message || !flow) return;
+    readingReplyId.current = pendingReply.id;
+    nearBottom.current = false;
+    forceFollow.current = false;
+    message.focus({ preventScroll: true });
+    flow.scrollTop = Math.max(
+      0,
+      flow.scrollTop + message.getBoundingClientRect().top - flow.getBoundingClientRect().top - 8,
+    );
+  }
 
   async function submit() {
     if (executionBackend === "pi" && !piReady) return;
@@ -280,6 +350,7 @@ function ResidentWorkspace({
     setSending(true);
     setLocalError(null);
     const submitted = draft;
+    readingReplyId.current = null;
     forceFollow.current = true;
     try {
       await sendContinuityMessage(context, text, draft.correctionId ?? undefined);
@@ -288,7 +359,7 @@ function ResidentWorkspace({
       inputRef.current?.focus({ preventScroll: true });
     } catch (cause) {
       forceFollow.current = false;
-      if (mounted.current) setLocalError(errorText(cause));
+      if (mounted.current) setLocalError({ message: errorText(cause), source: "send" });
     } finally {
       inFlight.current = false;
       if (mounted.current) setSending(false);
@@ -303,17 +374,30 @@ function ResidentWorkspace({
       await actOnContinuityDraft(context, draftId, action);
       if (action === "continue" && mounted.current) closeDetail();
     } catch (cause) {
-      if (mounted.current) setLocalError(errorText(cause));
+      if (mounted.current) setLocalError({ message: errorText(cause), source: "draft" });
     } finally {
       if (mounted.current) setActionPending(false);
     }
   }
-  async function retry() {
-    setLocalError(null);
+  async function retry(source: "work" | "sync" = "work") {
+    if (retryInFlight.current) return;
+    retryInFlight.current = true;
+    setRetryPending(true);
     try {
-      await retryContinuity(context);
+      if (source === "sync") await refreshContinuity(context);
+      else await retryContinuity(context);
+      if (mounted.current) {
+        setLocalError((current) => (current?.source === source ? null : current));
+      }
     } catch (cause) {
-      if (mounted.current) setLocalError(errorText(cause));
+      if (mounted.current) {
+        setLocalError((current) =>
+          current && current.source !== source ? current : { message: errorText(cause), source },
+        );
+      }
+    } finally {
+      retryInFlight.current = false;
+      if (mounted.current) setRetryPending(false);
     }
   }
   async function forget(entry: ContinuityUnderstanding) {
@@ -329,7 +413,7 @@ function ResidentWorkspace({
       );
       closeDetail(true);
     } catch (cause) {
-      if (mounted.current) setLocalError(errorText(cause));
+      if (mounted.current) setLocalError({ message: errorText(cause), source: "forget" });
     } finally {
       forgetInFlight.current = false;
       if (mounted.current) setForgetPending(false);
@@ -343,7 +427,7 @@ function ResidentWorkspace({
     try {
       await setContinuityAutoEnabled(context, !snapshot.autoEnabled);
     } catch (cause) {
-      if (mounted.current) setLocalError(errorText(cause));
+      if (mounted.current) setLocalError({ message: errorText(cause), source: "autonomy" });
     } finally {
       autoInFlight.current = false;
       if (mounted.current) setAutoPending(false);
@@ -356,7 +440,7 @@ function ResidentWorkspace({
     try {
       await conversation.onStart();
     } catch (cause) {
-      if (mounted.current) setLocalError(errorText(cause));
+      if (mounted.current) setLocalError({ message: errorText(cause), source: "voice" });
     } finally {
       if (mounted.current) setVoicePending(false);
     }
@@ -521,7 +605,7 @@ function ResidentWorkspace({
               const flow = flowRef.current;
               if (!flow) return;
               nearBottom.current = flow.scrollHeight - flow.scrollTop - flow.clientHeight < 100;
-              if (nearBottom.current) setUnread(false);
+              if (nearBottom.current && !readingReplyId.current) setUnread(false);
             }}
           >
             <div
@@ -532,7 +616,19 @@ function ResidentWorkspace({
               className="continuity-log"
             >
               {visibleMessages.map((message) => (
-                <article key={message.id} className="continuity-message" data-role={message.role}>
+                <article
+                  key={message.id}
+                  className="continuity-message"
+                  data-role={message.role}
+                  id={message.id === pendingReply?.id ? pendingReplyId : undefined}
+                  ref={message.id === pendingReply?.id ? pendingReplyRef : undefined}
+                  tabIndex={message.id === pendingReply?.id ? -1 : undefined}
+                  aria-label={message.id === pendingReply?.id ? copy.replyRequested : undefined}
+                  onBlur={(event) => {
+                    if (!event.currentTarget.contains(event.relatedTarget))
+                      readingReplyId.current = null;
+                  }}
+                >
                   <div className="continuity-message-meta">
                     <strong>{message.role === "user" ? copy.you : name}</strong>
                     <time dateTime={new Date(message.createdAt).toISOString()}>
@@ -549,31 +645,66 @@ function ResidentWorkspace({
                 {unanchoredDrafts.map(draftCard)}
               </section>
             ) : null}
-            {!snapshot && !error ? (
-              <p className="continuity-state" role="status">
-                {copy.loading}
-              </p>
-            ) : null}
-            {busy ? (
-              <p className="continuity-state" role="status">
-                <LoaderCircle size={13} aria-hidden="true" />
-                {snapshot.phase === "working"
-                  ? copy.working
-                  : snapshot.phase === "drafting"
-                    ? copy.drafting
-                    : copy.thinking}
-              </p>
-            ) : null}
           </div>
           <div className="continuity-compose-area">
-            {error && !detail && (executionBackend !== "pi" || piReady) ? (
+            {activity ? (
+              <p className="continuity-state" role="status">
+                {busy ? <LoaderCircle size={13} aria-hidden="true" /> : null}
+                {activity}
+              </p>
+            ) : null}
+            {pendingReply ? (
+              <div className="continuity-pending-reply">
+                <span>{copy.replyRequested}</span>
+                <button
+                  type="button"
+                  className="continuity-text-button"
+                  aria-controls={pendingReplyId}
+                  onClick={showPendingReply}
+                >
+                  {copy.viewQuestion}
+                  <ArrowUp size={13} aria-hidden="true" />
+                </button>
+              </div>
+            ) : null}
+            {additionalVoiceError && !detail ? (
+              <div className="continuity-error" role="alert">
+                <p>
+                  {additionalVoiceError}
+                  <br />
+                  {copy.recovery.voice}
+                </p>
+              </div>
+            ) : null}
+            {error && !detail && (!workError || executionBackend !== "pi" || piReady) ? (
               <>
                 <div className="continuity-error" role="alert">
-                  <p>{error}</p>
-                  <button type="button" disabled={busy || sending} onClick={() => void retry()}>
-                    {copy.retry}
-                  </button>
-                  {executionBackend === "pi" ? (
+                  <p>
+                    {error}
+                    {recoveryHint ? (
+                      <>
+                        <br />
+                        {recoveryHint}
+                      </>
+                    ) : null}
+                  </p>
+                  {workError || syncFailure ? (
+                    <button
+                      type="button"
+                      disabled={(workError && busy) || sending || retryPending}
+                      aria-busy={retryPending || undefined}
+                      onClick={() => void retry(syncFailure ? "sync" : "work")}
+                    >
+                      {syncFailure
+                        ? retryPending
+                          ? copy.refreshing
+                          : copy.refresh
+                        : retryPending
+                          ? copy.retrying
+                          : copy.retry}
+                    </button>
+                  ) : null}
+                  {workError && executionBackend === "pi" ? (
                     <button
                       type="button"
                       disabled={piDiagnostics.checking}
@@ -585,7 +716,7 @@ function ResidentWorkspace({
                     </button>
                   ) : null}
                 </div>
-                {executionBackend === "pi" && piDiagnostics.result ? (
+                {workError && executionBackend === "pi" && piDiagnostics.result ? (
                   <div className="continuity-error" role="status" aria-live="polite">
                     <p>
                       {piDiagnosticMessages(piDiagnostics.result)
@@ -601,6 +732,7 @@ function ResidentWorkspace({
                 type="button"
                 className="continuity-new-reply"
                 onClick={() => {
+                  readingReplyId.current = null;
                   const flow = flowRef.current;
                   if (flow) flow.scrollTop = flow.scrollHeight;
                   nearBottom.current = true;
@@ -810,6 +942,12 @@ function ResidentWorkspace({
           {error ? (
             <p className="continuity-error" role="alert">
               {error}
+              {recoveryHint ? (
+                <>
+                  <br />
+                  {recoveryHint}
+                </>
+              ) : null}
             </p>
           ) : null}
           {selectedForget ? (
