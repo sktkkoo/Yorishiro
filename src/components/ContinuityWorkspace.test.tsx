@@ -1350,6 +1350,74 @@ describe("ContinuityWorkspace", () => {
     expect(screen.getByRole("textbox")).toHaveProperty("value", "Normal draft");
   });
 
+  it("keeps persona A pending across A–B–A and clears its accepted draft while away", async () => {
+    const pending = pendingVoiceStart();
+    native.sendContinuityMessage.mockReturnValueOnce(pending.promise);
+    const initial = { ...props(), language: "en" as const, personaId: "send-persona-a" };
+    const view = render(<ContinuityWorkspace {...initial} />);
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Accepted A" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    view.rerender(<ContinuityWorkspace {...initial} personaId="send-persona-b" />);
+    expect(screen.getByRole("textbox")).toHaveProperty("value", "");
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Unsent B" } });
+    expect(screen.getByRole("button", { name: "Send" })).toHaveProperty("disabled", false);
+    view.rerender(<ContinuityWorkspace {...initial} />);
+    expect(screen.getByRole("textbox")).toHaveProperty("value", "Accepted A");
+    expect(screen.getByRole("button", { name: "Send" })).toHaveProperty("disabled", true);
+    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
+    expect(native.sendContinuityMessage).toHaveBeenCalledTimes(1);
+    view.rerender(<ContinuityWorkspace {...initial} personaId="send-persona-b" />);
+    await act(async () => pending.resolve());
+    expect(screen.getByRole("textbox")).toHaveProperty("value", "Unsent B");
+    view.rerender(<ContinuityWorkspace {...initial} />);
+    expect(screen.getByRole("textbox")).toHaveProperty("value", "");
+    expect(screen.getByRole("button", { name: "Send" })).toHaveProperty("disabled", true);
+  });
+
+  it("preserves newer input entered after returning to the pending persona", async () => {
+    const pending = pendingVoiceStart();
+    native.sendContinuityMessage.mockReturnValueOnce(pending.promise);
+    const initial = { ...props(), language: "en" as const, personaId: "edited-persona-a" };
+    const view = render(<ContinuityWorkspace {...initial} />);
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Submitted A" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    view.rerender(<ContinuityWorkspace {...initial} personaId="edited-persona-b" />);
+    view.rerender(<ContinuityWorkspace {...initial} />);
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Newer A" } });
+    view.rerender(<ContinuityWorkspace {...initial} personaId="edited-persona-b" />);
+    await act(async () => pending.resolve());
+    view.rerender(<ContinuityWorkspace {...initial} />);
+    expect(screen.getByRole("textbox")).toHaveProperty("value", "Newer A");
+    expect(screen.getByRole("button", { name: "Send" })).toHaveProperty("disabled", false);
+    expect(native.sendContinuityMessage).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ personaId: "edited-persona-a" }),
+      "Submitted A",
+      undefined,
+    );
+  });
+
+  it("shows a send rejected while away even after shared status recovers, and permits retry", async () => {
+    const pending = pendingVoiceStart();
+    native.sendContinuityMessage.mockReturnValueOnce(pending.promise);
+    const initial = { ...props(), language: "en" as const, personaId: "failed-persona-a" };
+    const view = render(<ContinuityWorkspace {...initial} />);
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Retry my message" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    view.rerender(<ContinuityWorkspace {...initial} personaId="failed-persona-b" />);
+    await act(async () => pending.reject(new Error("Send failed while away")));
+    current = { ...current, revision: current.revision + 1, error: null };
+    native.useContinuity.mockImplementation(() => ({ snapshot: current, error: null }));
+    view.rerender(<ContinuityWorkspace {...initial} />);
+    expect(screen.getByRole("textbox")).toHaveProperty("value", "Retry my message");
+    expect(screen.getByRole("alert").textContent).toContain("Send failed while away");
+    expect(screen.getByRole("alert").textContent).toContain("use Send");
+    expect(screen.getByRole("button", { name: "Send" })).toHaveProperty("disabled", false);
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Send" })));
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByRole("textbox")).toHaveProperty("value", "");
+    expect(native.sendContinuityMessage).toHaveBeenCalledTimes(2);
+  });
+
   it("leaves IME and a newer draft intact while an earlier send is being acknowledged", async () => {
     let finish!: () => void;
     native.sendContinuityMessage.mockImplementationOnce(
