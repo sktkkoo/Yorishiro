@@ -233,8 +233,9 @@ export function PiSetup({
         <div className="pi-setup-form">
           <p>{copy.description}</p>
           {cwd ? (
-            <p>
+            <p className="pi-setup-workspace">
               {copy.workspaceLabel}: <strong>{workspaceName}</strong>
+              <span className="pi-setup-workspace-path">{cwd}</span>
             </p>
           ) : null}
           {status?.legacyConfiguration ? <p>{copy.legacy}</p> : null}

@@ -33,6 +33,17 @@
   color: var(--yorishiro-fg-dim);
   line-height: 1.5;
 }
+.pi-setup-workspace {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.pi-setup-workspace-path {
+  display: block;
+  margin-top: 4px;
+  white-space: pre-wrap;
+  user-select: text;
+  font-size: 11px;
+}
 .pi-setup-form fieldset {
   display: grid;
   gap: 8px;
