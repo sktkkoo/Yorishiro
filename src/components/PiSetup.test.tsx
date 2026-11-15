@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PiSetupStatus } from "../runtime/continuity/pi-setup";
 import { PiSetup } from "./PiSetup";
@@ -44,6 +44,66 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe("Pi setup", () => {
+  it.each([
+    [
+      "en",
+      "Recheck connection status",
+      "Checking connection status…",
+      "Model",
+      "Create and change files",
+    ],
+    [
+      "ja",
+      "接続状態を再確認",
+      "接続状態を確認しています…",
+      "使用するモデル",
+      "ファイルを作成・変更する",
+    ],
+  ] as const)("shows pending recheck in %s without replacing unsaved controls, and allows retry after failure", async (language, recheck, checking, modelLabel, writeLabel) => {
+    current = {
+      ...initial(),
+      authenticated: true,
+      authentication: "present",
+      models: [...initial().models, { id: "chosen-model", name: "Chosen" }],
+    };
+    render(<PiSetup cwd="workspace fixture" language={language} />);
+    const model = await screen.findByRole("combobox", { name: modelLabel });
+    const write = screen.getByRole("checkbox", { name: writeLabel });
+    fireEvent.change(model, { target: { value: "chosen-model" } });
+    fireEvent.click(write);
+    let reject!: (cause: Error) => void;
+    native.invoke.mockReturnValueOnce(
+      new Promise((_resolve, fail) => {
+        reject = fail;
+      }),
+    );
+    const button = screen.getByRole("button", { name: recheck });
+    fireEvent.click(button);
+    fireEvent.click(button);
+    expect(screen.getByRole("button", { name: checking })).toBe(button);
+    expect(button).toHaveProperty("disabled", true);
+    expect(button.getAttribute("aria-busy")).toBe("true");
+    expect(screen.getByRole("status").textContent).toBe(checking);
+    expect(screen.getByRole("combobox", { name: modelLabel })).toBe(model);
+    expect(model).toHaveProperty("value", "chosen-model");
+    expect(write).toHaveProperty("checked", true);
+    expect(native.invoke).toHaveBeenCalledTimes(2);
+    await act(async () => reject(new Error("PRIVATE host detail")));
+    expect(screen.getByRole("button", { name: recheck })).toHaveProperty("disabled", false);
+    expect(screen.getByRole("alert")).toBeTruthy();
+    expect(document.body.textContent).not.toContain("PRIVATE host detail");
+    await act(async () => fireEvent.click(button));
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByRole("button", { name: recheck })).toHaveProperty("disabled", false);
+    expect(model).toHaveProperty("value", "chosen-model");
+    expect(write).toHaveProperty("checked", true);
+    expect(native.invoke.mock.calls.map(([name]) => name)).toEqual([
+      "continuity_pi_setup_status",
+      "continuity_pi_setup_status",
+      "continuity_pi_setup_status",
+    ]);
+  });
+
   it("initializes a newly available model without discarding reviewed permissions", async () => {
     current = { ...initial(), model: "", models: [] };
     render(<PiSetup cwd="workspace fixture" language="en" />);
