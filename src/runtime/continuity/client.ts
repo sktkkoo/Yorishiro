@@ -66,8 +66,10 @@ async function command(
   context: ContinuityContext,
   args: Record<string, unknown> = {},
   errorSource: ContinuityErrorSource | null = "work",
+  requireBridge = false,
 ): Promise<void> {
   try {
+    if (requireBridge) await ensureBridge();
     accept(await invoke<ContinuitySnapshot>(name, { context, ...args }));
   } catch (error) {
     if (errorSource !== null) {
@@ -122,18 +124,16 @@ export function observeContinuityExchange(
   return result;
 }
 export function retryContinuity(context: ContinuityContext): Promise<void> {
-  return ensureBridge().then(() => command("continuity_retry", context));
+  return command("continuity_retry", context, {}, "work", true);
 }
 export function refreshContinuity(context: ContinuityContext): Promise<void> {
-  return ensureBridge().then(() => command("continuity_sync_context", context, {}, "sync"));
+  return command("continuity_sync_context", context, {}, "sync", true);
 }
 export function setContinuityAutoEnabled(
   context: ContinuityContext,
   enabled: boolean,
 ): Promise<void> {
-  return ensureBridge().then(() =>
-    command("continuity_set_auto_enabled", context, { enabled }, "autonomy"),
-  );
+  return command("continuity_set_auto_enabled", context, { enabled }, "autonomy", true);
 }
 /** 共有済みの状態だけを購読する。文脈同期や自律実行のタイマーは開始しない。 */
 export function useContinuitySnapshot(personaId: string | null): ContinuitySnapshot | null {
